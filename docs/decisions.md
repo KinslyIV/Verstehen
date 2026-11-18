@@ -42,8 +42,9 @@ Raised while writing the Part A docs. Each one links to where it came up.
 ### Foundation
 
 - **Confirm Pydantic AI with a spike** (see the fit table below) before committing to it.
-- **Claude Code CLI provider**: Pydantic AI has no Claude Code model. Port LearnHarness's CLI and MCP
-  bridge as a custom `Model`, or find another route?
+- **Claude Code provider via the Claude Agent SDK** (user direction, 2026-11-18), instead of
+  LearnHarness's own CLI and MCP bridge. Still open: how the Agent SDK, which runs its own agent loop,
+  fits under Pydantic AI's loop.
   ([providers](learnharness/providers.md#claude-code-bridge))
 - **Storage**: keep JSON/JSONL files, or move to a database such as SQLite for real transactions
   ([storage](learnharness/storage-and-events.md#port-notes)).
