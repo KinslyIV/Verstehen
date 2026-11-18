@@ -6,4 +6,5 @@ is updated in the same commit.
 
 | Pattern | Reference to copy |
 |---|---|
-| _none yet: filled in as the first code lands_ | |
+| Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
+| Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |

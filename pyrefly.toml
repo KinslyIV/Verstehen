@@ -1,0 +1,3 @@
+project-includes = ["backend/src/**/*.py", "tools/**/*.py"]
+search-path = ["backend/src", "."]
+python-interpreter = "backend/.venv/bin/python"

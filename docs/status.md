@@ -4,22 +4,24 @@
 
 ## Where we are
 
-**Documentation stage. There is no code yet.**
+**M1 task 1: environment, repository scaffolding, and checks implemented.**
 
-- **Part A** (how LearnHarness works): nine docs in `docs/learnharness/`, written against LearnHarness
-  commit `a636647`.
-- **Part B** (the port): [scope](port-scope.md), [architecture](architecture.md), and
-  [decisions](decisions.md), and the [milestones](decisions.md#milestones) are complete.
-- **Spikes done** (throwaway, outside the repo): Pydantic AI deferred tools and steer injection, the
-  Claude Agent SDK as a model, images through the vendored `ClaudeCodeModel`, and Claude Code
-  WebSearch. Results are in [decisions](decisions.md).
+- Python 3.14 uv project with empty feature packages and enforced dependency layers.
+- SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte initialization; no real UI yet.
+- `make setup`, `make check`, `make test`, `make fmt`, and `make lock-migrations`.
+- Comment/docstring length and migration immutability checks, with offline pytest tests.
+- Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
 
 ## Next
 
-1. Clone on Pixal (Ubuntu; needs uv, Node/npm, Docker or Podman) and plan **M1, walking skeleton** ([milestones](decisions.md#milestones)).
-2. Then M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+1. M1 sidecar + store + data dir + log.
+2. `make verify` + fake model + verify skill. The user must first run
+   `sudo npx playwright install-deps chromium` once on Pixal; agents install Playwright's Chromium.
+3. Packaging proof with `make app` inside an Arch container, then laptop installation.
+4. Empty UI layout (sidebar, lesson/composer, right panel, settings).
+5. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
 
-- None blocking. Later providers (Copilot, Grok) are noted in
-  [architecture](architecture.md#open-questions).
+- M1 task 1 implementation choices are listed in its report for orchestrator review.
+- Later providers remain in [architecture](architecture.md#open-questions).

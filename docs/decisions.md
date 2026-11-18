@@ -4,6 +4,12 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-18 | **User decision (M1 task 1 planning):** The first M1 task is environment, repository scaffolding, and checks. | Establish the checks before implementing features. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** Migration immutability uses a committed SHA-256 lockfile at `backend/src/verstehen/store/migrations.lock`; `make lock-migrations` only adds new entries. | Catch edited, deleted, and unlisted migrations. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** ESLint boundaries: only `src/lib/api/` uses fetch or generated API types; `components/ui/` imports only itself, `$lib/utils`, and npm packages; `src/lib/` never imports routes. | Keep transport, reusable UI, and routes separate. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** Create all backend packages now, empty. | Make the intended dependency direction enforceable immediately. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** Custom checks are Python scripts in root `tools/`, tested in `tools/tests/`. | Use the backend uv environment and pytest. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** shadcn-svelte base color is neutral. | Initialize the agreed frontend stack without building UI. |
 | 2026-11-18 | Start a clean repository (Verstehen) instead of forking LearnHarness. | Better structure and readable code; LearnHarness stays a reference checkout. |
 | 2026-11-18 | First port keeps the exact learning flow and knowledge graph. | Port current behavior first, and use the port to understand LearnHarness. |
 | 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |
