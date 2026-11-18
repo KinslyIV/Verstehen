@@ -10,7 +10,6 @@
 - SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte initialization; no real UI yet.
 - `make setup`, `make check`, `make test`, `make fmt`, and `make lock-migrations`.
 - Comment/docstring length and migration immutability checks, with 29 offline pytest tests.
-- Review round 2: one `#lib/*` alias, line-based comments, no scaffold examples; decisions recorded for user review.
 - `make setup` then `make check` passed from a clean source archive; Vitest and the SPA build pass.
 - Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
 
