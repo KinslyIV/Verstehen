@@ -16,6 +16,7 @@
 | 2026-11-18 | **Quiz grading stays in the UI**, as in LearnHarness (the answer key is in the saved tool call). | Faithful port; single-user local app. |
 | 2026-11-18 | **Claude Code via the Claude Agent SDK, wrapped as a Pydantic AI `Model`** (`ClaudeCodeModel`): one SDK query per model request. Built-in tools and settings loading are disabled, and our system prompt is used. History is replayed as a labelled text transcript, our tools are registered as stub SDK tools, and tool calls are intercepted before execution and returned to Pydantic AI as `ToolCallPart`s. The SDK keeps no session. | One runtime: all turn rules (question stop, steer injection, side chat, compaction, history) behave identically for every provider, and models can be switched mid-session. Accepted trade-offs: Claude sees past tool calls as text, there is per-query process startup, and there is no `max_tokens`. The Agent SDK itself can't act as a stateless model or accept tool-call history, which is why the wrapper exists. |
 | 2026-11-18 | **Demo testing: Playwright driving the installed system Chrome** (`channel="chrome"`), headless, with no bundled or downloaded browser. It collects console errors, uncaught errors, and failed requests, and runs the optional probe with `evaluate()`. The visual worker uses no browser: as in LearnHarness, SVGs are rasterized with resvg. | User decision. It matches LearnHarness's checks one for one (LH uses puppeteer-core with Electron's browser service, falling back to system Chrome). Accepted trade-off: the demo is tested in Chrome, while the learner sees it in WebKitGTK inside Tauri on Linux. |
+| 2026-11-18 | **`ClaudeCodeModel` is copied (vendored) from [h0rv/pydantic-ai-claude-code](https://github.com/h0rv/pydantic-ai-claude-code)** at commit `8a78bdd` (MIT, "Copyright (c) 2026 Armin Ronacher"), not written from scratch and not installed as a dependency. This replaces the text-transcript part of the decision above: history is replayed as **native** SDK user/assistant frames (tool ids, arguments, results, and thinking signatures stay structured). Interception is the same PreToolUse `defer` approach our spike validated. The copy keeps the LICENSE notice and records the source commit. | User decision. It already implements what our spike proved, plus native history replay, billing-limit errors, and careful cancellation. Known risks: a one-commit project; native replay relies on the undocumented `shouldQuery: false` stream-json field; by default it uses the Claude Code preset system prompt with our instructions appended (we want only our own prompt, see open questions). |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -109,7 +110,10 @@ Rules for the wrapper:
 
 ## Open questions
 
-_None open at the moment. New ones are added here as the architecture doc is written._
+- **System prompt with the vendored `ClaudeCodeModel`.** Its default is the Claude Code preset prompt
+  with our instructions appended. Passing our own SDK `system_prompt` raises an error if Pydantic AI
+  instructions are also set. How we pass our per-turn prompts (and whether we patch the copy) is
+  decided when the provider layer is designed.
 
 
 ## Milestones
