@@ -193,6 +193,7 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 |---|---|
 | `POST /api/sessions/{id}/input` | start a turn with any input type |
 | `GET /api/sessions/{id}/stream` | SSE: replay the current turn's event log, then live events until done |
+| `GET /api/jobs?session=…` | job progress poll; also triggers the job recovery sweep, as in LH (decided) |
 | `GET /api/events` | SSE: "something changed, refetch" notifications (LH's `ServerEvents` vocabulary, minus plugins) |
 | ordinary JSON routes | sessions, entries, jobs, side chats, graph, settings, providers |
 
@@ -210,7 +211,14 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - `ProviderPolicy.admit(request_purpose)` answers "may this request run now?" for foreground or
   background requests. Turns, side chat, jobs, and compaction call these two and never look at the
   provider kind.
-- One adapter module per kind: API key, ChatGPT, Copilot, Grok, Claude Code, custom endpoint.
+- One adapter module per kind. **First implementation: Claude Code and ChatGPT only.** API key,
+  Copilot, Grok, and custom endpoint adapters come in later milestones.
+- **ChatGPT login** uses Pydantic AI's `openai-chatgpt` provider (checked in 2.70.0,
+  `providers/openai_chatgpt.py`). It provides the OAuth flow (authorization code + PKCE, dynamic
+  client registration, the one-shot loopback callback on `127.0.0.1:1455` via
+  `exchange_code_from_callback()`) and handles token refresh. The app opens the browser and
+  implements the `OpenAIChatGPTCredentialSource` protocol (`load()` / `save()`) on top of the
+  credentials file.
 - **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`, patched so the
   system prompt is **only our instructions**, with no Claude Code preset (Q10). `VENDORED.md`
   records the source commit (`8a78bdd`), the license, and every local patch.
@@ -226,7 +234,7 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Frontend (Q7, Q8)
 
-- **SvelteKit with `adapter-static` in SPA mode.** No server-side rendering; all data comes from the
+- **SvelteKit with `adapter-static` in SPA mode**, managed with **npm** (decided). No server-side rendering; all data comes from the
   sidecar.
 - **Types are generated** from FastAPI's OpenAPI schema with `openapi-typescript` into
   `app/src/lib/api/`. SSE event payload models are included in the schema so they get types too.
@@ -257,11 +265,26 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Open questions
 
-- **Subscription logins.** Pydantic AI lists ChatGPT, Copilot, and Grok providers. Do they include
-  login flows that work from a desktop app, and where do they keep tokens? To check before the
-  provider milestone.
-- **Job recovery trigger.** LH runs its recovery sweep when the browser polls `/api/jobs`. Keep that,
-  or sweep once at sidecar startup?
-- **JavaScript package manager** for the app (npm, pnpm, or bun).
+- **Later providers (not needed for the first implementation).** Pydantic AI 2.70.0 has a GitHub
+  Copilot device-code flow (`_github_copilot_oauth.py`; storage left to the caller). Its `xai`
+  provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
+  our own code.
+- **Not yet discussed** (each needs a decision before its milestone):
+  - **Agent-generated HTML in the app.** Demos are model-written HTML (LH `components/artifacts/demo-card.tsx`
+    renders them in a sandboxed iframe). Sandbox and CSP rules inside the Tauri webview.
+  - **Python libraries** replacing LH's JS ones: PDF rendering and text (LH: `pdfjs-dist` + Skia),
+    SVG rasterizing (LH: `@resvg/resvg-js`). License matters here (PyMuPDF is AGPL).
+  - **Web search providers** for the research worker. LH supports Tavily, Brave, Exa, Firecrawl, and
+    Ollama, tried in that order.
+  - **UI rendering libraries** replacing LH's React ones: the graph view (LH: `@xyflow/react`,
+    `d3-force`, `dagre`), math (KaTeX), Mermaid, and Markdown streaming.
+  - **Images and the vision slot** with the first two providers (learner image attachments, the
+    visual worker). The vendored `ClaudeCodeModel`'s support for image parts is untested.
+  - **Context limits** for Claude Code and ChatGPT models (they drive compaction and side-chat budgets;
+    LH gets them from its catalog and a CLI query).
+  - **Session search** (in scope): for example SQLite FTS5, or port LH's implementation.
+  - **Logging and debugging**: logs, LH's provider-event recording, and Pydantic AI's Logfire banner.
+  - **Tooling for coding agents**: Python version, ruff/pyright, the test commands, CI, and an
+    `AGENTS.md` for the Verstehen repo.
 - **Review the proposals above:** dependency direction, SQLite tables, SessionRuntime lock and
   methods, SSE via `fetch`, the startup handshake, and the session controller.

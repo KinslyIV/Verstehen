@@ -32,6 +32,9 @@
 | 2026-11-18 | Testing: **pytest with Pydantic AI `FunctionModel`**, a real temporary SQLite DB, no network. One test per Part A behavior; real-model tests opt-in. | User decision (architecture Q13); see [architecture](architecture.md). |
 | 2026-11-18 | Prompt overrides: **files in `<data dir>/prompts/<segment path>.md`**, like LH. The shipped prompts are LH's tree, copied. | User decision (architecture Q14); see [architecture](architecture.md). |
 | 2026-11-18 | Data dir: **`~/.local/share/verstehen`**, overridable with `VERSTEHEN_DATA_DIR`. | User decision (architecture Q15); see [architecture](architecture.md). |
+| 2026-11-18 | **First implementation has two providers: Claude Code** (vendored `ClaudeCodeModel`, local `claude` login) **and ChatGPT** (Pydantic AI `openai-chatgpt`, "Sign in with ChatGPT", the same OAuth flow and `chatgpt.tokens.use.direct` scope LearnHarness uses). API keys, Copilot, Grok, and the custom endpoint stay in scope for later milestones. | User decision. |
+| 2026-11-18 | **Job recovery runs when the UI polls for jobs**, as in LearnHarness. | User decision. |
+| 2026-11-18 | **JavaScript package manager: npm.** | User decision. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
