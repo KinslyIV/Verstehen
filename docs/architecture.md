@@ -232,6 +232,17 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   compaction isn't used, so summaries stay readable, learning-specific, and provider-independent.
 - **Session search** uses an SQLite FTS5 index over entry text.
 
+## Libraries, logging, and context limits (decided)
+
+- **PDF:** pypdfium2. **SVG to PNG:** CairoSVG (the PyInstaller build bundles the Cairo library).
+- **UI:** the Svelte versions of LH's React libraries (Svelte Flow for the graph view), plus d3-force,
+  dagre, KaTeX, and Mermaid directly.
+- **Images** work through the vendored `ClaudeCodeModel` in user messages and tool results
+  ([check](decisions.md#image-and-context-window-check-2026-11-18)).
+- **Logging:** a log file in the data dir, plus a debug switch that records raw provider events.
+- **Context window:** Pydantic AI's model data, then a runtime query to the provider or SDK, then a
+  value the user enters.
+
 ## Prompts (Q14)
 
 - LH's prompt markdown tree is copied into `teaching/prompts/` unchanged, except the agreed 5–15
@@ -258,7 +269,10 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Testing (Q13)
 
-- uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
+- Python 3.14; uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
+- **One command runs everything** (decided): `make check` at the repo root runs pytest, ruff, pyrefly,
+  svelte-check, ESLint, Prettier, and Vitest. `make test` runs only tests; `make fmt` fixes formatting.
+  No CI for now; `make check` is required before every commit.
 - pytest, with Pydantic AI's `FunctionModel` scripting the model's replies, a real temporary SQLite
   database, and no network.
 - Each Part A behavior gets a test named after it: question pause and answer, sibling questions,
@@ -280,18 +294,12 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - **Not yet discussed** (each needs a decision before its milestone):
   - **Agent-generated HTML in the app.** Demos are model-written HTML (LH `components/artifacts/demo-card.tsx`
     renders them in a sandboxed iframe). Sandbox and CSP rules inside the Tauri webview.
-  - **Python libraries** replacing LH's JS ones: PDF rendering and text (LH: `pdfjs-dist` + Skia),
-    SVG rasterizing (LH: `@resvg/resvg-js`). License matters here (PyMuPDF is AGPL).
-  - **UI rendering libraries** replacing LH's React ones: the graph view (LH: `@xyflow/react`,
-    `d3-force`, `dagre`), math (KaTeX), Mermaid, and Markdown streaming.
-  - **Images and the vision slot** with the first two providers (learner image attachments, the
-    visual worker). The vendored `ClaudeCodeModel`'s support for image parts is untested.
-  - **Context window sizes** for Claude Code and ChatGPT models: where they come from (a catalog,
-    the provider, or a setting). They cap the compaction limit and size the side-chat budget.
+  - **Effective context limit for Claude Code subscriptions.** A runtime-reported limit can be smaller
+    than the model maximum in Pydantic AI's data (LH stores the CLI-reported value for this reason).
+    Which one wins when both exist?
   - **Spike: Claude Code's built-in WebSearch** for the research worker through the vendored
     adapter (decided to try; see decisions).
-  - **Logging and debugging**: logs, LH's provider-event recording, and Pydantic AI's Logfire banner.
-  - **Rest of the tooling**: Python version, the test and check commands, CI, and an `AGENTS.md` for
-    the Verstehen repo (uv, ruff, and pyrefly are decided).
+  - **`AGENTS.md` for the Verstehen repo**: its contents (for example LH's "No guessing" rule and
+    `make check` before every commit).
 - **Review the proposals above:** dependency direction, SQLite tables, SessionRuntime lock and
   methods, SSE via `fetch`, the startup handshake, and the session controller.

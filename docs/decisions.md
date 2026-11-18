@@ -39,6 +39,13 @@
 | 2026-11-18 | **Compaction: only Verstehen's own LH-style compaction**, no provider-native compaction. The compaction limit is a user setting (LH: default 150,000 tokens, capped at the context window minus 16,384). | User decision. |
 | 2026-11-18 | **Session search: SQLite FTS5.** | User decision. |
 | 2026-11-18 | **Python tooling: uv, ruff, and pyrefly** (type checker). | User decision. |
+| 2026-11-18 | **PDF library: pypdfium2** (BSD-3/Apache-2.0) for page rendering and text, replacing LH's `pdfjs-dist` + Skia. | User decision. |
+| 2026-11-18 | **SVG rasterizing: CairoSVG** (LGPL-3.0-or-later; needs the system Cairo library, which the PyInstaller build must bundle), replacing LH's `@resvg/resvg-js`. | User decision. |
+| 2026-11-18 | **UI libraries: the Svelte versions of LH's React libraries** (for example Svelte Flow for `@xyflow/react`). Framework-independent ones (d3-force, dagre, KaTeX, Mermaid) are used directly. Where no Svelte version exists (LH's React-only `streamdown`), the replacement is chosen when that UI is built. | User decision. |
+| 2026-11-18 | **Python 3.14.** The chosen libraries (pydantic-ai-slim 2.70.0, claude-agent-sdk, the vendored ClaudeCodeModel, pypdfium2, cairosvg, PyInstaller 6.22) all install on 3.14.10. | User decision. |
+| 2026-11-18 | **Checks run locally through a root `Makefile`**: `make check` (pytest, ruff check, ruff format --check, pyrefly; svelte-check + TypeScript, ESLint + Prettier, Vitest), `make test`, `make fmt`. Real-model tests only with an opt-in env var. AGENTS.md requires `make check` before every commit. **No GitHub Actions for now.** | User decision. |
+| 2026-11-18 | **Logging: a log file in the data dir plus a debug switch** that records raw provider events (LH's `LH_PROVIDER_EVENTS`). Pydantic AI's banner is turned off. | User decision. |
+| 2026-11-18 | **Context window size: Pydantic AI's model data first** (genai-prices via the model profile). Claude Code models look it up under their full Anthropic model id. **When the data has no size, ask the provider or SDK at runtime** where possible (like LH's CLI query), and only then ask the user to enter it. | User decision. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -129,6 +136,19 @@ Rules for the wrapper:
   response and must not be summed.
 - Not covered yet: multimodal parts, structured output, cancellation, context limits, escaping in
   the transcript, and model settings.
+
+## Image and context-window check (2026-11-18)
+
+Throwaway check in `~/scratch/verstehen-image-check` on Python 3.14.10 with the vendored
+`ClaudeCodeModel` and `claude-haiku-5-5`, two real queries.
+
+- **Images work through the vendored `ClaudeCodeModel`**, both as a learner image in the user
+  message and as an image inside a tool result (the visual worker's render loop). The tool ran once,
+  in Pydantic AI, and both images (rendered with CairoSVG) were described correctly.
+- **Context window data** (genai-prices 0.2.4): `claude-*-5-5` → 1,000,000 under Pydantic AI's
+  Anthropic model, but the vendored `ClaudeCodeModel` reports none (it doesn't look the data up).
+  `gpt-5.5` → 1,000,000, `gpt-5.2` and `gpt-5.1-codex` → 400,000, `gpt-5.5-mini` and `gpt-6.1` →
+  unknown. Hence the runtime fallback decided above.
 
 ## Open questions
 
