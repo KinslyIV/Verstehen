@@ -6,10 +6,18 @@
 |---|---|---|
 | 2026-11-18 | **User decision (M1 task 1 planning):** The first M1 task is environment, repository scaffolding, and checks. | Establish the checks before implementing features. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** Migration immutability uses a committed SHA-256 lockfile at `backend/src/verstehen/store/migrations.lock`; `make lock-migrations` only adds new entries. | Catch edited, deleted, and unlisted migrations. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** ESLint boundaries: only `src/lib/api/` uses fetch or generated API types; `components/ui/` imports only itself, `$lib/utils`, and npm packages; `src/lib/` never imports routes. | Keep transport, reusable UI, and routes separate. |
+| 2026-11-18 | **User decision (M1 task 1 planning):** ESLint boundaries: only `src/lib/api/` uses fetch or generated API types; `components/ui/` imports only itself, `#lib/utils`, and npm packages; `src/lib/` never imports routes. | Keep transport, reusable UI, and routes separate. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** Create all backend packages now, empty. | Make the intended dependency direction enforceable immediately. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** Custom checks are Python scripts in root `tools/`, tested in `tools/tests/`. | Use the backend uv environment and pytest. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** shadcn-svelte base color is neutral. | Initialize the agreed frontend stack without building UI. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Ruff uses defaults `E4/E7/E9/F` plus `I` and `TID`; nested `ruff.toml` files per package configure banned APIs. | Keep linting small and enforce package-specific dependencies. |
+| 2026-11-18 | **Orchestrator decision, for user review:** `make setup` explicitly runs locked `uv sync` and `npm ci`. | Restore both development environments reproducibly. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Use the `uv_build` backend and root `pyrefly.toml` covering backend and tools. | Keep packaging and type checking in one straightforward setup. |
+| 2026-11-18 | **Orchestrator decision, for user review:** shadcn-svelte initialization uses Vega style, Inter font, Lucide icons, and default radius; the look remains to be designed in the UI task. | Record scaffold defaults without deciding the UI design. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Use only `#lib/*` via package imports for `src/lib`; no bare `#lib` entry or second alias. | SvelteKit 3 supports package imports; shadcn-svelte button generation and svelte-check work with them. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Comment checking is line-based: full-line `#` and `//` runs, line-start `/* … */` and `<!-- … -->` blocks, plus Python AST docstrings. Count delimiter lines; trailing comments are not counted. | Replace the script lexer with a rule a reader can understand in one pass. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Migration locks use `SHA256  filename`, only numbered `NNNN_name.sql` migrations, and refuse additions while any existing lock entry is broken. | Preserve migration history before recording new files. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Vitest uses `passWithNoTests: true` until real app tests exist. | Remove scaffold example tests while keeping checks usable. |
 | 2026-11-18 | Start a clean repository (Verstehen) instead of forking LearnHarness. | Better structure and readable code; LearnHarness stays a reference checkout. |
 | 2026-11-18 | First port keeps the exact learning flow and knowledge graph. | Port current behavior first, and use the port to understand LearnHarness. |
 | 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |

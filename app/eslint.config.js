@@ -65,7 +65,7 @@ export default defineConfig(
 							from: { element: { type: 'ui' } },
 							disallow: { to: { module: { origin: 'local' } } },
 							message:
-								'Move app-specific code out of src/lib/components/ui/; import only UI files, $lib/utils, or npm packages.'
+								'Move app-specific code out of src/lib/components/ui/; import only UI files, #lib/utils, or npm packages.'
 						},
 						{
 							from: { element: { type: 'ui' } },

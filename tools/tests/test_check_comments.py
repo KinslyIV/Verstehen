@@ -30,10 +30,6 @@ def test_four_line_comment_or_docstring_fails(tmp_path: Path, name: str, source:
     [
         ("example.py", '# one\n# two\n# three\ntext = "# not a comment"\n'),
         ("example.ts", '// one\n// two\n// three\nconst url = "https://example.com";'),
-        (
-            "example.js",
-            "const pattern = /https?:\\/\\//;\nconst text = `// a\n// b\n// c\n// d`;",
-        ),
         ("example.svelte", '<script>const text = "<!--";</script>\n<!-- a\nb\nc -->'),
     ],
 )
@@ -71,15 +67,28 @@ def test_handwritten_api_code_is_checked(tmp_path: Path):
     assert check(tmp_path) == [f"app/src/lib/api/client.ts:1: {MESSAGE}"]
 
 
-def test_comment_after_division_fails(tmp_path: Path):
-    (tmp_path / "division.ts").write_text(
-        "const ratio = a / b; // one\n// two\n// three\n// four\n"
-    )
-    assert len(check(tmp_path)) == 1
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        ("example.py", "value = 1  # one\n# two\n# three\n# four\n"),
+        ("example.ts", "const ratio = a / b; // one\n// two\n// three\n// four\n"),
+        ("block.ts", "const value = 1; /* one\ntwo\nthree\nfour */"),
+    ],
+)
+def test_trailing_comment_is_not_counted(tmp_path: Path, name: str, source: str):
+    (tmp_path / name).write_text(source)
+    assert check(tmp_path) == []
 
 
-def test_comment_inside_template_expression_fails(tmp_path: Path):
-    (tmp_path / "template.ts").write_text(
-        "const text = `${(() => {\n// a\n// b\n// c\n// d\nreturn 1; })()}`;"
+def test_svelte_script_comment_reports_its_source_line(tmp_path: Path):
+    (tmp_path / "example.svelte").write_text(
+        '<h1>Example</h1>\n<script lang="ts">\n// a\n// b\n// c\n// d\n</script>'
     )
-    assert len(check(tmp_path)) == 1
+    assert check(tmp_path) == [f"example.svelte:3: {MESSAGE}"]
+
+
+def test_comment_markers_in_python_multiline_string_are_not_comments(tmp_path: Path):
+    (tmp_path / "example.py").write_text(
+        'text = """example\n# one\n# two\n# three\n# four\n"""'
+    )
+    assert check(tmp_path) == []
