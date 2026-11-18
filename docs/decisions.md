@@ -8,10 +8,32 @@
 | 2026-11-18 | First port keeps the exact learning flow and knowledge graph. | Port current behavior first, and use the port to understand LearnHarness. |
 | 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |
 | 2026-11-18 | Development happens on the home server Pixal. | Agents run on the home server. |
+| 2026-11-18 | Language: **Python**. | User decision. |
 
 ## Leaning (not yet decided)
 
-- Deep Agents as the agent foundation. It is the closest match so far, but this has not been validated against the quiz/background-result scenario.
+- **Pydantic AI** as the agent runtime. This replaces the earlier Deep Agents leaning. Its fit against LearnHarness's mechanisms is assessed below; it has not been validated in code yet.
+
+## Pydantic AI fit (desk check, 2026-11-18)
+
+Checked against the current Pydantic AI docs (now at `pydantic.dev/docs/ai/`), not yet in code.
+
+| LearnHarness mechanism | Pydantic AI | Fit |
+|---|---|---|
+| Question ends the run; the answer becomes the tool result next turn ([question tools](learnharness/question-tools.md)) | **Deferred tools**: a tool raises `CallDeferred`, the run ends with `DeferredToolRequests`, and the next run passes `message_history` + `deferred_tool_results` | Native. The docs example shows other calls in the same response still running before the pause (inferred from the example, not stated as a rule). |
+| Invalid question arguments → model retries in the same turn | `ModelRetry` raised from a tool | Native |
+| "The saved record is the agent state"; fresh agent per turn | Stateless runs with `message_history`; `ModelMessagesTypeAdapter` JSON round-trip | Native. App markers (steers, plan blocks, compaction) need our own record format, projected to model messages, like LH's `toLlmMessages`. |
+| Inject job results / side-chat updates / composer steers **between model calls in the same run** ([subagents](learnharness/subagents-and-background-work.md)) | History processors / `before_model_request` hook run before **every** model request, can **add** messages, and the added messages stay in the run's history | Native hook. The delivery queue itself is our code. |
+| Fire-and-forget background workers | Not provided; plain `asyncio` tasks, each running its own Pydantic AI agent | App code (also app code in LH) |
+| Streaming to the browser, replay on reattach | `run_stream_events()` / `event_stream_handler` / `agent.iter()`; custom events | Native events. The replay log and reattach are our code. |
+| Abort with partial output saved | `CancellationToken` → `RunCancelled` carries the resumable messages | Native |
+| Per-call usage incl. cache read/write, 1-hour writes, reasoning | `RequestUsage` / `RunUsage` | Native, the same fields LH logs |
+| Thinking levels | Unified `thinking` setting (`minimal` … `max`), mapped per provider | Native |
+| API-key providers, custom OpenAI-compatible endpoint | OpenAI, Anthropic, Google, Bedrock, OpenRouter, Ollama, xAI, … and `OpenAICompatibleProvider` | Native |
+| ChatGPT subscription, Copilot, Grok | `openai-chatgpt:` / `openai-codex:`, `github-copilot:`, `xai:` | Native providers listed. Whether their login flows suit a home-server web app is not yet checked. |
+| Claude Code CLI | Not listed | **Gap**: a custom `Model` subclass (port of LH's CLI and MCP bridge) |
+| Compaction, extraction pipeline, turn claim, subscription background consent | – | App code (also app code in LH) |
+| Durable execution | Optional: Temporal, DBOS, Prefect, Restate, … | Not needed for a faithful port |
 
 ## Open questions
 
@@ -19,16 +41,10 @@ Raised while writing the Part A docs. Each one links to where it came up.
 
 ### Foundation
 
-- **Language and runtime.** This depends partly on provider reuse: Pi supplies the ChatGPT, Copilot,
-  and Grok subscription flows ([providers](learnharness/providers.md#port-notes)).
-- **How closely to follow Deep Agents**, and in particular:
-  - **async fire-and-forget workers** whose results arrive later, injected between model calls in
-    the same run. Deep Agents' `task` subagents are synchronous by default
-    ([subagents](learnharness/subagents-and-background-work.md#port-notes));
-  - **the question-stop contract**, including the mixed-batch rule
-    ([question tools](learnharness/question-tools.md#port-notes));
-  - **state ownership**: LearnHarness's "the saved record is the agent state" versus LangGraph
-    checkpoints ([turn lifecycle](learnharness/turn-lifecycle.md#port-notes)).
+- **Confirm Pydantic AI with a spike** (see the fit table below) before committing to it.
+- **Claude Code CLI provider**: Pydantic AI has no Claude Code model. Port LearnHarness's CLI and MCP
+  bridge as a custom `Model`, or find another route?
+  ([providers](learnharness/providers.md#claude-code-bridge))
 - **Storage**: keep JSON/JSONL files, or move to a database such as SQLite for real transactions
   ([storage](learnharness/storage-and-events.md#port-notes)).
 
