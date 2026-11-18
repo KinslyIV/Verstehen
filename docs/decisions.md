@@ -65,6 +65,10 @@
 | 2026-11-18 | **Code rules are enforced as checks**, not prose: import-linter for the dependency direction; ruff banned-API so `sqlite3`/aiosqlite are imported only in `store/` and Pydantic AI only in `teaching/`, `session/`, `providers/`; ESLint boundaries in the app; a check that applied migrations never change. | User decision. |
 | 2026-11-18 | **Verification:** a scripted fake-model provider (dev env var only); `make verify` runs the sidecar with a temporary data dir and the SvelteKit app in headless Chrome via Playwright, with scripted flows that save screenshots and traces; `docs/feature-map.md` lists every feature and how to verify it. **The Tauri shell itself is not checked by agents**; the user checks it on the laptop. | User decision. |
 | 2026-11-18 | **Agent context:** AGENTS.md holds the goal, origin, intent, and how we work; `docs/status.md` holds the current stage and what's next, updated at the end of each piece of work. | User decision. |
+| 2026-11-18 | **Actionable check messages:** every custom check fails with a message saying what to do instead (for example "move this SQL into `store/`"). | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
+| 2026-11-18 | **Verification evidence in reports:** for UI changes, agents attach the `make verify` screenshots or traces they checked. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
+| 2026-11-18 | **One reference per pattern:** `docs/patterns.md` names the one example to copy for each pattern (endpoint, tool, SQLite transaction, UI component, …). Superseded patterns are deleted. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
+| 2026-11-18 | **Verification as a skill:** `make verify` and its flows are wrapped in a coding-agent skill for Claude Code and Codex, so agents drive the app the same way every time. Built together with `make verify`; the skill locations for each agent are checked then. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 

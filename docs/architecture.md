@@ -362,7 +362,8 @@ In the port:
 - **`make verify`** (decided) runs the sidecar with the fake-model provider and a temporary data dir,
   plus the SvelteKit app in headless Chrome via Playwright. Scripted flows save screenshots and
   traces. [`feature-map.md`](feature-map.md) lists each feature and its flow. The Tauri shell is
-  checked by hand on the laptop.
+  checked by hand on the laptop. A coding-agent **verify skill** wraps these flows (decided), and
+  every custom check's error message says what to do instead.
 - pytest, with Pydantic AI's `FunctionModel` scripting the model's replies, a real temporary SQLite
   database, and no network.
 - Each Part A behavior gets a test named after it: question pause and answer, sibling questions,

@@ -39,9 +39,12 @@ not interpretation.
 - **Follow the Zen of Python** (`import this`), but not where it makes the code harder to
   understand. Understandable wins.
 - **The codebase is the prompt.** Agents copy what they see, so there is one way to do each thing.
-  Follow the existing pattern. If a pattern is bad, say so instead of copying it.
+  [`docs/patterns.md`](docs/patterns.md) names the one example to copy for each pattern. When a
+  pattern is replaced, delete the old one everywhere. If a pattern is bad, say so instead of copying
+  it.
 - **Corrections become checks.** When the user corrects something that a tool could catch, propose
-  a check (lint rule, import rule, test) rather than a new line in this file.
+  a check (lint rule, import rule, test) rather than a new line in this file. A check's error
+  message says what to do instead, not only what is wrong.
 
 ## Where decisions live
 
@@ -66,7 +69,9 @@ Every change comes with a way to prove it works, and you run it before you say i
 
 - **Logic** gets a test named after the behavior. Tests are offline, using Pydantic AI's
   `FunctionModel` and a temporary data dir.
-- **Anything the learner sees** gets a `make verify` flow. Look at the screenshots yourself.
+- **Anything the learner sees** gets a `make verify` flow. Look at the screenshots yourself, and
+  attach the screenshots or traces you checked when you report the change. Use the verify skill to
+  run flows, not ad-hoc scripts.
 - **[`docs/feature-map.md`](docs/feature-map.md)** lists every feature, how to reach it, and how to
   verify it. A new or changed feature updates its entry.
 - **Real models use the user's subscriptions.** Run them only when the user asks.
