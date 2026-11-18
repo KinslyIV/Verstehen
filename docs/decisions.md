@@ -32,8 +32,8 @@ Checked against the current Pydantic AI docs (now at `pydantic.dev/docs/ai/`), n
 | Per-call usage incl. cache read/write, 1-hour writes, reasoning | `RequestUsage` / `RunUsage` | Native, the same fields LH logs |
 | Thinking levels | Unified `thinking` setting (`minimal` … `max`), mapped per provider | Native |
 | API-key providers, custom OpenAI-compatible endpoint | OpenAI, Anthropic, Google, Bedrock, OpenRouter, Ollama, xAI, … and `OpenAICompatibleProvider` | Native |
-| ChatGPT subscription, Copilot, Grok | `openai-chatgpt:` / `openai-codex:`, `github-copilot:`, `xai:` | Native providers listed. Whether their login flows suit a home-server web app is not yet checked. |
-| Claude Code CLI | Not listed | **Gap**: a custom `Model` subclass (port of LH's CLI and MCP bridge) |
+| ChatGPT subscription, Copilot, Grok | `openai-chatgpt:` / `openai-codex:`, `github-copilot:`, `xai:` | Native providers listed. Whether their login flows suit the desktop app is not yet checked. |
+| Claude Code CLI | Not listed | **Gap**, closed by our own `ClaudeCodeModel` built on the Claude Agent SDK (decided; see the spike result below) |
 | Compaction, extraction pipeline, turn claim, subscription background consent | – | App code (also app code in LH) |
 | Durable execution | Optional: Temporal, DBOS, Prefect, Restate, … | Not needed for a faithful port |
 
@@ -61,16 +61,54 @@ Lessons for the design:
   delivery record: history normalization can resurface an older steer there.
 - Acknowledge delivery only after the history is saved. With SQLite this can be one transaction.
 
+## Claude Agent SDK wrapper spike result (2026-11-18)
+
+Throwaway project in `~/scratch/verstehen-claude-sdk-spike` (not in this repo), on
+`claude-agent-sdk==0.2.184` with `pydantic-ai-slim==2.70.0`, using the CLI `/usr/bin/claude` 2.1.327
+with `haiku` (resolved to `claude-haiku-5-5`). It authenticated through the existing local CLI login.
+There were 16 real queries, each with `max_turns=1`. **Verdict: feasible** for text plus function
+tools.
+
+- **Lockdown.** With `tools=[]`, `setting_sources=[]`, `strict_mcp_config=True`, and a plain-string
+  `system_prompt`, init advertised no tools at all. With our tools registered, it advertised exactly
+  those tools. `allowed_tools` is an auto-approval list. It does not control which tools are visible.
+- **Interception: a PreToolUse hook that returns `defer` for every call.** No stub ran, and the
+  query ended cleanly with `tool_deferred`. The two interrupt approaches (a permission deny with
+  `interrupt=True`, or a stub that calls `client.interrupt()`) aborted the turn. The stub approach
+  also executed the stub.
+- **Parallel calls.** Defer captured both calls in 3/3 trials. They arrived as **two separate
+  `AssistantMessage`s with the same message id**, and the first hook fired before the second block
+  arrived. Interrupting on the first call lost the second one.
+- **Transcript replay.** A fresh query given a labelled text history (user, assistant, tool call,
+  tool result) continued correctly.
+- **Latency.** The median was 1.39 s to the first text and 2.13 s in total, with a range of
+  1.23–4.39 s to the first text. Connect and init took about 0.35 s, and teardown took about 0.72 s
+  after the result. There was no direct-API baseline, so the SDK's own overhead isn't isolated.
+- **Prompt cache.** Fresh queries with the same prefix read 3,706 cached tokens. Caching survives
+  across independent SDK sessions.
+- **End to end.** A minimal `ClaudeCodeModel(pydantic_ai.models.Model)` worked. In one model
+  request it captured two calls. Pydantic AI then ran `research` and deferred `quiz`, and no SDK stub
+  ran.
+- **Surprise.** By default the CLI saves session transcripts under `~/.claude/projects/`. The later
+  queries passed `extra_args={"no-session-persistence": None}`, which turns that off.
+
+Rules for the wrapper:
+- Defer every call. Drain the stream to `ResultMessage`, and never stop on the first tool call.
+- Collect tool calls from **all** completed `AssistantMessage` `ToolUseBlock`s, deduplicated by id.
+  `ResultMessage.deferred_tool_use` holds only one call. Don't count `StreamEvent` partials as calls.
+- Map MCP wire names (`mcp__<server>__<tool>`) back to our tool names, and keep the tool-use ids.
+- Always pass `--no-session-persistence`. Pydantic AI owns the history, and SDK session state is
+  never the source of truth.
+- Stub handlers fail closed. They should never run, and if one does, it raises instead of doing
+  work. Guard hooks also reject unknown tool names.
+- Take usage from `ResultMessage.usage`. Usage on assistant blocks repeats across blocks of one
+  response and must not be summed.
+- Not covered yet: multimodal parts, structured output, cancellation, context limits, escaping in
+  the transcript, and model settings.
+
 ## Open questions
 
-Raised while writing the Part A docs. Each one links to where it came up.
-
-### Foundation
-
-- **Spike for the Claude Agent SDK model wrapper.** Confirm that the SDK hands back **all** tool calls of
-  one response, including several parallel ones, before executing any of them, so we can interrupt.
-  Also measure per-query startup latency and check prompt-cache behavior with the re-rendered
-  transcript. This needs a real Claude model.
+_None open at the moment. New ones are added here as the architecture doc is written._
 
 
 ## Milestones
