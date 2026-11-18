@@ -333,6 +333,19 @@ In the port:
 
 ## Frontend (Q7, Q8)
 
+- **Look:** sleek, modeled on T3 Code (decided). Tailwind CSS v4, shadcn-svelte components (in the
+  repo, on bits-ui), tailwind-variants, and `@lucide/svelte` icons. Dark by default, light available.
+- **First layout** (decided, kept simple):
+  - a collapsible left sidebar with the session list and a new-session button;
+  - the lesson as a chat thread with a bottom composer, with questions as cards in the thread;
+  - a right panel, closed by default, for the plan tree and job activity;
+  - a settings page for models and logins.
+
+  Later: graph view, side chat, practice, themes, activity dock.
+- **Svelte practices** (decided): Svelte 5 runes only, TypeScript, shared state in `.svelte.ts`
+  modules, created with the `sv` CLI, eslint-plugin-svelte in `make check`. Agents read
+  `svelte.dev/llms.txt` or use the Svelte MCP server.
+
 - **SvelteKit with `adapter-static` in SPA mode**, managed with **npm** (decided). No server-side rendering; all data comes from the
   sidecar.
 - **Types are generated** from FastAPI's OpenAPI schema with `openapi-typescript` into

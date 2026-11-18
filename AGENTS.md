@@ -46,6 +46,12 @@ not interpretation.
   a check (lint rule, import rule, test) rather than a new line in this file. A check's error
   message says what to do instead, not only what is wrong.
 
+## UI
+
+Svelte 5 with runes only, TypeScript, Tailwind v4, and shadcn-svelte. Use the official Svelte docs
+for LLMs (`svelte.dev/llms.txt`) or the Svelte MCP server rather than memory: Svelte 5 differs from
+older Svelte. The look is sleek and minimal, modeled on T3 Code.
+
 ## Where decisions live
 
 - **Decided** is whatever [`docs/decisions.md`](docs/decisions.md) and
