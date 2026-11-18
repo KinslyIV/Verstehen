@@ -50,7 +50,9 @@ not interpretation.
 
 Svelte 5 with runes only, TypeScript, Tailwind v4, and shadcn-svelte. Use the official Svelte docs
 for LLMs (`svelte.dev/llms.txt`) or the Svelte MCP server rather than memory: Svelte 5 differs from
-older Svelte. The look is sleek and minimal, modeled on T3 Code.
+older Svelte. Derive values with `$derived` and handle user actions in event handlers. Use
+`$effect` only for real side effects such as DOM or third-party integration. The look is sleek and
+minimal, modeled on T3 Code.
 
 ## Where decisions live
 
