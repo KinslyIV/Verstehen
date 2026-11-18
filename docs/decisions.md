@@ -11,6 +11,8 @@
 | 2026-11-18 | Language: **Python**. | User decision. |
 | 2026-11-18 | Storage: **SQLite**. | Real transactions for the multi-step writes LearnHarness has to order by hand (graph merge + coverage, job result + delivery flag). One local file. |
 | 2026-11-18 | Desktop app: **Tauri + React**, with the local Python server as a Tauri sidecar. | React: coding agents are most reliable with it, and LearnHarness's React components can be adapted. Tauri: small and light, with first-class sidecar support. The WebKitGTK rendering risk on Linux is low here: Godspeed (a LearnHarness-style app) ran on Tauri on this laptop without UI problems. |
+| 2026-11-18 | **Plan map size: 5–15 nodes.** The `plan_init` tool description's bound wins; the planning prompt (`teacher/10-planning.md`: "No size ceiling", "a single node may take one step or five") is changed to match. | Resolves a contradiction in LearnHarness. This is a deliberate prompt change from LH. |
+| 2026-11-18 | **Quiz grading stays in the UI**, as in LearnHarness (the answer key is in the saved tool call). | Faithful port; single-user local app. |
 
 ## Leaning (not yet decided)
 
@@ -49,13 +51,6 @@ Raised while writing the Part A docs. Each one links to where it came up.
   fits under Pydantic AI's loop.
   ([providers](learnharness/providers.md#claude-code-bridge))
 
-### Behavior details found in LearnHarness
-
-- **Plan map size.** The `plan_init` tool description says "5–15 nodes … compress", but the planning
-  prompt says "no size ceiling". Which wording is authoritative?
-  ([teaching flow](learnharness/teaching-flow.md#port-notes))
-- **Quiz grading in the browser.** It exposes the answer key to the client. Keep it as is?
-  ([question tools](learnharness/question-tools.md#port-notes))
 
 ## Milestones
 
