@@ -225,6 +225,13 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - **Credentials** live in `<data dir>/credentials.json`, mode 0600, like LH's `auth.json` (Q12).
   Settings are in SQLite.
 
+## Research, compaction, and search (decided)
+
+- **Research search order:** the model's native web search, then Tavily, then Brave.
+- **Compaction is always Verstehen's own**, ported from LH, with a user-set limit. Provider-native
+  compaction isn't used, so summaries stay readable, learning-specific, and provider-independent.
+- **Session search** uses an SQLite FTS5 index over entry text.
+
 ## Prompts (Q14)
 
 - LH's prompt markdown tree is copied into `teaching/prompts/` unchanged, except the agreed 5–15
@@ -251,6 +258,7 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Testing (Q13)
 
+- uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
 - pytest, with Pydantic AI's `FunctionModel` scripting the model's replies, a real temporary SQLite
   database, and no network.
 - Each Part A behavior gets a test named after it: question pause and answer, sibling questions,
@@ -274,17 +282,16 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
     renders them in a sandboxed iframe). Sandbox and CSP rules inside the Tauri webview.
   - **Python libraries** replacing LH's JS ones: PDF rendering and text (LH: `pdfjs-dist` + Skia),
     SVG rasterizing (LH: `@resvg/resvg-js`). License matters here (PyMuPDF is AGPL).
-  - **Web search providers** for the research worker. LH supports Tavily, Brave, Exa, Firecrawl, and
-    Ollama, tried in that order.
   - **UI rendering libraries** replacing LH's React ones: the graph view (LH: `@xyflow/react`,
     `d3-force`, `dagre`), math (KaTeX), Mermaid, and Markdown streaming.
   - **Images and the vision slot** with the first two providers (learner image attachments, the
     visual worker). The vendored `ClaudeCodeModel`'s support for image parts is untested.
-  - **Context limits** for Claude Code and ChatGPT models (they drive compaction and side-chat budgets;
-    LH gets them from its catalog and a CLI query).
-  - **Session search** (in scope): for example SQLite FTS5, or port LH's implementation.
+  - **Context window sizes** for Claude Code and ChatGPT models: where they come from (a catalog,
+    the provider, or a setting). They cap the compaction limit and size the side-chat budget.
+  - **Spike: Claude Code's built-in WebSearch** for the research worker through the vendored
+    adapter (decided to try; see decisions).
   - **Logging and debugging**: logs, LH's provider-event recording, and Pydantic AI's Logfire banner.
-  - **Tooling for coding agents**: Python version, ruff/pyright, the test commands, CI, and an
-    `AGENTS.md` for the Verstehen repo.
+  - **Rest of the tooling**: Python version, the test and check commands, CI, and an `AGENTS.md` for
+    the Verstehen repo (uv, ruff, and pyrefly are decided).
 - **Review the proposals above:** dependency direction, SQLite tables, SessionRuntime lock and
   methods, SSE via `fetch`, the startup handshake, and the session controller.

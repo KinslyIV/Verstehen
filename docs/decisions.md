@@ -35,6 +35,10 @@
 | 2026-11-18 | **First implementation has two providers: Claude Code** (vendored `ClaudeCodeModel`, local `claude` login) **and ChatGPT** (Pydantic AI `openai-chatgpt`, "Sign in with ChatGPT", the same OAuth flow and `chatgpt.tokens.use.direct` scope LearnHarness uses). API keys, Copilot, Grok, and the custom endpoint stay in scope for later milestones. | User decision. |
 | 2026-11-18 | **Job recovery runs when the UI polls for jobs**, as in LearnHarness. | User decision. |
 | 2026-11-18 | **JavaScript package manager: npm.** | User decision. |
+| 2026-11-18 | **Research search order: the model's native web search first, then Tavily, then Brave** (whichever keys are set). ChatGPT native search via Pydantic AI `WebSearch` (supported by the `openai-chatgpt` profile). Claude Code's built-in WebSearch is added only after a spike shows it works with the vendored adapter; until then Claude Code research uses Tavily/Brave. LH's Exa, Firecrawl, and Ollama search are not ported for now. | User decision. |
+| 2026-11-18 | **Compaction: only Verstehen's own LH-style compaction**, no provider-native compaction. The compaction limit is a user setting (LH: default 150,000 tokens, capped at the context window minus 16,384). | User decision. |
+| 2026-11-18 | **Session search: SQLite FTS5.** | User decision. |
+| 2026-11-18 | **Python tooling: uv, ruff, and pyrefly** (type checker). | User decision. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
