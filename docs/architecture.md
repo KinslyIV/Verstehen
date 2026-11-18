@@ -300,12 +300,19 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Images and files (decided)
 
-- Images and other files (learner images, imported PDFs, demo HTML, visual SVGs and PNGs) are stored
-  as **files in the data folder**, and entries and other rows refer to them by id. They don't go in
-  SQLite as base64 (LH's `ImageSnapshot` keeps base64 inside the chat JSON).
-- **Proposal:** `<data dir>/files/<id>`, plus a `files` table (id, media type, size, sha256,
-  created at) so a row can check that its file exists and is unchanged. This adds one table to the
-  approved list.
+What LH actually stores (`src/core/contracts/chat.ts`, `jobs.ts`, `graph.ts`):
+- **Learner images** are the only binary data: an upright, metadata-free PNG/JPEG copy stored once
+  per session and keyed by SHA-256 (`ImageSnapshot`, base64 inside the chat JSON).
+- **PDFs and imported notes are not copied.** The PDF tool gets a path, and only its text brief is
+  saved. `NotesSource` keeps a `filePath`.
+- **Demo HTML and visual SVG** are text inside job results (`DemoResult.html`, `VisualResult.svg`).
+- **Worker page renders and previews** exist only during the worker's run.
+
+In the port:
+- **Learner images are files** at `<data dir>/images/<sha256>.<png|jpg>`, referenced by hash. The
+  name is the content hash, so no `files` table is needed.
+- **Demo HTML and SVG stay as text** in the job result and entry JSON in SQLite, as in LH, so they're
+  saved in the same transaction as the rest of the result.
 
 ## Prompts (Q14)
 
