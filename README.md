@@ -14,8 +14,8 @@ Documentation only. No code yet.
 
 - **Part A** (how LearnHarness works): first drafts of all nine docs, written against LearnHarness
   commit `a636647`.
-- **Part B** (the port): scope and decisions recorded. The architecture is still an outline, pending
-  the open questions in [decisions](docs/decisions.md#open-questions).
+- **Part B** (the port): scope and decisions recorded. The architecture has a first draft; its
+  proposals and open questions still need review, and milestones are not written yet.
 
 ## Reading order
 

@@ -17,6 +17,21 @@
 | 2026-11-18 | **Claude Code via the Claude Agent SDK, wrapped as a Pydantic AI `Model`** (`ClaudeCodeModel`): one SDK query per model request. Built-in tools and settings loading are disabled, and our system prompt is used. History is replayed as a labelled text transcript, our tools are registered as stub SDK tools, and tool calls are intercepted before execution and returned to Pydantic AI as `ToolCallPart`s. The SDK keeps no session. | One runtime: all turn rules (question stop, steer injection, side chat, compaction, history) behave identically for every provider, and models can be switched mid-session. Accepted trade-offs: Claude sees past tool calls as text, there is per-query process startup, and there is no `max_tokens`. The Agent SDK itself can't act as a stateless model or accept tool-call history, which is why the wrapper exists. |
 | 2026-11-18 | **Demo testing: Playwright driving the installed system Chrome** (`channel="chrome"`), headless, with no bundled or downloaded browser. It collects console errors, uncaught errors, and failed requests, and runs the optional probe with `evaluate()`. The visual worker uses no browser: as in LearnHarness, SVGs are rasterized with resvg. | User decision. It matches LearnHarness's checks one for one (LH uses puppeteer-core with Electron's browser service, falling back to system Chrome). Accepted trade-off: the demo is tested in Chrome, while the learner sees it in WebKitGTK inside Tauri on Linux. |
 | 2026-11-18 | **`ClaudeCodeModel` is copied (vendored) from [h0rv/pydantic-ai-claude-code](https://github.com/h0rv/pydantic-ai-claude-code)** at commit `8a78bdd` (MIT, "Copyright (c) 2026 Armin Ronacher"), not written from scratch and not installed as a dependency. This replaces the text-transcript part of the decision above: history is replayed as **native** SDK user/assistant frames (tool ids, arguments, results, and thinking signatures stay structured). Interception is the same PreToolUse `defer` approach our spike validated. The copy keeps the LICENSE notice and records the source commit. | User decision. It already implements what our spike proved, plus native history replay, billing-limit errors, and careful cancellation. Known risks: a one-commit project; native replay relies on the undocumented `shouldQuery: false` stream-json field; by default it uses the Claude Code preset system prompt with our instructions appended (we want only our own prompt, see open questions). |
+| 2026-11-18 | Session record: **Verstehen's own append-only entry log** in SQLite (LH `LhMessage` kinds), projected to Pydantic AI messages before each run. Pydantic AI types are never the stored format. | User decision (architecture Q1); see [architecture](architecture.md). |
+| 2026-11-18 | UI ↔ sidecar: **FastAPI on 127.0.0.1 with HTTP + SSE** and a per-launch token. LH's two-stream model is kept (replayable turn stream, refetch notifications). | User decision (architecture Q2); see [architecture](architecture.md). |
+| 2026-11-18 | Live state: **one `SessionRuntime` per session** replaces LH's per-chat `globalThis` registries. App-wide services (extraction/audit lock, worker admission, job runner) stay separate. | User decision (architecture Q3); see [architecture](architecture.md). |
+| 2026-11-18 | Background workers: **asyncio tasks in the sidecar**, with a SQLite `jobs` table for status, result, and delivery state. CPU-heavy steps go to a thread pool. | User decision (architecture Q4); see [architecture](architecture.md). |
+| 2026-11-18 | Database access: **stdlib `sqlite3` (via aiosqlite) and hand-written SQL**, one store module per entity, Pydantic models for rows, numbered `.sql` migrations. No ORM. | User decision (architecture Q5); see [architecture](architecture.md). |
+| 2026-11-18 | Code layout: **by feature** (`session/`, `teaching/`, `jobs/`, `sidechat/`, `graph/`, `providers/`, `store/`, `api/`), one package per Part A topic. Backend in `backend/`, app in `app/`. | User decision (architecture Q6); see [architecture](architecture.md). |
+| 2026-11-18 | Frontend setup: **SvelteKit with `adapter-static` in SPA mode.** | User decision (architecture Q7); see [architecture](architecture.md). |
+| 2026-11-18 | API types: **generated from FastAPI's OpenAPI schema** with `openapi-typescript`. | User decision (architecture Q8); see [architecture](architecture.md). |
+| 2026-11-18 | Packaging: **PyInstaller-frozen sidecar** shipped with Tauri. Development uses `uv run`. | User decision (architecture Q9); see [architecture](architecture.md). |
+| 2026-11-18 | Claude Code prompt: **patch the vendored copy** so the SDK system prompt is only our Pydantic AI instructions (no Claude Code preset). Patches are recorded in `VENDORED.md`. | User decision (architecture Q10); see [architecture](architecture.md). |
+| 2026-11-18 | Providers: **`resolve(role)` plus a `ProviderPolicy` service** that admits requests by purpose (foreground/background). One adapter module per provider kind. | User decision (architecture Q11); see [architecture](architecture.md). |
+| 2026-11-18 | Credentials: **a 0600 `credentials.json` file in the data dir**, like LH's `auth.json`. Settings go in SQLite. | User decision (architecture Q12); see [architecture](architecture.md). |
+| 2026-11-18 | Testing: **pytest with Pydantic AI `FunctionModel`**, a real temporary SQLite DB, no network. One test per Part A behavior; real-model tests opt-in. | User decision (architecture Q13); see [architecture](architecture.md). |
+| 2026-11-18 | Prompt overrides: **files in `<data dir>/prompts/<segment path>.md`**, like LH. The shipped prompts are LH's tree, copied. | User decision (architecture Q14); see [architecture](architecture.md). |
+| 2026-11-18 | Data dir: **`~/.local/share/verstehen`**, overridable with `VERSTEHEN_DATA_DIR`. | User decision (architecture Q15); see [architecture](architecture.md). |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -110,11 +125,7 @@ Rules for the wrapper:
 
 ## Open questions
 
-- **System prompt with the vendored `ClaudeCodeModel`.** Its default is the Claude Code preset prompt
-  with our instructions appended. Passing our own SDK `system_prompt` raises an error if Pydantic AI
-  instructions are also set. How we pass our per-turn prompts (and whether we patch the copy) is
-  decided when the provider layer is designed.
-
+See [architecture → open questions](architecture.md#open-questions).
 
 ## Milestones
 
