@@ -212,12 +212,12 @@ See [architecture → open questions](architecture.md#open-questions).
 
 ## Milestones
 
-> Status: **proposal, awaiting approval**.
+> Status: **approved** (2026-11-18). The user moved real providers to M3, right after the session core.
 
 Every milestone is done only when `make check` passes, its behaviors have tests named after them,
 everything the learner sees has a `make verify` flow and a [feature map](feature-map.md) entry, and
 [status](status.md) is updated. Milestones that touch the desktop shell end with the user checking
-the app on the laptop. Agents use the fake model throughout; real models only in opt-in live tests.
+the app on the laptop. Agents use the fake model for tests and verify flows; real models only in opt-in live tests.
 
 ### M1. Walking skeleton
 
@@ -248,27 +248,9 @@ A conversation with the fake model, saved and replayable.
 - The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
 - **UI:** the session list, a new session, the streamed thread, and the session controller.
 
-### M3. Question tools
+### M3. Real providers
 
-The question contract, exactly as in LH.
-- quiz, probe, explain, recall, and ask_user_question via `CallDeferred`, in `teaching/questions`:
-  pending detection, siblings, the mixed-batch rule, answers, dismissal, retry, and `continue`.
-- The answer race closed by design (atomic answer save and claim).
-- **UI:** question cards with LH's exact behavior (`buildAnswer`, confidence, siblings, dismissal,
-  retry), and grading in the UI.
-
-### M4. Teaching flow
-
-Probe, plan, teach, as in LH.
-- The prober and the teacher, with the phase derived from `probe_done` and the probe handoff as an
-  explicit phase transition.
-- Plan tools (`plan_init` with 5–15 nodes, and the other plan tools), the plan tree, and plan
-  blocks.
-- **UI:** the plan tree in the right panel, and plan blocks in the thread.
-
-### M5. Real providers
-
-The first version the user can learn with.
+Claude Code and ChatGPT in the app early, so the user sees real behavior from here on.
 - Slots and roles, `resolve(role)`, and `ProviderPolicy` (background consent, admission before
   automatic input).
 - **Claude Code:** the vendored `ClaudeCodeModel` with `VENDORED.md`, the system-prompt patch, full
@@ -277,6 +259,24 @@ The first version the user can learn with.
 - Context-window lookup (runtime, then model data, then a value you enter), usage logging, and the
   provider-event debug switch.
 - **UI:** settings for models, slots, and logins. Opt-in live tests for both providers.
+
+### M4. Question tools
+
+The question contract, exactly as in LH.
+- quiz, probe, explain, recall, and ask_user_question via `CallDeferred`, in `teaching/questions`:
+  pending detection, siblings, the mixed-batch rule, answers, dismissal, retry, and `continue`.
+- The answer race closed by design (atomic answer save and claim).
+- **UI:** question cards with LH's exact behavior (`buildAnswer`, confidence, siblings, dismissal,
+  retry), and grading in the UI.
+
+### M5. Teaching flow
+
+Probe, plan, teach, as in LH.
+- The prober and the teacher, with the phase derived from `probe_done` and the probe handoff as an
+  explicit phase transition.
+- Plan tools (`plan_init` with 5–15 nodes, and the other plan tools), the plan tree, and plan
+  blocks.
+- **UI:** the plan tree in the right panel, and plan blocks in the thread.
 
 ### M6. Compaction
 
