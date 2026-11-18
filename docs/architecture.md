@@ -113,7 +113,7 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 - **Steer acknowledgment.** Saving a turn's new entries and marking their steers as delivered
   happen in one transaction (spike lesson).
 
-### SQLite tables (proposal)
+### SQLite tables
 
 | Table | Holds | LH equivalent |
 |---|---|---|
@@ -130,7 +130,7 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 | `settings` | key → JSON value | `settings.json` |
 | `schema_migrations` | applied migration numbers | `format.json`, record versions |
 
-- **Proposal:** WAL mode, one write connection owned by the store layer, and short transactions.
+- The table list is approved. **Proposal:** WAL mode, one write connection owned by the store layer, and short transactions.
   Payload columns hold JSON validated by Pydantic models on the way in and out.
 
 ## Live state: SessionRuntime (Q3)
@@ -219,15 +219,19 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   `exchange_code_from_callback()`) and handles token refresh. The app opens the browser and
   implements the `OpenAIChatGPTCredentialSource` protocol (`load()` / `save()`) on top of the
   credentials file.
-- **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`, patched so the
-  system prompt is **only our instructions**, with no Claude Code preset (Q10). `VENDORED.md`
-  records the source commit (`8a78bdd`), the license, and every local patch.
+- **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`.
+  - It is patched so the system prompt is **only our instructions**, with no Claude Code preset
+    (Q10).
+  - Our code always passes the full lockdown options itself, because passing `sdk_options` replaces
+    the adapter's defaults.
+  - `VENDORED.md` records the source commit (`8a78bdd`), the license, and every local patch.
 - **Credentials** live in `<data dir>/credentials.json`, mode 0600, like LH's `auth.json` (Q12).
   Settings are in SQLite.
 
 ## Research, compaction, and search (decided)
 
-- **Research search order:** the model's native web search, then Tavily, then Brave.
+- **Research search order:** the model's native web search, then Tavily, then Brave. ChatGPT has
+  native search. **Claude Code doesn't**: its research uses Tavily, then Brave (spike in decisions).
 - **Compaction is always Verstehen's own**, ported from LH, with a user-set limit. Provider-native
   compaction isn't used, so summaries stay readable, learning-specific, and provider-independent.
 - **Session search** uses an SQLite FTS5 index over entry text.
@@ -241,7 +245,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   ([check](decisions.md#image-and-context-window-check-2026-11-18)).
 - **Logging:** a log file in the data dir, plus a debug switch that records raw provider events.
 - **Context window:** Pydantic AI's model data, then a runtime query to the provider or SDK, then a
-  value the user enters.
+  value the user enters. When both a runtime-reported limit and model data exist, **the runtime
+  limit wins**.
 
 ## Prompts (Q14)
 
@@ -249,6 +254,16 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   node planning change.
 - **Overrides** are files in `<data dir>/prompts/<segment path>.md`. An override file wins over the
   shipped one, as in LH.
+
+## Demo security (decided)
+
+- Demo HTML is shown in `<iframe sandbox="allow-scripts" srcdoc="…">`, **without**
+  `allow-same-origin`. The demo runs with an opaque origin, so it can't read the app's storage, the
+  API token, or the parent page.
+- The Tauri app sets a strict content-security policy. Network access is allowed only so demos can
+  load their CDN scripts, the same thing the demo worker's test checks.
+- The sidecar answers only requests that carry the per-launch token, and its CORS rules don't allow
+  the `null` origin a sandboxed iframe has.
 
 ## Frontend (Q7, Q8)
 
@@ -291,15 +306,7 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   Copilot device-code flow (`_github_copilot_oauth.py`; storage left to the caller). Its `xai`
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
-- **Not yet discussed** (each needs a decision before its milestone):
-  - **Agent-generated HTML in the app.** Demos are model-written HTML (LH `components/artifacts/demo-card.tsx`
-    renders them in a sandboxed iframe). Sandbox and CSP rules inside the Tauri webview.
-  - **Effective context limit for Claude Code subscriptions.** A runtime-reported limit can be smaller
-    than the model maximum in Pydantic AI's data (LH stores the CLI-reported value for this reason).
-    Which one wins when both exist?
-  - **Spike: Claude Code's built-in WebSearch** for the research worker through the vendored
-    adapter (decided to try; see decisions).
-  - **`AGENTS.md` for the Verstehen repo**: its contents (for example LH's "No guessing" rule and
-    `make check` before every commit).
-- **Review the proposals above:** dependency direction, SQLite tables, SessionRuntime lock and
-  methods, SSE via `fetch`, the startup handshake, and the session controller.
+- **`AGENTS.md` for the Verstehen repo:** its contents (for example LH's "No guessing" rule and
+  `make check` before every commit).
+- **Review the proposals above:** dependency direction, SessionRuntime lock and methods, SSE via
+  `fetch`, the startup handshake, and the session controller.

@@ -35,7 +35,7 @@
 | 2026-11-18 | **First implementation has two providers: Claude Code** (vendored `ClaudeCodeModel`, local `claude` login) **and ChatGPT** (Pydantic AI `openai-chatgpt`, "Sign in with ChatGPT", the same OAuth flow and `chatgpt.tokens.use.direct` scope LearnHarness uses). API keys, Copilot, Grok, and the custom endpoint stay in scope for later milestones. | User decision. |
 | 2026-11-18 | **Job recovery runs when the UI polls for jobs**, as in LearnHarness. | User decision. |
 | 2026-11-18 | **JavaScript package manager: npm.** | User decision. |
-| 2026-11-18 | **Research search order: the model's native web search first, then Tavily, then Brave** (whichever keys are set). ChatGPT native search via Pydantic AI `WebSearch` (supported by the `openai-chatgpt` profile). Claude Code's built-in WebSearch is added only after a spike shows it works with the vendored adapter; until then Claude Code research uses Tavily/Brave. LH's Exa, Firecrawl, and Ollama search are not ported for now. | User decision. |
+| 2026-11-18 | **Research search order: the model's native web search first, then Tavily, then Brave** (whichever keys are set). ChatGPT native search via Pydantic AI `WebSearch` (supported by the `openai-chatgpt` profile). Claude Code's built-in WebSearch was tried and not adopted (see below). LH's Exa, Firecrawl, and Ollama search are not ported for now. | User decision. |
 | 2026-11-18 | **Compaction: only Verstehen's own LH-style compaction**, no provider-native compaction. The compaction limit is a user setting (LH: default 150,000 tokens, capped at the context window minus 16,384). | User decision. |
 | 2026-11-18 | **Session search: SQLite FTS5.** | User decision. |
 | 2026-11-18 | **Python tooling: uv, ruff, and pyrefly** (type checker). | User decision. |
@@ -46,6 +46,10 @@
 | 2026-11-18 | **Checks run locally through a root `Makefile`**: `make check` (pytest, ruff check, ruff format --check, pyrefly; svelte-check + TypeScript, ESLint + Prettier, Vitest), `make test`, `make fmt`. Real-model tests only with an opt-in env var. AGENTS.md requires `make check` before every commit. **No GitHub Actions for now.** | User decision. |
 | 2026-11-18 | **Logging: a log file in the data dir plus a debug switch** that records raw provider events (LH's `LH_PROVIDER_EVENTS`). Pydantic AI's banner is turned off. | User decision. |
 | 2026-11-18 | **Context window size: Pydantic AI's model data first** (genai-prices via the model profile). Claude Code models look it up under their full Anthropic model id. **When the data has no size, ask the provider or SDK at runtime** where possible (like LH's CLI query), and only then ask the user to enter it. | User decision. |
+| 2026-11-18 | **Demo security:** model-written demo HTML runs in an `<iframe sandbox="allow-scripts" srcdoc=…>` **without `allow-same-origin`**, so it gets an opaque origin and can't read the app's storage or the API token. The app has a strict content-security policy; network access is allowed only so demos can load their CDN scripts. The sidecar accepts only requests carrying the per-launch token and doesn't allow the `null` origin in CORS. | User decision. |
+| 2026-11-18 | **Context window: a runtime-reported (effective) limit wins** over Pydantic AI's model data when both exist. | User decision. |
+| 2026-11-18 | **Claude Code research uses Tavily, then Brave**; Claude Code's built-in WebSearch is not used (spike below). ChatGPT keeps its native web search first. | User decision. |
+| 2026-11-18 | **SQLite tables as proposed** in [architecture](architecture.md#sqlite-tables) (approved). | User decision. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -149,6 +153,26 @@ Throwaway check in `~/scratch/verstehen-image-check` on Python 3.14.10 with the 
   Anthropic model, but the vendored `ClaudeCodeModel` reports none (it doesn't look the data up).
   `gpt-5.5` → 1,000,000, `gpt-5.2` and `gpt-5.1-codex` → 400,000, `gpt-5.5-mini` and `gpt-6.1` →
   unknown. Hence the runtime fallback decided above.
+
+## Claude Code WebSearch spike (2026-11-18)
+
+`~/scratch/verstehen-image-check/websearch.py`, `claude-haiku-5-5`, real queries.
+
+- **A. Pydantic AI's native `WebSearch` through the vendored `ClaudeCodeModel`:** refused by design
+  (`Only Pydantic AI function and output tools may execute.`).
+- **B. Claude Code's built-in WebSearch enabled inside the adapter:** fails
+  (`SDK proposed an undeclared tool.`). The adapter accepts exactly one model response that uses only
+  our tools.
+- **C. Our own `web_search` tool that runs a separate SDK query with only WebSearch enabled:** works
+  (2 turns, 11.6 s).
+- **Decision:** not adopted. Claude Code research uses Tavily, then Brave.
+
+Also learned:
+- **Passing `sdk_options` replaces the adapter's lockdown defaults** (`tools=[]`, `max_turns=1`,
+  `setting_sources=[]`, `skills=[]`, `strict_mcp_config=True`, `no-session-persistence`). Our provider
+  code must always set all of them itself.
+- **The system-prompt conflict is real:** setting both an SDK `system_prompt` and Pydantic AI
+  instructions raised `UserError`, which confirms the patch decided in Q10.
 
 ## Open questions
 
