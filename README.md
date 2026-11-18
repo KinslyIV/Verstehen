@@ -10,12 +10,7 @@ tools pause and resume a turn, and how the side chat works.
 
 ## Current stage
 
-Documentation only. No code yet.
-
-- **Part A** (how LearnHarness works): first drafts of all nine docs, written against LearnHarness
-  commit `a636647`.
-- **Part B** (the port): scope and decisions recorded. The architecture has a first draft; its
-  proposals and open questions still need review, and milestones are not written yet.
+See [status](docs/status.md).
 
 ## Reading order
 
