@@ -13,3 +13,9 @@
 
 - Status of the remaining smaller features (dictation/STT, themes, desktop packaging, search, activity dock).
 - Whether existing LearnHarness chats and graph data must be importable.
+- Whether **practice sessions** (`kind: "practice"`, the practitioner agent, the `problem` and
+  `conclude` tools) are part of the "core teaching loop". See
+  [teaching flow](learnharness/teaching-flow.md#practice-sessions).
+- Whether the web tools behind `research` (search providers: Tavily, Brave, Exa, Firecrawl, Ollama)
+  and the `demo` and `visual` workers (headless browser, SVG rendering) all move over in the first
+  port.

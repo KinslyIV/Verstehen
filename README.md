@@ -12,6 +12,11 @@ tools pause and resume a turn, and how the side chat works.
 
 Documentation only. No code yet.
 
+- **Part A** (how LearnHarness works): first drafts of all nine docs, written against LearnHarness
+  commit `a636647`.
+- **Part B** (the port): scope and decisions recorded. The architecture is still an outline, pending
+  the open questions in [decisions](docs/decisions.md#open-questions).
+
 ## Reading order
 
 **Part A explains how LearnHarness works today.** Each doc describes current behavior with
