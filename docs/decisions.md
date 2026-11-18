@@ -57,6 +57,8 @@
 | 2026-11-18 | **One question module** (improvement 3): `teaching/questions` owns pending detection, siblings, answers, dismissal, and retry (spread over 8 files in LH). | User decision: structural improvements over LearnHarness; behavior unchanged. |
 | 2026-11-18 | **One context-update step with named kinds** (improvement 4): job results, composer steers, and side-chat updates go through one step before each model call, each as its own kind. The probe handoff is an explicit phase transition. Saved entries stay as in LH. | User decision: structural improvements over LearnHarness; behavior unchanged. |
 | 2026-11-18 | **One authoritative description per concept** (improvement 6): each concept is described once, in the docs plus a test named after the behavior, with few duplicating comments. | User decision: structural improvements over LearnHarness; behavior unchanged. |
+| 2026-11-18 | **Images and files live in the data folder**, referenced by id from entries and rows, not as base64 in SQLite. | User decision. |
+| 2026-11-18 | **`CLAUDE.md` contains only `@AGENTS.md`**, so Claude Code and Codex read the same instructions. | User decision. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 

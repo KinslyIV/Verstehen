@@ -171,6 +171,40 @@ Structure changes only; behavior stays the same.
 5. **One description per concept.** It's in the docs plus a test named after the behavior, with few
    duplicating comments.
 
+## Subscription admission without staging (proposal)
+
+**What LH does** (`src/agent/subscription-request-cycle.ts`, `src/agent/chatgpt-stream.ts`,
+`src/server/chat-handler.ts:601-672`, `src/server/jobs.ts:376`):
+- Only `chatgpt` and the native subscriptions count (`isSubscriptionProvider`). The Claude Code CLI
+  does not, so in the first implementation this only concerns ChatGPT.
+- **Admission is decided per model request, at dispatch.** `chatGPTStream` captures the scope
+  (account, epoch, authority revision, model) and asks for a credential lease with the request's
+  purpose. The lease is where background consent is enforced. `beforeDispatch` checks once more,
+  right before `fetch`, that the scope is still current.
+- **A request becomes background when it carries automatic input**, meaning steers injected mid-run
+  by Pi (`prepare`: `if (this.automatic.size > 0) purpose.background = true`).
+- **That's why LH stages.** On a wake turn (`input.type === "steers"`), the steers aren't saved until
+  dispatch (`commitStaged`). In any turn, UI events are held until admission (`hold`). If background
+  is refused, the automatic input is removed and put back in the queue
+  (`restoreUncommittedAutomatic`), and when the learner is still owed a reaction, the request is
+  retried as foreground without it (`resumeForeground`).
+
+**The simpler design (proposal):**
+1. **Check before adding.** A wake turn asks `ProviderPolicy` before it saves anything. If it's
+   refused, it returns 403 and the steers stay queued, as in LH. The context-update step asks
+   `ProviderPolicy` before it injects automatic input into a request. If it's refused, it injects
+   nothing and the input stays queued. So a request never contains input it isn't allowed to carry,
+   and there's nothing to remove, restore, or retry.
+2. **The adapter still checks at dispatch** (scope still current, lease granted), as in LH.
+3. **One remaining rule covers the race** between the check and dispatch, for example the account
+   changing or consent being revoked within those milliseconds. Steer entries are saved and
+   acknowledged only if the request carrying them was actually dispatched; otherwise they stay
+   queued. This replaces staging, held events, `restoreUncommittedAutomatic`, and
+   `resumeForeground`.
+
+**Difference from LH:** none in the normal case. In the race, LH retries the same turn as foreground;
+the proposal ends that request with an error, and the queued input is delivered by the next turn.
+
 ## A turn, end to end
 
 Port of the 13 stages in [turn lifecycle](learnharness/turn-lifecycle.md), in module terms:
@@ -264,6 +298,15 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   value the user enters. When both a runtime-reported limit and model data exist, **the runtime
   limit wins**.
 
+## Images and files (decided)
+
+- Images and other files (learner images, imported PDFs, demo HTML, visual SVGs and PNGs) are stored
+  as **files in the data folder**, and entries and other rows refer to them by id. They don't go in
+  SQLite as base64 (LH's `ImageSnapshot` keeps base64 inside the chat JSON).
+- **Proposal:** `<data dir>/files/<id>`, plus a `files` table (id, media type, size, sha256,
+  created at) so a row can check that its file exists and is unchanged. This adds one table to the
+  approved list.
+
 ## Prompts (Q14)
 
 - LH's prompt markdown tree is copied into `teaching/prompts/` unchanged, except the agreed 5–15
@@ -323,9 +366,5 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
 - **`AGENTS.md` for the Verstehen repo:** a draft is in the repo root, awaiting review.
-- **Subscription staging.** LH stages automatic inputs until their request is admitted, then rolls
-  them back on refusal. Can `ProviderPolicy` check admission before saving instead, with the same
-  behavior? To verify against LH, then decide.
-- **Where images and files are stored.** LH keeps learner images (`ImageSnapshot`) as base64 inside
-  the chat JSON, and demo HTML and SVGs inside records. Options: a blob table, or files in the data
-  dir referenced by id.
+- **Subscription staging: verified against LH, awaiting decision.** See
+  [Subscription admission without staging](#subscription-admission-without-staging-proposal).
