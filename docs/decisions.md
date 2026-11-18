@@ -7,10 +7,9 @@
 | 2026-11-18 | Start a clean repository (Verstehen) instead of forking LearnHarness. | Better structure and readable code; LearnHarness stays a reference checkout. |
 | 2026-11-18 | First port keeps the exact learning flow and knowledge graph. | Port current behavior first, and use the port to understand LearnHarness. |
 | 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |
-| 2026-11-18 | Development happens on the home server Pixal. | Agents run on the home server. |
+| 2026-11-18 | **Pixal** (home server) is the development environment for the coding agents. The **app runs locally on the user's laptop as a desktop app**. | User decision; corrected 2026-11-18 (earlier notes wrongly said the app's agents run on Pixal). |
 | 2026-11-18 | Language: **Python**. | User decision. |
-| 2026-11-18 | Storage: **SQLite**. | Real transactions for the multi-step writes LearnHarness has to order by hand (graph merge + coverage, job result + delivery flag). One file on Pixal. |
-| 2026-11-18 | Frontend: **browser app served from Pixal, built with Svelte**. | No install; reachable from any device over Tailscale; least and most readable UI code. LearnHarness needed Electron only because its server ran locally. Can be wrapped in Tauri later if a native need appears. |
+| 2026-11-18 | Storage: **SQLite**. | Real transactions for the multi-step writes LearnHarness has to order by hand (graph merge + coverage, job result + delivery flag). One local file. |
 
 ## Leaning (not yet decided)
 

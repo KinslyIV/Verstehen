@@ -49,7 +49,7 @@ subscription in code, although its billing is whatever the CLI's account uses.
 - **Who holds the credentials.**
   - In the **desktop** app, Electron's main process holds the refresh credentials and talks to the
     server over IPC.
-  - In **web/dev mode** (which is what a home server like Pixal would run), a server-owned
+  - In **web/dev mode**, a server-owned
     "web subscription owner" (`src/server/web-subscriptions.ts`) keeps connection files and handles
     the login flows. `webSubscriptionsEnabled()` is true when not running under the desktop shell
     (`src/agent/subscription-runtime.ts`).
@@ -141,6 +141,5 @@ Summary of LearnHarness `docs/custom-providers.md`, with code in `src/server/cus
     could be ported to any stack.
 
   This is a key input to the language and framework **open question**.
-- **Running on a home server.** Subscriptions use the "web owner" mode, so credentials live in
-  server files under the data directory. The Claude Code CLI must be installed and logged in on
-  **that server's** OS user.
+- **Where it runs.** The app runs locally as a desktop app, so subscription credentials and the
+  Claude Code login live on the user's own machine.
