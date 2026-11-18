@@ -59,6 +59,7 @@
 | 2026-11-18 | **One authoritative description per concept** (improvement 6): each concept is described once, in the docs plus a test named after the behavior, with few duplicating comments. | User decision: structural improvements over LearnHarness; behavior unchanged. |
 | 2026-11-18 | **Images and files live in the data folder**, referenced by id from entries and rows, not as base64 in SQLite. | User decision. |
 | 2026-11-18 | **`CLAUDE.md` contains only `@AGENTS.md`**, so Claude Code and Codex read the same instructions. | User decision. |
+| 2026-11-18 | **No subscription staging.** `ProviderPolicy` is asked before automatic input is added (a wake turn before saving; the context-update step before injecting). The adapter still checks at dispatch, and steer entries are saved only if their request was dispatched. Replaces LH's staging, held events, `restoreUncommittedAutomatic`, and `resumeForeground`. In the check-to-dispatch race, the request fails and the next turn delivers the input, where LH would retry as foreground. | User decision after verifying LH's code; see [architecture](architecture.md#subscription-admission-without-staging-decided). |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 

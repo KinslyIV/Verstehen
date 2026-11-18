@@ -171,7 +171,7 @@ Structure changes only; behavior stays the same.
 5. **One description per concept.** It's in the docs plus a test named after the behavior, with few
    duplicating comments.
 
-## Subscription admission without staging (proposal)
+## Subscription admission without staging (decided)
 
 **What LH does** (`src/agent/subscription-request-cycle.ts`, `src/agent/chatgpt-stream.ts`,
 `src/server/chat-handler.ts:601-672`, `src/server/jobs.ts:376`):
@@ -189,7 +189,7 @@ Structure changes only; behavior stays the same.
   (`restoreUncommittedAutomatic`), and when the learner is still owed a reaction, the request is
   retried as foreground without it (`resumeForeground`).
 
-**The simpler design (proposal):**
+**The simpler design (decided):**
 1. **Check before adding.** A wake turn asks `ProviderPolicy` before it saves anything. If it's
    refused, it returns 403 and the steers stay queued, as in LH. The context-update step asks
    `ProviderPolicy` before it injects automatic input into a request. If it's refused, it injects
@@ -203,7 +203,7 @@ Structure changes only; behavior stays the same.
    `resumeForeground`.
 
 **Difference from LH:** none in the normal case. In the race, LH retries the same turn as foreground;
-the proposal ends that request with an error, and the queued input is delivered by the next turn.
+the port ends that request with an error, and the queued input is delivered by the next turn.
 
 ## A turn, end to end
 
@@ -366,5 +366,3 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
 - **`AGENTS.md` for the Verstehen repo:** a draft is in the repo root, awaiting review.
-- **Subscription staging: verified against LH, awaiting decision.** See
-  [Subscription admission without staging](#subscription-admission-without-staging-proposal).
