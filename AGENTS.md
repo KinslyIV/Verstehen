@@ -53,8 +53,13 @@ All design authority belongs to the human. **Never guess a design or implementat
   understand. Understandable wins.
 - **The codebase is the prompt.** Agents copy what they see, so there is one way to do each thing.
   [`docs/patterns.md`](docs/patterns.md) names the one example to copy for each pattern. When a
-  pattern is replaced, delete the old one everywhere. If a pattern is bad, say so instead of copying
-  it.
+  pattern is replaced, delete the old one everywhere.
+- **Existing code is not the standard.** Be skeptical of what is already written, including code
+  written by agents before you. Review what you touch and what it touches. Flag bad design, bad
+  choices, and errors, and look for the same problem elsewhere in the codebase. Don't be afraid to
+  rewrite or remove old code that is wrong or needlessly complex; say what you changed and why.
+- **Flag bad decisions too.** If a recorded decision looks wrong, say so, with the reason. Code can
+  be rewritten freely; a user decision is only changed by the user.
 - **Corrections become checks.** When the user corrects something that a tool could catch, propose
   a check (lint rule, import rule, test) rather than a new line in this file. A check's error
   message says what to do instead, not only what is wrong.

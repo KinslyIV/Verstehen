@@ -37,6 +37,11 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 - The orchestrator reviews the branch against the plan, [AGENTS.md](../AGENTS.md), the
   [architecture](architecture.md), and LearnHarness's behavior. It also checks that `make check`
   passes and looks at the `make verify` screenshots.
+- **The review is skeptical of existing code too**, not just the new diff. Code the change builds
+  on is reviewed as well. Bad design, bad choices, and errors are fixed (the same problem is
+  searched for elsewhere), and old code that is wrong or needlessly complex is rewritten or removed
+  on the branch. A recorded decision that looks wrong is flagged in the report; only the user
+  changes it.
 - Findings go back to the implementer, who fixes them on the branch. This repeats until a review
   finds nothing.
 - **At most 4 rounds.** If the work still hasn't converged, the orchestrator fixes small leftovers
@@ -44,12 +49,17 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 
 ## 4. Report (in the T3 Code thread)
 
-When the run ends, the orchestrator posts one report in the thread:
-- **What was built** and whether it works;
-- **Evidence:** `make check` results, tests added, and the `make verify` screenshots it checked;
-- **Decisions made during the run**, each one also in [decisions](decisions.md) for review;
-- **What was discovered:** problems hit and how they were fixed;
-- **What's left:** open issues and anything skipped because it needed outside effects;
-- **The branch to merge.** The user merges it, or asks the orchestrator to.
+When the run ends, the orchestrator posts one report in the thread. It is a **compact, meaningful
+summary of what the user needs to know, not a log** of what the agents did:
+- **New:** what can be used now, and whether it works (one line of evidence: checks, tests, the
+  verify screenshots looked at);
+- **Changed:** existing code that was rewritten or removed, and why;
+- **Decided in your absence:** each orchestrator decision in one line (also in
+  [decisions](decisions.md) for review);
+- **Flagged:** bad decisions or problems found that need the user;
+- **Left:** open issues and anything skipped;
+- **The branch to merge.**
+
+Problems that were hit and solved appear only when they matter to the user.
 
 [status](status.md) is updated on the branch as part of the work.
