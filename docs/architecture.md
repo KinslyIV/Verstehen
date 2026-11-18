@@ -77,7 +77,7 @@ Each package matches one Part A doc:
 | `store/` | all SQL; nothing else imports `sqlite3` | [storage](learnharness/storage-and-events.md) |
 | `api/` | HTTP shapes and SSE; no learning logic | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |
 
-**Proposal: dependency direction.** `api` → `session`, `sidechat`, `jobs`, `graph` → `teaching`,
+**Dependency direction (approved).** `api` → `session`, `sidechat`, `jobs`, `graph` → `teaching`,
 `providers` → `store`. Lower packages never import higher ones. `teaching` doesn't know about HTTP
 or SQLite: it receives what it needs as arguments.
 
@@ -147,7 +147,7 @@ A registry maps session id → runtime.
 | running side answers | `side-chat.ts` |
 | compaction in flight | `compaction.ts` |
 
-- **Proposal:** one `asyncio.Lock` per runtime guards claim changes. State changes go through named
+- **Approved:** one `asyncio.Lock` per runtime guards claim changes. State changes go through named
   methods (`claim_turn`, `release_turn`, `queue_steer`, …) so every transition is visible in one
   file.
 - **App-wide services** stay separate and named: `ExtractionService` (running extractions and the
@@ -198,9 +198,9 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 | ordinary JSON routes | sessions, entries, jobs, side chats, graph, settings, providers |
 
 - **Auth.** Every request carries the per-launch token from the Tauri shell.
-  **Proposal:** the UI reads SSE with `fetch` streaming (not `EventSource`), so the token travels in
+  **Approved:** the UI reads SSE with `fetch` streaming (not `EventSource`), so the token travels in
   a header, not the URL.
-- **Proposal: startup handshake.** Tauri generates the token and starts the sidecar with it. The
+- **Startup handshake (approved).** Tauri generates the token and starts the sidecar with it. The
   sidecar binds to a free port and prints it on stdout; Tauri passes the port and token to the
   webview.
 
@@ -271,7 +271,7 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   sidecar.
 - **Types are generated** from FastAPI's OpenAPI schema with `openapi-typescript` into
   `app/src/lib/api/`. SSE event payload models are included in the schema so they get types too.
-- **Proposal:** a session controller module (port of LH's `components/session-core.ts`) owns send,
+- **Approved:** a session controller module (port of LH's `components/session-core.ts`) owns send,
   attach, recover, and the append-only merge of saved entries (`adoptRecord`).
 
 ## Packaging and data (Q9, Q15)
@@ -308,5 +308,5 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   our own code.
 - **`AGENTS.md` for the Verstehen repo:** its contents (for example LH's "No guessing" rule and
   `make check` before every commit).
-- **Review the proposals above:** dependency direction, SessionRuntime lock and methods, SSE via
-  `fetch`, the startup handshake, and the session controller.
+- **Review the one remaining proposal:** SQLite WAL mode, one write connection owned by the
+  store layer, and short transactions.

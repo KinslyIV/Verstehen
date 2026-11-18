@@ -50,6 +50,7 @@
 | 2026-11-18 | **Context window: a runtime-reported (effective) limit wins** over Pydantic AI's model data when both exist. | User decision. |
 | 2026-11-18 | **Claude Code research uses Tavily, then Brave**; Claude Code's built-in WebSearch is not used (spike below). ChatGPT keeps its native web search first. | User decision. |
 | 2026-11-18 | **SQLite tables as proposed** in [architecture](architecture.md#sqlite-tables) (approved). | User decision. |
+| 2026-11-18 | **Architecture proposals approved:** dependency direction (`api` → features → `teaching`/`providers` → `store`), one lock and named transition methods per `SessionRuntime`, SSE read with `fetch` (token in a header), the startup handshake (Tauri makes the token; the sidecar prints its port), and the UI session controller. | User decision; see [architecture](architecture.md). |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
