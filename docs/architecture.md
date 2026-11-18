@@ -381,4 +381,4 @@ In the port:
   Copilot device-code flow (`_github_copilot_oauth.py`; storage left to the caller). Its `xai`
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
-- **`AGENTS.md` for the Verstehen repo:** a draft is in the repo root, awaiting review.
+- **`AGENTS.md`:** rewritten in the agreed style; awaiting the user's final read.
