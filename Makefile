@@ -1,4 +1,4 @@
-.PHONY: setup check test fmt lock-migrations
+.PHONY: setup check test fmt lock-migrations dev
 
 setup:
 	uv sync --project backend --locked
@@ -28,3 +28,6 @@ fmt:
 
 lock-migrations:
 	uv run --project backend python tools/check_migrations.py --lock
+
+dev:
+	uv run --project backend python tools/dev.py

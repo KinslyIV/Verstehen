@@ -52,3 +52,7 @@ Python 3.14 is pinned in `backend/.python-version`.
 Run `make setup` after cloning (locked `uv sync` and `npm ci`), then `make check` before
 committing. `make test` runs tests; `make fmt` formats Python and frontend files.
 New numbered SQL migrations are recorded with `make lock-migrations`.
+
+`make dev` starts the browser-only sidecar and Vite with an `/api` proxy and a fresh temporary
+data directory. Open the Vite URL (normally `http://localhost:5173`); Ctrl-C stops both.
+`VERSTEHEN_PORT` overrides the sidecar's development port (default 8765).

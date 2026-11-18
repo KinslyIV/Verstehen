@@ -8,3 +8,7 @@ is updated in the same commit.
 |---|---|
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
+| Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |
+| API route | [`api/health.py`](../backend/src/verstehen/api/health.py) (`health_router`) |
+| Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
+| Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |

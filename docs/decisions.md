@@ -4,6 +4,16 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-18 | **User decision (M1 task 2 planning):** The desktop token is supplied in `VERSTEHEN_TOKEN` (at least 64 characters) and checked against `x-verstehen-token` in constant time. | Per-launch desktop capability; never log the token. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** Browser-only mode is selected when neither `VERSTEHEN_DESKTOP` nor `VERSTEHEN_TOKEN` is set; use LH’s Host check and cross-site write check, with `VERSTEHEN_ALLOWED_HOSTS` for extra names. | Retain LH browser-only behavior without CORS grants. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** `VERSTEHEN_DESKTOP=1` without a valid token refuses to start. | Deliberate difference: LH starts and refuses every request. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** The startup handshake is exactly one stdout JSON line `{"port": N}`, flushed once the server is listening. | Tauri learns the actual bound port; all logs go to the file. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** `make dev` uses port 8765 by default, overridden by `VERSTEHEN_PORT`, with a Vite `/api` proxy and a fresh temporary data dir. | Same-origin browser development; Ctrl-C stops both processes. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** One aiosqlite connection handles both reads and writes, owned by `store/`, using WAL and foreign keys. | Short, serialized transactions in one local database. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** The first migration is `0001_settings.sql`, creating the settings key → JSON value table. | Establish the migration runner and the reference store module. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** Logs go to `<data dir>/logs/verstehen.log`, rotating at 5 MB with 3 backups. | Deliberate difference: LH does not rotate its log. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** Only `GET /api/health` is implemented for now, with a trivial database query through the store. | Prove the sidecar-to-database path before features. |
+| 2026-11-18 | **User decision (M1 task 2 planning):** In desktop mode the sidecar exits cleanly when stdin closes, as well as on SIGTERM; browser-only mode ignores stdin. | Deliberate difference: LH relies on SIGTERM/SIGKILL. A crashed Tauri parent closes its pipe. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** The first M1 task is environment, repository scaffolding, and checks. | Establish the checks before implementing features. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** Migration immutability uses a committed SHA-256 lockfile at `backend/src/verstehen/store/migrations.lock`; `make lock-migrations` only adds new entries. | Catch edited, deleted, and unlisted migrations. |
 | 2026-11-18 | **User decision (M1 task 1 planning):** ESLint boundaries: only `src/lib/api/` uses fetch or generated API types; `components/ui/` imports only itself, `#lib/utils`, and npm packages; `src/lib/` never imports routes. | Keep transport, reusable UI, and routes separate. |
