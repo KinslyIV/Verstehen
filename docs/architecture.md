@@ -31,7 +31,7 @@ flowchart LR
   Server --> Runtime --> Agents
   Runtime --> Store
   Agents --> Providers[Model providers<br/>API keys, subscriptions,<br/>Claude Agent SDK]
-  Agents --> Chrome[System Chrome<br/>via Playwright]
+  Agents --> Chrome[System Chromium<br/>via Playwright]
 ```
 
 - **One process owns the data.** The Python sidecar is the only reader and writer of the SQLite
@@ -77,9 +77,12 @@ Each package matches one Part A doc:
 | `store/` | all SQL; nothing else imports `sqlite3` | [storage](learnharness/storage-and-events.md) |
 | `api/` | HTTP shapes and SSE; no learning logic | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |
 
-**Dependency direction (approved).** `api` → `session`, `sidechat`, `jobs`, `graph` → `teaching`,
-`providers` → `store`. Lower packages never import higher ones. `teaching` doesn't know about HTTP
-or SQLite: it receives what it needs as arguments.
+**Dependency direction (decided).** `api` → `session` → `jobs`, `sidechat`, `graph` → `teaching`, `providers` → `store`. Lower packages never import higher ones;
+import-linter enforces it. `session` is the orchestrator: it calls `jobs`, `sidechat`, and `graph`
+directly. They never import `session`. When one of them must reach a session (a finished job wakes
+it, for example), it calls a plain function it was given at startup, such as
+`wake_session(session_id)`. All of that wiring happens once, in `verstehen/app.py`. `teaching`
+doesn't know about HTTP or SQLite: it receives what it needs as arguments.
 
 ## The session record (Q1)
 
@@ -162,7 +165,12 @@ Structure changes only; behavior stays the same.
 1. **Named turn stages.** Each stage of a turn is its own step that returns `Refused(status, reason)`
    or `Continue(state)`, in place of LH's single ~790-line `handleChatInput`.
 2. **Event-driven delivery.** Asyncio events in the `SessionRuntime` wake the steer queue. There's no
-   polling and no TTL leak guards.
+   polling and no TTL leak guards. **LH's `GRACE_MS` race is closed by design** (decided): it
+   stopped a wake turn from racing the learner's answer that was about to arrive
+   (`jobs.ts:156-171`). In the port, a wake fires only from an idle runtime with no pending
+   question. An answer is saved and its turn claimed in one runtime step. Sibling answers saved
+   without a turn keep the gate closed. If a wake and an answer still collide, the answer wins, and
+   the queued steers go into the answer turn. A test reproduces LH's race.
 3. **One question module.** `teaching/questions` owns pending detection, siblings, answers,
    dismissal, and retry.
 4. **One context-update step.** Job results, composer steers, and side-chat updates are delivered by
@@ -227,13 +235,14 @@ Port of the 13 stages in [turn lifecycle](learnharness/turn-lifecycle.md), in mo
 ## Background work (Q4)
 
 - **Jobs are asyncio tasks** in the sidecar, each running its own Pydantic AI agent. CPU-heavy steps
-  (PDF rendering, resvg) run in a thread pool.
+  (PDF rendering, SVG rasterizing) run in a thread pool.
 - **The `jobs` table** holds status, result, and delivery state. A job's result and its "ready to
   deliver" flag are written in one transaction.
 - **Two ways a steer reaches the teacher** (as in LH): delivered live by the `before_model_request`
   hook if a turn is running, otherwise via an idle wake turn. Both use the deterministic
   `steer_<jobId>` id, so delivery happens at most once.
-- **The demo worker** tests with Playwright driving system Chrome (decided earlier).
+- **The demo worker** tests with Playwright driving the system Chromium from Arch
+  (`/usr/bin/chromium`, decided). A setting can point to another Chromium-family browser.
 
 ## Events to the UI (Q2)
 
@@ -270,6 +279,12 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   implements the `OpenAIChatGPTCredentialSource` protocol (`load()` / `save()`) on top of the
   credentials file.
 - **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`.
+  - It runs **the Claude Code CLI bundled in the `claude-agent-sdk` wheel** (decided), not the
+    self-updating `/usr/bin/claude`. The CLI version changes only when we bump the SDK in
+    `uv.lock`, and the opt-in live test runs after each bump. It reuses the existing Claude login.
+  - **Constraint:** the Claude Code login is for personal use in this private app. Anthropic
+    doesn't allow third-party products to offer claude.ai login, so Verstehen is never distributed
+    with it.
   - It is patched so the system prompt is **only our instructions**, with no Claude Code preset
     (Q10).
   - Our code always passes the full lockdown options itself, because passing `sdk_options` replaces
@@ -288,7 +303,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 ## Libraries, logging, and context limits (decided)
 
-- **PDF:** pypdfium2. **SVG to PNG:** CairoSVG (the PyInstaller build bundles the Cairo library).
+- **PDF:** pypdfium2. **SVG to PNG:** resvg via `resvg-py` (MIT, the same engine as LH, no native
+  library to bundle). It replaced CairoSVG (decided).
 - **UI:** the Svelte versions of LH's React libraries (Svelte Flow for the graph view), plus d3-force,
   dagre, KaTeX, and Mermaid directly.
 - **Images** work through the vendored `ClaudeCodeModel` in user messages and tool results
@@ -325,13 +341,17 @@ In the port:
 - Demo HTML is shown in `<iframe sandbox="allow-scripts" srcdoc="…">`, **without**
   `allow-same-origin`. The demo runs with an opaque origin, so it can't read the app's storage, the
   API token, or the parent page.
-- The Tauri app sets a strict content-security policy. Network access is allowed only so demos can
-  load their CDN scripts, the same thing the demo worker's test checks.
+- **The app's content-security policy is relaxed for demos** (decided). A `srcdoc` iframe inherits
+  the page's policy, so the app's policy allows inline scripts and the CDN hosts demos load from.
+  The sandbox and the token check still protect the API.
 - The sidecar answers only requests that carry the per-launch token, and its CORS rules don't allow
   the `null` origin a sandboxed iframe has.
 
 ## Frontend (Q7, Q8)
 
+- **Behavior is ported exactly; only the look is new** (decided). Question cards, how the answer is
+  built (LH's `buildAnswer`), confidence input, sibling questions, dismissal, retry, and `continue`
+  behave as in LH ([question tools](learnharness/question-tools.md)). Each gets a verify flow.
 - **Look:** sleek, modeled on T3 Code (decided). Tailwind CSS v4, shadcn-svelte components (in the
   repo, on bits-ui), tailwind-variants, and `@lucide/svelte` icons. Dark by default, light available.
 - **First layout** (decided, kept simple):
@@ -355,7 +375,10 @@ In the port:
 ## Packaging and data (Q9, Q15)
 
 - **Release:** the Python server is frozen with PyInstaller and shipped as a Tauri sidecar
-  (`externalBin`). No browser is bundled: Playwright uses system Chrome.
+  (`externalBin`). No browser is bundled: Playwright uses the system Chromium.
+- **Proven in milestone 1** (decided): a minimal frozen sidecar (a hello endpoint that imports every
+  heavy dependency: Playwright, pypdfium2, resvg-py, the SDK with its bundled CLI) is built into a
+  Tauri app before features depend on packaging.
 - **Development:** the server runs with `uv run`, the UI with the Tauri dev server.
 - **Data dir:** `~/.local/share/verstehen` by default, overridable with `VERSTEHEN_DATA_DIR`. Tests
   and development always use a separate directory.
@@ -367,12 +390,17 @@ In the port:
   pyrefly, svelte-check, ESLint, Prettier, Vitest, and the code-rule checks below. `make test` runs
   only tests; `make fmt` fixes formatting. No CI for now; `make check` is required before every
   commit.
-- **Code rules are checks** (decided): the comment checker (at most 3 lines per comment or docstring
-  block), import-linter (dependency direction), ruff banned-API (`sqlite3` only in `store/`, Pydantic
-  AI only in `teaching/`, `session/`, `providers/`), ESLint boundaries, and unchanged applied
-  migrations.
+- **Code rules are checks** (decided):
+  - the comment checker: at most 3 lines per comment or docstring block. It excludes generated code
+    (the OpenAPI types), the shadcn-svelte components folder, the vendored `ClaudeCodeModel`, and the
+    LH prompts;
+  - import-linter for the dependency direction;
+  - ruff banned-API: `sqlite3` only in `store/`; Pydantic AI only where agents live (`teaching/`,
+    `session/`, `providers/`, `jobs/workers/`, `graph/`, `sidechat/`), never in `api/` or `store/`;
+  - ESLint boundaries;
+  - unchanged applied migrations.
 - **`make verify`** (decided) runs the sidecar with the fake-model provider and a temporary data dir,
-  plus the SvelteKit app in headless Chrome via Playwright. Scripted flows save screenshots and
+  plus the SvelteKit app in headless Chromium via Playwright. Scripted flows save screenshots and
   traces. [`feature-map.md`](feature-map.md) lists each feature and its flow. The Tauri shell is
   checked by hand on the laptop. A coding-agent **verify skill** wraps these flows (decided), and
   every custom check's error message says what to do instead.
@@ -384,8 +412,8 @@ In the port:
 
 ## Agent framework boundary
 
-- Pydantic AI types appear only in `teaching/` (agents, tools), `session/projection.py`, the run
-  loop in `session/`, and `providers/`.
+- Pydantic AI is imported only where agents live: `teaching/`, `session/` (projection and run loop),
+  `providers/`, `jobs/workers/`, `graph/` (extraction and audit), and `sidechat/` (the helper).
 - The entry log, the database, the API, and the UI never contain Pydantic AI types (Q1).
 
 ## Open questions

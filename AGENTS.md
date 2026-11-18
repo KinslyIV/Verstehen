@@ -48,6 +48,10 @@ not interpretation.
 
 ## UI
 
+**Behavior comes from LearnHarness, the look is new.** Question cards, answers, confidence, sibling
+questions, dismissal, retry, and continue behave exactly as in LH
+([question tools](docs/learnharness/question-tools.md)). Only styling and layout follow our design.
+
 Svelte 5 with runes only, TypeScript, Tailwind v4, and shadcn-svelte. Use the official Svelte docs
 for LLMs (`svelte.dev/llms.txt`) or the Svelte MCP server rather than memory: Svelte 5 differs from
 older Svelte. Derive values with `$derived` and handle user actions in event handlers. Use
@@ -72,7 +76,7 @@ Every change comes with a way to prove it works, and you run it before you say i
 |---|---|
 | `make check` | lint, format, types, code rules, and all tests. Run before every commit. |
 | `make test` | only the tests |
-| `make verify` | the app with the fake model in headless Chrome: scripted flows that save screenshots and traces |
+| `make verify` | the app with the fake model in headless Chromium: scripted flows that save screenshots and traces |
 | `make fmt` | fix formatting |
 
 - **Logic** gets a test named after the behavior. Tests are offline, using Pydantic AI's

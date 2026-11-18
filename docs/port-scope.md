@@ -6,7 +6,7 @@
 - **Included** in the first port:
   - The core teaching loop: teacher agent, probing, planning, teaching prompts, question tools, side chat, compaction, and background subagents and jobs.
   - The knowledge graph and imports: propositions, chains, clusters, citations, source import and extraction, reconciliation, and the graph UI.
-  - All four background workers: `research` (web search providers + fetch), `pdf`, `demo` (tested headlessly with Playwright driving system Chrome, see [decisions](decisions.md)), and `visual` (user decision, 2026-11-18).
+  - All four background workers: `research` (web search providers + fetch), `pdf`, `demo` (tested headlessly with Playwright driving the system Chromium, see [decisions](decisions.md)), and `visual` (user decision, 2026-11-18).
   - Practice sessions: the practitioner agent with `problem` and `conclude` (user decision, 2026-11-18).
   - Smaller features: activity dock, session search, themes, and prompt overrides (user decision, 2026-11-18).
   - Subscription and CLI bridges: Claude Code, ChatGPT, subscriptions, and custom providers.
