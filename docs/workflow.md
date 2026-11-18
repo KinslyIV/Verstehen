@@ -39,8 +39,8 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
   passes and looks at the `make verify` screenshots.
 - **The review is skeptical of existing code too**, not just the new diff. Code the change builds
   on is reviewed as well. Bad design, bad choices, and errors are fixed (the same problem is
-  searched for elsewhere), and old code that is wrong or needlessly complex is rewritten or removed
-  on the branch. A recorded decision that looks wrong is flagged in the report; only the user
+  searched for elsewhere), and old code is rewritten or removed on the branch when there is a need
+  (it is wrong, it blocks the task, or its complexity causes real problems), never only for taste. A recorded decision that looks wrong is flagged in the report; only the user
   changes it.
 - Findings go back to the implementer, who fixes them on the branch. This repeats until a review
   finds nothing.

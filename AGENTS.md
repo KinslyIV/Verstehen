@@ -56,8 +56,10 @@ All design authority belongs to the human. **Never guess a design or implementat
   pattern is replaced, delete the old one everywhere.
 - **Existing code is not the standard.** Be skeptical of what is already written, including code
   written by agents before you. Review what you touch and what it touches. Flag bad design, bad
-  choices, and errors, and look for the same problem elsewhere in the codebase. Don't be afraid to
-  rewrite or remove old code that is wrong or needlessly complex; say what you changed and why.
+  choices, and errors, and look for the same problem elsewhere in the codebase. Rewrite or remove old
+  code when there is a need: it is wrong, it gets in the way of the task, or its complexity causes
+  real problems. Then don't hold back, and say what you changed and why. Never rewrite only for
+  taste.
 - **Flag bad decisions too.** If a recorded decision looks wrong, say so, with the reason. Code can
   be rewritten freely; a user decision is only changed by the user.
 - **Corrections become checks.** When the user corrects something that a tool could catch, propose
