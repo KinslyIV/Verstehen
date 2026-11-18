@@ -2,6 +2,8 @@ import hashlib
 import sys
 from pathlib import Path
 
+from verstehen.store.migration_files import migration_files
+
 MIGRATIONS = Path("backend/src/verstehen/store/migrations")
 
 
@@ -24,12 +26,14 @@ def check(root: Path, *, lock_new: bool = False) -> list[str]:
                 f"{path}: add a new numbered migration instead of editing {name}"
             )
     additions = []
-    for path in sorted(directory.iterdir()):
-        if path.name == ".gitkeep" or not path.is_file() or path.name in entries:
+    try:
+        paths = migration_files(directory)
+    except ValueError as error:
+        return errors + str(error).splitlines()
+    for path in paths:
+        if path.name in entries:
             continue
-        if not path.suffix == ".sql" or not path.stem[:4].isdigit():
-            errors.append(f"{path}: use a numbered SQL migration such as 0001_name.sql")
-        elif lock_new:
+        if lock_new:
             additions.append(
                 f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}\n"
             )

@@ -6,7 +6,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 
-import httpx
+import httpx2
 
 TOKEN = "sidecar-test-" * 6
 
@@ -50,12 +50,12 @@ def test_handshake_prints_one_json_line_with_real_port(tmp_path: Path):
     with sidecar(tmp_path) as (process, port, line):
         assert line == json.dumps({"port": port}) + "\n"
         assert 0 < port <= 65535
-        response = httpx.get(
+        response = httpx2.get(
             f"http://127.0.0.1:{port}/api/health", headers={"x-verstehen-token": TOKEN}
         )
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
-        assert httpx.get(f"http://127.0.0.1:{port}/api/health").status_code == 403
+        assert httpx2.get(f"http://127.0.0.1:{port}/api/health").status_code == 403
         process.terminate()
         process.wait(timeout=10)
         assert process.stdout is not None
@@ -85,13 +85,13 @@ def test_browser_only_ignores_stdin_eof(tmp_path: Path):
     with sidecar(tmp_path, desktop=False) as (process, port, line):
         assert process.stdin is not None
         process.stdin.close()
-        assert httpx.get(f"http://127.0.0.1:{port}/api/health").status_code == 200
+        assert httpx2.get(f"http://127.0.0.1:{port}/api/health").status_code == 200
         assert process.poll() is None
 
 
 def test_log_file_is_written_without_token(tmp_path: Path):
     with sidecar(tmp_path) as (process, port, line):
-        httpx.get(
+        httpx2.get(
             f"http://127.0.0.1:{port}/api/health", headers={"x-verstehen-token": TOKEN}
         )
         assert process.stdin is not None

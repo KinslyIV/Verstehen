@@ -22,12 +22,13 @@ dev = [
     "ruff",
     "pyrefly",
     "import-linter",
-    "httpx>=0.28.1",
+    "httpx2>=2.0.0",
 ]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "../tools/tests"]
 pythonpath = [".."]
+filterwarnings = ["error"]
 
 [tool.importlinter]
 root_package = "verstehen"

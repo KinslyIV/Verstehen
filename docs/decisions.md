@@ -4,6 +4,17 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_TOKEN` without `VERSTEHEN_DESKTOP=1`, including an empty token, refuses to start; `VERSTEHEN_DESKTOP` accepts only `"1"`. | Fail closed on an incomplete or mistyped desktop launch. |
+| 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_PORT=0` or unset chooses a free port; the bound socket is held through startup. | Report the actual port without a bind race. |
+| 2026-11-18 | **Orchestrator decision, for user review:** The SQLite file is `<data dir>/verstehen.db`. | One stable database path owned by the sidecar. |
+| 2026-11-18 | **Orchestrator decision, for user review:** A missing setting reads as `None`. | Keep the settings lookup contract simple. |
+| 2026-11-18 | **Orchestrator decision, for user review:** One asyncio lock serializes database reads and writes, behind `Database.transaction()` and `read()`. | Keep the shared connection isolated between operations. |
+| 2026-11-18 | **Orchestrator decision, for user review:** Malformed Host values are refused and forwarded headers are ignored. | Use the direct request authority for local access checks. |
+| 2026-11-18 | **Orchestrator decision, for user review:** The desktop stdin watcher is a daemon thread. | Blocking stdin reads must not prevent process exit. |
+| 2026-11-18 | **Orchestrator decision, for user review:** `make dev` removes its temporary data directory on exit and requires Vite’s port to be free (`--strictPort`). | Keep development isolated and the proxy URL predictable. |
+| 2026-11-18 | **Orchestrator decision, for user review:** `Database.transaction()` owns locking, BEGIN, commit, and rollback on any exception; its optional `script` runs before yielding. `read()` locks without committing; connection and lock are private. | One store pattern; executescript starts BEGIN inside the script so migration SQL and its history row remain atomic. |
+| 2026-11-18 | **Orchestrator decision, for user review:** The lifespan stores the database on `app.state`; module-level API routers receive it through `get_database` and FastAPI `Depends`. | One idiomatic route pattern with wiring in app.py and downward imports into store. |
+| 2026-11-18 | **Orchestrator decision, for user review:** The migration checker and runner share validation for exactly four ASCII digits, an underscore, a nonempty name, and `.sql`; duplicate numbers fail with renumbering guidance before database changes. | Catch startup failures during checks and prevent invalid files from being silently skipped. |
 | 2026-11-18 | **User decision (M1 task 2 planning):** The desktop token is supplied in `VERSTEHEN_TOKEN` (at least 64 characters) and checked against `x-verstehen-token` in constant time. | Per-launch desktop capability; never log the token. |
 | 2026-11-18 | **User decision (M1 task 2 planning):** Browser-only mode is selected when neither `VERSTEHEN_DESKTOP` nor `VERSTEHEN_TOKEN` is set; use LH’s Host check and cross-site write check, with `VERSTEHEN_ALLOWED_HOSTS` for extra names. | Retain LH browser-only behavior without CORS grants. |
 | 2026-11-18 | **User decision (M1 task 2 planning):** `VERSTEHEN_DESKTOP=1` without a valid token refuses to start. | Deliberate difference: LH starts and refuses every request. |

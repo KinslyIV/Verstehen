@@ -6,20 +6,18 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
 from verstehen.api.access import request_refusal
-from verstehen.api.health import health_router
+from verstehen.api.health import router
 from verstehen.config import Settings
-from verstehen.store.database import Database, open_database
+from verstehen.store.database import open_database
 from verstehen.store.migrate import migrate
 
 
 def create_app(settings: Settings) -> FastAPI:
-    database: Database
-
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        nonlocal database
         async with open_database(settings.data_dir / "verstehen.db") as database:
             await migrate(database)
+            app.state.database = database
             yield
 
     app = FastAPI(lifespan=lifespan)
@@ -44,8 +42,5 @@ def create_app(settings: Settings) -> FastAPI:
             allow_headers=["x-verstehen-token", "content-type"],
         )
 
-    async def check_database() -> None:
-        await database.check_health()
-
-    app.include_router(health_router(check_database))
+    app.include_router(router)
     return app

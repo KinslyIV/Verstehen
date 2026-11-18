@@ -1,14 +1,16 @@
-from collections.abc import Awaitable, Callable
+from typing import Annotated
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from verstehen.api.deps import get_database
+from verstehen.store.database import Database
+
+router = APIRouter()
 
 
-def health_router(check_database: Callable[[], Awaitable[None]]) -> APIRouter:
-    router = APIRouter()
-
-    @router.get("/api/health")
-    async def health() -> dict[str, str]:
-        await check_database()
-        return {"status": "ok"}
-
-    return router
+@router.get("/api/health")
+async def health(
+    database: Annotated[Database, Depends(get_database)],
+) -> dict[str, str]:
+    await database.check_health()
+    return {"status": "ok"}

@@ -69,3 +69,29 @@ def test_lock_refuses_to_rewrite_edited_entries(tmp_path: Path):
     (directory / "0002_next.sql").write_text("SELECT 3;")
     assert check(tmp_path, lock_new=True)
     assert lock.read_bytes() == original
+
+
+def test_duplicate_migration_number_fails(tmp_path: Path):
+    directory = migration_root(tmp_path)
+    (directory / "0002_a.sql").write_text("SELECT 1;")
+    assert check(tmp_path, lock_new=True) == []
+    duplicate = directory / "0002_b.sql"
+    duplicate.write_text("SELECT 2;")
+    original = directory.with_suffix(".lock").read_bytes()
+    for lock_new in (False, True):
+        assert check(tmp_path, lock_new=lock_new) == [
+            f"renumber {duplicate}: 0002 is already used by 0002_a.sql"
+        ]
+        assert directory.with_suffix(".lock").read_bytes() == original
+
+
+def test_migration_without_underscore_name_fails(tmp_path: Path):
+    directory = migration_root(tmp_path)
+    for name in ("0002.sql", "0002_.sql", "0002name.sql", "00022_name.sql"):
+        path = directory / name
+        path.write_text("SELECT 1;")
+        assert check(tmp_path, lock_new=True) == [
+            f"{path}: use a numbered SQL migration such as 0001_name.sql"
+        ]
+        assert directory.with_suffix(".lock").read_bytes() == b""
+        path.unlink()
