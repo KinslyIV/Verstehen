@@ -130,7 +130,7 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 | `settings` | key → JSON value | `settings.json` |
 | `schema_migrations` | applied migration numbers | `format.json`, record versions |
 
-- The table list is approved. **Proposal:** WAL mode, one write connection owned by the store layer, and short transactions.
+- The table list is approved, and so are WAL mode, one write connection owned by the store layer, and short transactions.
   Payload columns hold JSON validated by Pydantic models on the way in and out.
 
 ## Live state: SessionRuntime (Q3)
@@ -306,7 +306,4 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   Copilot device-code flow (`_github_copilot_oauth.py`; storage left to the caller). Its `xai`
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
-- **`AGENTS.md` for the Verstehen repo:** its contents (for example LH's "No guessing" rule and
-  `make check` before every commit).
-- **Review the one remaining proposal:** SQLite WAL mode, one write connection owned by the
-  store layer, and short transactions.
+- **`AGENTS.md` for the Verstehen repo:** a draft is in the repo root, awaiting review.
