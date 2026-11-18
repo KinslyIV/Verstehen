@@ -14,6 +14,7 @@
 | 2026-11-18 | Desktop app: **Tauri + React**, with the local Python server as a Tauri sidecar. | React: coding agents are most reliable with it, and LearnHarness's React components can be adapted. Tauri: small and light, with first-class sidecar support. The WebKitGTK rendering risk on Linux is low here: Godspeed (a LearnHarness-style app) ran on Tauri on this laptop without UI problems. |
 | 2026-11-18 | **Plan map size: 5–15 nodes.** The `plan_init` tool description's bound wins; the planning prompt (`teacher/10-planning.md`: "No size ceiling", "a single node may take one step or five") is changed to match. | Resolves a contradiction in LearnHarness. This is a deliberate prompt change from LH. |
 | 2026-11-18 | **Quiz grading stays in the UI**, as in LearnHarness (the answer key is in the saved tool call). | Faithful port; single-user local app. |
+| 2026-11-18 | **Claude Code via the Claude Agent SDK, wrapped as a Pydantic AI `Model`** (`ClaudeCodeModel`): one SDK query per model request. Built-in tools and settings loading are disabled, and our system prompt is used. History is replayed as a labelled text transcript, our tools are registered as stub SDK tools, and tool calls are intercepted before execution and returned to Pydantic AI as `ToolCallPart`s. The SDK keeps no session. | One runtime: all turn rules (question stop, steer injection, side chat, compaction, history) behave identically for every provider, and models can be switched mid-session. Accepted trade-offs: Claude sees past tool calls as text, there is per-query process startup, and there is no `max_tokens`. The Agent SDK itself can't act as a stateless model or accept tool-call history, which is why the wrapper exists. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -66,10 +67,10 @@ Raised while writing the Part A docs. Each one links to where it came up.
 
 ### Foundation
 
-- **Claude Code provider via the Claude Agent SDK** (user direction, 2026-11-18), instead of
-  LearnHarness's own CLI and MCP bridge. Still open: how the Agent SDK, which runs its own agent loop,
-  fits under Pydantic AI's loop.
-  ([providers](learnharness/providers.md#claude-code-bridge))
+- **Spike for the Claude Agent SDK model wrapper.** Confirm that the SDK hands back **all** tool calls of
+  one response, including several parallel ones, before executing any of them, so we can interrupt.
+  Also measure per-query startup latency and check prompt-cache behavior with the re-rendered
+  transcript. This needs a real Claude model.
 
 
 ## Milestones
