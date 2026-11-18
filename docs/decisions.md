@@ -9,6 +9,8 @@
 | 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |
 | 2026-11-18 | Development happens on the home server Pixal. | Agents run on the home server. |
 | 2026-11-18 | Language: **Python**. | User decision. |
+| 2026-11-18 | Storage: **SQLite**. | Real transactions for the multi-step writes LearnHarness has to order by hand (graph merge + coverage, job result + delivery flag). One file on Pixal. |
+| 2026-11-18 | Frontend: **browser app served from Pixal, built with Svelte**. | No install; reachable from any device over Tailscale; least and most readable UI code. LearnHarness needed Electron only because its server ran locally. Can be wrapped in Tauri later if a native need appears. |
 
 ## Leaning (not yet decided)
 
@@ -46,8 +48,6 @@ Raised while writing the Part A docs. Each one links to where it came up.
   LearnHarness's own CLI and MCP bridge. Still open: how the Agent SDK, which runs its own agent loop,
   fits under Pydantic AI's loop.
   ([providers](learnharness/providers.md#claude-code-bridge))
-- **Storage**: keep JSON/JSONL files, or move to a database such as SQLite for real transactions
-  ([storage](learnharness/storage-and-events.md#port-notes)).
 
 ### Behavior details found in LearnHarness
 
