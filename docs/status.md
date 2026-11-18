@@ -16,8 +16,8 @@
 
 ## Next
 
-1. Write the milestones (the implementation order) in [decisions](decisions.md#milestones).
-2. Milestone 1.
+1. Approve the [milestones](decisions.md#milestones) (drafted, awaiting approval).
+2. Push, clone on Pixal, and plan M1 (walking skeleton).
 
 ## Open questions
 

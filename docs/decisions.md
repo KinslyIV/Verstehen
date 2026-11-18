@@ -212,4 +212,107 @@ See [architecture → open questions](architecture.md#open-questions).
 
 ## Milestones
 
-_To be defined after the Part A docs._
+> Status: **proposal, awaiting approval**.
+
+Every milestone is done only when `make check` passes, its behaviors have tests named after them,
+everything the learner sees has a `make verify` flow and a [feature map](feature-map.md) entry, and
+[status](status.md) is updated. Milestones that touch the desktop shell end with the user checking
+the app on the laptop. Agents use the fake model throughout; real models only in opt-in live tests.
+
+### M1. Walking skeleton
+
+The whole path from the desktop window to SQLite exists and is proven, with almost no features.
+- **Repo:** `backend/` (uv, Python 3.14, ruff, pyrefly, pytest) and `app/` (created with `sv`:
+  SvelteKit static SPA, TypeScript, Tailwind v4, shadcn-svelte, ESLint, Prettier, Vitest).
+- **Checks:** the root `Makefile` (`check`, `test`, `fmt`, `verify`), the comment checker,
+  import-linter for the package order, ruff banned-API, ESLint boundaries, and the migration check.
+  Every check message says what to do instead.
+- **Sidecar:** FastAPI on `127.0.0.1` with the per-launch token, the startup handshake, and
+  `verstehen/app.py` wiring. The store layer: SQLite in WAL mode, one write connection, and the
+  migration runner. The data dir and `VERSTEHEN_DATA_DIR`. The log file.
+- **Verification:** the fake-model provider, `make verify` (sidecar plus app in headless Chromium,
+  screenshots and traces), and the verify skill for Claude Code and Codex.
+- **Packaging proof:** a frozen PyInstaller sidecar that imports every heavy dependency (Playwright,
+  pypdfium2, resvg-py, the SDK with its bundled CLI), started by a Tauri build. The user opens it on
+  the laptop.
+- **UI:** the empty layout (sidebar, thread, composer, closed right panel, settings page), dark and
+  light.
+
+### M2. Session core
+
+A conversation with the fake model, saved and replayable.
+- The entry log and `session/projection.py`; sessions and entries tables.
+- `SessionRuntime` (claim, run handle, event log) and the named turn stages: write-ahead input,
+  settlement order, one turn per session, refusal leaves no trace.
+- The teacher agent with LH's prompt tree copied, prompt composition, and override files.
+- The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
+- **UI:** the session list, a new session, the streamed thread, and the session controller.
+
+### M3. Question tools
+
+The question contract, exactly as in LH.
+- quiz, probe, explain, recall, and ask_user_question via `CallDeferred`, in `teaching/questions`:
+  pending detection, siblings, the mixed-batch rule, answers, dismissal, retry, and `continue`.
+- The answer race closed by design (atomic answer save and claim).
+- **UI:** question cards with LH's exact behavior (`buildAnswer`, confidence, siblings, dismissal,
+  retry), and grading in the UI.
+
+### M4. Teaching flow
+
+Probe, plan, teach, as in LH.
+- The prober and the teacher, with the phase derived from `probe_done` and the probe handoff as an
+  explicit phase transition.
+- Plan tools (`plan_init` with 5–15 nodes, and the other plan tools), the plan tree, and plan
+  blocks.
+- **UI:** the plan tree in the right panel, and plan blocks in the thread.
+
+### M5. Real providers
+
+The first version the user can learn with.
+- Slots and roles, `resolve(role)`, and `ProviderPolicy` (background consent, admission before
+  automatic input).
+- **Claude Code:** the vendored `ClaudeCodeModel` with `VENDORED.md`, the system-prompt patch, full
+  lockdown options, the bundled CLI, and the personal-use constraint.
+- **ChatGPT:** `openai-chatgpt`, the browser login, and `credentials.json` behind a credential source.
+- Context-window lookup (runtime, then model data, then a value you enter), usage logging, and the
+  provider-event debug switch.
+- **UI:** settings for models, slots, and logins. Opt-in live tests for both providers.
+
+### M6. Compaction
+
+- LH's compaction between runs: threshold, cut, the four-section summary prompt, the marker, and
+  the projection. The limit is a user setting.
+
+### M7. Background jobs and workers
+
+- The jobs table, the job runner, the context-update step (job results and composer steers), idle
+  wakes through the injected `wake_session`, and recovery when the UI polls for jobs.
+- The workers:
+  - **research:** native search, then Tavily, then Brave, plus fetch;
+  - **pdf:** pypdfium2;
+  - **visual:** resvg, with the render-and-look loop;
+  - **demo:** Playwright with Chromium, shown in the sandboxed iframe under the relaxed app CSP.
+- Learner images as files in `<data dir>/images/`.
+- **UI:** job cards and artifacts in the thread, and job activity in the right panel.
+
+### M8. Side chat
+
+- Segments, side threads, the helper call over the redacted lesson (answer keys removed), budget
+  and admission, and delivery through the context-update step.
+- **UI:** side chat on a teaching segment.
+
+### M9. Knowledge graph
+
+- Propositions, chains, coverage, sources, and checkpoints. Extractor, then auditor (BM25
+  candidates), then a deterministic merge in one transaction. Notes imports.
+- **UI:** the graph view (Svelte Flow, d3-force, dagre).
+
+### M10. Practice sessions
+
+- The practitioner agent with `problem` and `conclude`, and practice sessions.
+
+### M11. Smaller features and later providers
+
+- Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
+  a prompt-override UI if needed.
+- Later providers: API keys, the custom endpoint, Copilot, and Grok.
