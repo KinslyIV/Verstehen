@@ -13,6 +13,10 @@ The port has two goals:
    can open, read, and understand.
 2. **Understand how LearnHarness works.** The docs in `docs/learnharness/` explain it.
 
+**You work on Pixal** (an Ubuntu home server). The app itself runs on the user's Arch laptop: you
+build it with `make app` (inside an `archlinux` container) and the user installs it there. Use
+Playwright's own Chromium for `make verify`.
+
 Read [`docs/status.md`](docs/status.md) first: it says where the project is and what's next. Then
 follow the reading order in the [README](README.md).
 
@@ -78,6 +82,7 @@ Every change comes with a way to prove it works, and you run it before you say i
 | `make test` | only the tests |
 | `make verify` | the app with the fake model in headless Chromium: scripted flows that save screenshots and traces |
 | `make fmt` | fix formatting |
+| `make app` | build the desktop app as an Arch package, inside an `archlinux` container |
 
 - **Logic** gets a test named after the behavior. Tests are offline, using Pydantic AI's
   `FunctionModel` and a temporary data dir.

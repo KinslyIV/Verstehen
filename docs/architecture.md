@@ -39,6 +39,18 @@ flowchart LR
 - **The Tauri shell stays thin.** It starts and stops the sidecar and shows the webview. App logic
   lives in Python and in the Svelte UI.
 
+## Where things run (decided)
+
+| | Pixal (Ubuntu home server) | Laptop `vogue-merry` (Arch) |
+|---|---|---|
+| **Role** | development: coding agents write, test, and verify | runs the installed desktop app |
+| **Browser** | Playwright's own Chromium (`playwright install chromium`), for `make verify` and demo-worker tests | Arch's `/usr/bin/chromium`, for the demo worker |
+| **App build** | `make app` builds inside an `archlinux` container (Docker or Podman) and produces an Arch package via a PKGBUILD | `sudo pacman -U` installs it; pacman pulls WebKitGTK and Chromium |
+| **Real models** | only in opt-in live tests | the user's Claude Code and ChatGPT logins |
+
+- Arch is rolling, so the build container is updated before each build. After a big WebKitGTK
+  update on the laptop, the app is rebuilt.
+
 ## Repository layout (Q6)
 
 ```

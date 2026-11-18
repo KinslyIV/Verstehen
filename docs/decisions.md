@@ -82,6 +82,8 @@
 | 2026-11-18 | **Comment checker exclusions:** generated code (OpenAPI types), the shadcn-svelte components folder, the vendored `ClaudeCodeModel`, and the LH prompts. | User decision (review of 2026-11-18). User chose to keep shadcn components updatable with its CLI. |
 | 2026-11-18 | **SVG rasterizing: resvg via `resvg-py`** (0.5.0, MIT), replacing CairoSVG. The image check passed again with it on Python 3.14. | User decision (review of 2026-11-18). Same engine as LH, broader SVG support, permissive license, no native Cairo to bundle. |
 | 2026-11-18 | **Constraint: Claude Code login is personal use only.** Verstehen is never distributed with Claude Code login. | User decision (review of 2026-11-18). Anthropic: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." |
+| 2026-11-18 | **Pixal runs Ubuntu.** The desktop app is built on Pixal **inside an `archlinux` container** (Docker or Podman) by `make app`, as an Arch package from a PKGBUILD, and installed on the laptop with `sudo pacman -U` (pacman pulls WebKitGTK and Chromium). | User decision. Native Arch libraries without build tools on the laptop. |
+| 2026-11-18 | **On Pixal, agents use Playwright's own Chromium** (`playwright install chromium`) for `make verify` and demo-worker tests. The installed app on the laptop still uses Arch's `/usr/bin/chromium` and bundles no browser. | User decision. Ubuntu ships Chromium only as a snap, which often breaks Playwright. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 
@@ -233,8 +235,9 @@ The whole path from the desktop window to SQLite exists and is proven, with almo
 - **Verification:** the fake-model provider, `make verify` (sidecar plus app in headless Chromium,
   screenshots and traces), and the verify skill for Claude Code and Codex.
 - **Packaging proof:** a frozen PyInstaller sidecar that imports every heavy dependency (Playwright,
-  pypdfium2, resvg-py, the SDK with its bundled CLI), started by a Tauri build. The user opens it on
-  the laptop.
+  pypdfium2, resvg-py, the SDK with its bundled CLI), started by a Tauri build. `make app` builds it
+  in an `archlinux` container on Pixal as an Arch package; the user installs it on the laptop with
+  `pacman -U` and opens it.
 - **UI:** the empty layout (sidebar, thread, composer, closed right panel, settings page), dark and
   light.
 

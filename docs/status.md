@@ -16,7 +16,7 @@
 
 ## Next
 
-1. Clone on Pixal and plan **M1, walking skeleton** ([milestones](decisions.md#milestones)).
+1. Clone on Pixal (Ubuntu; needs uv, Node/npm, Docker or Podman) and plan **M1, walking skeleton** ([milestones](decisions.md#milestones)).
 2. Then M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
