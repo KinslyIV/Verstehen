@@ -1,5 +1,36 @@
 # M1 task 1: rule proofs
 
+`make setup` followed by `make check` passed in `/tmp/verstehen-m1-clean`, a fresh
+`git archive` of commit `19d0005` with no pre-existing environment or build outputs.
+27 pytest tests and one CLI-created Vitest test passed. `npm run build` produced
+`app/build/index.html` using adapter-static.
+
+Tooling: uv 0.13.9, Python 3.14.10, Node 24.18.1, npm 11.16.0;
+pytest 9.2.0, ruff 0.17.5, pyrefly 1.4.1, import-linter 2.17;
+sv 1.5.0, Svelte 5.58.0, SvelteKit 3.3.1, adapter-static 4.0.1,
+TypeScript 6.0.3, Tailwind 4.3.5, shadcn-svelte 1.8.1, ESLint 10.15.0,
+eslint-plugin-svelte 3.24.1, eslint-plugin-boundaries 7.4.4,
+Prettier 3.10.1, svelte-check 4.7.8, Vite 8.3.8, Vitest 5.1.1.
+
+Implementation choices for orchestrator review:
+
+- Ruff: defaults (`E4`, `E7`, `E9`, `F`), plus `I` and all `TID`; nested configs
+  replace banned-API maps for store, API, jobs, and workers.
+- uv build backend with a src layout; root `pyrefly.toml` includes both backend and tools.
+- `make setup` explicitly restores both lockfiles. Vitest uses the CLI's unit-only option;
+  browser/component tooling remains outside this task.
+- Current sv uses SvelteKit 3 and `#lib`. Keep the CLI alias and add `$lib` for shadcn
+  and the approved boundaries. SvelteKit prints a deprecation notice for `config.alias`;
+  all checks and the production build pass.
+- shadcn's default Vega preset, Inter font, Lucide icons, default radius, neutral base/theme.
+  Init required the working `www.shadcn-svelte.com` registry hostname on this host.
+- Comment limits count physical lines including delimiters. Only `schema.d.ts` in the API
+  folder is treated as generated; handwritten API code is checked. Build/dist outputs
+  are excluded. Script scanning handles strings, regexes, and template expressions.
+- Migration lock format is `SHA256  filename`, one entry per numbered SQL file;
+  `.gitkeep` preserves the empty directory. Locking refuses all changes if an existing
+  entry fails validation. New files must begin with four digits and end in `.sql`.
+
 Temporary violations were added, checked, and removed. Each forbidden case exited 1;
 allowed cases exited 0. Paths below are from the implementation worktree.
 

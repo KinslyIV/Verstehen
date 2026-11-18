@@ -9,7 +9,9 @@
 - Python 3.14 uv project with empty feature packages and enforced dependency layers.
 - SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte initialization; no real UI yet.
 - `make setup`, `make check`, `make test`, `make fmt`, and `make lock-migrations`.
-- Comment/docstring length and migration immutability checks, with offline pytest tests.
+- Comment/docstring length and migration immutability checks, with 27 offline pytest tests.
+- `make setup` then `make check` passed from a clean source archive; Vitest and the SPA build pass.
+- [Rule proof output](m1-check-proof.md) records temporary violations and permitted imports.
 - Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
 
 ## Next
