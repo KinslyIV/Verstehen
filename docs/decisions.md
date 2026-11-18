@@ -39,13 +39,36 @@ Checked against the current Pydantic AI docs (now at `pydantic.dev/docs/ai/`), n
 | Compaction, extraction pipeline, turn claim, subscription background consent | – | App code (also app code in LH) |
 | Durable execution | Optional: Temporal, DBOS, Prefect, Restate, … | Not needed for a faithful port |
 
+## Pydantic AI spike result (2026-11-18)
+
+Throwaway test project in `~/scratch/verstehen-pydantic-spike` (not in this repo), on
+`pydantic-ai-slim==2.70.0`. It used a scripted `FunctionModel` only, with no real provider. **7/7
+tests passed.**
+
+- A valid `quiz` raises `CallDeferred`, and the run ends with `DeferredToolRequests`. An invalid one
+  raises `ModelRetry`, and the model fixes it in the same run.
+- **Mixed batch:** `research` executes and its acknowledgement is saved before the run pauses on
+  `quiz`, in both orders.
+- **Key scenario:** a research result that completes while the quiz is pending arrives on the
+  **first** model request of the answer run, together with the quiz answer. It is saved exactly
+  once, and a third run does not re-inject it.
+- **Live injection:** a `before_model_request` hook with `ctx.enqueue(ModelRequest(...,
+  metadata={"steer_id": ...}))` adds the message to the next request and to the persisted history.
+- **Cancellation:** `capture_run_messages()` recovers the completed messages.
+
+Lessons for the design:
+- Persist the full `Conversation` (`ConversationTypeAdapter`), not only messages, to keep the
+  pending deferred-call state.
+- Deduplicate steers by id against the **full saved history**. Don't use `new_messages()` as the
+  delivery record: history normalization can resurface an older steer there.
+- Acknowledge delivery only after the history is saved. With SQLite this can be one transaction.
+
 ## Open questions
 
 Raised while writing the Part A docs. Each one links to where it came up.
 
 ### Foundation
 
-- **Confirm Pydantic AI with a spike** (see the fit table below) before committing to it.
 - **Claude Code provider via the Claude Agent SDK** (user direction, 2026-11-18), instead of
   LearnHarness's own CLI and MCP bridge. Still open: how the Agent SDK, which runs its own agent loop,
   fits under Pydantic AI's loop.
