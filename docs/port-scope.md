@@ -8,10 +8,11 @@
   - The knowledge graph and imports: propositions, chains, clusters, citations, source import and extraction, reconciliation, and the graph UI.
   - Subscription and CLI bridges: Claude Code, ChatGPT, subscriptions, and custom providers.
 - **Deferred** (mentioned only briefly; ported later): the plugin API v1 (plugin questions, problems, and workers) and flashcards.
+- **Excluded:** microphone dictation / speech-to-text (user decision, 2026-11-18: not needed).
 
 ## Open questions
 
-- Status of the remaining smaller features (dictation/STT, themes, desktop packaging, search, activity dock).
+- Status of the remaining smaller features (themes, desktop packaging, search, activity dock).
 - Whether existing LearnHarness chats and graph data must be importable.
 - Whether **practice sessions** (`kind: "practice"`, the practitioner agent, the `problem` and
   `conclude` tools) are part of the "core teaching loop". See
