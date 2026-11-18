@@ -11,8 +11,8 @@
   - Subscription and CLI bridges: Claude Code, ChatGPT, subscriptions, and custom providers.
 - **Deferred** (mentioned only briefly; ported later): the plugin API v1 (plugin questions, problems, and workers) and flashcards.
 - **Excluded:** microphone dictation / speech-to-text (user decision, 2026-11-18: not needed).
+- **No LearnHarness data import.** Verstehen starts fresh, with an empty graph and no sessions (user decision, 2026-11-18). Its formats therefore don't need to stay compatible with LearnHarness's.
 
 ## Open questions
 
 - Status of the remaining smaller features (themes, desktop packaging, search, activity dock).
-- Whether existing LearnHarness chats and graph data must be importable.
