@@ -351,9 +351,18 @@ In the port:
 ## Testing (Q13)
 
 - Python 3.14; uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
-- **One command runs everything** (decided): `make check` at the repo root runs pytest, ruff, pyrefly,
-  svelte-check, ESLint, Prettier, and Vitest. `make test` runs only tests; `make fmt` fixes formatting.
-  No CI for now; `make check` is required before every commit.
+- **One command runs everything** (decided): `make check` at the repo root runs pytest, ruff,
+  pyrefly, svelte-check, ESLint, Prettier, Vitest, and the code-rule checks below. `make test` runs
+  only tests; `make fmt` fixes formatting. No CI for now; `make check` is required before every
+  commit.
+- **Code rules are checks** (decided): the comment checker (at most 3 lines per comment or docstring
+  block), import-linter (dependency direction), ruff banned-API (`sqlite3` only in `store/`, Pydantic
+  AI only in `teaching/`, `session/`, `providers/`), ESLint boundaries, and unchanged applied
+  migrations.
+- **`make verify`** (decided) runs the sidecar with the fake-model provider and a temporary data dir,
+  plus the SvelteKit app in headless Chrome via Playwright. Scripted flows save screenshots and
+  traces. [`feature-map.md`](feature-map.md) lists each feature and its flow. The Tauri shell is
+  checked by hand on the laptop.
 - pytest, with Pydantic AI's `FunctionModel` scripting the model's replies, a real temporary SQLite
   database, and no network.
 - Each Part A behavior gets a test named after it: question pause and answer, sibling questions,

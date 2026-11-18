@@ -19,6 +19,10 @@ Documentation only. No code yet.
 
 ## Reading order
 
+Start with [status](docs/status.md) (where the project is now) and, for coding agents,
+[AGENTS.md](AGENTS.md).
+
+
 **Part A explains how LearnHarness works today.** Each doc describes current behavior with
 `file:line` references into LearnHarness and ends with *Port notes*.
 

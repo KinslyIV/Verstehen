@@ -1,10 +1,20 @@
 # Verstehen: instructions for coding agents
 
-> Status: **draft for review**.
+## What this is and why
 
-Verstehen is a port of LearnHarness (TypeScript/Next.js) to Python + Pydantic AI, with a Tauri +
-SvelteKit desktop app. It keeps LearnHarness's learning flow and knowledge graph **exactly**, with
-clearer code. Start with the [README](README.md) reading order.
+Verstehen is a learning app: an AI tutor that probes what you know, plans a lesson, teaches with
+questions, and builds a knowledge graph of what you've learned. It is a **port of LearnHarness**
+([github.com/amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness),
+TypeScript/Next.js) to Python + Pydantic AI, with a Tauri + SvelteKit desktop
+app that runs locally on the user's laptop.
+
+The port has two goals:
+1. **Keep LearnHarness's learning flow and knowledge graph exactly**, rebuilt with code that a human
+   can open, read, and understand.
+2. **Understand how LearnHarness works.** The docs in `docs/learnharness/` explain it.
+
+Read [`docs/status.md`](docs/status.md) first: it says where the project is and what's next. Then
+follow the reading order in the [README](README.md).
 
 # No guessing
 
@@ -18,6 +28,21 @@ First investigate and plan rigorously, asking design questions along the way. Ge
 by the user, and only then implement. Implementation is mechanical execution of an approved plan,
 not interpretation.
 
+## How we write code
+
+- **Simple first.** Choose the simplest implementation that fully does the job. Never cut a
+  required behavior for simplicity, and never add an abstraction for a problem we don't have yet.
+- **The code explains itself.** Names, types, and small functions carry the meaning. If code needs a
+  long comment to be understood, rewrite the code.
+- **Comments are rare and short: at most 3 lines** (docstrings included; `make check` enforces it).
+  Never use a comment to justify a workaround. Fix the cause, or ask.
+- **Follow the Zen of Python** (`import this`), but not where it makes the code harder to
+  understand. Understandable wins.
+- **The codebase is the prompt.** Agents copy what they see, so there is one way to do each thing.
+  Follow the existing pattern. If a pattern is bad, say so instead of copying it.
+- **Corrections become checks.** When the user corrects something that a tool could catch, propose
+  a check (lint rule, import rule, test) rather than a new line in this file.
+
 ## Where decisions live
 
 - **Decided** is whatever [`docs/decisions.md`](docs/decisions.md) and
@@ -25,43 +50,35 @@ not interpretation.
 - **LearnHarness behavior is the specification.** The Part A docs (`docs/learnharness/`) describe it
   with `file:line` references at LearnHarness commit `a636647`. When a doc and the LearnHarness code
   disagree, the code is right: report the mismatch, don't pick one yourself.
-- **A behavior change from LearnHarness** needs a user decision recorded in `docs/decisions.md`.
-- **A new decision** made with the user is added to `docs/decisions.md` in the same commit as the
-  code that uses it.
+- **A behavior change from LearnHarness** needs a user decision recorded in `docs/decisions.md`, in
+  the same commit as the code that uses it.
 
-## Commands
+## Verify every change
 
-Run from the repository root:
+Every change comes with a way to prove it works, and you run it before you say it's done.
 
 | Command | What it does |
 |---|---|
-| `make check` | everything: pytest, ruff check, ruff format --check, pyrefly; svelte-check + TypeScript, ESLint + Prettier, Vitest |
+| `make check` | lint, format, types, code rules, and all tests. Run before every commit. |
 | `make test` | only the tests |
+| `make verify` | the app with the fake model in headless Chrome: scripted flows that save screenshots and traces |
 | `make fmt` | fix formatting |
 
-- **Run `make check` before every commit.** Don't commit with failing checks.
-- Tests are offline. They use Pydantic AI's `FunctionModel` and a temporary SQLite database.
-- **Tests against real models use the user's subscriptions.** Run them only when the user asks.
-
-## Code rules
-
-- **Layout** is in [architecture](docs/architecture.md#repository-layout-q6): one package per
-  feature under `backend/src/verstehen/`, the app under `app/`.
-- **Dependency direction:** `api` → `session`, `sidechat`, `jobs`, `graph` → `teaching`,
-  `providers` → `store`. Never import upwards.
-- **Only `store/` runs SQL** or imports `sqlite3`. Schema changes are new numbered migration files;
-  never edit an applied migration.
-- **The entry log is append-only.** Never update or delete entries.
-- **Pydantic AI types stay inside** `teaching/`, `session/` (projection and run loop), and
-  `providers/`. The database, API, and UI never see them.
-- **Vendored code** in `providers/claude_code/` changes only as recorded in its `VENDORED.md`.
-- **Prompts** in `teaching/prompts/` are LearnHarness's prompts. Never reword them without a
-  decision.
+- **Logic** gets a test named after the behavior. Tests are offline, using Pydantic AI's
+  `FunctionModel` and a temporary data dir.
+- **Anything the learner sees** gets a `make verify` flow. Look at the screenshots yourself.
+- **[`docs/feature-map.md`](docs/feature-map.md)** lists every feature, how to reach it, and how to
+  verify it. A new or changed feature updates its entry.
+- **Real models use the user's subscriptions.** Run them only when the user asks.
 
 ## Data and secrets
 
-- **Never touch the user's real data** in `~/.local/share/verstehen`. Development and tests always
-  set `VERSTEHEN_DATA_DIR` to a separate directory.
-- **Never read, print, or commit credentials**: `credentials.json`, the Claude Code login, or the
+- **Never touch the user's real data** in `~/.local/share/verstehen`. Always set `VERSTEHEN_DATA_DIR`
+  to a separate directory.
+- **Never read, print, or commit credentials**: `credentials.json`, the Claude Code login, the
   ChatGPT tokens.
 - Commit only when the user asks, and never push without being asked.
+
+## When you finish a piece of work
+
+Update [`docs/status.md`](docs/status.md): what's done, what's next, and any open questions.
