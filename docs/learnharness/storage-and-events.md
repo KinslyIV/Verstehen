@@ -113,15 +113,14 @@ the job recovery sweep (see [subagents](subagents-and-background-work.md#crash-r
 
 ## Port notes
 
-- **What matters most is the append-only record plus deterministic ids.** That's what makes
-  recovery reason-able, and it's independent of the storage technology.
-- **Files with synchronous writes and in-process locks** work because there's exactly one Node
-  process. Whether the port keeps files or moves to a database (for example SQLite, which the
-  `ports.ts` comment already anticipates) is an **open question**. A database would allow real
-  transactions: graph merge plus coverage, job result plus delivery flag.
-- **In-memory coordination is spread across 8 `globalThis` registries.** Putting the per-chat ones
-  behind one runtime object would make "what does the server know about this chat right now"
-  answerable in one place.
-- **The two-stream model** (per-turn replayable stream plus fire-and-forget "refetch" notifications)
-  is simple and worth keeping. Whether it maps onto LangGraph's streaming or stays custom is part
-  of the framework **open question**.
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
+- **What matters most is the append-only record plus deterministic ids.** That's what makes recovery
+  reason-able, and it's independent of the storage technology. Both are kept.
+- **Decided: SQLite** replaces files with synchronous writes and in-process locks. It allows real
+  transactions: graph merge plus coverage, job result plus delivery flag, turn save plus steer
+  acknowledgment. WAL mode, one write connection, short transactions.
+- **Decided: one `SessionRuntime` per session** replaces the 8 `globalThis` registries for per-chat
+  state, so "what does the server know about this chat right now" is answered in one place.
+- **Decided: the two-stream model is kept**, custom, over FastAPI SSE: a per-turn replayable stream
+  plus fire-and-forget "refetch" notifications.

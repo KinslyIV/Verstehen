@@ -207,23 +207,25 @@ re-issues the question.
 
 ## Port notes
 
-- **The core contract is small and worth keeping exactly:**
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
+- **The core contract is small and kept exactly:**
   1. a question tool call ends the run;
   2. the pending state is "newest assistant message has an unanswered question call";
   3. the answer becomes that call's tool result;
   4. the model reads only what the learner added.
-- **Reimplementing the stop on another framework.** LearnHarness needs both Pi's `terminate` and
-  a `finishTurn` hook. On another framework (for example Deep Agents/LangGraph), the
-  equivalent is a tool that triggers an interrupt, or a post-tool routing edge to END. The
-  mixed-batch rule ("stop only if every question call succeeded") must be reproduced
-  explicitly.
-- **Grading in the browser is simple, but it means the answer key reaches the client.**
-  Fine for single-user local use. Whether to keep it is an **open question**.
-- **The sibling rule exists because of provider message-shape constraints.** It is the
-  kind of thing that should get one named function and a test in the port.
+- **The stop on Pydantic AI.** A question tool raises `CallDeferred`; the run ends with
+  `DeferredToolRequests`, and the answer comes back as a deferred tool result next run. The spike
+  confirmed that other calls in the same response still run before the pause. The mixed-batch rule
+  ("stop only if every question call succeeded") still needs its own explicit code and test.
+- **Grading stays in the UI** (decided). The answer key reaches the client, which is fine for a
+  single-user local app.
+- **The sibling rule exists because of provider message-shape constraints.** It gets one named
+  function and a test.
 - **Two "thinking" channels, confidence stops, predict/check roles, and the reveal rule** are
   pedagogical behavior. They belong in the teaching domain, not in the agent plumbing.
-- **Question logic is currently spread** across `core/pending.ts`, `core/question-core.ts`,
-  `core/native-messages.ts`, `core/input-events.ts`, `agent/tools.ts`, `agent/tool-execute.ts`,
-  `agent/teacher-agent.ts`, and `server/chat-handler.ts`. A single `questions` module in the port
-  would make this whole document map to one place.
+- **Decided: question logic lives in one place.** In LearnHarness it is spread across
+  `core/pending.ts`, `core/question-core.ts`, `core/native-messages.ts`, `core/input-events.ts`,
+  `agent/tools.ts`, `agent/tool-execute.ts`, `agent/teacher-agent.ts`, and `server/chat-handler.ts`.
+  The port has one `teaching/questions` module that owns pending detection, siblings, answers,
+  dismissal, and retry, so this whole document maps to one place.

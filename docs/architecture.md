@@ -155,6 +155,22 @@ A registry maps session id → runtime.
 - **Nothing here is durable.** After a restart, runtimes are rebuilt empty, and the database holds
   everything needed to recover (write-ahead input, job delivery flags, coverage), as in LH.
 
+## Improvements over LearnHarness (decided)
+
+Structure changes only; behavior stays the same.
+
+1. **Named turn stages.** Each stage of a turn is its own step that returns `Refused(status, reason)`
+   or `Continue(state)`, in place of LH's single ~790-line `handleChatInput`.
+2. **Event-driven delivery.** Asyncio events in the `SessionRuntime` wake the steer queue. There's no
+   polling and no TTL leak guards.
+3. **One question module.** `teaching/questions` owns pending detection, siblings, answers,
+   dismissal, and retry.
+4. **One context-update step.** Job results, composer steers, and side-chat updates are delivered by
+   one step before each model call, each as a named kind. The probe handoff is an explicit phase
+   transition.
+5. **One description per concept.** It's in the docs plus a test named after the behavior, with few
+   duplicating comments.
+
 ## A turn, end to end
 
 Port of the 13 stages in [turn lifecycle](learnharness/turn-lifecycle.md), in module terms:
@@ -307,3 +323,9 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   provider is **API key only**, so a Grok subscription login has no Pydantic AI support and would be
   our own code.
 - **`AGENTS.md` for the Verstehen repo:** a draft is in the repo root, awaiting review.
+- **Subscription staging.** LH stages automatic inputs until their request is admitted, then rolls
+  them back on refusal. Can `ProviderPolicy` check admission before saving instead, with the same
+  behavior? To verify against LH, then decide.
+- **Where images and files are stored.** LH keeps learner images (`ImageSnapshot`) as base64 inside
+  the chat JSON, and demo HTML and SVGs inside records. Options: a blob table, or files in the data
+  dir referenced by id.

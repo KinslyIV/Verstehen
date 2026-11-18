@@ -52,6 +52,11 @@
 | 2026-11-18 | **SQLite tables as proposed** in [architecture](architecture.md#sqlite-tables) (approved). | User decision. |
 | 2026-11-18 | **Architecture proposals approved:** dependency direction (`api` → features → `teaching`/`providers` → `store`), one lock and named transition methods per `SessionRuntime`, SSE read with `fetch` (token in a header), the startup handshake (Tauri makes the token; the sidecar prints its port), and the UI session controller. | User decision; see [architecture](architecture.md). |
 | 2026-11-18 | **SQLite use:** WAL mode, one write connection owned by `store/`, short transactions (never held open across a model call). | User decision (approved proposal). |
+| 2026-11-18 | **Turn handling as named stages** (improvement 1): `handleChatInput`'s stages become separate steps (validate, gate, claim, save input, build agent, run, settle), each returning `Refused(status, reason)` or `Continue(state)`. Behavior unchanged. | User decision: structural improvements over LearnHarness; behavior unchanged. |
+| 2026-11-18 | **Event-driven delivery** (improvement 2): the `SessionRuntime` wakes the steer queue with asyncio events. LH's polling (`waitForIdle`, `POLL_MS`/`GRACE_MS`) and TTL leak guards are not ported. | User decision: structural improvements over LearnHarness; behavior unchanged. |
+| 2026-11-18 | **One question module** (improvement 3): `teaching/questions` owns pending detection, siblings, answers, dismissal, and retry (spread over 8 files in LH). | User decision: structural improvements over LearnHarness; behavior unchanged. |
+| 2026-11-18 | **One context-update step with named kinds** (improvement 4): job results, composer steers, and side-chat updates go through one step before each model call, each as its own kind. The probe handoff is an explicit phase transition. Saved entries stay as in LH. | User decision: structural improvements over LearnHarness; behavior unchanged. |
+| 2026-11-18 | **One authoritative description per concept** (improvement 6): each concept is described once, in the docs plus a test named after the behavior, with few duplicating comments. | User decision: structural improvements over LearnHarness; behavior unchanged. |
 
 ## Pydantic AI fit (desk check, 2026-11-18)
 

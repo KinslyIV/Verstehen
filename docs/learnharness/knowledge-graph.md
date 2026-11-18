@@ -222,12 +222,13 @@ code.*
 
   Port it stage by stage with the prompts verbatim.
 - **Coverage by content fingerprint** makes extraction idempotent and restartable. Keep it.
-- **The drifted comments** are a reminder that the port should keep one authoritative description
-  per concept, and this doc should be checked against tests (`tests/extraction*`) before porting.
-- **Concurrency** relies on in-process locks and `globalThis` registries. A port with a real database
-  (for example SQLite) could make the merge plus coverage checkpoint **one transaction**. That would
-  be an implementation improvement that keeps the same behavior. Whether to change storage is an
-  **open question**.
+- **Decided: one authoritative description per concept.** The drifted comments in LearnHarness are
+  the reason: in the port, each concept is described once (these docs plus a test named after the
+  behavior), with few comments repeating it. Check this doc against LearnHarness's tests
+  (`tests/extraction*`) before porting.
+- **Concurrency** relies on in-process locks and `globalThis` registries in LearnHarness. **Decided:**
+  with SQLite, the merge plus coverage checkpoint is **one transaction**, an implementation
+  improvement that keeps the same behavior.
 - **Candidate ranking for the auditor** (`createPropositionCandidateSearch`,
   `src/core/proposition-candidates.ts:75`) is plain **lexical BM25** (k1 = 1.2, b = 0.75) over each
   node's name + statement and each name + alias, scored separately. It drops English stop words and

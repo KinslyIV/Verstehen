@@ -202,28 +202,26 @@ LearnHarness's docs note that these in-memory composer steers aren't as durable 
 
 ## Port notes
 
-- **The core idea is simple:**
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
+- **The core idea is simple and kept:**
   1. a tool starts a worker and acknowledges instantly;
   2. the worker saves its result plus a "delivery pending" flag;
   3. a per-session queue delivers the result as a message, either into the running agent at a
      safe boundary or by starting a new turn when idle;
   4. delivery is confirmed by the marker being in the saved transcript.
-- **Most of the complexity comes from three things:**
+- **Most of LearnHarness's complexity here comes from three things:**
   - Pi's steering semantics: boundaries, the stopper running before the poll, and stranding;
   - subscription consent and admission;
   - all state being module-global `globalThis` maps that are coordinated by polling
     (`waitForIdle` with `POLL_MS`/`GRACE_MS`).
-
-  A port could model the session as an explicit state machine (`idle` / `running` /
-  `waiting-for-learner` / `paused`) with an event-driven delivery queue instead of polling.
-- **Deep Agents differs here.** Its subagents (`task` tool) are synchronous by default: the parent
-  waits for the result. LearnHarness needs **async, fire-and-forget** workers whose results arrive
-  later. Deep Agents' async-subagent support may cover part of this, but some of it depends on
-  LangGraph Agent Server. This needs a deliberate design: an **open question**.
-- **The "inject between messages in the same run" behavior is a real UX feature**: the teacher
-  weaves research in mid-lesson. On LangGraph it would need a custom check between model and tool
-  steps, for example middleware that drains a queue before each model call.
-- **The probe handoff reuses the steer machinery but is a different concept**, a phase transition.
-  The port could make it an explicit transition instead of a special-cased steer kind.
-- **Composer steers (mid-turn learner messages) are a third user of the same queue.** Keeping these
-  three uses distinct but sharing one delivery primitive would make the design easier to follow.
+- **Decided: event-driven delivery.** The session's `SessionRuntime` owns the queue, and asyncio
+  events ("turn ended", "result ready") wake delivery. No polling loops, no TTL leak guards.
+- **Workers are asyncio tasks** in the Python sidecar, each running its own Pydantic AI agent, with a
+  SQLite `jobs` table. Recovery runs when the UI polls for jobs, as in LearnHarness.
+- **Mid-run injection** (the teacher weaves research in mid-lesson) uses Pydantic AI's
+  `before_model_request` hook. The spike confirmed that injected messages are saved exactly once.
+- **Decided: one delivery step, three named kinds.** Job results, the probe handoff, and composer
+  steers (plus side-chat updates) all go through one "context update before the next model call"
+  step, but each is its own named kind. **The probe handoff is written as an explicit phase
+  transition**, not a special-cased steer. The saved entries stay the same as in LearnHarness.

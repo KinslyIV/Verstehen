@@ -167,19 +167,19 @@ Step by step:
 
 ## Port notes
 
-These are first impressions, to be refined as the other Part A docs are written.
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
 
 - **`chat-handler.ts` is the main complexity hotspot.** `handleChatInput` is a single ~790-line
-  function covering validation, gating, compaction, write-ahead persistence, agent
-  construction, side-chat budgeting, subscription admission, and settlement. Splitting it into
-  named stages would make the port readable: *validate → gate → claim → save input → build
-  agent → run → settle*.
-- **The "record is the agent state" idea is simple and worth keeping.** Phase is derived from
-  the transcript (`probe_done`) rather than stored. That is one source of truth.
-- **The question-stop contract is central.** A question tool ends the run, and the answer becomes
-  the tool result in the next turn. Any agent framework we choose has to support it, including
-  mixed tool batches.
+  function covering validation, gating, compaction, write-ahead persistence, agent construction,
+  side-chat budgeting, subscription admission, and settlement. **Decided:** the port splits it into
+  named stages (see [turn lifecycle](turn-lifecycle.md#port-notes)).
+- **"The record is the agent state" is kept.** Phase is derived from the transcript (`probe_done`),
+  not stored: one source of truth. The port's record is its own append-only entry log, projected to
+  Pydantic AI messages before each run.
+- **The question-stop contract is central.** Pydantic AI covers it with deferred tools
+  (`CallDeferred`), including mixed tool batches (confirmed by spike).
 - **Much of the incidental complexity comes from provider variety** (subscriptions, CLI bridges,
-  per-provider admission) and plugins. Plugins are out of scope for the first port.
-- **Module-global state** (the turn registry, the steer queues, `globalThis` registries) does
-  the coordination inside one process. The port should make that ownership explicit.
+  per-provider admission) and plugins. Plugins are deferred. The first implementation has two
+  providers, Claude Code and ChatGPT.
+- **Module-global state** (the turn registry, the steer queues, `globalThis` registries) does the
+  coordination inside one process. **Decided:** one `SessionRuntime` per session owns it.

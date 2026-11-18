@@ -119,27 +119,27 @@ Summary of LearnHarness `docs/custom-providers.md`, with code in `src/server/cus
 
 ## Port notes
 
-- **Subscriptions and the Claude Code bridge are in scope** for the first port
-  ([port scope](../port-scope.md)). This is the **largest source of incidental complexity** in
-  LearnHarness:
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
+- **Subscriptions and the Claude Code bridge are in scope.** This is the **largest source of
+  incidental complexity** in LearnHarness:
   - foreground/background classification;
   - per-request admission;
   - staged automatic inputs;
   - CLI child processes behind an MCP bridge.
 
   It reaches into `chat-handler.ts`, side chat, jobs, and compaction.
-- **Recommendation for the port's structure (a proposal, not yet decided).** Keep the learning core
-  provider-agnostic behind one interface ("stream a model call; tell me whether this request is
-  admitted; report usage"). Give each provider kind its own adapter module. The background-consent
-  rule is a policy the core asks about, not logic spread through the turn handler.
-- **The framework affects reuse.**
-  - **Pi** already provides most API-key providers and the Copilot/Grok/ChatGPT OAuth flows. On a
-    Python or Deep Agents stack, those would have to come from LangChain's chat-model integrations,
-    or be re-implemented. In particular, the ChatGPT, Copilot, and Grok subscription flows depend on
-    Pi SDK features.
-  - **The Claude Code CLI bridge** is LearnHarness's own code (CLI process plus MCP bridge), so it
-    could be ported to any stack.
-
-  This is a key input to the language and framework **open question**.
+- **Decided structure:** `resolve(role)` returns the model, and a `ProviderPolicy` service answers
+  "may this request run now?" by purpose. Each provider kind is one adapter module. Turns, side chat,
+  jobs, and compaction never look at the provider kind.
+- **First implementation: Claude Code and ChatGPT only.**
+  - **ChatGPT** uses Pydantic AI's `openai-chatgpt` provider, the same "Sign in with ChatGPT" OAuth
+    flow as LearnHarness.
+  - **Claude Code** uses the vendored `ClaudeCodeModel` (Claude Agent SDK) instead of LearnHarness's
+    CLI process plus MCP bridge. History is replayed natively, and tool calls are deferred before
+    execution.
+- **Later:** API keys and the custom endpoint (built into Pydantic AI), Copilot (Pydantic AI has a
+  device-code flow), and Grok (Pydantic AI's `xai` is API key only, so a subscription login would be
+  our own code).
 - **Where it runs.** The app runs locally as a desktop app, so subscription credentials and the
   Claude Code login live on the user's own machine.

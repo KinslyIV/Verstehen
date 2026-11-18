@@ -166,10 +166,13 @@ When the last assistant response failed (`stopReason: "error"`), the learner can
 
 ## Port notes
 
-- **`handleChatInput` already has a clear stage structure** (the table above). It's just written
-  as one function. In the port, each stage could be a named step with an explicit result
-  (`Refused(status, reason)` or `Continue(state)`). That alone would make the turn readable.
-- **Rules worth keeping exactly:**
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
+- **Decided: `handleChatInput` becomes named stages.** The stage structure in the table above is
+  kept, but each stage is its own step (validate, gate, claim, save input, build agent, run, settle)
+  that returns an explicit result: `Refused(status, reason)` or `Continue(state)`. Behavior is
+  unchanged.
+- **Rules kept exactly:**
   - refusal before the claim leaves no trace;
   - the input is saved before inference;
   - settlement saves before releasing the claim;
@@ -177,12 +180,10 @@ When the last assistant response failed (`stopReason: "error"`), the learner can
   - the agent runs independently of the HTTP connection;
   - reattaching replays the turn's events.
 - **Compaction between runs only** is a neat simplification that depends on question tools ending
-  runs. The summary prompt's four sections are pedagogical content, and they should move over
-  verbatim.
-- **Module-global registries** (liveness, runs, steers) plus TTL leak guards are how LearnHarness
-  coordinates. The port could put them behind one `SessionRuntime` object per chat that owns its
-  turn state.
-- **Framework fit is an open question.** LangGraph has its own persistence (checkpointers) and
-  streaming. Whether we keep LearnHarness's "the record is the state" model or adopt checkpoints
-  matters a lot here. Using LangGraph checkpoints would change how write-ahead saving, retry, and
-  compaction work.
+  runs. The summary prompt's four sections are pedagogical content and move over verbatim.
+  **Decided:** only this compaction is used, never provider-native compaction.
+- **Live state** (liveness, runs, steers, event logs, plus TTL leak guards) moves into one
+  `SessionRuntime` per session.
+- **Persistence:** the port keeps "the record is the state". Its record is an append-only entry log
+  in SQLite (Pydantic AI runs are stateless over the projected history), so write-ahead saving,
+  retry, and compaction work as in LearnHarness.

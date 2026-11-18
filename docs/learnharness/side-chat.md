@@ -126,22 +126,22 @@ Components: `components/side-thread.tsx`, `components/use-side-thread.ts`.
 
 ## Port notes
 
+Outcomes are recorded in [decisions](../decisions.md) and [architecture](../architecture.md).
+
 - **The concept splits cleanly into three pieces:**
   1. a **tool-less helper call** over a redacted reconstruction of the visible lesson;
   2. **durable threads** keyed by teaching segment;
   3. **append-only delivery** of new exchanges into the main context, with the delivered state
      stored in the delivered entries themselves.
 
-  Each can be its own small module.
+  Each is its own small module in `sidechat/`.
 - **Reconstructing the visible lesson with answer keys removed** (`sideChatLessonDocument`) is a
-  security-relevant function for the pedagogy: the helper must not leak quiz answers. It deserves
-  focused tests in the port.
-- **Delivery uses the same "inject before the next model call" hook as job results**
-  (`beforeCycle` / Pi steering). In the port, one *context-update* step before each model call
-  could serve both side-chat delivery and job delivery.
-- **Most of the complexity in `chat-handler.ts` around side chat is budget enforcement and
-  subscription admission** (tentative/admitted id sets). Subscriptions are in scope for the first
-  port ([port scope](../port-scope.md)), so the port needs the admission part too. It should be
-  isolated from the side-chat logic itself.
-- **Segment = "assistant output between learner inputs"** is a derived concept used by both the
-  side chat and the UI. It should be a named, documented function in the port's domain layer.
+  security-relevant function for the pedagogy: the helper must not leak quiz answers. It gets
+  focused tests.
+- **Decided: delivery uses the shared context-update step**, the same one that delivers job results
+  (`before_model_request` hook), as its own named kind.
+- **Most of the side-chat complexity in `chat-handler.ts` is budget enforcement and subscription
+  admission** (tentative/admitted id sets). Admission moves behind `ProviderPolicy`; whether the
+  staging itself can be removed is still open (see [decisions](../decisions.md)).
+- **Segment = "assistant output between learner inputs"** is a derived concept used by both the side
+  chat and the UI. It is a named, documented function in the domain layer.

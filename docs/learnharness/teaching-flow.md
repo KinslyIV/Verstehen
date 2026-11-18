@@ -179,20 +179,20 @@ prompt (`prompts/practice/`, with sections such as *The three modes*, *Posing a 
 
 ## Port notes
 
+Outcomes are recorded in [decisions](../decisions.md).
+
 - **The pedagogy lives almost entirely in prompts and tool contracts.** The code enforces only:
   - one question per turn (the stop rule);
   - a required `nodeId` and `type` on teach questions;
   - a valid acyclic map;
   - `probe_done` being refused while a question is pending.
 
-  Everything else (binary search, predict/check, unconditional truths) is doctrine. To keep the
-  exact learning flow, **the prompt fragments can move over verbatim**, along with the
-  composition order and the override mechanism.
-- **The phase is derived, which is good:** one source of truth. Keep it.
-- **Inconsistency found.** The `plan_init` tool description says *"5–15 nodes … compress"*
+  Everything else (binary search, predict/check, unconditional truths) is doctrine. **The prompt
+  fragments move over verbatim**, along with the composition order and the override mechanism.
+- **The phase is derived, which is good:** one source of truth. Kept.
+- **Inconsistency resolved.** The `plan_init` tool description says *"5–15 nodes … compress"*
   (`tools/plan.ts:67-72`), but `teacher/10-planning.md` says *"No size ceiling … elaborate is
-  fine"*. Which one should win in the port is an **open question**.
-- **Plan acceptance** is conversational only. A port that wants an explicit "plan accepted" state
-  would be a behavior change, which the faithful-port rule excludes.
-- **Practice sessions are not explicitly named** in the agreed port scope. Whether they're part
-  of the "core teaching loop" is an **open question** (recorded in [port scope](../port-scope.md)).
+  fine"*. **Decided:** 5–15 nodes; the planning prompt is changed to match.
+- **Plan acceptance** is conversational only. An explicit "plan accepted" state would be a behavior
+  change, which the faithful-port rule excludes.
+- **Practice sessions are in scope** (decided).
