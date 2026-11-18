@@ -34,8 +34,9 @@ Start with [status](docs/status.md) (where the project is now) and, for coding a
 **Part B covers the port.**
 
 10. [Port scope](docs/port-scope.md)
-11. [Architecture](docs/architecture.md)
-12. [Decisions](docs/decisions.md)
+11. [Workflow](docs/workflow.md)
+12. [Architecture](docs/architecture.md)
+13. [Decisions](docs/decisions.md)
 
 ## Ground rules for these docs
 
