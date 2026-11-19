@@ -7,11 +7,15 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
 from verstehen.api.access import request_refusal
+from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.health import router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.config import Settings
-from verstehen.providers.accounts import AccountsService
+from verstehen.providers.accounts import AccountAdapter, AccountsService
+from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+from verstehen.providers.chatgpt.credentials import CredentialsStore
+from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
 from verstehen.providers.fake import FakeAccountAdapter
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
@@ -43,11 +47,13 @@ def create_app(settings: Settings) -> FastAPI:
             entries_store = EntriesStore(database)
             settings_store = SettingsStore(database)
             notifications = Notifications()
-            accounts_service = AccountsService(
-                [FakeAccountAdapter(settings.fake_model_script)]
-                if settings.fake_model_script
-                else []
-            )
+            chatgpt_adapter = ChatGPTAccountAdapter(CredentialsStore(settings.data_dir))
+            chatgpt_sign_in_service = ChatGPTSignInService(chatgpt_adapter)
+            adapters: list[AccountAdapter] = [chatgpt_adapter]
+            if settings.fake_model_script:
+                adapters.append(FakeAccountAdapter(settings.fake_model_script))
+            accounts_service = AccountsService(adapters)
+            app.state.chatgpt_sign_in_service = chatgpt_sign_in_service
             resolver_service = ResolverService(settings_store, accounts_service)
             provider_policy = ProviderPolicy(settings_store)
             usage_store = UsageStore(database)
@@ -83,6 +89,8 @@ def create_app(settings: Settings) -> FastAPI:
             finally:
                 await runtimes.close()
                 await title_service.close()
+                await chatgpt_sign_in_service.close()
+                await chatgpt_adapter.close()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -114,4 +122,5 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(providers_router)
+    app.include_router(chatgpt_router)
     return app

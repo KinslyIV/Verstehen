@@ -33,6 +33,23 @@ See the [verify skill](../.agents/skills/verify/SKILL.md) for build guard limits
 | Unusable session model (API; menu notice comes in T4) | Send with a removed/unavailable account or model returns 503 `model_unavailable` and its reason before saving input. | Offline refusal tests; T4 adds the model-menu flow | `test_provider_core.py`, `test_provider_api.py`: removed account, sign-in state, missing model, typed refresh/build failures, catalog state/reason, no writes or claim |
 | Long reply responsiveness | Stream a several-thousand-word fake reply with code, math, Mermaid; retain editable composer. | `session-performance`, `session-performance-realistic` | Performance attachment records input action latency and main-thread long tasks |
 
+| ChatGPT accounts (API; Settings UI comes in T4) | `GET/POST /api/accounts/chatgpt`, `GET /api/accounts/chatgpt/sign-in/{id}`, `POST /api/accounts/chatgpt/{account}/sign-in`, `DELETE /api/accounts/chatgpt/{account}`. Sign-in returns a browser URL; status and account lists contain no credentials. `/api/models` discovers each account separately. | Existing fake-model suite checks shared startup wiring; T4 adds `settings-accounts`. Live browser/provider smoke test is opt-in only. | `test_chatgpt.py`: private atomic credentials, stable install identity, isolated accounts and bearers, refresh persistence/replay, known/visible model filtering, conservative capabilities, authorization state, inference mapping, removal/replacement dispatch guards, subject deduplication, sign-in consent/registration, safe status/errors, concurrency/shutdown. |
+
+## ChatGPT live smoke test (opt-in)
+
+Run on the machine with the browser, with port `127.0.0.1:1455` free:
+
+```sh
+uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_chatgpt_live.py
+```
+
+It opens (and prints) a new sign-in URL, waits up to five minutes for browser consent, lists the
+account's offered known models, and requests one short reply. Set `VERSTEHEN_CHATGPT_LIVE_MODEL`
+to an offered model ID to choose it; otherwise the first offered known model is used. This spends
+subscription usage. The test uses pytest's temporary data directory for all credentials and does
+not read the installed app's accounts. When running remotely, the browser's loopback callback
+must reach the test machine's port 1455. `make check` and ordinary pytest runs exclude `live`.
+
 ## Desktop app
 
 Install the Arch package and open **Verstehen** from the launcher. `make app` verifies the frozen

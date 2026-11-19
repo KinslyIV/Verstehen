@@ -127,8 +127,9 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 
 ## Next
 
-1. **M3 real providers:** T1 core is implemented on `m3-t1-core`, pending review
-   ([plan](plans/m3-real-providers.md)). Next: T2 Claude Code and T3 ChatGPT on T1; then T4 UI.
+1. **M3 real providers:** T1 core is reviewed at `d12b751`; T3 ChatGPT backend is implemented
+   for review ([plan](plans/m3-real-providers.md)). T2 Claude Code proceeds independently on T1;
+   T4 then integrates provider Settings and the model menu.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions
@@ -149,6 +150,30 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 - Later providers remain in [architecture](architecture.md#open-questions).
 
 ## M3 progress
+
+- **T1 provider core:** built and reviewed on `m3-t1-core` (`d12b751`): typed settings, account
+  adapters, catalog/resolution, session model pins, background policy, usage, and foreground titles.
+- **T3 ChatGPT backend:** built on T1 in `m3-t3-chatgpt`: private atomic multi-account credentials,
+  stable install host identity, browser OAuth/sign-in status/reconnect/removal routes, account-owned
+  authenticated clients and persisted refresh, known/visible model filtering, inference authorization
+  handling, and removal/replacement guards at dispatch. Generated API types include the new routes.
+  Capability handling is conservative: unpinned thinking levels are hidden and no image support is
+  inferred from Pydantic AI's generic default; currently no ChatGPT vision-slot models are offered.
+  Three T3 orchestrator decisions are recorded for user review. The opt-in live test is documented
+  in [feature map](feature-map.md#chatgpt-live-smoke-test-opt-in); it was not run.
+  Final `VITEST_MAX_WORKERS=1 make check` passed (281 Python, 68 frontend tests, one live
+  test deselected), including 21 new offline ChatGPT cases. Earlier default-worker full checks
+  hit the existing thinking auto-close flake and one panel-width restoration assertion; one
+  intervening run was terminated by SIGTERM. No assertions or test cases were removed.
+  On `d12b751` plus the T3 dirty state, full `make verify` initially passed 19/20 flows;
+  the known brief Stop-button assertion failed in `session-performance-realistic`, including
+  its targeted rerun. The unchanged full guarded rerun,
+  `make verify-run FLOW='--workers=1'`, passed all 20 flows. Inspected `screenshot.png` with
+  retained `trace.zip` under `app/verify-output/`:
+  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `session-model-title.flow.ts-session-model-title`, and
+  `settings-appearance-light.flow.ts-settings-appearance-light`.
+  No real endpoints, credentials, user data, or packaging builds were used.
 
 - **T1 provider core (implementation):** typed settings and defaults, migration 0003 (session pins
   and per-call usage), account-adapter interfaces, fresh catalog/role resolution, provider background
@@ -185,4 +210,4 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   `session-no-model.flow.ts-session-no-model`, `session-error-retry.flow.ts-session-error-retry`,
   and `settings-appearance-light.flow.ts-settings-appearance-light`.
   No real models, credentials, real data, or packaging builds were used.
-  Next: orchestrator review, then T2/T3 on T1. No new open questions.
+  T1 review is complete at `d12b751`; T2/T3 build on that revision.

@@ -8,7 +8,7 @@ dependencies = [
     "fastapi>=0.165.0",
     "playwright>=1.65.2",
     "pydantic>=2.14.3",
-    "pydantic-ai-slim==2.70.0",
+    "pydantic-ai-slim[openai]==2.70.0",
     "pypdfium2>=5.15.2",
     "resvg-py==0.5.0",
     "uvicorn>=0.54.0",
@@ -35,6 +35,8 @@ dev = [
 testpaths = ["tests", "../tools/tests"]
 pythonpath = [".."]
 filterwarnings = ["error"]
+addopts = "-m 'not live'"
+markers = ["live: opt-in real provider calls using a temporary data directory"]
 
 [tool.importlinter]
 root_package = "verstehen"
