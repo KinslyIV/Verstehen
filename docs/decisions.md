@@ -405,6 +405,7 @@ Probe, plan, teach, as in LH.
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
 
+<<<<<<< HEAD
 ## M2 T2 API field names
 
 **Orchestrator decision, for user review:** API and SSE payload fields are snake_case Verstehen
@@ -416,3 +417,8 @@ values keep LH's names.
 **Orchestrator decision, for user review:** openapi-typescript 7.13.0 (latest; peer typescript ^5.x)
 runs on the repo's TypeScript 6 through a targeted npm override, instead of legacy-peer-deps.
 Remove the override when a release supports TypeScript 6.
+=======
+## M2 T3 renderer verification (2026-11-19)
+
+Orchestrator decision, for user review: T3 proves the renderer with Vitest browser screenshots; the markdown-rendering verify flow moves to T4 and runs through the real thread with a fake-model script, instead of a verification-only route.
+>>>>>>> m2-t3-markdown

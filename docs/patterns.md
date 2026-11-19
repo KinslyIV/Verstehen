@@ -24,3 +24,5 @@ is updated in the same commit.
 | Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
 | Fake-model script | [`health.json`](../app/verify/scripts/health.json) |
 | API client function | [`health`](../app/src/lib/api/client.ts) |
+| Assistant markdown | [`assistant-message.svelte`](../app/src/lib/markdown/assistant-message.svelte): unified pipeline, sanitized HAST nodes, app-owned block controls inside official Message. |
+| Renderer browser evidence | [`markdown.svelte.test.ts`](../app/src/routes/markdown.svelte.test.ts): complete and streaming fixtures, dark/light screenshots in `app/markdown-output/`; T4 adds real-thread verification. |
