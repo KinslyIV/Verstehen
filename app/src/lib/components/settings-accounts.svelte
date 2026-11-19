@@ -47,7 +47,7 @@
 			if (disposed) return;
 			[accounts, claude, settings, download] = values;
 		} catch (cause) {
-			if (!disposed) error = (cause as Error).message;
+			if (!disposed) error = cause instanceof Error ? cause.message : String(cause);
 		}
 	}
 	async function poll() {
@@ -68,7 +68,7 @@
 				if (download.state === 'complete') await refresh();
 			}
 		} catch (cause) {
-			if (!disposed) error = (cause as Error).message;
+			if (!disposed) error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			polling = false;
 		}
@@ -90,7 +90,7 @@
 			signInUrl = started.url;
 			await openSignIn(started.url);
 		} catch (cause) {
-			error = (cause as Error).message;
+			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
 		}
@@ -104,7 +104,7 @@
 			signInUrl = null;
 			await refresh();
 		} catch (cause) {
-			error = (cause as Error).message;
+			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
 		}
@@ -134,7 +134,7 @@
 			error = null;
 		} catch (cause) {
 			settings = previous;
-			error = (cause as Error).message;
+			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
 		}
@@ -145,7 +145,7 @@
 		try {
 			download = await claudeCodeDownload(true);
 		} catch (cause) {
-			error = (cause as Error).message;
+			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
 		}

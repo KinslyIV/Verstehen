@@ -52,6 +52,27 @@ test('desktop JSON and SSE requests share one connection and use its URL and tok
 	});
 });
 
+test('desktop requests can retry after a shared connection lookup fails', async () => {
+	vi.resetModules();
+	const { health } = await import('./client');
+	vi.mocked(isTauri).mockReturnValue(true);
+	vi.mocked(invoke)
+		.mockClear()
+		.mockRejectedValueOnce('Sidecar is not ready')
+		.mockResolvedValueOnce({ port: 12345, token: 'desktop-token' });
+	const request = vi.fn().mockResolvedValue(new Response('{"status":"ok"}'));
+	vi.stubGlobal('fetch', request);
+
+	await Promise.all([
+		expect(health()).rejects.toThrow('Sidecar is not ready'),
+		expect(health()).rejects.toThrow('Sidecar is not ready')
+	]);
+	expect(invoke).toHaveBeenCalledTimes(1);
+	expect(request).not.toHaveBeenCalled();
+	expect(await health()).toEqual({ status: 'ok' });
+	expect(invoke).toHaveBeenCalledTimes(2);
+});
+
 test('SSE decodes split UTF-8, CRLF frames, comments, and terminal marker', async () => {
 	const { readEvents } = await import('./client');
 	const bytes = new TextEncoder().encode(

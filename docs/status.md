@@ -4,8 +4,10 @@
 
 ## Where we are
 
-**M1 and M2 are complete and merged into `main`. M3 (real providers) is implemented and reviewed
-on `m3-t4-ui` (T1–T4), awaiting the user's merge and the laptop check.**
+**M1–M3 are merged into `main`.** The M3 laptop check found that Accounts
+could open before the desktop frontend had a sidecar connection. The startup fix makes early
+requests wait for the connection, clears failed lookups for retry, and displays Accounts errors.
+The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -259,8 +261,8 @@ on `m3-t4-ui` (T1–T4), awaiting the user's merge and the laptop check.**
 
 ## Next
 
-1. **M3:** the user merges `m3-t4-ui`, installs the `make app` package on the laptop, and checks
-   sign-in, the model menu, and a real lesson; the opt-in live tests confirm both providers.
+1. **M3:** install a package with the startup fix on the laptop, then check sign-in, the model
+   menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions

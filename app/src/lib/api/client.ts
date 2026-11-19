@@ -25,12 +25,15 @@ export function setToken(value: string | undefined): void {
 
 function baseUrl(): Promise<string> {
 	if (!isTauri()) return Promise.resolve('');
-	return (connection ??= invoke<{ port: number; token: string }>('sidecar_connection').then(
-		(value) => {
+	return (connection ??= invoke<{ port: number; token: string }>('sidecar_connection')
+		.then((value) => {
 			setToken(value.token);
 			return `http://127.0.0.1:${value.port}`;
-		}
-	));
+		})
+		.catch((cause: unknown) => {
+			connection = undefined;
+			throw cause instanceof Error ? cause : new Error(String(cause));
+		}));
 }
 
 export class ApiError extends Error {

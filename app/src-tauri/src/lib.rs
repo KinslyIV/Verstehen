@@ -5,7 +5,7 @@ use tauri_plugin_shell::{
     ShellExt,
     process::{CommandChild, CommandEvent},
 };
-use tokio::sync::oneshot;
+use tokio::sync::{oneshot, watch};
 
 #[derive(Clone, serde::Serialize)]
 struct Connection {
@@ -13,20 +13,19 @@ struct Connection {
     token: String,
 }
 
-#[derive(Default)]
 struct Sidecar {
-    connection: Mutex<Option<Connection>>,
+    connection: watch::Sender<Option<Connection>>,
     child: Mutex<Option<CommandChild>>,
 }
 
 #[tauri::command]
-fn sidecar_connection(state: State<'_, Sidecar>) -> Result<Connection, String> {
-    state
-        .connection
-        .lock()
-        .map_err(|e| e.to_string())?
-        .clone()
-        .ok_or_else(|| "Sidecar is not ready".into())
+async fn sidecar_connection(state: State<'_, Sidecar>) -> Result<Connection, String> {
+    let mut connection = state.connection.subscribe();
+    let ready = connection
+        .wait_for(Option::is_some)
+        .await
+        .map_err(|_| "Sidecar connection closed".to_string())?;
+    ready.clone().ok_or_else(|| "Sidecar is not ready".into())
 }
 
 fn stop(app: &tauri::AppHandle) {
@@ -119,10 +118,9 @@ async fn start(app: &tauri::AppHandle) -> Result<(), String> {
             _ = tokio::time::sleep(Duration::from_millis(100)) => {}
         }
     }
-    *app.state::<Sidecar>()
+    app.state::<Sidecar>()
         .connection
-        .lock()
-        .map_err(|e| e.to_string())? = Some(Connection { port, token });
+        .send_replace(Some(Connection { port, token }));
     app.get_webview_window("main")
         .ok_or("Main window missing")?
         .show()
@@ -133,7 +131,10 @@ pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(Sidecar::default())
+        .manage(Sidecar {
+            connection: watch::channel(None).0,
+            child: Mutex::new(None),
+        })
         .invoke_handler(tauri::generate_handler![sidecar_connection])
         .setup(|app| {
             let handle = app.handle().clone();
