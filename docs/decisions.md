@@ -4,6 +4,14 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **Orchestrator decision, for user review:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
+| 2026-11-19 | **Orchestrator decision, for user review:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Fake-model text streams in about three chunks. | Exercise streaming deterministically offline. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Fake-model scripts live in `app/verify/scripts/` and are shared by tests and flows; static layout flows reuse the minimal `health.json` script without making model calls. | Keep one script format and retain per-flow fixture isolation. |
+| 2026-11-19 | **Orchestrator decision, for user review:** The API token is set with module-level `setToken()`. | Support the desktop handshake without exposing the token in URLs. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Preview readiness checks use Node HTTP. | Avoid an exception to the frontend ban on fetch outside the API client. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Use one flow per visible state, each with the fixture's one automatic final screenshot; flows take no screenshots themselves. | Give each state one screenshot and trace to review. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Vitest browser mode and verify flows both use Playwright’s bundled Chromium with `channel: chromium`. | Use the same browser in both suites, installed by make setup. |
 | 2026-11-19 | **User decision:** Give a function or class a short docstring when its name and signature don’t say what it does at a glance; skip obvious descriptions. Say what, and why only when needed, never step-by-step how. Never explain weird code with a docstring; rewrite it instead. Use Python docstrings and `/** ... */` JSDoc above TypeScript/Svelte functions, at most 3 lines. Enforce usefulness in review, not a check. | Faster reading; descriptions only where they add something. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Sidebar widths use shadcn defaults: 16rem desktop, 18rem mobile. | Keep the generated sizing. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Settings sections switch locally in-page, starting at Appearance. | No section routes are needed in M1. |
@@ -22,7 +30,7 @@
 | 2026-11-19 | **User decision (M1 UI layout planning):** Use `/session/new` instead of LH `/chat/new` (components/sidebar.tsx:427 at a636647). | Naming difference: Verstehen calls them sessions. |
 | 2026-11-19 | **User decision (M1 task 3 planning):** Verify flows use `@playwright/test` in `app/`. | Keep browser flows with the frontend tooling. |
 | 2026-11-19 | **User decision (M1 task 3 planning):** Build the fake model now: JSON reply scripts validated by Pydantic, turned into a streaming `FunctionModel`, enabled only by `VERSTEHEN_FAKE_MODEL`. | Offline deterministic verification; routes use it starting in M2. |
-| 2026-11-19 | **User decision (M1 task 3 planning):** The first flow proves the app reaches the sidecar through a minimal API client and a `Sidecar: ok` placeholder. | Prove transport before the UI task replaces the placeholder. |
+| 2026-11-19 | **User decision (M1 task 3 review):** Prove the sidecar with a flow-only `/api/health` check through the preview proxy, with no placeholder page. The static layout stays without API calls; keep the API client for M2. | Verify transport without changing the static UI. |
 | 2026-11-19 | **User decision (M1 task 3 planning):** `make verify` serves the built SPA through Vite preview, with one sidecar, temporary data directory, and fake-model script per flow. | Isolate flows and verify the shipped static output. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_TOKEN` without `VERSTEHEN_DESKTOP=1`, including an empty token, refuses to start; `VERSTEHEN_DESKTOP` accepts only `"1"`. | Fail closed on an incomplete or mistyped desktop launch. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_PORT=0` or unset chooses a free port; the bound socket is held through startup. | Report the actual port without a bind race. |

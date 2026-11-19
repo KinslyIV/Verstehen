@@ -5,6 +5,6 @@ export default defineConfig({
 	testMatch: '**/*.flow.ts',
 	outputDir: './verify-output',
 	preserveOutput: 'always',
-	use: { ...devices['Desktop Chrome'], headless: true, trace: 'on' },
+	use: { ...devices['Desktop Chrome'], channel: 'chromium', headless: true, trace: 'on' },
 	reporter: 'list'
 });

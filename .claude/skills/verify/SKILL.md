@@ -5,13 +5,14 @@ description: Run Verstehen UI verification when changing anything the learner se
 
 Run from the repository root after `make setup`:
 
-- `make verify` builds the static SPA and runs all flows in headless Playwright Chromium.
+- `make verify` builds the static SPA and runs all flows in headless Playwright Chromium (`channel: 'chromium'`, also used by Vitest browser mode).
 - `make verify FLOW=app-reaches-sidecar` builds and runs a single flow.
 - Screenshots and always-on traces land in `app/verify-output/<flow>/` (Playwright may append a project or retry suffix).
 - Open a trace with `cd app && npx playwright show-trace verify-output/<flow>/trace.zip`.
 
 To add a flow, copy `app/verify/app-reaches-sidecar.flow.ts`, declare its JSON fake-model script
 with `test.use({ script: 'verify/scripts/your-script.json' })`, and add the feature-map entry.
+Static layout flows reuse `verify/scripts/health.json` without making model calls.
 The shared fixture gives every flow its own sidecar, preview, and temporary data directory,
 saves a full-page `screenshot.png` of the final page (flows take no screenshots themselves),
 and fails on console errors, uncaught page errors, and failed requests.
