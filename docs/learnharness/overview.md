@@ -1,6 +1,6 @@
 # LearnHarness overview
 
-> Status: **first draft**. Describes LearnHarness at commit `a636647`.
+> Status: **first draft**. Describes LearnHarness at commit `cb25c8e`.
 > Unless marked otherwise, every statement is **current behavior**. Paths are relative to the
 > LearnHarness repository root. A statement taken from LearnHarness's own
 > `docs/architecture.md` rather than checked in code is marked *(per LH docs)*.
@@ -14,6 +14,10 @@ input, attaches to a stream of agent events, and renders a projection of the sav
 conversation. The agent loop itself comes from the **Pi** libraries
 (`@earendil-works/pi-agent-core` and `pi-ai` 1.4.0, see `package.json:30-31`). LearnHarness
 builds a fresh Pi `Agent` for every turn from the saved transcript.
+
+Markdown tables hug their contents; wide body text wraps to the available column. Tables whose
+minimum content width still exceeds the column (for example unbreakable code or URLs) use the
+existing horizontal scroller (`app/globals.css:359-370`).
 
 ## Main parts
 

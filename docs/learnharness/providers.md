@@ -1,6 +1,6 @@
 # Providers
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked. This doc is a map. The detailed provider contracts are in LearnHarness
 > `docs/claude-code.md`, `docs/custom-providers.md`, and `docs/compaction-accounting.md`.
 
@@ -77,6 +77,10 @@ Summary of LearnHarness `docs/claude-code.md`, with code in `src/agent/claude-co
 - **Opt-in.** It's off by default. The **`claude` CLI** must be installed and authenticated
   **on the machine running the server**, under that OS user. The minimum version is 2.1.259
   (`src/core/contracts/claude-code.ts`).
+- **CLI discovery.** POSIX lookup searches `PATH`, then known installation directories, including
+  `/etc/profiles/per-user/<USER>/bin` when `USER` is set, `~/.nix-profile/bin`, and
+  `/run/current-system/sw/bin`. This also works for desktop launches with a minimal `PATH`
+  (`src/agent/claude-code/binary.ts:36-69`).
 - **LearnHarness keeps its own loop.** The CLI is used only as a *model*. LearnHarness sends
   prompts, history, and tool results. Each child process runs without a shell, in an empty temp
   directory, with the CLI's built-in tools, hooks, slash commands, session persistence, and
@@ -98,6 +102,10 @@ Summary of LearnHarness `docs/custom-providers.md`, with code in `src/server/cus
 
 - **One endpoint.** One OpenAI-compatible base URL. Models come from `GET <base>/models` or are
   listed manually.
+- **Discovered context.** Model-list rows use the first positive integer in the recognized
+  top-level context fields, then fall back to `meta.n_ctx` (llama.cpp's runtime context per slot).
+  `meta.n_ctx_train` is not used: it is the training maximum, not the server's accepted budget
+  (`src/server/custom-provider.ts:213-250`).
 - **Keys bound to the URL.** A key is bound to the canonical URL and auth mode, and is never
   silently sent to a different URL.
 - **Pinned limits.** Each model can pin its context budget and maximum output; the fallbacks are

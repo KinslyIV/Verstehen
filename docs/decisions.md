@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
 | 2026-11-19 | **Orchestrator decision, for user review:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Fake-model text streams in about three chunks. | Exercise streaming deterministically offline. |

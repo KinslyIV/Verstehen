@@ -1,6 +1,6 @@
 # Side chat
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 
 The side chat lets the learner ask a quick clarifying question about part of the lesson ("what

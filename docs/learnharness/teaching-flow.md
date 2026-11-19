@@ -1,6 +1,6 @@
 # Teaching flow
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 >
 > The pedagogy itself is in LearnHarness `docs/teaching-methodology.md` (10 sections, from "Two
