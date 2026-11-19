@@ -4,7 +4,7 @@
 
 ## Where we are
 
-**M1, walking skeleton: repo, checks, sidecar, static UI layout, and task 3 verification are done.**
+**M1, walking skeleton, is done:** the user installed the package on the Arch laptop and confirmed it.
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -18,6 +18,11 @@
 - **Verification:** scripted streaming fake model, token-aware API client for M2, `make verify`, and
   the shared verify skill. Six isolated Chromium flows cover proxy health, dark lesson, collapsed
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
+- **Packaging:** `make app` builds the Tauri shell and PyInstaller onedir in Arch, runs frozen
+  dependency and sidecar smoke checks, and produces `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
+  The shell waits for healthy startup; the API client reads its connection through Tauri. The
+  package bundles neither Chromium (optional) nor the Claude Code CLI (the installed `claude` is
+  used); the download buttons for both come in M3 and M7.
 - **Docs:** AGENTS.md records the docstring rule and thread/worktree isolation rules for concurrent
   tasks and sequential orchestrator/subagent work. The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
@@ -29,8 +34,7 @@
 
 ## Next
 
-1. Packaging proof with `make app` inside an Arch container, then laptop installation.
-2. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+1. M2 session core, then M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
 
