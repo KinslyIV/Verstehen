@@ -13,6 +13,7 @@ Run from the repository root after `make setup`:
 To add a flow, copy `app/verify/app-reaches-sidecar.flow.ts`, declare its JSON fake-model script
 with `test.use({ script: 'verify/scripts/your-script.json' })`, and add the feature-map entry.
 The shared fixture gives every flow its own sidecar, preview, and temporary data directory,
+saves a full-page `screenshot.png` of the final page (flows take no screenshots themselves),
 and fails on console errors, uncaught page errors, and failed requests.
 
 Look at the screenshots yourself and attach the ones you checked to your report.
