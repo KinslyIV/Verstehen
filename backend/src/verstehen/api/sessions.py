@@ -8,14 +8,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from starlette.responses import JSONResponse, StreamingResponse
 
-from verstehen.api.deps import get_turns
+from verstehen.api.deps import get_sessions, get_turns
 from verstehen.session.events import Notification, TurnEvent
-from verstehen.session.titles import title_from_prompt
-from verstehen.session.turns import Refused, TurnInput, Turns
+from verstehen.session.results import Refused
+from verstehen.session.sessions import Sessions
+from verstehen.session.turns import TurnInput, Turns
 from verstehen.store.entries import Entry
 from verstehen.store.sessions import Session
 
-Service = Annotated[Turns, Depends(get_turns)]
+Service = Annotated[Sessions, Depends(get_sessions)]
+TurnService = Annotated[Turns, Depends(get_turns)]
 HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -74,65 +76,41 @@ class Ok(BaseModel):
     ok: bool = True
 
 
-def not_found() -> JSONResponse:
-    return JSONResponse({"error": "Not found"}, status_code=404)
-
-
 @router.get("/api/sessions", response_model=SessionList)
 async def list_sessions(service: Service) -> SessionList:
+    result = await service.list()
     return SessionList(
         sessions=[
-            SessionItem(
-                **session.model_dump(),
-                busy=service.runtimes.get(session.id).run is not None,
-            )
-            for session in await service.sessions.list()
+            SessionItem(**item.session.model_dump(), busy=item.busy) for item in result
         ]
     )
 
 
 @router.post("/api/sessions", response_model=Created)
 async def create_session(body: TitleInput, service: Service) -> Created:
-    session = await service.sessions.create(
-        title_from_prompt(body.title or "Untitled session")
-    )
-    service.notifications.publish(
-        Notification(type="chats-changed", session_id=session.id)
-    )
+    session = await service.create(body.title)
     return Created(id=session.id)
 
 
 @router.get("/api/sessions/{session_id}", response_model=SessionDetail)
 async def get_session(session_id: str, service: Service):
-    runtime = service.runtimes.get(session_id)
-    async with runtime.lock:
-        session = await service.sessions.get(session_id)
-        if session is None:
-            return not_found()
-        entries = await service.entries.list(session_id)
-        return SessionDetail(
-            **session.model_dump(),
-            entries=entries,
-            turn_in_flight=runtime.run is not None,
-            turn_error=runtime.failure,
-        )
+    result = await service.get(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return SessionDetail(
+        **result.session.model_dump(),
+        entries=result.entries,
+        turn_in_flight=result.turn_in_flight,
+        turn_error=result.turn_error,
+    )
 
 
 @router.patch("/api/sessions/{session_id}", response_model=Renamed)
 async def rename_session(session_id: str, body: TitleInput, service: Service):
-    if await service.sessions.get(session_id) is None:
-        return not_found()
-    title = (body.title or "").strip()
-    if not title:
-        return JSONResponse(
-            {"error": "title must be a non-empty string"}, status_code=400
-        )
-    if not await service.sessions.rename(session_id, title):
-        return not_found()
-    service.notifications.publish(
-        Notification(type="chats-changed", session_id=session_id)
-    )
-    return Renamed(title=title)
+    result = await service.rename(session_id, body.title)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return Renamed(title=result)
 
 
 @router.delete(
@@ -141,23 +119,9 @@ async def rename_session(session_id: str, body: TitleInput, service: Service):
     responses={409: {"model": TurnInFlight}},
 )
 async def delete_session(session_id: str, service: Service):
-    runtime = service.runtimes.get(session_id)
-    async with runtime.lock:
-        if await service.sessions.get(session_id) is None:
-            return not_found()
-        if runtime.run is not None:
-            return JSONResponse(
-                {
-                    "error": "A turn is running in this session — try again when it finishes",
-                    "code": "turn_in_flight",
-                },
-                status_code=409,
-            )
-        await service.sessions.delete(session_id)
-        runtime.mark_deleted()
-    service.notifications.publish(
-        Notification(type="chats-changed", session_id=session_id)
-    )
+    result = await service.delete(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
     return Ok()
 
 
@@ -166,7 +130,7 @@ async def delete_session(session_id: str, service: Service):
     response_model=Ok,
     responses={409: {"model": ApiError}, 503: {"model": ModelsNotConfigured}},
 )
-async def input_session(session_id: str, body: TurnInput, service: Service):
+async def input_session(session_id: str, body: TurnInput, service: TurnService):
     result = await service.start(session_id, body)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
@@ -179,26 +143,16 @@ async def input_session(session_id: str, body: TurnInput, service: Service):
     responses={409: {"model": NotRunning}},
 )
 async def abort_session(session_id: str, service: Service):
-    if await service.sessions.get(session_id) is None:
-        return not_found()
-    run = service.runtimes.get(session_id).run
-    if run is None:
-        return JSONResponse({"ok": False, "reason": "not_running"}, status_code=409)
-    run.abort()
+    result = await service.abort(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
     return Ok()
 
 
-async def turn_frames(session_id: str, service: Turns) -> AsyncGenerator[str]:
-    runtime = service.runtimes.get(session_id)
-    run = runtime.run
-    if run is None:
-        if runtime.failure is not None:
-            yield frame(TurnEvent(type="error", error_text=runtime.failure))
-        yield frame(TurnEvent(type="turn-settled"))
-    else:
-        async with aclosing(run.subscribe()) as events:
-            async for event in events:
-                yield frame(event)
+async def turn_frames(events: AsyncGenerator[TurnEvent]) -> AsyncGenerator[str]:
+    async with aclosing(events):
+        async for event in events:
+            yield frame(event)
     yield "data: [DONE]\n\n"
 
 
@@ -221,10 +175,11 @@ def frame(event: TurnEvent) -> str:
     },
 )
 async def stream_session(session_id: str, service: Service):
-    if await service.sessions.get(session_id) is None:
-        return not_found()
+    result = await service.stream(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
     return StreamingResponse(
-        turn_frames(session_id, service),
+        turn_frames(result),
         media_type="text/event-stream",
         headers=HEADERS,
     )
@@ -246,12 +201,16 @@ async def stream_session(session_id: str, service: Service):
 )
 async def events(service: Service):
     return StreamingResponse(
-        notification_frames(service), media_type="text/event-stream", headers=HEADERS
+        notification_frames(service.subscribe()),
+        media_type="text/event-stream",
+        headers=HEADERS,
     )
 
 
-async def notification_frames(service: Turns) -> AsyncGenerator[str]:
-    async with aclosing(service.notifications.subscribe()) as events:
+async def notification_frames(
+    events: AsyncGenerator[Notification | None],
+) -> AsyncGenerator[str]:
+    async with aclosing(events):
         async for event in events:
             if event is None:
                 yield ": ping\n\n"

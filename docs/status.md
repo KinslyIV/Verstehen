@@ -46,6 +46,11 @@ reattachment, failures, notifications, API envelopes, and unknown sessions. No l
 T4 adds its verification flows. Three orchestrator decisions are recorded for review: snake_case
 wire fields, fake-script fields, and the targeted TypeScript peer override for the pinned API generator.
 
+T2 review round 2 moves session operations and stream attachment into `session/sessions.py` (`Sessions`); API
+routes only map typed results and frame SSE. Stop clears pending cancellation before settlement.
+Retry re-checks return explicit refusals and release the claim; unexpected stage errors return 500
+and are remembered, including failures before claiming. Regression tests cover these boundaries.
+
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.

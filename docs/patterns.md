@@ -15,7 +15,7 @@ is updated in the same commit.
 | Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`Turns.model_gate`, `Refused` / `Continue`) |
 | Session runtime and replay | [`session/runtime.py`](../backend/src/verstehen/session/runtime.py) (`SessionRuntime`, `TurnRun`) |
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
-| API route | [`api/health.py`](../backend/src/verstehen/api/health.py) (`router`, using `api/deps.py` and `Depends`) |
+| API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
 | Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
 | Component test (Vitest browser mode) | [`composer_accepts_text_but_send_is_disabled`](../app/src/routes/layout.svelte.test.ts) |

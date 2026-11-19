@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Literal
 
+import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 
@@ -11,9 +12,10 @@ from verstehen.api.sessions import notification_frames, turn_frames
 from verstehen.providers.fake import fake_model
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.runtime import RuntimeRegistry, TurnRun
+from verstehen.session.sessions import Sessions
 from verstehen.session.turns import Continue, Refused, TurnInput, Turns
 from verstehen.store.database import open_database
-from verstehen.store.entries import AssistantEntry, EntriesStore
+from verstehen.store.entries import AssistantEntry, EntriesStore, UserEntry
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -38,6 +40,10 @@ async def service(tmp_path: Path, model=None):
             yield turns, session.id
         finally:
             await runtimes.close()
+
+
+def sessions_for(turns: Turns) -> Sessions:
+    return Sessions(turns.sessions, turns.entries, turns.runtimes, turns.notifications)
 
 
 def scripted(tmp_path: Path, replies: list[dict]) -> FunctionModel:
@@ -193,7 +199,7 @@ def test_reattach_replays_log_then_continues_live_and_disconnect_does_not_stop(
             await first.aclose()
             assert not run.aborted
             retained = list(run.log)
-            second = turn_frames(session_id, turns)
+            second = turn_frames(sessions_for(turns).turn_events(session_id))
             wire = [frame async for frame in second]
             assert wire[-1] == "data: [DONE]\n\n"
             received = [TurnEvent.model_validate_json(frame[6:]) for frame in wire[:-1]]
@@ -305,7 +311,12 @@ def test_late_attach_delivers_retained_failure_before_settled(tmp_path: Path):
     async def scenario():
         async with service(tmp_path) as (turns, session_id):
             turns.runtimes.get(session_id).remember_failure("Could not save")
-            frames = [frame async for frame in turn_frames(session_id, turns)]
+            frames = [
+                frame
+                async for frame in turn_frames(
+                    sessions_for(turns).turn_events(session_id)
+                )
+            ]
             assert json.loads(frames[0][6:]) == {
                 "type": "error",
                 "error_text": "Could not save",
@@ -390,8 +401,8 @@ def test_fake_script_error_is_saved_and_retry_uses_next_reply(tmp_path: Path):
 def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
     async def scenario():
         async with service(tmp_path) as (turns, session_id):
-            first = notification_frames(turns)
-            second = notification_frames(turns)
+            first = notification_frames(sessions_for(turns).subscribe())
+            second = notification_frames(sessions_for(turns).subscribe())
             a = asyncio.create_task(anext(first))
             b = asyncio.create_task(anext(second))
             await asyncio.sleep(0)
@@ -417,7 +428,10 @@ def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
     asyncio.run(scenario())
 
 
-def test_preparation_failure_closes_attached_stream_and_releases_claim(tmp_path: Path):
+@pytest.mark.parametrize("error_type", [OSError, ValueError])
+def test_preparation_failure_closes_attached_stream_and_releases_claim(
+    tmp_path: Path, error_type: type[Exception]
+):
     async def scenario():
         async with service(tmp_path, scripted(tmp_path, [{"text": "one"}])) as (
             turns,
@@ -429,14 +443,14 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(tmp_path:
             async def fail(state):
                 building.set()
                 await proceed.wait()
-                raise OSError("Could not build teacher")
+                raise error_type("Could not build teacher")
 
             turns.build_teacher = fail
             request = asyncio.create_task(
                 turns.start(session_id, TurnInput(type="text", text="Hello"))
             )
             await building.wait()
-            frames = turn_frames(session_id, turns)
+            frames = turn_frames(sessions_for(turns).turn_events(session_id))
             reading = asyncio.create_task(anext(frames))
             await asyncio.sleep(0)
             proceed.set()
@@ -449,5 +463,95 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(tmp_path:
             assert [frame async for frame in frames] == ["data: [DONE]\n\n"]
             runtime = turns.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure == "Could not build teacher"
+
+    asyncio.run(scenario())
+
+
+def test_stop_clears_pending_cancellation_before_settlement(tmp_path: Path):
+    async def scenario():
+        streaming = asyncio.Event()
+        settled = []
+
+        async def stream(messages: list[ModelMessage], info: AgentInfo):
+            yield "partial"
+            streaming.set()
+            await asyncio.Event().wait()
+
+        async with service(tmp_path, FunctionModel(stream_function=stream)) as (
+            turns,
+            session_id,
+        ):
+            original = turns.settle
+
+            async def settle(state, reply):
+                task = asyncio.current_task()
+                assert task is not None
+                settled.append(task.cancelling())
+                return await original(state, reply)
+
+            turns.settle = settle
+            run = await start(turns, session_id)
+            await asyncio.wait_for(streaming.wait(), 3)
+            run.abort()
+            run.abort()
+            await completed(run)
+            assert settled == [0]
+            reply = (await turns.entries.list(session_id))[-1]
+            assert isinstance(reply, AssistantEntry) and reply.stop_reason == "aborted"
+
+    asyncio.run(scenario())
+
+
+def test_retry_recheck_refuses_and_releases_claim_without_remembering_failure(
+    tmp_path: Path,
+):
+    async def scenario():
+        async with service(tmp_path, scripted(tmp_path, [{"text": "unused"}])) as (
+            turns,
+            session_id,
+        ):
+            await turns.entries.append(
+                session_id,
+                [
+                    UserEntry(text="Hello"),
+                    AssistantEntry(parts=[], stop_reason="error"),
+                ],
+            )
+            runtime = turns.runtimes.get(session_id)
+            original = turns.claim
+
+            async def claim(state):
+                result = await original(state)
+                await turns.entries.append(session_id, [AssistantEntry(parts=[])])
+                return result
+
+            turns.claim = claim
+            result = await turns.start(session_id, TurnInput(type="retry"))
+            assert isinstance(result, Refused) and result.status == 400
+            assert result.reason == {
+                "error": "retry input requires a failed turn to retry"
+            }
+            assert runtime.run is None and runtime.failure is None
+            assert len(await turns.entries.list(session_id)) == 3
+
+    asyncio.run(scenario())
+
+
+def test_unexpected_value_error_before_claim_is_500_and_remembered(tmp_path: Path):
+    async def scenario():
+        async with service(tmp_path) as (turns, session_id):
+
+            async def fail(state):
+                raise ValueError("Unexpected validation failure")
+
+            turns.validate = fail
+            result = await turns.start(session_id, TurnInput(type="text", text="Hello"))
+            assert isinstance(result, Refused) and result.status == 500
+            runtime = turns.runtimes.get(session_id)
+            assert (
+                runtime.run is None
+                and runtime.failure == "Unexpected validation failure"
+            )
+            assert await turns.entries.list(session_id) == []
 
     asyncio.run(scenario())

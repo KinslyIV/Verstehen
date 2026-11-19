@@ -13,6 +13,7 @@ from verstehen.config import Settings
 from verstehen.providers.fake import fake_model
 from verstehen.session.events import Notifications
 from verstehen.session.runtime import RuntimeRegistry
+from verstehen.session.sessions import Sessions
 from verstehen.session.turns import Turns
 from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore
@@ -31,16 +32,20 @@ def create_app(settings: Settings) -> FastAPI:
             await migrate(database)
             app.state.database = database
             runtimes = RuntimeRegistry()
+            sessions = SessionsStore(database)
+            entries = EntriesStore(database)
+            notifications = Notifications()
+            app.state.sessions = Sessions(sessions, entries, runtimes, notifications)
             app.state.turns = Turns(
-                SessionsStore(database),
-                EntriesStore(database),
+                sessions,
+                entries,
                 SettingsStore(database),
                 settings.data_dir,
                 fake_model(settings.fake_model_script)
                 if settings.fake_model_script
                 else None,
                 runtimes,
-                Notifications(),
+                notifications,
             )
             try:
                 yield

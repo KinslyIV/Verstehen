@@ -9,6 +9,7 @@ from pydantic_ai.models import Model
 
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import retry_drops, to_llm_messages
+from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry, SessionRuntime, TurnRun
 from verstehen.store.entries import (
     AssistantEntry,
@@ -37,12 +38,6 @@ class TurnState:
     entries: list[Entry]
     run: TurnRun | None = None
     teacher: Agent[None, str] | None = None
-
-
-@dataclass
-class Refused:
-    status: int
-    reason: dict[str, object]
 
 
 @dataclass
@@ -109,7 +104,13 @@ class Turns:
     async def write_ahead(self, state: TurnState) -> Refused | Continue:
         state.entries = await self.entries.list(state.session_id)
         if state.input.type == "retry":
-            retry_drops(state.entries)
+            try:
+                retry_drops(state.entries)
+            except ValueError as error:
+                await self.finish(state)
+                assert state.run is not None
+                state.run.close()
+                return Refused(400, {"error": str(error)})
         else:
             entry = UserEntry(text=state.input.text or "")
             await self.entries.append(state.session_id, [entry])
@@ -143,14 +144,12 @@ class Turns:
             try:
                 result = await stage(state)
             except Exception as error:
+                state.runtime.remember_failure(str(error))
                 if state.run:
-                    state.runtime.remember_failure(str(error))
                     state.run.publish(TurnEvent(type="error", error_text=str(error)))
                     await self.finish(state)
                     state.run.close()
-                return Refused(
-                    400 if isinstance(error, ValueError) else 500, {"error": str(error)}
-                )
+                return Refused(500, {"error": str(error)})
             if isinstance(result, Refused):
                 return result
         return Continue(state)
@@ -194,6 +193,9 @@ class Turns:
                                     )
                                 )
         except asyncio.CancelledError:
+            task = asyncio.current_task()
+            if task is not None:
+                task.uncancel()
             reply.stop_reason = "aborted"
         except Exception as error:
             reply.stop_reason = "error"
