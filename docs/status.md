@@ -26,12 +26,19 @@
   setting is never stored as `null`, so a missing setting reads as `None`. The typed settings shape
   is decided when planning M3.
 
+**M2 T1 is implemented:** migration 0002, saved sessions and append-only validated entries,
+M2 text/thinking projection and retry drops, LearnHarness title cutting, and the copied prompt
+tree with the approved 5–15 node wording. Teacher composition reads `agent.prompts` switches
+from SettingsStore and applies only enabled, readable overrides. Backend tests cover persistence,
+validation, idempotency, projection, retry, titles, prompt content/composition, and overrides.
+Entry models live in `store/entries.py` to preserve the package order (recorded for review).
+
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
 2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
-   teacher prompt) and T3 (markdown renderer) run first, then T2 (turns, streaming, API), then T4
-   (lesson UI).
+   teacher prompt) is complete; T3 (markdown renderer) remains independent. Next: T2 (turns,
+   streaming, API), then T4 (lesson UI).
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions

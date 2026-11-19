@@ -34,7 +34,7 @@ T1 and T3 run in parallel; T2 builds on T1; T4 builds on T1–T3. Each task has 
 - **Migration `0002_sessions.sql`:** `sessions` (id, title, kind, created_at, updated_at) and
   `entries` (session_id, seq, entry_id unique, kind, payload JSON, created_at). `kind` is
   `teach` for now; practice comes in M10.
-- **Entry models** in `session/entries.py` (Pydantic), following LH's `LhMessage`
+- **Entry models** in `store/entries.py` (session imports them directly; store cannot import session) (Pydantic), following LH's `LhMessage`
   (`src/core/native-messages.ts`): `user` (text); `assistant` (text parts, thinking parts, stop
   reason `stop` / `aborted` / `error`, error text). `tool_result` and `marker` are defined but
   unused until M4. No Pydantic AI types in entries.

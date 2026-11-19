@@ -10,6 +10,8 @@ is updated in the same commit.
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
 | Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |
+| Append-only entry store and validated payloads | [`store/entries.py`](../backend/src/verstehen/store/entries.py) (`EntriesStore`; session imports entry models directly) |
+| Prompt composition | [`teaching/prompts.py`](../backend/src/verstehen/teaching/prompts.py) (`compose_instructions`) |
 | API route | [`api/health.py`](../backend/src/verstehen/api/health.py) (`router`, using `api/deps.py` and `Depends`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
 | Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |

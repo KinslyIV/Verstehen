@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **Orchestrator decision, for user review:** entry models live in `store/entries.py` (not `session/entries.py` as the plan said), because store cannot import session; session imports them from store. | Store validates payloads on write and read without reversing the package order. |
 | 2026-11-19 | **User decision (M2 planning):** The M2 agent is the teacher composition (`system-prompt.md` → `teacher/*` → `shared/*`) with no tools. Question tools come in M4, the prober and phases in M5. | Matches the milestone; tools arrive with their own milestones. |
 | 2026-11-19 | **User decision (M2 planning):** Prompt overrides follow LearnHarness: an override applies only when its switch `agent.prompts[<segment path>]` is true and its file is readable; an enabled empty file contributes no text (`src/agent/prompts/README.md`). | Faithful port; corrects the architecture doc, which said a file wins by existing. |
 | 2026-11-19 | **User decision (M2 planning):** Retry of a failed response (`retry`, `retryDrops`) is built in M2. | It belongs to the session core; no milestone owned it. |
