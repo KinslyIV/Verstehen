@@ -1,4 +1,4 @@
-.PHONY: setup check test fmt lock-migrations dev verify
+.PHONY: setup check test fmt lock-migrations dev verify api-types
 
 setup:
 	uv sync --project backend --locked
@@ -6,6 +6,7 @@ setup:
 	cd app && npx playwright install chromium
 
 check:
+	uv run --project backend python tools/api_types.py --check
 	uv run --project backend ruff check .
 	uv run --project backend ruff format --check .
 	uv run --project backend pyrefly check --config pyrefly.toml
@@ -36,3 +37,6 @@ dev:
 verify:
 	npm run build --prefix app
 	cd app && npx playwright test $(FLOW)
+
+api-types:
+	uv run --project backend python tools/api_types.py

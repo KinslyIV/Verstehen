@@ -1,15 +1,24 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
 from verstehen.api.access import request_refusal
 from verstehen.api.health import router
+from verstehen.api.sessions import router as sessions_router
 from verstehen.config import Settings
+from verstehen.providers.fake import fake_model
+from verstehen.session.events import Notifications
+from verstehen.session.runtime import RuntimeRegistry
+from verstehen.session.turns import Turns
 from verstehen.store.database import open_database
+from verstehen.store.entries import EntriesStore
 from verstehen.store.migrate import migrate
+from verstehen.store.sessions import SessionsStore
+from verstehen.store.settings import SettingsStore
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -21,9 +30,28 @@ def create_app(settings: Settings) -> FastAPI:
         async with open_database(settings.data_dir / "verstehen.db") as database:
             await migrate(database)
             app.state.database = database
-            yield
+            runtimes = RuntimeRegistry()
+            app.state.turns = Turns(
+                SessionsStore(database),
+                EntriesStore(database),
+                SettingsStore(database),
+                settings.data_dir,
+                fake_model(settings.fake_model_script)
+                if settings.fake_model_script
+                else None,
+                runtimes,
+                Notifications(),
+            )
+            try:
+                yield
+            finally:
+                await runtimes.close()
 
     app = FastAPI(lifespan=lifespan)
+
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request: Request, error: RequestValidationError):
+        return JSONResponse({"error": "Invalid request body"}, status_code=400)
 
     @app.middleware("http")
     async def access(request: Request, call_next: RequestResponseEndpoint) -> Response:
@@ -47,4 +75,5 @@ def create_app(settings: Settings) -> FastAPI:
         )
 
     app.include_router(router)
+    app.include_router(sessions_router)
     return app

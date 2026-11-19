@@ -54,9 +54,15 @@
 		"typescript-eslint": "^8.72.2",
 		"vite": "^8.3.8",
 		"vitest": "^5.1.0",
-		"vitest-browser-svelte": "^3.1.0"
+		"vitest-browser-svelte": "^3.1.0",
+		"openapi-typescript": "7.13.0"
 	},
 	"dependencies": {
 		"mode-watcher": "^1.1.0"
+	},
+	"overrides": {
+		"openapi-typescript": {
+			"typescript": "$typescript"
+		}
 	}
 }

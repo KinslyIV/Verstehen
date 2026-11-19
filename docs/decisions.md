@@ -20,6 +20,7 @@
 | 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
+| 2026-11-19 | **Orchestrator decision, for user review:** fake-model script replies add `thinking` (text), `error` (provider error text, raised after any scripted partial content), and `delay_ms` (wait before each chunk, default 0). | Deterministic thinking, failure, and stop flows. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model text streams in about three chunks. | Exercise streaming deterministically offline. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model scripts live in `app/verify/scripts/` and are shared by tests and flows; static layout flows reuse the minimal `health.json` script without making model calls. | Keep one script format and retain per-flow fixture isolation. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The API token is set with module-level `setToken()`. | Support the desktop handshake without exposing the token in URLs. |
@@ -403,3 +404,15 @@ Probe, plan, teach, as in LH.
 - Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
+
+## M2 T2 API field names
+
+**Orchestrator decision, for user review:** API and SSE payload fields are snake_case Verstehen
+names (sessions, session_id, entries, turn_in_flight, turn_error, message, error_text); event type
+values keep LH's names.
+
+## M2 T2 API type generator compatibility
+
+**Orchestrator decision, for user review:** openapi-typescript 7.13.0 (latest; peer typescript ^5.x)
+runs on the repo's TypeScript 6 through a targeted npm override, instead of legacy-peer-deps.
+Remove the override when a release supports TypeScript 6.

@@ -36,12 +36,22 @@ replies and empty unsigned thinking from model context, and keeps title fallback
 route. Behavior tests cover each correction.
 Entry models live in `store/entries.py` to preserve the package order (recorded for review).
 
+**M2 T2 is implemented:** named turn stages, per-session claim and background run, compacted
+SSE replay with 100 ms coalesced updates, stop/retry, retained settlement failures, session CRUD
+and notifications. The teacher has no tools. Fake scripts support thinking, errors, and delays;
+without a fake model, turns refuse before saving with LH's 503 envelope. `make api-types`
+generates the TypeScript contract (including SSE); `make check` rejects stale output.
+Offline tests cover persistence ordering, refusal, concurrency, partial stop, retry history,
+reattachment, failures, notifications, API envelopes, and unknown sessions. No learner UI changed;
+T4 adds its verification flows. Three orchestrator decisions are recorded for review: snake_case
+wire fields, fake-script fields, and the targeted TypeScript peer override for the pinned API generator.
+
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
 2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
-   teacher prompt) is complete; T3 (markdown renderer) remains independent. Next: T2 (turns,
-   streaming, API), then T4 (lesson UI).
+   teacher prompt) is complete; T3 (markdown renderer) remains independent. T2 (turns,
+   streaming, API) is complete; next: T4 (lesson UI), after T3.
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions

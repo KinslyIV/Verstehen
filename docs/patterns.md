@@ -12,6 +12,9 @@ is updated in the same commit.
 | Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |
 | Append-only entry store and validated payloads | [`store/entries.py`](../backend/src/verstehen/store/entries.py) (`EntriesStore`; session imports entry models directly) |
 | Prompt composition | [`teaching/prompts.py`](../backend/src/verstehen/teaching/prompts.py) (`compose_instructions`) |
+| Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`Turns.model_gate`, `Refused` / `Continue`) |
+| Session runtime and replay | [`session/runtime.py`](../backend/src/verstehen/session/runtime.py) (`SessionRuntime`, `TurnRun`) |
+| SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
 | API route | [`api/health.py`](../backend/src/verstehen/api/health.py) (`router`, using `api/deps.py` and `Depends`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
 | Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
