@@ -12,16 +12,14 @@ uv run --project backend python packaging/smoke.py backend/dist/verstehen-sideca
 mkdir -p app/src-tauri/binaries
 cp backend/dist/verstehen-sidecar/verstehen-sidecar app/src-tauri/binaries/verstehen-sidecar-x86_64-unknown-linux-gnu
 cd app
-npx tauri icon static/favicon.svg --fit contain
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 npm run build
-cargo clippy --manifest-path src-tauri/Cargo.toml -- -D warnings
-npx tauri build --no-bundle
+cargo clippy --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
+npx tauri build --no-bundle -- --locked
 cd ../packaging
 PKGDEST=/output makepkg --force --nodeps
 pacman -Qp /output/verstehen-*.pkg.tar.zst
 pacman -Qlp /output/verstehen-*.pkg.tar.zst > /output/package-contents.txt
-cp ../app/src-tauri/Cargo.lock /output/Cargo.lock
 rustc --version
 npm list --prefix ../app @tauri-apps/cli
 du -sh ../backend/dist/verstehen-sidecar
