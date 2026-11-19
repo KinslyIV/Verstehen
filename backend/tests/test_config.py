@@ -7,7 +7,7 @@ from verstehen.config import load_settings
 
 @pytest.fixture(autouse=True)
 def environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    for name in ("DESKTOP", "TOKEN", "PORT", "ALLOWED_HOSTS"):
+    for name in ("DESKTOP", "TOKEN", "PORT", "ALLOWED_HOSTS", "FAKE_MODEL"):
         monkeypatch.delenv(f"VERSTEHEN_{name}", raising=False)
     monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path / "data"))
 
@@ -39,3 +39,11 @@ def test_settings_read_environment_once(monkeypatch: pytest.MonkeyPatch):
     assert settings.port == 12345
     assert settings.allowed_hosts == ("my.example", "other.example")
     assert settings.data_dir.is_dir()
+
+
+def test_missing_fake_model_script_refuses_to_start(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+    monkeypatch.setenv("VERSTEHEN_FAKE_MODEL", str(tmp_path / "missing.json"))
+    with pytest.raises(ValueError, match="Invalid fake-model script.*missing.json"):
+        load_settings()

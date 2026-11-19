@@ -16,3 +16,6 @@ is updated in the same commit.
 | Component test (Vitest browser mode) | [`composer_accepts_text_but_send_is_disabled`](../app/src/routes/layout.svelte.test.ts) |
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
+| Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
+| Fake-model script | [`health.json`](../app/verify/scripts/health.json) |
+| API client function | [`health`](../app/src/lib/api/client.ts) |

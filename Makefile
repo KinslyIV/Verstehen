@@ -1,8 +1,9 @@
-.PHONY: setup check test fmt lock-migrations dev
+.PHONY: setup check test fmt lock-migrations dev verify
 
 setup:
 	uv sync --project backend --locked
 	npm ci --prefix app
+	cd app && npx playwright install chromium
 
 check:
 	uv run --project backend ruff check .
@@ -31,3 +32,7 @@ lock-migrations:
 
 dev:
 	uv run --project backend python tools/dev.py
+
+verify:
+	npm run build --prefix app
+	cd app && npx playwright test $(FLOW)

@@ -2,6 +2,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from verstehen.providers.fake import load_script
+
 
 @dataclass(frozen=True)
 class Settings:
@@ -10,6 +12,7 @@ class Settings:
     token: str | None = field(default=None, repr=False)
     port: int = 0
     allowed_hosts: tuple[str, ...] = ()
+    fake_model_script: Path | None = None
 
 
 def load_settings() -> Settings:
@@ -33,6 +36,10 @@ def load_settings() -> Settings:
         ) from None
     if not 0 <= port <= 65535:
         raise ValueError("VERSTEHEN_PORT must be between 0 and 65535.")
+    script = os.environ.get("VERSTEHEN_FAKE_MODEL")
+    fake_model_script = Path(script).expanduser() if script is not None else None
+    if fake_model_script is not None:
+        load_script(fake_model_script)
     data_dir = Path(
         os.environ.get("VERSTEHEN_DATA_DIR", "~/.local/share/verstehen")
     ).expanduser()
@@ -42,4 +49,4 @@ def load_settings() -> Settings:
         for name in os.environ.get("VERSTEHEN_ALLOWED_HOSTS", "").split(",")
         if name.strip()
     )
-    return Settings(data_dir, desktop, token, port, allowed_hosts)
+    return Settings(data_dir, desktop, token, port, allowed_hosts, fake_model_script)

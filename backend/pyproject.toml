@@ -6,6 +6,7 @@ dependencies = [
     "aiosqlite>=0.22.1",
     "fastapi>=0.165.0",
     "pydantic>=2.14.3",
+    "pydantic-ai-slim==2.70.0",
     "uvicorn>=0.54.0",
 ]
 

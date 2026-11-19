@@ -20,6 +20,10 @@
 | 2026-11-19 | **User decision (M1 UI layout planning):** The M1 layout is static, with no API calls or additions to `src/lib/api/`. | Backend session creation starts in M2. |
 | 2026-11-19 | **User decision (M1 UI layout planning):** Use Vitest browser mode with the Playwright Chromium provider and vitest-browser-svelte as a second project, included in make check and make test. | Test real browser component behavior offline. |
 | 2026-11-19 | **User decision (M1 UI layout planning):** Use `/session/new` instead of LH `/chat/new` (components/sidebar.tsx:427 at a636647). | Naming difference: Verstehen calls them sessions. |
+| 2026-11-19 | **User decision (M1 task 3 planning):** Verify flows use `@playwright/test` in `app/`. | Keep browser flows with the frontend tooling. |
+| 2026-11-19 | **User decision (M1 task 3 planning):** Build the fake model now: JSON reply scripts validated by Pydantic, turned into a streaming `FunctionModel`, enabled only by `VERSTEHEN_FAKE_MODEL`. | Offline deterministic verification; routes use it starting in M2. |
+| 2026-11-19 | **User decision (M1 task 3 planning):** The first flow proves the app reaches the sidecar through a minimal API client and a `Sidecar: ok` placeholder. | Prove transport before the UI task replaces the placeholder. |
+| 2026-11-19 | **User decision (M1 task 3 planning):** `make verify` serves the built SPA through Vite preview, with one sidecar, temporary data directory, and fake-model script per flow. | Isolate flows and verify the shipped static output. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_TOKEN` without `VERSTEHEN_DESKTOP=1`, including an empty token, refuses to start; `VERSTEHEN_DESKTOP` accepts only `"1"`. | Fail closed on an incomplete or mistyped desktop launch. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_PORT=0` or unset chooses a free port; the bound socket is held through startup. | Report the actual port without a bind race. |
 | 2026-11-18 | **Orchestrator decision, for user review:** The SQLite file is `<data dir>/verstehen.db`. | One stable database path owned by the sidecar. |
