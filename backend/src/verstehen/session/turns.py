@@ -32,6 +32,10 @@ class TurnInput(BaseModel):
 
 @dataclass
 class TurnState:
+    """Carry one input through turn stages and its background run.
+    Entries, the claimed run, and the teacher are filled as preparation advances.
+    """
+
     session_id: str
     input: TurnInput
     runtime: SessionRuntime
@@ -45,29 +49,33 @@ class Continue:
     state: TurnState
 
 
-class Turns:
+class TurnService:
+    """Coordinate turn preparation, background inference, and reply settlement.
+    Use stores for durable entries, runtimes for claims, and notifications for session changes.
+    """
+
     def __init__(
         self,
-        sessions: SessionsStore,
-        entries: EntriesStore,
-        settings: SettingsStore,
+        sessions_store: SessionsStore,
+        entries_store: EntriesStore,
+        settings_store: SettingsStore,
         data_dir: Path,
         model: Model | None,
         runtimes: RuntimeRegistry,
         notifications: Notifications,
     ):
-        self.sessions = sessions
-        self.entries = entries
-        self.settings = settings
+        self.sessions_store = sessions_store
+        self.entries_store = entries_store
+        self.settings_store = settings_store
         self.data_dir = data_dir
         self.model = model
         self.runtimes = runtimes
         self.notifications = notifications
 
     async def validate(self, state: TurnState) -> Refused | Continue:
-        if await self.sessions.get(state.session_id) is None:
+        if await self.sessions_store.get(state.session_id) is None:
             return Refused(404, {"error": "Unknown session"})
-        state.entries = await self.entries.list(state.session_id)
+        state.entries = await self.entries_store.list(state.session_id)
         if state.input.type == "text":
             if not state.input.text or not state.input.text.strip():
                 return Refused(400, {"error": "text input requires non-empty text"})
@@ -102,7 +110,7 @@ class Turns:
         return Continue(state)
 
     async def write_ahead(self, state: TurnState) -> Refused | Continue:
-        state.entries = await self.entries.list(state.session_id)
+        state.entries = await self.entries_store.list(state.session_id)
         if state.input.type == "retry":
             try:
                 retry_drops(state.entries)
@@ -113,7 +121,7 @@ class Turns:
                 return Refused(400, {"error": str(error)})
         else:
             entry = UserEntry(text=state.input.text or "")
-            await self.entries.append(state.session_id, [entry])
+            await self.entries_store.append(state.session_id, [entry])
             state.entries.append(entry)
             self.notifications.publish(
                 Notification(type="chats-changed", session_id=state.session_id)
@@ -122,7 +130,7 @@ class Turns:
 
     async def build_teacher(self, state: TurnState) -> Refused | Continue:
         assert self.model is not None
-        instructions = await compose_instructions(self.settings, self.data_dir)
+        instructions = await compose_instructions(self.settings_store, self.data_dir)
         state.teacher = build_teacher(self.model, instructions)
         return Continue(state)
 
@@ -214,7 +222,7 @@ class Turns:
             run.close()
 
     async def settle(self, state: TurnState, reply: AssistantEntry) -> Continue:
-        await self.entries.append(state.session_id, [reply])
+        await self.entries_store.append(state.session_id, [reply])
         self.notifications.publish(
             Notification(type="chats-changed", session_id=state.session_id)
         )

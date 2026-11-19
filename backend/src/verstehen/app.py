@@ -13,8 +13,8 @@ from verstehen.config import Settings
 from verstehen.providers.fake import fake_model
 from verstehen.session.events import Notifications
 from verstehen.session.runtime import RuntimeRegistry
-from verstehen.session.sessions import Sessions
-from verstehen.session.turns import Turns
+from verstehen.session.sessions import SessionService
+from verstehen.session.turns import TurnService
 from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore
 from verstehen.store.migrate import migrate
@@ -32,14 +32,17 @@ def create_app(settings: Settings) -> FastAPI:
             await migrate(database)
             app.state.database = database
             runtimes = RuntimeRegistry()
-            sessions = SessionsStore(database)
-            entries = EntriesStore(database)
+            sessions_store = SessionsStore(database)
+            entries_store = EntriesStore(database)
+            settings_store = SettingsStore(database)
             notifications = Notifications()
-            app.state.sessions = Sessions(sessions, entries, runtimes, notifications)
-            app.state.turns = Turns(
-                sessions,
-                entries,
-                SettingsStore(database),
+            app.state.session_service = SessionService(
+                sessions_store, entries_store, runtimes, notifications
+            )
+            app.state.turn_service = TurnService(
+                sessions_store,
+                entries_store,
+                settings_store,
                 settings.data_dir,
                 fake_model(settings.fake_model_script)
                 if settings.fake_model_script

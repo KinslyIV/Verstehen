@@ -8,7 +8,10 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 |---|---|---|
 | **User** | the human | decides the design during planning, merges branches |
 | **Orchestrator** | Claude Opus, the main agent in the T3 Code thread | plans with the user, delegates, answers the implementer's questions, reviews, reports |
-| **Implementer** | GPT 6.1 Sol, a T3 subagent of the orchestrator (Codex, reasoning effort `high`, default tier) | writes the code, tests, and verify flows, and fixes review findings |
+| **Implementer** | GPT 6.1 Sol, a T3 subagent of the orchestrator (Codex, reasoning effort `medium`, default tier) | writes the code, tests, and verify flows, and fixes review findings |
+
+All subagents use **GPT-6.1 Sol** (`gpt-6.1-sol`), `reasoningEffort: medium`, and the default
+service tier. The parent model settings are unchanged.
 
 ## 1. Plan (with the user)
 
@@ -48,6 +51,11 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 - The orchestrator reviews the branch against the plan, [AGENTS.md](../AGENTS.md), the
   [architecture](architecture.md), and LearnHarness's behavior. It also checks that `make check`
   passes and, for UI or shared runtime changes, looks at the `make verify` screenshots.
+- Assess each changed class's clarity: can a reader understand its role, ownership, lifetime,
+  and collaborators? Add a useful responsibility description when needed, or improve naming.
+  Small obvious classes and data wrappers can remain undocumented; do not check for docstrings
+  indiscriminately. Review function/method descriptions separately, skipping self-explanatory
+  methods. Automatic comment checks remain limited to existing length and syntax enforcement.
 - A reviewer may reuse passing results only when relevant source, configuration, dependencies,
   and environment are unchanged and no new issue has appeared. Record the command, revision or
   dirty state, selected flows, and screenshot/trace evidence. Rerun after meaningful edits, a

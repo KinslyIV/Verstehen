@@ -12,8 +12,8 @@ from verstehen.api.sessions import notification_frames, turn_frames
 from verstehen.providers.fake import fake_model
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.runtime import RuntimeRegistry, TurnRun
-from verstehen.session.sessions import Sessions
-from verstehen.session.turns import Continue, Refused, TurnInput, Turns
+from verstehen.session.sessions import SessionService
+from verstehen.session.turns import Continue, Refused, TurnInput, TurnService
 from verstehen.store.database import open_database
 from verstehen.store.entries import AssistantEntry, EntriesStore, UserEntry
 from verstehen.store.migrate import migrate
@@ -22,11 +22,11 @@ from verstehen.store.settings import SettingsStore
 
 
 @asynccontextmanager
-async def service(tmp_path: Path, model=None):
+async def turn_service_context(tmp_path: Path, model=None):
     async with open_database(tmp_path / "test.db") as database:
         await migrate(database)
         runtimes = RuntimeRegistry()
-        turns = Turns(
+        turn_service = TurnService(
             SessionsStore(database),
             EntriesStore(database),
             SettingsStore(database),
@@ -35,15 +35,20 @@ async def service(tmp_path: Path, model=None):
             runtimes,
             Notifications(),
         )
-        session = await turns.sessions.create("Test")
+        session = await turn_service.sessions_store.create("Test")
         try:
-            yield turns, session.id
+            yield turn_service, session.id
         finally:
             await runtimes.close()
 
 
-def sessions_for(turns: Turns) -> Sessions:
-    return Sessions(turns.sessions, turns.entries, turns.runtimes, turns.notifications)
+def session_service_for(turn_service: TurnService) -> SessionService:
+    return SessionService(
+        turn_service.sessions_store,
+        turn_service.entries_store,
+        turn_service.runtimes,
+        turn_service.notifications,
+    )
 
 
 def scripted(tmp_path: Path, replies: list[dict]) -> FunctionModel:
@@ -52,8 +57,10 @@ def scripted(tmp_path: Path, replies: list[dict]) -> FunctionModel:
     return fake_model(path)
 
 
-async def start(turns: Turns, session_id: str, type: Literal["text", "retry"] = "text"):
-    result = await turns.start(
+async def start(
+    turn_service: TurnService, session_id: str, type: Literal["text", "retry"] = "text"
+):
+    result = await turn_service.start(
         session_id, TurnInput(type=type, text="Teach me" if type == "text" else None)
     )
     assert isinstance(result, Continue)
@@ -74,43 +81,45 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
 
         async def stream(messages: list[ModelMessage], info: AgentInfo):
             assert info.function_tools == []
-            seen.extend(await turns.entries.list(session_id))
+            seen.extend(await turn_service.entries_store.list(session_id))
             yield "A reply"
 
-        async with service(tmp_path, FunctionModel(stream_function=stream)) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (
+            turn_service,
             session_id,
         ):
-            original = turns.runtimes.get(session_id).release_turn
+            original = turn_service.runtimes.get(session_id).release_turn
 
             async def release(run):
-                saved = await turns.entries.list(session_id)
+                saved = await turn_service.entries_store.list(session_id)
                 assert len(saved) == 2 and saved[-1].kind == "assistant"
                 await original(run)
 
-            turns.runtimes.get(session_id).release_turn = release
-            run = await start(turns, session_id)
+            turn_service.runtimes.get(session_id).release_turn = release
+            run = await start(turn_service, session_id)
             await completed(run)
             assert seen[0].kind == "user"
             assert seen[0].text == "Teach me"
-            saved = await turns.entries.list(session_id)
+            saved = await turn_service.entries_store.list(session_id)
             assert isinstance(saved[-1], AssistantEntry)
             assert saved[-1].parts[0].type == "text"
             assert saved[-1].parts[0].text == "A reply"
-            assert turns.runtimes.get(session_id).run is None
+            assert turn_service.runtimes.get(session_id).run is None
 
     asyncio.run(scenario())
 
 
 def test_refusals_save_nothing_and_model_gate_has_lh_envelope(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path) as (turns, session_id):
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
             for input, status in [
                 (TurnInput(type="text", text=" "), 400),
                 (TurnInput(type="retry"), 400),
                 (TurnInput(type="text", text="hello"), 503),
             ]:
-                result = await turns.start(session_id, input)
+                result = await turn_service.start(session_id, input)
                 assert isinstance(result, Refused) and result.status == status
                 if status == 503:
                     assert result.reason == {
@@ -118,23 +127,23 @@ def test_refusals_save_nothing_and_model_gate_has_lh_envelope(tmp_path: Path):
                         "code": "models_not_configured",
                         "missing": ["strong"],
                     }
-                assert await turns.entries.list(session_id) == []
-                assert turns.runtimes.get(session_id).run is None
+                assert await turn_service.entries_store.list(session_id) == []
+                assert turn_service.runtimes.get(session_id).run is None
 
     asyncio.run(scenario())
 
 
 def test_second_turn_gets_409_and_stop_keeps_partial_thinking_and_text(tmp_path: Path):
     async def scenario():
-        async with service(
+        async with turn_service_context(
             tmp_path,
             scripted(
                 tmp_path,
                 [{"thinking": "Consider this", "text": "A long reply", "delay_ms": 20}],
             ),
-        ) as (turns, session_id):
-            run = await start(turns, session_id)
-            result = await turns.start(
+        ) as (turn_service, session_id):
+            run = await start(turn_service, session_id)
+            result = await turn_service.start(
                 session_id, TurnInput(type="text", text="Another")
             )
             assert isinstance(result, Refused) and result.status == 409
@@ -147,7 +156,7 @@ def test_second_turn_gets_409_and_stop_keeps_partial_thinking_and_text(tmp_path:
                     run.abort()
                     break
             await completed(run)
-            saved = await turns.entries.list(session_id)
+            saved = await turn_service.entries_store.list(session_id)
             assert len(saved) == 2
             reply = saved[-1]
             assert isinstance(reply, AssistantEntry) and reply.stop_reason == "aborted"
@@ -167,18 +176,20 @@ def test_error_then_retry_hides_failed_attempt_from_model(tmp_path: Path):
             if len(calls) == 1:
                 raise RuntimeError("provider failed")
 
-        async with service(tmp_path, FunctionModel(stream_function=stream)) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (
+            turn_service,
             session_id,
         ):
-            await completed(await start(turns, session_id))
-            failed = (await turns.entries.list(session_id))[-1]
+            await completed(await start(turn_service, session_id))
+            failed = (await turn_service.entries_store.list(session_id))[-1]
             assert isinstance(failed, AssistantEntry)
             assert (
                 failed.stop_reason == "error" and failed.error_text == "provider failed"
             )
-            await completed(await start(turns, session_id, "retry"))
-            assert len(await turns.entries.list(session_id)) == 3
+            await completed(await start(turn_service, session_id, "retry"))
+            assert len(await turn_service.entries_store.list(session_id)) == 3
             assert not any(isinstance(message, ModelResponse) for message in calls[1])
 
     asyncio.run(scenario())
@@ -188,10 +199,10 @@ def test_reattach_replays_log_then_continues_live_and_disconnect_does_not_stop(
     tmp_path: Path,
 ):
     async def scenario():
-        async with service(
+        async with turn_service_context(
             tmp_path, scripted(tmp_path, [{"text": "abcdefghijklmnop", "delay_ms": 60}])
-        ) as (turns, session_id):
-            run = await start(turns, session_id)
+        ) as (turn_service, session_id):
+            run = await start(turn_service, session_id)
             first = run.subscribe()
             async for event in first:
                 if event.type == "message_update":
@@ -199,7 +210,9 @@ def test_reattach_replays_log_then_continues_live_and_disconnect_does_not_stop(
             await first.aclose()
             assert not run.aborted
             retained = list(run.log)
-            second = turn_frames(sessions_for(turns).turn_events(session_id))
+            second = turn_frames(
+                session_service_for(turn_service).turn_events(session_id)
+            )
             wire = [frame async for frame in second]
             assert wire[-1] == "data: [DONE]\n\n"
             received = [TurnEvent.model_validate_json(frame[6:]) for frame in wire[:-1]]
@@ -218,24 +231,24 @@ def test_reattach_replays_log_then_continues_live_and_disconnect_does_not_stop(
 
 def test_settlement_failure_is_retained_until_next_accepted_turn(tmp_path: Path):
     async def scenario():
-        async with service(
+        async with turn_service_context(
             tmp_path, scripted(tmp_path, [{"text": "one"}, {"text": "two"}])
-        ) as (turns, session_id):
-            original = turns.entries.append
+        ) as (turn_service, session_id):
+            original = turn_service.entries_store.append
 
             async def append(session_id, entries):
                 if entries[0].kind == "assistant":
                     raise OSError("save failed")
                 await original(session_id, entries)
 
-            turns.entries.append = append
-            run = await start(turns, session_id)
+            turn_service.entries_store.append = append
+            run = await start(turn_service, session_id)
             await completed(run)
-            runtime = turns.runtimes.get(session_id)
+            runtime = turn_service.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure == "save failed"
             assert run.log[-1].type == "error"
-            turns.entries.append = original
-            run = await start(turns, session_id)
+            turn_service.entries_store.append = original
+            run = await start(turn_service, session_id)
             assert runtime.failure is None
             await completed(run)
 
@@ -244,14 +257,16 @@ def test_settlement_failure_is_retained_until_next_accepted_turn(tmp_path: Path)
 
 def test_immediate_abort_settles_and_saves_entry(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path, scripted(tmp_path, [{"text": "one"}])) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, scripted(tmp_path, [{"text": "one"}])
+        ) as (
+            turn_service,
             session_id,
         ):
-            run = await start(turns, session_id)
+            run = await start(turn_service, session_id)
             run.abort()
             await completed(run)
-            reply = (await turns.entries.list(session_id))[-1]
+            reply = (await turn_service.entries_store.list(session_id))[-1]
             assert isinstance(reply, AssistantEntry)
             assert reply.stop_reason == "aborted"
 
@@ -285,21 +300,23 @@ def test_updates_replace_slot_and_live_fanout_is_coalesced():
 
 def test_notifications_follow_durable_settlement(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path, scripted(tmp_path, [{"text": "one"}])) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, scripted(tmp_path, [{"text": "one"}])
+        ) as (
+            turn_service,
             session_id,
         ):
             seen = []
-            original = turns.notifications.publish
+            original = turn_service.notifications.publish
 
             def publish(event: Notification):
                 seen.append(
-                    (event.type, turns.runtimes.get(session_id).run is not None)
+                    (event.type, turn_service.runtimes.get(session_id).run is not None)
                 )
                 original(event)
 
-            turns.notifications.publish = publish
-            await completed(await start(turns, session_id))
+            turn_service.notifications.publish = publish
+            await completed(await start(turn_service, session_id))
             assert seen[0] == ("turn-started", True)
             assert seen[-1] == ("turn-settled", False)
 
@@ -309,12 +326,12 @@ def test_notifications_follow_durable_settlement(tmp_path: Path):
 def test_late_attach_delivers_retained_failure_before_settled(tmp_path: Path):
 
     async def scenario():
-        async with service(tmp_path) as (turns, session_id):
-            turns.runtimes.get(session_id).remember_failure("Could not save")
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
+            turn_service.runtimes.get(session_id).remember_failure("Could not save")
             frames = [
                 frame
                 async for frame in turn_frames(
-                    sessions_for(turns).turn_events(session_id)
+                    session_service_for(turn_service).turn_events(session_id)
                 )
             ]
             assert json.loads(frames[0][6:]) == {
@@ -329,11 +346,13 @@ def test_late_attach_delivers_retained_failure_before_settled(tmp_path: Path):
 
 def test_repeated_abort_during_settlement_does_not_cancel_save(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path, scripted(tmp_path, [{"text": "one"}])) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, scripted(tmp_path, [{"text": "one"}])
+        ) as (
+            turn_service,
             session_id,
         ):
-            original = turns.entries.append
+            original = turn_service.entries_store.append
             saving = asyncio.Event()
             proceed = asyncio.Event()
 
@@ -343,25 +362,25 @@ def test_repeated_abort_during_settlement_does_not_cancel_save(tmp_path: Path):
                     await proceed.wait()
                 await original(session_id, entries)
 
-            turns.entries.append = append
-            run = await start(turns, session_id)
+            turn_service.entries_store.append = append
+            run = await start(turn_service, session_id)
             await asyncio.wait_for(saving.wait(), 3)
             run.abort()
             run.abort()
             proceed.set()
             await completed(run)
-            assert len(await turns.entries.list(session_id)) == 2
-            assert turns.runtimes.get(session_id).run is None
+            assert len(await turn_service.entries_store.list(session_id)) == 2
+            assert turn_service.runtimes.get(session_id).run is None
 
     asyncio.run(scenario())
 
 
 def test_settlement_during_slow_replay_still_delivers_live_tail(tmp_path: Path):
     async def scenario():
-        async with service(
+        async with turn_service_context(
             tmp_path, scripted(tmp_path, [{"text": "one", "delay_ms": 20}])
-        ) as (turns, session_id):
-            run = await start(turns, session_id)
+        ) as (turn_service, session_id):
+            run = await start(turn_service, session_id)
             await asyncio.sleep(0)
             subscriber = run.subscribe()
             assert (await anext(subscriber)).type == "message_start"
@@ -374,7 +393,7 @@ def test_settlement_during_slow_replay_still_delivers_live_tail(tmp_path: Path):
 
 def test_fake_script_error_is_saved_and_retry_uses_next_reply(tmp_path: Path):
     async def scenario():
-        async with service(
+        async with turn_service_context(
             tmp_path,
             scripted(
                 tmp_path,
@@ -383,16 +402,16 @@ def test_fake_script_error_is_saved_and_retry_uses_next_reply(tmp_path: Path):
                     {"text": "Recovered"},
                 ],
             ),
-        ) as (turns, session_id):
-            await completed(await start(turns, session_id))
-            failed = (await turns.entries.list(session_id))[-1]
+        ) as (turn_service, session_id):
+            await completed(await start(turn_service, session_id))
+            failed = (await turn_service.entries_store.list(session_id))[-1]
             assert isinstance(failed, AssistantEntry)
             assert (
                 failed.stop_reason == "error"
                 and failed.error_text == "scripted failure"
             )
-            await completed(await start(turns, session_id, "retry"))
-            reply = (await turns.entries.list(session_id))[-1]
+            await completed(await start(turn_service, session_id, "retry"))
+            reply = (await turn_service.entries_store.list(session_id))[-1]
             assert isinstance(reply, AssistantEntry) and reply.stop_reason == "stop"
 
     asyncio.run(scenario())
@@ -400,13 +419,13 @@ def test_fake_script_error_is_saved_and_retry_uses_next_reply(tmp_path: Path):
 
 def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path) as (turns, session_id):
-            first = notification_frames(sessions_for(turns).subscribe())
-            second = notification_frames(sessions_for(turns).subscribe())
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
+            first = notification_frames(session_service_for(turn_service).subscribe())
+            second = notification_frames(session_service_for(turn_service).subscribe())
             a = asyncio.create_task(anext(first))
             b = asyncio.create_task(anext(second))
             await asyncio.sleep(0)
-            turns.notifications.publish(
+            turn_service.notifications.publish(
                 Notification(type="turn-started", session_id=session_id)
             )
             expected = (
@@ -415,15 +434,15 @@ def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
             assert await a == expected
             assert await b == expected
             await first.aclose()
-            assert len(turns.notifications.subscribers) == 1
+            assert len(turn_service.notifications.subscribers) == 1
             tail = asyncio.create_task(anext(second))
             await asyncio.sleep(0)
-            turns.notifications.publish(
+            turn_service.notifications.publish(
                 Notification(type="turn-settled", session_id=session_id)
             )
             assert (await tail).startswith("event: turn-settled\n")
             await second.aclose()
-            assert not turns.notifications.subscribers
+            assert not turn_service.notifications.subscribers
 
     asyncio.run(scenario())
 
@@ -433,8 +452,10 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(
     tmp_path: Path, error_type: type[Exception]
 ):
     async def scenario():
-        async with service(tmp_path, scripted(tmp_path, [{"text": "one"}])) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, scripted(tmp_path, [{"text": "one"}])
+        ) as (
+            turn_service,
             session_id,
         ):
             building = asyncio.Event()
@@ -445,12 +466,14 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(
                 await proceed.wait()
                 raise error_type("Could not build teacher")
 
-            turns.build_teacher = fail
+            turn_service.build_teacher = fail
             request = asyncio.create_task(
-                turns.start(session_id, TurnInput(type="text", text="Hello"))
+                turn_service.start(session_id, TurnInput(type="text", text="Hello"))
             )
             await building.wait()
-            frames = turn_frames(sessions_for(turns).turn_events(session_id))
+            frames = turn_frames(
+                session_service_for(turn_service).turn_events(session_id)
+            )
             reading = asyncio.create_task(anext(frames))
             await asyncio.sleep(0)
             proceed.set()
@@ -461,7 +484,7 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(
                 == "Could not build teacher"
             )
             assert [frame async for frame in frames] == ["data: [DONE]\n\n"]
-            runtime = turns.runtimes.get(session_id)
+            runtime = turn_service.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure == "Could not build teacher"
 
     asyncio.run(scenario())
@@ -477,11 +500,13 @@ def test_stop_clears_pending_cancellation_before_settlement(tmp_path: Path):
             streaming.set()
             await asyncio.Event().wait()
 
-        async with service(tmp_path, FunctionModel(stream_function=stream)) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (
+            turn_service,
             session_id,
         ):
-            original = turns.settle
+            original = turn_service.settle
 
             async def settle(state, reply):
                 task = asyncio.current_task()
@@ -489,14 +514,14 @@ def test_stop_clears_pending_cancellation_before_settlement(tmp_path: Path):
                 settled.append(task.cancelling())
                 return await original(state, reply)
 
-            turns.settle = settle
-            run = await start(turns, session_id)
+            turn_service.settle = settle
+            run = await start(turn_service, session_id)
             await asyncio.wait_for(streaming.wait(), 3)
             run.abort()
             run.abort()
             await completed(run)
             assert settled == [0]
-            reply = (await turns.entries.list(session_id))[-1]
+            reply = (await turn_service.entries_store.list(session_id))[-1]
             assert isinstance(reply, AssistantEntry) and reply.stop_reason == "aborted"
 
     asyncio.run(scenario())
@@ -506,49 +531,55 @@ def test_retry_recheck_refuses_and_releases_claim_without_remembering_failure(
     tmp_path: Path,
 ):
     async def scenario():
-        async with service(tmp_path, scripted(tmp_path, [{"text": "unused"}])) as (
-            turns,
+        async with turn_service_context(
+            tmp_path, scripted(tmp_path, [{"text": "unused"}])
+        ) as (
+            turn_service,
             session_id,
         ):
-            await turns.entries.append(
+            await turn_service.entries_store.append(
                 session_id,
                 [
                     UserEntry(text="Hello"),
                     AssistantEntry(parts=[], stop_reason="error"),
                 ],
             )
-            runtime = turns.runtimes.get(session_id)
-            original = turns.claim
+            runtime = turn_service.runtimes.get(session_id)
+            original = turn_service.claim
 
             async def claim(state):
                 result = await original(state)
-                await turns.entries.append(session_id, [AssistantEntry(parts=[])])
+                await turn_service.entries_store.append(
+                    session_id, [AssistantEntry(parts=[])]
+                )
                 return result
 
-            turns.claim = claim
-            result = await turns.start(session_id, TurnInput(type="retry"))
+            turn_service.claim = claim
+            result = await turn_service.start(session_id, TurnInput(type="retry"))
             assert isinstance(result, Refused) and result.status == 400
             assert result.reason == {
                 "error": "retry input requires a failed turn to retry"
             }
             assert runtime.run is None and runtime.failure is None
-            assert len(await turns.entries.list(session_id)) == 3
+            assert len(await turn_service.entries_store.list(session_id)) == 3
 
     asyncio.run(scenario())
 
 
 def test_unexpected_error_before_claim_is_500_and_not_remembered(tmp_path: Path):
     async def scenario():
-        async with service(tmp_path) as (turns, session_id):
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
 
             async def fail(state):
                 raise ValueError("Unexpected validation failure")
 
-            turns.validate = fail
-            result = await turns.start(session_id, TurnInput(type="text", text="Hello"))
+            turn_service.validate = fail
+            result = await turn_service.start(
+                session_id, TurnInput(type="text", text="Hello")
+            )
             assert isinstance(result, Refused) and result.status == 500
-            runtime = turns.runtimes.get(session_id)
+            runtime = turn_service.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure is None
-            assert await turns.entries.list(session_id) == []
+            assert await turn_service.entries_store.list(session_id) == []
 
     asyncio.run(scenario())

@@ -25,6 +25,8 @@ follow the reading order in the [README](README.md).
 Work goes plan → implement → review → report, as described in [`docs/workflow.md`](docs/workflow.md).
 The **orchestrator** (Claude Opus, the main agent in the T3 Code thread) plans with the user and
 reviews. The **implementer** (GPT 6.1 Sol, a subagent) writes the code.
+All subagents use **GPT-6.1 Sol** (`gpt-6.1-sol`), `reasoningEffort: medium`, and the default
+service tier. This does not change the parent model settings.
 
 - **Concurrent independent tasks each get their own branch and T3-bound worktree.** Branches
   alone do not isolate files when threads share a checkout.
@@ -57,14 +59,24 @@ All design authority belongs to the human. **Never guess a design or implementat
 
 - **Simple first.** Choose the simplest implementation that fully does the job. Never cut a
   required behavior for simplicity, and never add an abstraction for a problem we don't have yet.
+- **Name roles explicitly.** Coordinating services use `Service` names (`SessionService`,
+  `TurnService`) and instances `session_service`, `turn_service`. Store variables and fields use
+  `sessions_store`, `entries_store`, `settings_store`. Keep `Session` for the data model and
+  `SessionRuntime` for live state; data fields such as `entries` keep their data names.
 - **The code explains itself.** Names, types, and small functions carry the meaning. If code needs a
   long comment to be understood, rewrite the code.
-- **Comments and docstrings are short: at most 3 lines** (`make check` enforces it). Describe a
-  function or class only when its name and signature don't say what it does at a glance; say what,
-  and why only when needed, never step-by-step how. Skip the obvious. Use Python docstrings or
-  `/** ... */` JSDoc above TypeScript/Svelte functions. Enforce usefulness in review, not a check.
-  Never use a comment to justify a workaround or explain strange code. Rewrite it instead,
-  or ask (see No guessing).
+- **Comments and docstrings are short: at most 3 lines** (`make check` enforces it). Use Python
+  docstrings or `/** ... */` JSDoc above TypeScript/Svelte declarations. Never use a comment to
+  justify a workaround or explain strange code. Rewrite it instead, or ask (see No guessing).
+- **Class responsibilities:** describe a class when its overall role, ownership, lifetime, or
+  collaborators would otherwise be unclear. A short class name alone is insufficient when those
+  boundaries remain unclear. Small obvious classes and data wrappers can stay undocumented.
+- **Functions and methods:** describe them only when their name and signature do not say what
+  they do at a glance. Skip short self-explanatory methods. Say what, and why only when needed,
+  never step-by-step how.
+- **Review usefulness, not docstring presence.** Reviewers assess clarity selectively; there is no
+  requirement that every class have a docstring and no blanket missing-docstring check. Automatic
+  comment checking stays limited to the existing length and syntax enforcement.
 - **Follow the Zen of Python** (`import this`), but not where it makes the code harder to
   understand. Understandable wins.
 - **The codebase is the prompt.** Agents copy what they see, so there is one way to do each thing.

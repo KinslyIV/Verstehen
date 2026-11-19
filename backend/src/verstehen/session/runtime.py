@@ -5,6 +5,10 @@ from verstehen.session.events import TurnEvent
 
 
 class TurnRun:
+    """Own one turn's task, cancellation state, and replayable event stream.
+    Subscribers replay buffered events, then receive live updates until the run closes.
+    """
+
     def __init__(self):
         self.task: asyncio.Task[None] | None = None
         self.aborted = False
@@ -74,6 +78,10 @@ class TurnRun:
 
 
 class SessionRuntime:
+    """Hold one session's in-memory turn claim, failure, and deletion state.
+    The lock serializes turn claims and session snapshots/deletion; nothing here is durable.
+    """
+
     def __init__(self):
         self.lock = asyncio.Lock()
         self.run: TurnRun | None = None
@@ -102,6 +110,10 @@ class SessionRuntime:
 
 
 class RuntimeRegistry:
+    """Retain per-session runtimes for the sidecar's lifetime.
+    Shutdown aborts and awaits their active turn tasks.
+    """
+
     def __init__(self):
         self.runtimes: dict[str, SessionRuntime] = {}
 
