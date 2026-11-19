@@ -285,3 +285,12 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 - **Load-sensitive frontend tests:** `right_panel_open_state_and_width_are_remembered` (M1 layout)
   failed once under load in M3 integration and passed on an unchanged rerun; the reasoning
   auto-close test was fixed by clicking synchronously under fake timers. Fix the layout test next.
+
+## M4 progress
+
+- **T1 — backend question contract.** New sessions use the prober and read Quizzing every turn.
+  Tool calls and results persist in model-response order. Answers, sibling saves, dismissal,
+  continuation, and malformed-question recovery are available through the session API.
+  Teach quiz/explain builders validate plan nodes through an injected lookup.
+- **Next:** T2 builds the question dock, answered cards, keyboard and Esc behavior, the Quizzing
+  control, and the M4 browser verification flows on this contract.

@@ -23,6 +23,15 @@ class ThinkingPart(BaseModel):
     redacted: bool = False
 
 
+class ToolCallPart(BaseModel):
+    model_config = ConfigDict(revalidate_instances="always")
+
+    type: Literal["tool_call"] = "tool_call"
+    tool_call_id: str
+    tool_name: str
+    arguments: JsonValue
+
+
 class EntryBase(BaseModel):
     model_config = ConfigDict(revalidate_instances="always")
 
@@ -37,8 +46,10 @@ class UserEntry(EntryBase):
 
 class AssistantEntry(EntryBase):
     kind: Literal["assistant"] = "assistant"
-    parts: List[Annotated[TextPart | ThinkingPart, Field(discriminator="type")]]
-    stop_reason: Literal["stop", "aborted", "error"] = "stop"
+    parts: List[
+        Annotated[TextPart | ThinkingPart | ToolCallPart, Field(discriminator="type")]
+    ]
+    stop_reason: Literal["stop", "length", "aborted", "error"] = "stop"
     error_text: str | None = None
     provider: str | None = None
     model: str | None = None
@@ -50,6 +61,7 @@ class ToolResultEntry(EntryBase):
     tool_name: str
     text: str
     is_error: bool = False
+    details: JsonValue = None
 
 
 class MarkerEntry(EntryBase):

@@ -366,7 +366,7 @@ def test_title_starts_with_first_turn_foreground_and_replaces_rename(tmp_path: P
                 "no trailing punctuation.\n\nLearner's message:\nPlease explain plants"
             )
             usage = await turns.usage_store.list(session.id)
-            assert {row.role for row in usage} == {"teacher", "title"}
+            assert {row.role for row in usage} == {"prober", "title"}
             assert (
                 next(row for row in usage if row.role == "title").model == "fake-title"
             )

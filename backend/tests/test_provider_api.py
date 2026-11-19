@@ -45,6 +45,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
         assert settings == {
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
+            "quizzing": "choice",
         }
         assert client.get("/api/models").json() == {
             "accounts": [
@@ -120,6 +121,7 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
         assert client.put("/api/settings", json={}).json() == {
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
+            "quizzing": "choice",
         }
 
 

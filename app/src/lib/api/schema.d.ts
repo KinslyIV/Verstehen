@@ -75,6 +75,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sessions/{session_id}/dismiss': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Dismiss Question */
+		post: operations['dismiss_question_api_sessions__session_id__dismiss_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/sessions/{session_id}/abort': {
 		parameters: {
 			query?: never;
@@ -331,13 +348,17 @@ export interface components {
 			 */
 			kind: 'assistant';
 			/** Parts */
-			parts: (components['schemas']['TextPart'] | components['schemas']['ThinkingPart'])[];
+			parts: (
+				| components['schemas']['TextPart']
+				| components['schemas']['ThinkingPart']
+				| components['schemas']['ToolCallPart']
+			)[];
 			/**
 			 * Stop Reason
 			 * @default stop
 			 * @enum {string}
 			 */
-			stop_reason: 'stop' | 'aborted' | 'error';
+			stop_reason: 'stop' | 'length' | 'aborted' | 'error';
 			/** Error Text */
 			error_text?: string | null;
 			/** Provider */
@@ -409,6 +430,12 @@ export interface components {
 		Created: {
 			/** Id */
 			id: string;
+		};
+		/** DismissInput */
+		DismissInput: {
+			/** Tool Call Id */
+			tool_call_id: string;
+			answer: components['schemas']['QuestionAnswer'];
 		};
 		/** DownloadProgress */
 		DownloadProgress: {
@@ -558,6 +585,80 @@ export interface components {
 			 */
 			ok: boolean;
 		};
+		/** OptionAnswer */
+		OptionAnswer: {
+			/** Index */
+			index: number;
+			/** Label */
+			label: string;
+			/** Value */
+			value: string;
+		};
+		/** OptionSnapshot */
+		OptionSnapshot: {
+			/** Index */
+			index: number;
+			/** Label */
+			label: string;
+		};
+		/** ParkedDismissal */
+		ParkedDismissal: {
+			/**
+			 * Ok
+			 * @default true
+			 */
+			ok: boolean;
+			/**
+			 * Parked
+			 * @default true
+			 * @constant
+			 */
+			parked: true;
+		};
+		/** QuestionAnswer */
+		QuestionAnswer: {
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'quiz' | 'ask' | 'explain';
+			/** Tool */
+			tool?: string | null;
+			/** Question Type */
+			question_type?: ('predict' | 'check') | null;
+			/** Question Text */
+			question_text: string;
+			/** Options */
+			options?: components['schemas']['OptionSnapshot'][] | null;
+			/** Dont Know */
+			dont_know: boolean;
+			/** Answers */
+			answers: components['schemas']['OptionAnswer'][];
+			/** Other */
+			other?: string | null;
+			/** Text */
+			text?: string | null;
+			/** Thinking */
+			thinking?: string | null;
+			/** Note */
+			note?: string | null;
+			/** Reading Thinking */
+			reading_thinking?: string | null;
+			/** Confidence */
+			confidence?: number | null;
+			/** Correct */
+			correct?: boolean | null;
+			/** Correct Indices */
+			correct_indices?: number[] | null;
+			/** Committed */
+			committed?: string | null;
+			/** Explanation */
+			explanation?: string | null;
+			/** Dismissed */
+			dismissed?: boolean | null;
+			/** Answered At */
+			answered_at: string;
+		};
 		/** Renamed */
 		Renamed: {
 			/** Title */
@@ -640,6 +741,11 @@ export interface components {
 		Settings: {
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
+			/**
+			 * Quizzing
+			 * @enum {string}
+			 */
+			quizzing?: 'choice' | 'free';
 		};
 		/** SignInStarted */
 		SignInStarted: {
@@ -689,6 +795,19 @@ export interface components {
 			 */
 			redacted: boolean;
 		};
+		/** ToolCallPart */
+		ToolCallPart: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			type: 'tool_call';
+			/** Tool Call Id */
+			tool_call_id: string;
+			/** Tool Name */
+			tool_name: string;
+			arguments: components['schemas']['JsonValue'];
+		};
 		/** ToolResultEntry */
 		ToolResultEntry: {
 			/** Entry Id */
@@ -714,6 +833,7 @@ export interface components {
 			 * @default false
 			 */
 			is_error: boolean;
+			details?: components['schemas']['JsonValue'];
 		};
 		/** TurnEvent */
 		TurnEvent: {
@@ -743,9 +863,16 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'text' | 'retry';
+			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question';
 			/** Text */
 			text?: string | null;
+			/** Tool Call Id */
+			tool_call_id?: string | null;
+			answer?: components['schemas']['QuestionAnswer'] | null;
+			/** Message Id */
+			message_id?: string | null;
+			/** Content Index */
+			content_index?: number | null;
 		};
 		/** UserEntry */
 		UserEntry: {
@@ -1144,6 +1271,68 @@ export interface operations {
 					'application/json':
 						| components['schemas']['ModelsNotConfigured']
 						| components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	dismiss_question_api_sessions__session_id__dismiss_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['DismissInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Accepted */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ParkedDismissal'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};

@@ -7,6 +7,7 @@ from verstehen.store.database import Database
 JSON = TypeAdapter(JsonValue)
 ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
 SlotName = Literal["strong", "cheap", "vision"]
+Quizzing = Literal["choice", "free"]
 
 
 class ModelPick(BaseModel):
@@ -33,6 +34,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     models: ModelSlots = Field(default_factory=ModelSlots)
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
+    quizzing: Quizzing = Field(default_factory=lambda: "choice")
 
 
 class SettingsStore:

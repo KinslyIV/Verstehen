@@ -5,6 +5,7 @@ from typing import List
 
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
+from verstehen.session.projection import failed_response_at_end
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.titles import title_from_prompt
@@ -76,11 +77,13 @@ class SessionService:
             session = await self.sessions_store.get(session_id)
             if session is None:
                 return Refused(404, {"error": "Not found"})
+            entries = await self.entries_store.list(session_id)
+            failed = failed_response_at_end(entries) if runtime.run is None else None
             return SessionSnapshot(
                 session,
-                await self.entries_store.list(session_id),
+                entries,
                 runtime.run is not None,
-                runtime.failure,
+                runtime.failure or (failed.error_text if failed else None),
             )
 
     async def rename(self, session_id: str, title: str | None) -> str | Refused:

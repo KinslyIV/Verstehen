@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **Orchestrator decision, for user review:** M4 structural question-argument errors keep LearnHarness's error envelopes and received arguments, with Python JSON and Pydantic diagnostics inside. The question authoring problems, truncation error, and recovery text use LearnHarness's exact wording. | The port validates with Pydantic and preserves raw argument text for repair. |
 | 2026-11-19 | **User decision (M4 run):** M4's implementer subagent is **GPT-6.2 Sol** (`gpt-6.2-sol`), reasoning effort `medium`, default tier. | User instruction when starting M4. |
 | 2026-11-19 | **User decision (M4 planning):** M4 builds on `m3-t1-core`; its UI task waits for M3 T4. **Superseded the same day:** M3 is merged, so M4 builds on `main`, T1 (backend) first, then T2 (UI) on T1. | M4 changes the same turn, session, settings, and composer code as M3. |
 | 2026-11-19 | **User decision (M4 planning):** The M4 session agent is LH's **prober** (`system-prompt.md` → `prober/*` → `shared/*`) with `probe` (or `recall`) and `ask_user_question`. The teach `quiz`/`explain` are built and tested offline and wired with the plan tree in M5; the predict/check reveal and `readingThinking` UI come with M5. Replaces the M2 decision that the agent is the teacher composition with no tools. | The teach tools need a plan map (`nodeId`), which arrives with `plan_init` in M5; every LH session starts with the prober. |

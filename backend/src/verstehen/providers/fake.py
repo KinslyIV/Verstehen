@@ -1,10 +1,13 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+from functools import partial
 from pathlib import Path
-from typing import Self
+from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, RootModel, model_validator
+from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, model_validator
+from pydantic_ai import RunContext
 from pydantic_ai.messages import (
     ModelMessage,
     ModelResponse,
@@ -12,6 +15,7 @@ from pydantic_ai.messages import (
     ThinkingPart,
     ToolCallPart,
 )
+from pydantic_ai.models import ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.function import (
     AgentInfo,
     DeltaThinkingCalls,
@@ -20,6 +24,7 @@ from pydantic_ai.models.function import (
     DeltaToolCalls,
     FunctionModel,
 )
+from pydantic_ai.settings import ModelSettings
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
@@ -29,7 +34,7 @@ from verstehen.store.settings import ModelPick
 class ScriptToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
-    arguments: dict[str, object]
+    arguments: dict[str, JsonValue] | str
 
 
 class ScriptReply(BaseModel):
@@ -39,6 +44,7 @@ class ScriptReply(BaseModel):
     thinking: str | None = None
     error: str | None = None
     delay_ms: int = 0
+    stop_reason: Literal["length"] | None = None
     tool_calls: list[ScriptToolCall] | None = None
 
     @model_validator(mode="after")
@@ -94,18 +100,17 @@ def fake_model(script_path: Path) -> FunctionModel:
                     call.name, call.arguments, f"call-{request_number}-{index}"
                 )
             )
-        return ModelResponse(parts=parts)
+        return ModelResponse(parts=parts, finish_reason=reply.stop_reason)
 
     async def stream(
-        messages: list[ModelMessage], info: AgentInfo
+        reply: ScriptReply, number: int, messages: list[ModelMessage], info: AgentInfo
     ) -> AsyncIterator[str | DeltaToolCalls | DeltaThinkingCalls]:
-        reply = next_reply()
         if reply.thinking is not None:
             size = max(1, len(reply.thinking) // 3)
             for start in range(0, len(reply.thinking), size):
                 await asyncio.sleep(reply.delay_ms / 1000)
                 yield {
-                    0: DeltaThinkingPart(content=reply.thinking[start : start + size])
+                    -1: DeltaThinkingPart(content=reply.thinking[start : start + size])
                 }
         if reply.text is not None:
             size = max(1, len(reply.text) // 3)
@@ -118,12 +123,34 @@ def fake_model(script_path: Path) -> FunctionModel:
             yield {
                 index: DeltaToolCall(
                     name=call.name,
-                    json_args=json.dumps(call.arguments),
-                    tool_call_id=f"call-{request_number}-{index}",
+                    json_args=call.arguments
+                    if isinstance(call.arguments, str)
+                    else json.dumps(call.arguments),
+                    tool_call_id=f"call-{number}-{index}",
                 )
             }
 
-    return FunctionModel(respond, stream_function=stream)
+    class ScriptedModel(FunctionModel):
+        @asynccontextmanager
+        async def request_stream(
+            self,
+            messages: list[ModelMessage],
+            model_settings: ModelSettings | None,
+            model_request_parameters: ModelRequestParameters,
+            run_context: RunContext[Any] | None = None,
+        ) -> AsyncIterator[StreamedResponse]:
+            reply = next_reply()
+            model = FunctionModel(
+                stream_function=partial(stream, reply, request_number),
+                model_name=self.model_name,
+            )
+            async with model.request_stream(
+                messages, model_settings, model_request_parameters, run_context
+            ) as response:
+                response.finish_reason = reply.stop_reason
+                yield response
+
+    return ScriptedModel(respond)
 
 
 class FakeAccountAdapter:

@@ -116,13 +116,13 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 - **Projection.** `session/projection.py` is the port of `toLlmMessages`. It is the one place that
   decides what the model sees: markers become their canonical text, plan blocks are dropped, the
   newest compaction marker's summary goes first and is followed by everything from its
-  `firstKeptMessageId` onward, and a dangling tool call from an
-  aborted turn gets the "interrupted" result.
-- **Pending question.** A question is pending when the last assistant entry has a question tool call
-  with no `tool_result` yet (LH's `questionCallsOf`). The answer run passes the projected history
-  plus `deferred_tool_results` to Pydantic AI. *To confirm in the first milestone: the spike resumed
-  from a saved `Conversation`; resuming from a rebuilt message history is the documented pattern
-  but not yet tested.*
+  `firstKeptMessageId` onward, and each unresolved call from a completed response gets the
+  "interrupted" result. Failed and aborted responses and their results are omitted.
+- **Pending question.** The newest assistant entry owns question calls with no corresponding
+  tool result. A successful call raises `CallDeferred`; the run stops with `DeferredToolRequests`
+  and persists the response without an acknowledgment. An answer is written adjacent to the
+  response. A new run passes the rebuilt `ModelResponse` and trailing `ModelRequest` with
+  `ToolReturnPart` entries as history. The model reads the compact answer JSON from those parts.
 - **Append-only.** Entries are never updated or deleted. Compaction adds a marker. Each entry has a
   deterministic id where LH has one (`steer_<jobId>`, `exchange_<threadId>_update_<n>`, …), with a
   unique constraint, so a repeated write is harmless.

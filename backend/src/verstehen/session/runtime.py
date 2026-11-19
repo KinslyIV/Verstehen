@@ -3,6 +3,7 @@ from collections.abc import AsyncGenerator
 from typing import List
 
 from verstehen.session.events import TurnEvent
+from verstehen.teaching.questions.inputs import DismissInput
 
 
 class TurnRun:
@@ -21,6 +22,7 @@ class TurnRun:
         self.timer: asyncio.TimerHandle | None = None
         self.subscribers: set[asyncio.Queue[TurnEvent | None]] = set()
         self.settled = False
+        self.parked_dismissal: DismissInput | None = None
 
     def abort(self) -> None:
         if self.aborted or self.finishing:
@@ -80,7 +82,7 @@ class TurnRun:
 
 class SessionRuntime:
     """Hold one session's in-memory turn claim, failure, and deletion state.
-    The lock serializes turn claims and session snapshots/deletion; nothing here is durable.
+    Callers hold the lock for turn claims, question writes, snapshots, and deletion.
     """
 
     def __init__(self):
@@ -89,18 +91,16 @@ class SessionRuntime:
         self.failure: str | None = None
         self.deleted = False
 
-    async def claim_turn(self) -> TurnRun | None:
-        async with self.lock:
-            if self.run is not None or self.deleted:
-                return None
-            self.failure = None
-            self.run = TurnRun()
-            return self.run
+    def claim_turn(self) -> TurnRun | None:
+        if self.run is not None or self.deleted:
+            return None
+        self.failure = None
+        self.run = TurnRun()
+        return self.run
 
-    async def release_turn(self, run: TurnRun) -> None:
-        async with self.lock:
-            if self.run is run:
-                self.run = None
+    def release_turn(self, run: TurnRun) -> None:
+        if self.run is run:
+            self.run = None
 
     def mark_deleted(self) -> None:
         self.deleted = True

@@ -16,6 +16,7 @@ from verstehen.session.turns import TurnInput, TurnService
 from verstehen.store.entries import Entry
 from verstehen.store.sessions import Session
 from verstehen.store.settings import ModelPick, SlotName
+from verstehen.teaching.questions.inputs import DismissInput
 
 SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
 TurnServiceDependency = Annotated[TurnService, Depends(get_turn_service)]
@@ -84,6 +85,10 @@ class Renamed(BaseModel):
 
 class Ok(BaseModel):
     ok: bool = True
+
+
+class ParkedDismissal(Ok):
+    parked: Literal[True] = True
 
 
 @router.get("/api/sessions", response_model=SessionList)
@@ -163,6 +168,22 @@ async def input_session(
     result = await turn_service.start(session_id, body)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
+    return Ok()
+
+
+@router.post(
+    "/api/sessions/{session_id}/dismiss",
+    response_model=Ok,
+    responses={202: {"model": ParkedDismissal}},
+)
+async def dismiss_question(
+    session_id: str, body: DismissInput, turn_service: TurnServiceDependency
+):
+    parked = await turn_service.dismiss(session_id, body)
+    if isinstance(parked, Refused):
+        return JSONResponse(parked.reason, status_code=parked.status)
+    if parked:
+        return JSONResponse(ParkedDismissal().model_dump(), status_code=202)
     return Ok()
 
 

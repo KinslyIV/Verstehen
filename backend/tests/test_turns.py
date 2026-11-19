@@ -112,7 +112,10 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
         seen = []
 
         async def stream(messages: list[ModelMessage], info: AgentInfo):
-            assert info.function_tools == []
+            assert {tool.name for tool in info.function_tools} == {
+                "probe",
+                "ask_user_question",
+            }
             seen.extend(await turn_service.entries_store.list(session_id))
             yield "A reply"
 
@@ -122,14 +125,14 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
             turn_service,
             session_id,
         ):
-            original = turn_service.runtimes.get(session_id).release_turn
+            finish = turn_service.finish
 
-            async def release(run):
+            async def check_before_release(state, *, apply_dismissal=True):
                 saved = await turn_service.entries_store.list(session_id)
                 assert len(saved) == 2 and saved[-1].kind == "assistant"
-                await original(run)
+                await finish(state, apply_dismissal=apply_dismissal)
 
-            turn_service.runtimes.get(session_id).release_turn = release
+            turn_service.finish = check_before_release
             run = await start(turn_service, session_id)
             await completed(run)
             assert seen[0].kind == "user"
@@ -499,7 +502,7 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(
                 await proceed.wait()
                 raise error_type("Could not build teacher")
 
-            turn_service.build_teacher = fail
+            turn_service.build_prober = fail
             request = asyncio.create_task(
                 turn_service.start(session_id, TurnInput(type="text", text="Hello"))
             )
@@ -541,11 +544,11 @@ def test_stop_clears_pending_cancellation_before_settlement(tmp_path: Path):
         ):
             original = turn_service.settle
 
-            async def settle(state, reply):
+            async def settle(state, entries):
                 task = asyncio.current_task()
                 assert task is not None
                 settled.append(task.cancelling())
-                return await original(state, reply)
+                return await original(state, entries)
 
             turn_service.settle = settle
             run = await start(turn_service, session_id)
@@ -560,7 +563,7 @@ def test_stop_clears_pending_cancellation_before_settlement(tmp_path: Path):
     asyncio.run(scenario())
 
 
-def test_retry_recheck_refuses_and_releases_claim_without_remembering_failure(
+def test_retry_recheck_refuses_stale_input_before_claim_without_remembering_failure(
     tmp_path: Path,
 ):
     async def scenario():
@@ -578,16 +581,16 @@ def test_retry_recheck_refuses_and_releases_claim_without_remembering_failure(
                 ],
             )
             runtime = turn_service.runtimes.get(session_id)
-            original = turn_service.claim
+            original = turn_service.model_gate
 
-            async def claim(state):
+            async def model_gate(state):
                 result = await original(state)
                 await turn_service.entries_store.append(
                     session_id, [AssistantEntry(parts=[])]
                 )
                 return result
 
-            turn_service.claim = claim
+            turn_service.model_gate = model_gate
             result = await turn_service.start(session_id, TurnInput(type="retry"))
             assert isinstance(result, Refused) and result.status == 400
             assert result.reason == {
