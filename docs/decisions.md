@@ -4,6 +4,15 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision (M2 planning):** The M2 agent is the teacher composition (`system-prompt.md` → `teacher/*` → `shared/*`) with no tools. Question tools come in M4, the prober and phases in M5. | Matches the milestone; tools arrive with their own milestones. |
+| 2026-11-19 | **User decision (M2 planning):** Prompt overrides follow LearnHarness: an override applies only when its switch `agent.prompts[<segment path>]` is true and its file is readable; an enabled empty file contributes no text (`src/agent/prompts/README.md`). | Faithful port; corrects the architecture doc, which said a file wins by existing. |
+| 2026-11-19 | **User decision (M2 planning):** Retry of a failed response (`retry`, `retryDrops`) is built in M2. | It belongs to the session core; no milestone owned it. |
+| 2026-11-19 | **User decision (M2 planning):** The M2 session list has rows plus Rename and Delete. Delete removes only the session and is refused while a turn runs; its job and graph parts come in M7 and M9. | Session management from the first real UI. |
+| 2026-11-19 | **User decision (M2 planning):** Assistant markdown uses our own Svelte renderer on LearnHarness's unified/remark stack inside the official AI Elements Message, not `svelte-streamdown`. Learner messages are plain text, as in LearnHarness. | `svelte-streamdown` failed LH's line breaks, CJK emphasis, and CJK link boundaries ([spike](spikes/markdown-rendering.md)). |
+| 2026-11-19 | **User decision (M2 planning):** With no model configured, the send is refused (503 `models_not_configured`), the draft returns to the composer, and an inline notice reads "No model is set up yet." M3 replaces the notice with the setup dialog. | The setup dialog needs M3's slots. |
+| 2026-11-19 | **User decision (M2 planning):** The 5–15 node wording in `teacher/10-planning.md`: line 19 ends "…the fine unit; one reasoning step per node."; line 22 reads "- 5–15 nodes: compress to what the path genuinely needs — wrong is never fine. What keeps a map readable is correct structure: find the unconditional truths underneath and hang everything off those."; line 40 ends "Keep it to 5–15 nodes." | Wording for the 2026-11-18 "Plan map size" decision. |
+| 2026-11-19 | **User decision (behavior change from LH):** Session titles are written by the cheap model, in M3. The session is created with `titleFromPrompt`; a background call on the cheap slot, through `ProviderPolicy`, starts with the first message (in parallel with the first turn) and replaces the title. Prompt wording, a rename made before the title arrives, and failure are decided when planning M3. M2 keeps `titleFromPrompt`. | User preference; LH only cuts the first message. |
+| 2026-11-19 | **User decision:** The M2 plan is approved ([plan](plans/m2-session-core.md)). | Plan → implement. |
 | 2026-11-19 | **User decision:** The orchestrator reviews the earlier orchestrator decisions in place of the user; each one reviewed is marked "reviewed 2026-11-19". | The user delegated the review. |
 | 2026-11-19 | **User decision:** Chat UI pieces come from **shadcn-svelte's official AI Elements** (copied in with the shadcn-svelte CLI), not the community `svelte-ai-elements` registry. Add each piece only in the milestone that needs it (M2: chat/conversation, message, prompt input, reasoning, shimmer; M5: plan; M7: tool, task). Adapt them to our own message types: no AI SDK chat runtime, and the `ai` package at most for types. Question cards never come from AI Elements; their behavior is ported from LH. Before M2, check that `svelte-streamdown` covers LH's markdown (code, math, Mermaid, CJK). | LH builds its chat on Vercel's AI Elements (`components/ai-elements/` at cb25c8e); the official port is maintained with the shadcn-svelte we already use. |
 | 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
@@ -316,10 +325,11 @@ The whole path from the desktop window to SQLite exists and is proven, with almo
 A conversation with the fake model, saved and replayable.
 - The entry log and `session/projection.py`; sessions and entries tables.
 - `SessionRuntime` (claim, run handle, event log) and the named turn stages: write-ahead input,
-  settlement order, one turn per session, refusal leaves no trace.
+  settlement order, one turn per session, refusals save nothing. Retry of a failed response.
 - The teacher agent with LH's prompt tree copied, prompt composition, and override files.
 - The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
-- **UI:** the session list, a new session, the streamed thread, and the session controller. The thread
+- **UI:** the session list with Rename and Delete, a new session, the streamed thread with Stop
+  and Retry, and the session controller. The thread
   and composer use shadcn-svelte AI Elements (see the decision above).
 
 ### M3. Real providers
@@ -332,6 +342,7 @@ Claude Code and ChatGPT in the app early, so the user sees real behavior from he
 - **ChatGPT:** `openai-chatgpt`, the browser login, and `credentials.json` behind a credential source.
 - Context-window lookup (runtime, then model data, then a value you enter), usage logging, and the
   provider-event debug switch.
+- Session titles written by the cheap model in the background (decided 2026-11-19).
 - **UI:** settings for models, slots, and logins. Opt-in live tests for both providers.
 
 ### M4. Question tools

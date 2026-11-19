@@ -29,7 +29,10 @@
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
-2. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
+   teacher prompt) and T3 (markdown renderer) run first, then T2 (turns, streaming, API), then T4
+   (lesson UI).
+3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions
 

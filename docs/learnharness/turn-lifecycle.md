@@ -183,7 +183,7 @@ Outcomes are recorded in [decisions](../decisions.md) and [architecture](../arch
   that returns an explicit result: `Refused(status, reason)` or `Continue(state)`. Behavior is
   unchanged.
 - **Rules kept exactly:**
-  - refusal before the claim leaves no trace;
+  - refusals save nothing;
   - the input is saved before inference;
   - settlement saves before releasing the claim;
   - one turn per chat;
