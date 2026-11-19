@@ -4,10 +4,8 @@ TITLE_MAX_CHARS = 72
 
 
 def title_from_prompt(prompt: str) -> str:
-    """Use LearnHarness's word-boundary cut, with the chat creation fallback."""
+    """Use LearnHarness's pure word-boundary title cut."""
     one_line = re.sub(r"\s+", " ", prompt).strip()
-    if not one_line:
-        return "Untitled session"
     encoded = one_line.encode("utf-16-le", errors="surrogatepass")
     if len(encoded) <= TITLE_MAX_CHARS * 2:
         return one_line

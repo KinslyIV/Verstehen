@@ -57,16 +57,19 @@ class SessionsStore:
                     for row in await cursor.fetchall()
                 ]
 
-    async def rename(self, session_id: str, title: str) -> None:
+    async def rename(self, session_id: str, title: str) -> bool:
         title = title.strip()
         if not title:
             raise ValueError("Session title must not be empty")
         async with self.database.transaction() as connection:
-            await connection.execute(
-                "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ?",
-                (title, datetime.now(UTC).isoformat(), session_id),
-            )
+            async with connection.execute(
+                "UPDATE sessions SET title = ? WHERE id = ?", (title, session_id)
+            ) as cursor:
+                return cursor.rowcount > 0
 
-    async def delete(self, session_id: str) -> None:
+    async def delete(self, session_id: str) -> bool:
         async with self.database.transaction() as connection:
-            await connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            async with connection.execute(
+                "DELETE FROM sessions WHERE id = ?", (session_id,)
+            ) as cursor:
+                return cursor.rowcount > 0

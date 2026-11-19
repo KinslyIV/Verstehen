@@ -20,6 +20,7 @@ class ThinkingPart(BaseModel):
     type: Literal["thinking"] = "thinking"
     thinking: str
     signature: str | None = None
+    redacted: bool = False
 
 
 class EntryBase(BaseModel):

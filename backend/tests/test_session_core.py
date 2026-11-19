@@ -33,7 +33,8 @@ from verstehen.store.sessions import SessionsStore
         ("b" * 72 + " then more words after it", "b" * 72 + "…"),
         ("x" * 102, "x" * 72 + "…"),
         ("c" * 60 + "  " + "d" * 60, "c" * 60 + "…"),
-        (" \n\t", "Untitled session"),
+        ("", ""),
+        (" \n\t", ""),
         ("😀" * 37, "😀" * 36 + "…"),
     ],
 )
@@ -86,7 +87,7 @@ def test_retry_drops_only_trailing_errors_and_keeps_saved_entries():
     assert retry_drops(entries) == {failed.entry_id, failed_again.entry_id}
     assert to_llm_messages(entries, retry=True) == to_llm_messages([old_error, user])
     assert len(entries) == 4
-    assert len(to_llm_messages(entries)) == 4
+    assert to_llm_messages(entries) == to_llm_messages([user])
 
 
 @pytest.mark.parametrize("reason", ["stop", "aborted"])
@@ -123,6 +124,7 @@ def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):
             AssistantEntry(
                 parts=[
                     ThinkingPart(thinking="hmm", signature="s"),
+                    ThinkingPart(thinking="", redacted=True),
                     TextPart(text="hello"),
                 ],
                 stop_reason="error",
@@ -139,7 +141,7 @@ def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):
             await store.append(session.id, entries)
             await store.append(session.id, entries)
             assert await store.list(session.id) == entries
-            await sessions.rename(session.id, "  New title  ")
+            assert await sessions.rename(session.id, "  New title  ") is True
             with pytest.raises(ValueError, match="must not be empty"):
                 await sessions.rename(session.id, " \n")
         async with open_database(tmp_path / "test.db") as database:
@@ -148,7 +150,7 @@ def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):
             assert saved is not None and saved.title == "New title"
             assert await EntriesStore(database).list(session.id) == entries
             assert await sessions.list() == [saved]
-            await sessions.delete(session.id)
+            assert await sessions.delete(session.id) is True
             assert await sessions.get(session.id) is None
             assert await EntriesStore(database).list(session.id) == []
 
@@ -235,5 +237,96 @@ def test_store_validates_mutated_payloads_before_writing_and_saved_payloads_on_r
                 )
             with pytest.raises(ValidationError):
                 await store.list(session.id)
+
+    asyncio.run(run())
+
+
+def test_projection_skips_error_and_aborted_replies():
+    user = UserEntry(text="Why?")
+    error = AssistantEntry(parts=[TextPart(text="failed partial")], stop_reason="error")
+    aborted = AssistantEntry(
+        parts=[ThinkingPart(thinking="stopped partial")], stop_reason="aborted"
+    )
+    follow_up = UserEntry(text="Continue")
+    reply = AssistantEntry(parts=[TextPart(text="Because.")])
+    entries = [user, error, follow_up, aborted, reply]
+    saved = [entry.model_dump() for entry in entries]
+    assert to_llm_messages(entries) == to_llm_messages([user, follow_up, reply])
+    assert [entry.model_dump() for entry in entries] == saved
+
+
+def test_projection_drops_empty_unsigned_thinking():
+    assistant = AssistantEntry(
+        parts=[
+            ThinkingPart(thinking=""),
+            ThinkingPart(thinking=" \n\t", signature=""),
+            ThinkingPart(thinking="", signature="sig"),
+            ThinkingPart(thinking=" \n", signature="sig"),
+            ThinkingPart(thinking="", redacted=True),
+            ThinkingPart(thinking=" \n", redacted=True),
+            ThinkingPart(thinking="reason"),
+            TextPart(text="Answer"),
+        ],
+        provider="test",
+    )
+    assert to_llm_messages([assistant]) == [
+        ModelResponse(
+            parts=[
+                ModelThinkingPart("", signature="sig", provider_name="test"),
+                ModelThinkingPart(" \n", signature="sig", provider_name="test"),
+                ModelThinkingPart("", provider_name="test"),
+                ModelThinkingPart(" \n", provider_name="test"),
+                ModelThinkingPart("reason", provider_name="test"),
+                ModelTextPart("Answer"),
+            ],
+            timestamp=assistant.created_at,
+            provider_name="test",
+        )
+    ]
+
+
+def test_rename_keeps_updated_at_so_the_list_order_is_unchanged(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            sessions = SessionsStore(database)
+            first = await sessions.create("First")
+            second = await sessions.create("Second")
+            before = await sessions.list()
+            assert [session.id for session in before] == [second.id, first.id]
+            assert await sessions.rename(first.id, "Renamed") is True
+            after = await sessions.list()
+            assert [session.id for session in after] == [second.id, first.id]
+            assert [session.updated_at for session in after] == [
+                session.updated_at for session in before
+            ]
+            assert after[1].title == "Renamed"
+
+    asyncio.run(run())
+
+
+def test_rename_reports_an_unknown_session(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            sessions = SessionsStore(database)
+            session = await sessions.create("First")
+            assert await sessions.rename("missing", "New title") is False
+            assert await sessions.rename(session.id, "First") is True
+            assert await sessions.get(session.id) == session
+
+    asyncio.run(run())
+
+
+def test_delete_reports_an_unknown_session(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            sessions = SessionsStore(database)
+            session = await sessions.create("First")
+            assert await sessions.delete("missing") is False
+            assert await sessions.get(session.id) == session
+            assert await sessions.delete(session.id) is True
+            assert await sessions.delete(session.id) is False
 
     asyncio.run(run())

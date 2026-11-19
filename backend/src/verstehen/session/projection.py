@@ -54,11 +54,13 @@ def to_llm_messages(
                 )
             )
         elif isinstance(entry, AssistantEntry):
+            if entry.stop_reason in {"error", "aborted"}:
+                continue
             parts: list[TextPart | ThinkingPart] = []
             for part in entry.parts:
                 if part.type == "text":
                     parts.append(TextPart(part.text))
-                else:
+                elif part.thinking.strip() or part.signature or part.redacted:
                     parts.append(
                         ThinkingPart(
                             part.thinking,

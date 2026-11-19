@@ -34,18 +34,18 @@ T1 and T3 run in parallel; T2 builds on T1; T4 builds on T1–T3. Each task has 
 - **Migration `0002_sessions.sql`:** `sessions` (id, title, kind, created_at, updated_at) and
   `entries` (session_id, seq, entry_id unique, kind, payload JSON, created_at). `kind` is
   `teach` for now; practice comes in M10.
-- **Entry models** in `store/entries.py` (session imports them directly; store cannot import session) (Pydantic), following LH's `LhMessage`
-  (`src/core/native-messages.ts`): `user` (text); `assistant` (text parts, thinking parts, stop
-  reason `stop` / `aborted` / `error`, error text). `tool_result` and `marker` are defined but
-  unused until M4. No Pydantic AI types in entries.
+- **Entry models** use Pydantic in `store/entries.py`, imported directly by session to preserve
+  the package order, and follow LH's `LhMessage` (`src/core/native-messages.ts`): `user` (text);
+  `assistant` (text parts, thinking parts, stop reason `stop` / `aborted` / `error`, error text).
+  `tool_result` and `marker` are defined but unused until M4. No Pydantic AI types in entries.
 - **Store modules** `store/sessions.py` and `store/entries.py`, copying the `SettingsStore` pattern.
   Entries are append-only: no update or delete except deleting a whole session.
 - **Projection** `session/projection.py`: port of `toLlmMessages` (`core/native-messages.ts:653`)
   for the M2 entry kinds, plus retry drops: trailing failed assistant entries are left out of what
   the model sees (`retryDrops`, `src/core/input-events.ts:424`).
 - **Titles:** port of `titleFromPrompt` (`src/core/contracts/graph.ts:338-364`): whitespace
-  collapsed, at most 72 characters, cut before the last space, one long word split, and
-  "Untitled session" when empty (`app/api/chats/route.ts`).
+  collapsed, at most 72 characters, cut before the last space, one long word split; no fallback
+  inside this pure function.
 - **Prompts:** copy LH's `src/agent/prompts/` tree into `teaching/prompts/` unchanged (README.md
   is not a fragment and is not copied), except the 5–15 node edit in `teacher/10-planning.md`
   (decisions: "Plan map size: 5–15 nodes"), with exactly this wording:
@@ -87,7 +87,7 @@ T1 and T3 run in parallel; T2 builds on T1; T4 builds on T1–T3. Each task has 
 | Route | Does |
 |---|---|
 | `GET /api/sessions` | list: id, title, kind, updated_at, busy; newest first |
-| `POST /api/sessions` `{title}` | create, title through `titleFromPrompt` → `{id}` |
+| `POST /api/sessions` `{title}` | create, `title_from_prompt(title or "Untitled session")` → `{id}` |
 | `GET /api/sessions/{id}` | session, entries, `turn_in_flight` |
 | `PATCH /api/sessions/{id}` `{title}` | rename: trimmed, non-empty, else 400 |
 | `DELETE /api/sessions/{id}` | delete; 409 `turn_in_flight` while a turn runs |

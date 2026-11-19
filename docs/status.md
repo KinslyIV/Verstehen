@@ -31,6 +31,9 @@ M2 text/thinking projection and retry drops, LearnHarness title cutting, and the
 tree with the approved 5–15 node wording. Teacher composition reads `agent.prompts` switches
 from SettingsStore and applies only enabled, readable overrides. Backend tests cover persistence,
 validation, idempotency, projection, retry, titles, prompt content/composition, and overrides.
+T1 review round 2 fixes rename ordering and missing-session signals, excludes failed and stopped
+replies and empty unsigned thinking from model context, and keeps title fallback in T2's create
+route. Behavior tests cover each correction.
 Entry models live in `store/entries.py` to preserve the package order (recorded for review).
 
 ## Next
@@ -42,6 +45,10 @@ Entry models live in `store/entries.py` to preserve the package order (recorded 
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions
+
+- **M3 thinking from another model:** port the model-match filter when the session model is
+  available (`@earendil-works/pi-ai@1.4.0`, `dist/api/transform-messages.js:90-95`); M2 keeps thinking
+  regardless of which model produced it.
 
 - **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
   the summarized chat ended, before messages appended during summarization, and keeps learner edits
