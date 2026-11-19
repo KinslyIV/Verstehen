@@ -4,6 +4,12 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **Orchestrator decision, for user review:** Sidebar widths use shadcn defaults: 16rem desktop, 18rem mobile. | Keep the generated sizing. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Settings sections switch locally in-page, starting at Appearance. | No section routes are needed in M1. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Right-panel visibility uses its own localStorage key; width uses paneforge autoSaveId. | Persist visibility separately from pane sizes. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Generated hooks live in components/ui/hooks, matching the shadcn hooks alias. | Future generation respects the UI import boundary. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Keep the navigation lint override scoped to generated button.svelte. | Its generic href is resolved by app callers; UI cannot import SvelteKit paths. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Keep the pre-paint mode storage write. mode-watcher 1.1.0 persists system at import before defaultMode is read. | Cold-import Chromium test fails without it on a light OS; seed the preference before library initialization. |
 | 2026-11-19 | **User decision (M1 UI layout planning):** Routes: `/session/new` and `/` reuse the new-session component until M9; `/settings` is full page with its own navigation. Root layout holds CSS, theme, and favicon only. | Keep lesson and settings layouts separate. |
 | 2026-11-19 | **User decision (M1 UI layout planning):** The lesson uses a fixed-width shadcn Sidebar with offcanvas collapse, plain Verstehen header, enabled New session link, No sessions yet empty state, Settings footer link, header toggle and Ctrl+B. Restore its cookie in the SPA. | Retain LH new-session navigation and remember sidebar state. |
 | 2026-11-19 | **User decision (M1 UI layout planning):** The lesson header toggles both side panels. The empty state reads New session and The teacher will open by probing what you already know. The composer accepts typing with What do you want to learn?; Send is disabled and Enter cannot send until M2; no setup CTA. | Static scaffold for the approved lesson flow. |

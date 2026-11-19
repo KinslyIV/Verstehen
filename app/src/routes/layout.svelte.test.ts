@@ -1,10 +1,8 @@
 import { beforeEach, expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent, server } from 'vitest/browser';
-import { ModeWatcher } from 'mode-watcher';
-import Root from './+page.svelte';
-import Session from './session/new/+page.svelte';
-import Settings from '#lib/components/settings.svelte';
+import Root from './(lesson)/+page.svelte';
+import Lesson from './lesson-test-harness.svelte';
 import './layout.css';
 import appHtml from '../app.html?raw';
 
@@ -20,7 +18,7 @@ beforeEach(() => {
 });
 
 test('new_session_button_opens_new_session_screen', async () => {
-	const screen = await render(Session);
+	const screen = await render(Lesson);
 	await expect
 		.element(screen.getByRole('link', { name: 'New session' }))
 		.toHaveAttribute('href', '/session/new');
@@ -28,7 +26,7 @@ test('new_session_button_opens_new_session_screen', async () => {
 });
 
 test('root_shows_new_session_screen', async () => {
-	const screen = await render(Root);
+	const screen = await render(Lesson, { page: Root });
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
 	await expect
 		.element(screen.getByText('The teacher will open by probing what you already know.'))
@@ -36,14 +34,14 @@ test('root_shows_new_session_screen', async () => {
 });
 
 test('composer_accepts_text_but_send_is_disabled', async () => {
-	const screen = await render(Session);
+	const screen = await render(Lesson);
 	await screen.getByRole('textbox').fill('Linear algebra');
 	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra');
 	await expect.element(screen.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
 });
 
 test('enter_does_not_send_without_backend', async () => {
-	const screen = await render(Session);
+	const screen = await render(Lesson);
 	await screen.getByRole('textbox').fill('Linear algebra');
 	await userEvent.keyboard('{Enter}');
 	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra\n');
@@ -51,7 +49,7 @@ test('enter_does_not_send_without_backend', async () => {
 });
 
 test('right_panel_starts_closed', async () => {
-	const screen = await render(Session);
+	const screen = await render(Lesson);
 	await expect
 		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
 		.toHaveAttribute('aria-expanded', 'false');
@@ -59,7 +57,7 @@ test('right_panel_starts_closed', async () => {
 });
 
 test('right_panel_open_state_and_width_are_remembered', async () => {
-	let screen = await render(Session);
+	let screen = await render(Lesson);
 	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
 	await expect.element(screen.getByRole('heading', { name: 'Plan' })).toBeVisible();
 	const panel = () => document.querySelector<HTMLElement>('[data-pane-id="right-panel"]')!;
@@ -76,7 +74,7 @@ test('right_panel_open_state_and_width_are_remembered', async () => {
 		})
 		.toBe(true);
 	await screen.unmount();
-	screen = await render(Session);
+	screen = await render(Lesson);
 	await expect
 		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
 		.toHaveAttribute('aria-expanded', 'true');
@@ -85,7 +83,7 @@ test('right_panel_open_state_and_width_are_remembered', async () => {
 		.toBeLessThan(2);
 	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
 	await screen.unmount();
-	screen = await render(Session);
+	screen = await render(Lesson);
 	await expect
 		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
 		.toHaveAttribute('aria-expanded', 'false');
@@ -96,13 +94,13 @@ test('right_panel_open_state_and_width_are_remembered', async () => {
 });
 
 test('sidebar_toggles_with_ctrl_b', async () => {
-	let screen = await render(Session);
+	let screen = await render(Lesson);
 	await userEvent.keyboard('{Control>}b{/Control}');
 	await expect
 		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
 		.toBe('collapsed');
 	await screen.unmount();
-	screen = await render(Session);
+	screen = await render(Lesson);
 	await expect
 		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
 		.toBe('collapsed');
@@ -121,11 +119,14 @@ test('theme_defaults_to_dark', async () => {
 	script.remove();
 	expect(document.documentElement.classList.contains('dark')).toBe(true);
 	expect(localStorage.getItem('mode-watcher-mode')).toBe('dark');
+	const { ModeWatcher } = await import('mode-watcher');
 	await render(ModeWatcher, { defaultMode: 'dark' });
 	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(true);
 });
 
 test('theme_choice_is_remembered', async () => {
+	const { default: Settings } = await import('#lib/components/settings.svelte');
+	const { ModeWatcher } = await import('mode-watcher');
 	const watcher = await render(ModeWatcher, { defaultMode: 'dark' });
 	let screen = await render(Settings);
 	await screen.getByRole('button', { name: 'Light', exact: true }).click();
@@ -142,6 +143,8 @@ test('theme_choice_is_remembered', async () => {
 });
 
 test('system_theme_follows_os', async () => {
+	const { default: Settings } = await import('#lib/components/settings.svelte');
+	const { ModeWatcher } = await import('mode-watcher');
 	await render(ModeWatcher, { defaultMode: 'dark' });
 	const screen = await render(Settings);
 	await screen.getByRole('button', { name: 'System', exact: true }).click();
@@ -152,6 +155,7 @@ test('system_theme_follows_os', async () => {
 });
 
 test('settings_shows_stub_sections', async () => {
+	const { default: Settings } = await import('#lib/components/settings.svelte');
 	const screen = await render(Settings);
 	for (const name of ['Models', 'Logins']) {
 		await screen.getByRole('button', { name, exact: true }).click();

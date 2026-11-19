@@ -21,10 +21,14 @@
 - `make dev` runs the sidecar and Vite with a temporary data dir and `/api` proxy.
 - Round-2 desktop handshake/token/EOF/log checks and curl through Vite passed; dev data cleaned up.
 - Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
-- Shared new-session screen at `/` and `/session/new`, remembered sidebar and resizable right panel.
+- Shared lesson route-group shell with local shell state; new-session content at `/` and
+  `/session/new`, remembered sidebar and resizable right panel.
 - Static editable composer with sending disabled until M2; no API calls.
 - Dark / Light / System appearance using mode-watcher, with pre-paint initialization.
-- Eleven Chromium component behavior tests in the second Vitest project.
+- Eleven Chromium component behavior tests render through the lesson layout; theme default test
+  imports mode-watcher only after pre-paint initialization to cover a cold launch.
+- Internal links use SvelteKit resolve; shadcn hooks alias matches components/ui/hooks.
+- Review choices recorded for user review, including the required mode-watcher import-time seed.
 - Production build and headless Chromium route/navigation, composer, panel reload, and theme sanity
   checks passed; lesson, open-panel, and light-settings screenshots inspected.
 

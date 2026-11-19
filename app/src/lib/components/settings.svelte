@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { resolve } from '$app/paths';
 	import { ArrowLeft, Monitor, Moon, Sun } from '@lucide/svelte';
 	import { setMode, userPrefersMode } from 'mode-watcher';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -13,7 +14,9 @@
 
 <div class="min-h-svh">
 	<header class="flex h-16 items-center border-b px-6">
-		<Button href="/" variant="ghost" size="sm"><ArrowLeft class="size-4" /> Back</Button>
+		<Button href={resolve('/(lesson)')} variant="ghost" size="sm">
+			<ArrowLeft class="size-4" /> Back
+		</Button>
 	</header>
 	<div class="mx-auto flex max-w-5xl gap-12 px-6 py-12">
 		<nav aria-label="Settings sections" class="flex w-44 shrink-0 flex-col gap-1">
