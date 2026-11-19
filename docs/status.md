@@ -18,7 +18,8 @@
 - **Verification:** scripted streaming fake model, token-aware API client for M2, `make verify`, and
   the shared verify skill. Six isolated Chromium flows cover proxy health, dark lesson, collapsed
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
-- **Docs:** the docstring rule is in AGENTS.md. The LearnHarness specification is `cb25c8e`
+- **Docs:** AGENTS.md records the docstring rule and thread/worktree isolation rules for concurrent
+  tasks and sequential orchestrator/subagent work. The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
   Part A errors fixed: graph detail cards show no aliases, and two stages save before the turn
   claim (compaction gate, sibling gate).

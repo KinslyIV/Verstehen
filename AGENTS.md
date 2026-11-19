@@ -26,6 +26,18 @@ Work goes plan → implement → review → report, as described in [`docs/workf
 The **orchestrator** (Claude Opus, the main agent in the T3 Code thread) plans with the user and
 reviews. The **implementer** (GPT 6.1 Sol, a subagent) writes the code.
 
+- **Concurrent independent tasks each get their own branch and T3-bound worktree.** Branches
+  alone do not isolate files when threads share a checkout.
+- The orchestrator and its implementation subagent may share the task's worktree for sequential
+  planning, implementation, and review. Concurrent independent implementations use separate worktrees.
+- Bind threads through T3: use `t3_thread_launch` with an explicit `workspaceStrategy` for a new
+  thread, or `t3_worktree_handoff` to move the current thread into a new worktree. Shell commands
+  such as `git worktree add` or `cd` alone do not update T3's thread binding.
+- Never switch a shared checkout's branch for another task. Work in that task's worktree; the
+  root checkout's branch does not need to change.
+- Before editing, verify the T3 workspace binding, working directory, and checked-out branch agree
+  with the task. Resolve any mismatch before working; opening a chat does not restore its branch.
+
 # No guessing
 
 All design authority belongs to the human. **Never guess a design or implementation decision.**
