@@ -11,6 +11,7 @@ is updated in the same commit.
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
 | Account adapter | [`providers/accounts.py`](../backend/src/verstehen/providers/accounts.py) (`AccountAdapter`; app-owned adapters discover safe account data, refresh their catalog, build a model, and report runtime context limits; unavailable refresh/build raises `AccountUnavailable(reason, state)`, mapped to `ResolutionError` by resolution or account state/reason by catalog) |
+| Default thinking level | [`providers/catalog.py`](../backend/src/verstehen/providers/catalog.py) (`default_thinking_level`; first supported entry in LearnHarness’s preference order, shared by account adapters and SDK defaults) |
 | Model resolution | [`providers/resolve.py`](../backend/src/verstehen/providers/resolve.py) (`ResolverService`; resolve fresh slots/session picks, normalize supported thinking levels, no fallback) |
 | Per-call model accounting | [`providers/usage.py`](../backend/src/verstehen/providers/usage.py) (`UsageModel`; wraps both request paths and saves `RequestUsage` through `UsageStore`; raw adapter events use `log_provider_event`) |
 | Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`; `read`/`write` use typed defaults and whole top-level fields; `get`/`set` are for prompt switches; typed settings always use `write`) |

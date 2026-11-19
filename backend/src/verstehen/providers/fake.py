@@ -22,7 +22,7 @@ from pydantic_ai.models.function import (
 )
 
 from verstehen.providers.accounts import Account
-from verstehen.providers.catalog import CatalogModel
+from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.store.settings import ModelPick
 
 
@@ -145,13 +145,15 @@ class FakeAccountAdapter:
                 name="Scripted teacher",
                 accepts_images=True,
                 thinking_levels=["low", "medium", "high"],
-                default_thinking_level="medium",
+                default_thinking_level=default_thinking_level(
+                    ["low", "medium", "high"]
+                ),
             ),
             CatalogModel(
                 id="fake-title",
                 name="Scripted title",
                 thinking_levels=["low"],
-                default_thinking_level="low",
+                default_thinking_level=default_thinking_level(["low"]),
             ),
         ]
 

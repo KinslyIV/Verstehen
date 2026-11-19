@@ -1,3 +1,4 @@
+import asyncio
 import tempfile
 from functools import partial
 from pathlib import Path
@@ -6,11 +7,12 @@ from claude_agent_sdk import ClaudeAgentOptions
 from pydantic_ai.settings import ThinkingEffort
 
 from verstehen.providers.accounts import Account, AccountUnavailable
-from verstehen.providers.catalog import CatalogModel
+from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.providers.events import log_provider_event
 from verstehen.store.settings import ModelPick
 
-from .binary import BinaryStatus, inspect_binary
+from . import binary
+from .binary import BinaryStatus
 from .context import context_window
 from .model import ClaudeCodeModel
 
@@ -25,6 +27,7 @@ MODEL_NAMES = {
 def lockdown_options(
     path: Path, directory: str, effort: ThinkingEffort | None
 ) -> ClaudeAgentOptions:
+    effort = effort or default_thinking_level(THINKING_LEVELS)
     if effort == "minimal":
         raise ValueError(
             "Claude Code supports low, medium, high, xhigh, or max effort."
@@ -40,7 +43,7 @@ def lockdown_options(
         extra_args={"no-session-persistence": None},
         env={"CLAUDE_CODE_DISABLE_CLAUDE_MDS": "1"},
         thinking={"type": "adaptive"},
-        effort=effort or "high",
+        effort=effort,
     )
 
 
@@ -52,11 +55,27 @@ class ClaudeCodeAccountAdapter:
     def __init__(self, data_dir: Path, provider_events: bool = False):
         self.data_dir = data_dir
         self.provider_events = provider_events
+        self.inspection_lock = asyncio.Lock()
+        self.binary_identity: tuple[Path, int, int, int] | None = None
+        self.binary_status: BinaryStatus | None = None
         self.runtime_limits: dict[tuple[str, str, str], int] = {}
         self.directory: tempfile.TemporaryDirectory[str] | None = None
 
     async def status(self) -> BinaryStatus:
-        return await inspect_binary(self.data_dir)
+        async with self.inspection_lock:
+            path = binary.resolve_binary(self.data_dir)
+            identity = None
+            if path is not None:
+                try:
+                    resolved = path.resolve(strict=True)
+                    stat = resolved.stat()
+                    identity = (resolved, stat.st_mtime_ns, stat.st_size, stat.st_ino)
+                except OSError:
+                    self.binary_status = None
+            if self.binary_status is None or identity != self.binary_identity:
+                self.binary_status = await binary.inspect_binary(self.data_dir)
+                self.binary_identity = identity
+            return self.binary_status
 
     async def accounts(self) -> list[Account]:
         status = await self.status()
@@ -89,7 +108,7 @@ class ClaudeCodeAccountAdapter:
                 id=model,
                 name=name,
                 thinking_levels=THINKING_LEVELS,
-                default_thinking_level="high",
+                default_thinking_level=default_thinking_level(THINKING_LEVELS),
                 accepts_images=True,
             )
             for model, name in MODEL_NAMES.items()

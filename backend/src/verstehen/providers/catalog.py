@@ -1,6 +1,21 @@
+from collections.abc import Sequence
+
 from pydantic import BaseModel, Field
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ThinkingEffort
+
+DEFAULT_THINKING_ORDER: tuple[ThinkingEffort, ...] = (
+    "medium",
+    "low",
+    "high",
+    "minimal",
+    "xhigh",
+    "max",
+)
+
+
+def default_thinking_level(levels: Sequence[ThinkingEffort]) -> ThinkingEffort | None:
+    return next((level for level in DEFAULT_THINKING_ORDER if level in levels), None)
 
 
 class CatalogModel(BaseModel):

@@ -218,3 +218,21 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   `uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py`.
   No real model calls, login/credential reads, real data, actual CLI downloads, or packaging
   builds. Next: orchestrator review; Settings/model UI remains T4.
+
+- **T2 review round 1 fixes:** Claude Code and fake adapters share LH's thinking-default helper
+  (medium → low → high → minimal → xhigh → max); unset Claude SDK effort now matches its catalog's
+  medium default. Corrected the earlier high-default orchestrator decision to cite LH's order.
+  The Claude account caches binary inspection by resolved path, nanosecond modification time,
+  size, and inode; concurrent lookups share the inspection, and untested warnings occur once per
+  inspection. Discovery still runs on each lookup, so updates and downloaded copies are detected.
+  Regression tests cover the complete default order, unset SDK effort, repeated/concurrent lookups,
+  and timestamp, size, inode, symlink-target, and downloaded-copy invalidation. Patterns and the
+  feature map include the shared helper and regression coverage. No new design decisions.
+  Validation on `b167fcc` plus these review fixes: three full `make check` runs passed all
+  static checks and 304 Python tests (one live test deselected), but each hit the documented
+  unchanged thinking-timer frontend flake (67 passed, one failed). All five reasoning tests
+  passed in isolation; a direct full frontend rerun also finished at 67 passed, one failed.
+  A passing full check is still required before committing these fixes.
+  No real-model calls, credential reads, real user
+  data, actual CLI downloads, UI changes, or packaging builds. Next: orchestrator re-review;
+  ChatGPT remains separate parallel T3 work and Settings/model UI remains T4. No new open questions.

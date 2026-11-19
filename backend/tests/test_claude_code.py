@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -194,16 +195,14 @@ def test_adapter_refreshes_without_mutating_account_and_uses_runtime_only(
     adapter = ClaudeCodeAccountAdapter(tmp_path)
     calls = []
 
-    async def inspect(_):
+    async def inspect():
         return status
 
     async def context(path, model):
         calls.append((path, model))
         return 123456
 
-    monkeypatch.setattr(
-        "verstehen.providers.claude_code.adapter.inspect_binary", inspect
-    )
+    monkeypatch.setattr(adapter, "status", inspect)
     monkeypatch.setattr(
         "verstehen.providers.claude_code.adapter.context_window", context
     )
@@ -216,6 +215,7 @@ def test_adapter_refreshes_without_mutating_account_and_uses_runtime_only(
         assert all(
             model.accepts_images
             and model.context_limit is None
+            and model.default_thinking_level == "medium"
             and model.thinking_levels == THINKING_LEVELS
             for model in models
         )
@@ -379,3 +379,84 @@ def test_missing_result_usage_does_not_use_partial_counts(tmp_path: Path, monkey
         assert result.usage.input_tokens == result.usage.output_tokens == 0
 
     asyncio.run(run())
+
+
+def test_unset_sdk_effort_matches_catalog_default(tmp_path: Path):
+    assert lockdown_options(tmp_path / "claude", str(tmp_path), None).effort == "medium"
+
+
+def version_counting_binary(path: Path, counter: Path) -> Path:
+    return executable(
+        path,
+        f"from pathlib import Path\n"
+        f"with Path({str(counter)!r}).open('a') as output: output.write('version\\n')\n"
+        "print('2.1.328 (Claude Code)')",
+    )
+
+
+def test_repeated_and_concurrent_lookups_inspect_binary_and_warn_once(
+    tmp_path: Path, monkeypatch, caplog
+):
+    counter = tmp_path / "versions"
+    version_counting_binary(binary.downloaded_binary(tmp_path), counter)
+    adapter = ClaudeCodeAccountAdapter(tmp_path)
+
+    async def context(path, model):
+        return 123456
+
+    monkeypatch.setattr(
+        "verstehen.providers.claude_code.adapter.context_window", context
+    )
+
+    async def run():
+        accounts = await asyncio.gather(*(adapter.accounts() for _ in range(3)))
+        account = accounts[0][0]
+        for _ in range(3):
+            await adapter.accounts()
+            models = await adapter.models(account)
+            model = await adapter.build_model(
+                account, ModelPick(account=account.id, model="haiku")
+            )
+            assert model is not None
+            assert models[0].default_thinking_level == "medium"
+            assert await adapter.context_limit(account, "haiku") == 123456
+        adapter.close()
+
+    asyncio.run(run())
+    assert counter.read_text().splitlines() == ["version"]
+    assert caplog.text.count("hasn't been tested with Verstehen") == 1
+
+
+@pytest.mark.parametrize("change", ["mtime", "size", "inode", "symlink", "download"])
+def test_changed_binary_is_reinspected(tmp_path: Path, monkeypatch, change: str):
+    counter = tmp_path / "versions"
+    installed = version_counting_binary(tmp_path / "path/claude", counter)
+    monkeypatch.setenv("PATH", str(installed.parent))
+    adapter = ClaudeCodeAccountAdapter(tmp_path)
+
+    async def run():
+        before = await adapter.status()
+        stat = installed.stat()
+        if change == "mtime":
+            os.utime(installed, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+        elif change == "size":
+            with installed.open("a") as output:
+                output.write("\n")
+            os.utime(installed, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+        elif change == "inode":
+            replacement = version_counting_binary(tmp_path / "replacement", counter)
+            os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+            replacement.replace(installed)
+        elif change == "symlink":
+            replacement = tmp_path / "replacement"
+            replacement.hardlink_to(installed)
+            installed.unlink()
+            installed.symlink_to(replacement)
+        else:
+            version_counting_binary(binary.downloaded_binary(tmp_path), counter)
+        after = await adapter.status()
+        assert after.state == before.state == "untested"
+        assert await adapter.status() is after
+
+    asyncio.run(run())
+    assert counter.read_text().splitlines() == ["version", "version"]
