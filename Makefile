@@ -1,4 +1,4 @@
-.PHONY: setup check test fmt lock-migrations dev verify app app-image
+.PHONY: setup check test fmt lock-migrations dev verify api-types app app-image
 
 setup:
 	uv sync --project backend --locked
@@ -6,6 +6,7 @@ setup:
 	cd app && npx playwright install chromium
 
 check:
+	uv run --project backend python tools/api_types.py --check
 	uv run --project backend ruff check .
 	uv run --project backend ruff format --check .
 	uv run --project backend pyrefly check --config pyrefly.toml
@@ -43,3 +44,6 @@ app:
 
 app-image:
 	docker build --pull --no-cache --tag verstehen-build - < packaging/Dockerfile
+
+api-types:
+	uv run --project backend python tools/api_types.py

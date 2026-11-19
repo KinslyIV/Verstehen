@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { health, setToken } from './client';
+import { health, listSessions, setToken, streamTurn } from './client';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn(),
@@ -28,17 +28,48 @@ test('health reports an HTTP failure', async () => {
 	await expect(health()).rejects.toThrow('HTTP 503');
 });
 
-test('desktop requests share one connection and use its URL and token', async () => {
+test('desktop JSON and SSE requests share one connection and use its URL and token', async () => {
 	vi.mocked(isTauri).mockReturnValue(true);
 	vi.mocked(invoke).mockResolvedValue({ port: 12345, token: 'desktop-token' });
-	const request = vi
-		.fn()
-		.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ status: 'ok' }))));
+	const request = vi.fn().mockImplementation((url: string) => {
+		if (url.endsWith('/stream')) return Promise.resolve(new Response('data: [DONE]\n\n'));
+		const body = url.endsWith('/sessions') ? { sessions: [] } : { status: 'ok' };
+		return Promise.resolve(new Response(JSON.stringify(body)));
+	});
 	vi.stubGlobal('fetch', request);
+	const signal = new AbortController().signal;
 	await Promise.all([health(), health()]);
+	expect(await listSessions()).toEqual([]);
+	expect(await streamTurn('session-id', vi.fn(), signal)).toBe(true);
 	expect(invoke).toHaveBeenCalledExactlyOnceWith('sidecar_connection');
-	expect(request).toHaveBeenCalledTimes(2);
+	expect(request).toHaveBeenCalledTimes(4);
 	expect(request).toHaveBeenCalledWith('http://127.0.0.1:12345/api/health', {
 		headers: { 'x-verstehen-token': 'desktop-token' }
 	});
+	expect(request).toHaveBeenCalledWith('http://127.0.0.1:12345/api/sessions/session-id/stream', {
+		signal,
+		headers: { 'x-verstehen-token': 'desktop-token' }
+	});
+});
+
+test('SSE decodes split UTF-8, CRLF frames, comments, and terminal marker', async () => {
+	const { readEvents } = await import('./client');
+	const bytes = new TextEncoder().encode(
+		': ping\r\n\r\nevent: chats-changed\r\ndata: {"text":"中文"}\r\n\r\ndata: [DONE]\n\n'
+	);
+	const events: string[][] = [];
+	const response = new Response(
+		new ReadableStream({
+			start(controller) {
+				for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+				controller.close();
+			}
+		})
+	);
+	expect(await readEvents(response, (event, data) => events.push([event, data]))).toBe(true);
+	expect(events).toEqual([['chats-changed', '{"text":"中文"}']]);
+});
+test('SSE reports an early end without DONE', async () => {
+	const { readEvents } = await import('./client');
+	expect(await readEvents(new Response('data: {}\n\n'), () => {})).toBe(false);
 });

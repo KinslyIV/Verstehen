@@ -1,4 +1,5 @@
 <script lang="ts">
+	import SessionList from '#lib/components/session-list.svelte';
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { PanelRight, Plus, Settings } from '@lucide/svelte';
@@ -25,8 +26,8 @@
 				<Plus class="size-4" /> New session
 			</Button>
 		</Sidebar.Header>
-		<Sidebar.Content class="p-6">
-			<p class="text-xs text-muted-foreground">No sessions yet</p>
+		<Sidebar.Content class="gap-1 p-3">
+			<SessionList />
 		</Sidebar.Content>
 		<Sidebar.Footer class="border-t p-3">
 			<Button

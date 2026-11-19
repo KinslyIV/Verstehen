@@ -1,0 +1,63 @@
+.markdown > :first-child {
+	margin-top: 0;
+}
+.markdown > :last-child {
+	margin-bottom: 0;
+}
+.markdown p {
+	margin: 0.7em 0;
+}
+.markdown h1,
+.markdown h2,
+.markdown h3,
+.markdown h4 {
+	margin: 1.3em 0 0.5em;
+	font-weight: 600;
+	line-height: 1.4;
+}
+.markdown h1 {
+	font-size: 1.5em;
+}
+.markdown h2 {
+	font-size: 1.25em;
+}
+.markdown h3 {
+	font-size: 1.1em;
+}
+.markdown ul,
+.markdown ol {
+	padding-left: 1.5em;
+	margin: 0.7em 0;
+}
+.markdown ul {
+	list-style: disc;
+}
+.markdown ol {
+	list-style: decimal;
+}
+.markdown blockquote {
+	border-left: 3px solid var(--border);
+	padding-left: 1em;
+	color: var(--muted-foreground);
+}
+.markdown :not(pre) > code {
+	border-radius: 0.25em;
+	background: var(--muted);
+	padding: 0.15em 0.35em;
+	font-size: 0.9em;
+}
+.markdown th,
+.markdown td {
+	padding: 0.4em 1em;
+	border-bottom: 1px solid var(--border);
+	text-align: left;
+}
+.markdown th {
+	font-weight: 600;
+}
+.markdown strong {
+	font-weight: 650;
+}
+.markdown .katex {
+	font-size: 1.1em;
+}

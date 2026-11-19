@@ -349,8 +349,8 @@ In the port:
 
 - LH's prompt markdown tree is copied into `teaching/prompts/` unchanged, except the agreed 5–15
   node planning change.
-- **Overrides** are files in `<data dir>/prompts/<segment path>.md`. An override file wins over the
-  shipped one, as in LH.
+- **Overrides** are files in `<data dir>/prompts/<segment path>.md`. As in LH, an override applies
+  only when its switch `agent.prompts[<segment path>]` is on and the file is readable.
 
 ## Demo security (decided)
 

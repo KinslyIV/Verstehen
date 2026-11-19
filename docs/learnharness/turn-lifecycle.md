@@ -133,6 +133,10 @@ When the last assistant response failed (`stopReason: "error"`), the learner can
   from the last non-assistant message (`chat-handler.ts:596-602`).
 - Retry can't cross a compaction (`failedTail`, `:443-455`).
 
+Pi's provider conversion already excludes error and aborted assistant messages from what the model
+sees (`@earendil-works/pi-ai@1.4.0`, `dist/api/transform-messages.js:178`), so a stopped reply's
+partial text is saved and shown but never sent to the model.
+
 ## Compaction
 
 `src/server/compaction.ts` (service) and `src/core/compaction.ts` (pure logic).
@@ -183,7 +187,7 @@ Outcomes are recorded in [decisions](../decisions.md) and [architecture](../arch
   that returns an explicit result: `Refused(status, reason)` or `Continue(state)`. Behavior is
   unchanged.
 - **Rules kept exactly:**
-  - refusal before the claim leaves no trace;
+  - refusals save nothing;
   - the input is saved before inference;
   - settlement saves before releasing the claim;
   - one turn per chat;

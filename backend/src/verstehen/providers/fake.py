@@ -1,12 +1,21 @@
+import asyncio
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
 from typing import Self
 
 from pydantic import BaseModel, ConfigDict, RootModel, model_validator
-from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCallPart
+from pydantic_ai.messages import (
+    ModelMessage,
+    ModelResponse,
+    TextPart,
+    ThinkingPart,
+    ToolCallPart,
+)
 from pydantic_ai.models.function import (
     AgentInfo,
+    DeltaThinkingCalls,
+    DeltaThinkingPart,
     DeltaToolCall,
     DeltaToolCalls,
     FunctionModel,
@@ -22,12 +31,22 @@ class ScriptToolCall(BaseModel):
 class ScriptReply(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str | None = None
+    thinking: str | None = None
+    error: str | None = None
+    delay_ms: int = 0
     tool_calls: list[ScriptToolCall] | None = None
 
     @model_validator(mode="after")
     def require_content(self) -> Self:
-        if self.text is None and not self.tool_calls:
-            raise ValueError("A reply needs text or at least one tool call.")
+        if (
+            self.text is None
+            and not self.tool_calls
+            and self.thinking is None
+            and self.error is None
+        ):
+            raise ValueError(
+                "A reply needs text, thinking, an error, or at least one tool call."
+            )
         return self
 
 
@@ -57,7 +76,11 @@ def fake_model(script_path: Path) -> FunctionModel:
 
     def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         reply = next_reply()
-        parts: list[TextPart | ToolCallPart] = []
+        if reply.error is not None:
+            raise RuntimeError(reply.error)
+        parts: list[TextPart | ThinkingPart | ToolCallPart] = []
+        if reply.thinking is not None:
+            parts.append(ThinkingPart(reply.thinking))
         if reply.text is not None:
             parts.append(TextPart(reply.text))
         for index, call in enumerate(reply.tool_calls or []):
@@ -70,12 +93,22 @@ def fake_model(script_path: Path) -> FunctionModel:
 
     async def stream(
         messages: list[ModelMessage], info: AgentInfo
-    ) -> AsyncIterator[str | DeltaToolCalls]:
+    ) -> AsyncIterator[str | DeltaToolCalls | DeltaThinkingCalls]:
         reply = next_reply()
+        if reply.thinking is not None:
+            size = max(1, len(reply.thinking) // 3)
+            for start in range(0, len(reply.thinking), size):
+                await asyncio.sleep(reply.delay_ms / 1000)
+                yield {
+                    0: DeltaThinkingPart(content=reply.thinking[start : start + size])
+                }
         if reply.text is not None:
             size = max(1, len(reply.text) // 3)
             for start in range(0, len(reply.text), size):
+                await asyncio.sleep(reply.delay_ms / 1000)
                 yield reply.text[start : start + size]
+        if reply.error is not None:
+            raise RuntimeError(reply.error)
         for index, call in enumerate(reply.tool_calls or []):
             yield {
                 index: DeltaToolCall(
