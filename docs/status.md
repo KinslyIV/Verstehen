@@ -4,7 +4,7 @@
 
 ## Where we are
 
-**M1 is done. M2 T1–T3 are reviewed; T4 lesson UI is implemented on `m2-t4-ui`.**
+**M1 and M2 are complete and reviewed. Merge `m2-t4-ui`, which includes `m2-plan` and T1–T3.**
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -17,8 +17,9 @@
   thinking, rename, and delete. Settings retain Dark / Light / System appearance; the resizable
   right panel stays a placeholder for M5.
 - **Verification:** scripted streaming fake model, token-aware API client for M2, `make verify`, and
-  the shared verify skill. Six isolated Chromium flows cover proxy health, dark lesson, collapsed
-  sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
+  the shared verify skill. Nineteen isolated Chromium cases cover layout/settings, streaming
+  lessons, markdown, thinking, reload, Stop/Retry, session management, no-model refusal, and long replies, with
+  screenshots and traces.
 - **Docs:** the docstring rule is in AGENTS.md. The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
   Part A errors fixed: graph detail cards show no aliases, and two stages save before the turn
@@ -40,8 +41,8 @@
 - **T3 markdown renderer (reviewed):** official Message wrapper, unified with LH's parsing and
   sanitization, math delimiters, streaming repair, Shiki code blocks, app-owned Mermaid, and plain
   learner text. Browser screenshots go to `app/markdown-output/` (gitignored).
-- **T4 lesson UI:** token-aware JSON and fetch-SSE clients, rune session controller with bounded
-  409 wait and one read-only recovery, opening-prompt handover, live sidebar, rename/delete,
+- **T4 lesson UI (reviewed):** token-aware JSON and fetch-SSE clients, rune session controller
+  with bounded 409 wait and one read-only recovery, opening-prompt handover, live sidebar, rename/delete,
   thread, reasoning, Stop/Retry, and no-model notice with restored draft. Official AI Elements
   use message-scroller/message/bubble, input-group, trace, and the shimmer utility. Removed the
   disabled-send placeholder and its two obsolete tests. Fixed Vite's Host rewrite (browser writes
@@ -57,12 +58,20 @@
   Round 2: `make check` passes (158 backend, 67 frontend tests); `make verify` passes all
   19 cases. Inspected dark/light thread and streaming-thinking screenshots: one clean rule.
 
+- **Final M2 review:** round 2 fixes accepted. Preserved the T2/T3 decisions while removing
+  committed merge-conflict markers and placing them in the decisions table. Reviewed and marked
+  the M2 orchestrator decisions under the user's delegated review authority. The long-stream
+  performance limitation below remains open. Final separate runs: `make check` passes
+  (158 backend, 67 frontend tests); `make verify` passes all 19 cases. Inspected the final
+  dark/light lesson, streaming-thinking, markdown, and no-model screenshots. The first concurrent
+  run failed two timing-sensitive assertions (thinking timer and brief Stop-button visibility);
+  both passed when checks ran separately, without code changes.
+
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
-2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
-   teacher prompt), T2 (turns, streaming, API), and T3 (markdown renderer) are reviewed.
-   T4 (lesson UI) is implemented; next: orchestrator review.
+2. Merge **M2 session core** ([plan](plans/m2-session-core.md)): `m2-t4-ui` includes the plan
+   and all four reviewed tasks; no separate merge of `m2-plan` is needed.
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions

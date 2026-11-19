@@ -4,10 +4,13 @@
 
 | Date | Decision | Reason |
 |---|---|---|
-| 2026-11-19 | **Orchestrator decision, for user review:** the renderer splits replies into blocks and memoizes finished ones, as streamdown’s parseMarkdownIntoBlocks does in LH, because whole-reply re-parsing stalled long streams (isolated: 41 ms composer fill, main-thread tasks up to 289 ms; concurrent: 1,654 ms fill, 728 ms task). | Pre-approved after the isolated run exceeded the 200 ms threshold. The existing unified pipeline remains inside each block; remend repairs only the tail. |
-| 2026-11-19 | **Orchestrator decision, for user review:** the M2 AI Elements pieces map to today’s official registry: chat/conversation → message-scroller + message + bubble; prompt input → input-group; reasoning → trace; shimmer → the shimmer utility. The 2026-11-19 user decision’s intent (official shadcn-svelte only, adapted to our types, no AI SDK runtime) is unchanged. | Official registry uses composed patterns rather than the planned component names. |
-| 2026-11-19 | **Orchestrator decision, for user review (T1 review round 2):** session rename and delete both return `bool`: true for an existing session, false for an unknown id. Thinking entries carry a `redacted` flag (default false) so projection retains empty redacted blocks. | The review authorizes a consistent missing-session signal and Pi's empty-thinking filter. |
-| 2026-11-19 | **Orchestrator decision, for user review:** entry models live in `store/entries.py` (not `session/entries.py` as the plan said), because store cannot import session; session imports them from store. | Store validates payloads on write and read without reversing the package order. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** API and SSE payload fields use snake_case Verstehen names (sessions, session_id, entries, turn_in_flight, turn_error, message, error_text); event type values keep LH's names. | Matches Python models and generated API types while preserving LH event semantics. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** openapi-typescript 7.13.0 runs on the repo's TypeScript 6 through a targeted npm override, instead of legacy-peer-deps. Remove the override when a release supports TypeScript 6. | The generator declares a TypeScript ^5.x peer; generated-type freshness and frontend checks verify compatibility. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** T3 proves the renderer with Vitest browser screenshots; the markdown-rendering verify flow moves to T4 and runs through the real thread with a fake-model script. | Avoid a verification-only route and exercise the integrated lesson UI. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** the renderer splits replies into blocks and memoizes finished ones, as streamdown’s parseMarkdownIntoBlocks does in LH, because whole-reply re-parsing stalled long streams (isolated: 41 ms composer fill, main-thread tasks up to 289 ms; concurrent: 1,654 ms fill, 728 ms task). | Pre-approved after the isolated run exceeded the 200 ms threshold. The existing unified pipeline remains inside each block; remend repairs only the tail. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** the M2 AI Elements pieces map to today’s official registry: chat/conversation → message-scroller + message + bubble; prompt input → input-group; reasoning → trace; shimmer → the shimmer utility. The 2026-11-19 user decision’s intent (official shadcn-svelte only, adapted to our types, no AI SDK runtime) is unchanged. | Official registry uses composed patterns rather than the planned component names. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19 (T1 review round 2):** session rename and delete both return `bool`: true for an existing session, false for an unknown id. Thinking entries carry a `redacted` flag (default false) so projection retains empty redacted blocks. | The review authorizes a consistent missing-session signal and Pi's empty-thinking filter. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** entry models live in `store/entries.py` (not `session/entries.py` as the plan said), because store cannot import session; session imports them from store. | Store validates payloads on write and read without reversing the package order. |
 | 2026-11-19 | **User decision (M2 planning):** The M2 agent is the teacher composition (`system-prompt.md` → `teacher/*` → `shared/*`) with no tools. Question tools come in M4, the prober and phases in M5. | Matches the milestone; tools arrive with their own milestones. |
 | 2026-11-19 | **User decision (M2 planning):** Prompt overrides follow LearnHarness: an override applies only when its switch `agent.prompts[<segment path>]` is true and its file is readable; an enabled empty file contributes no text (`src/agent/prompts/README.md`). | Faithful port; corrects the architecture doc, which said a file wins by existing. |
 | 2026-11-19 | **User decision (M2 planning):** Retry of a failed response (`retry`, `retryDrops`) is built in M2. | It belongs to the session core; no milestone owned it. |
@@ -22,7 +25,7 @@
 | 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
-| 2026-11-19 | **Orchestrator decision, for user review:** fake-model script replies add `thinking` (text), `error` (provider error text, raised after any scripted partial content), and `delay_ms` (wait before each chunk, default 0). | Deterministic thinking, failure, and stop flows. |
+| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** fake-model script replies add `thinking` (text), `error` (provider error text, raised after any scripted partial content), and `delay_ms` (wait before each chunk, default 0). | Deterministic thinking, failure, and stop flows. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model text streams in about three chunks. | Exercise streaming deterministically offline. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model scripts live in `app/verify/scripts/` and are shared by tests and flows; static layout flows reuse the minimal `health.json` script without making model calls. | Keep one script format and retain per-flow fixture isolation. |
 | 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The API token is set with module-level `setToken()`. | Support the desktop handshake without exposing the token in URLs. |
@@ -406,21 +409,3 @@ Probe, plan, teach, as in LH.
 - Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
-
-<<<<<<< HEAD
-## M2 T2 API field names
-
-**Orchestrator decision, for user review:** API and SSE payload fields are snake_case Verstehen
-names (sessions, session_id, entries, turn_in_flight, turn_error, message, error_text); event type
-values keep LH's names.
-
-## M2 T2 API type generator compatibility
-
-**Orchestrator decision, for user review:** openapi-typescript 7.13.0 (latest; peer typescript ^5.x)
-runs on the repo's TypeScript 6 through a targeted npm override, instead of legacy-peer-deps.
-Remove the override when a release supports TypeScript 6.
-=======
-## M2 T3 renderer verification (2026-11-19)
-
-Orchestrator decision, for user review: T3 proves the renderer with Vitest browser screenshots; the markdown-rendering verify flow moves to T4 and runs through the real thread with a fake-model script, instead of a verification-only route.
->>>>>>> m2-t3-markdown
