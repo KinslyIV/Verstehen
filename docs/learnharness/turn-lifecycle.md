@@ -1,6 +1,6 @@
 # Turn lifecycle
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked. The end-to-end happy path is in the [overview](overview.md); this doc
 > covers the mechanics around it.
 
@@ -136,9 +136,9 @@ When the last assistant response failed (`stopReason: "error"`), the learner can
 
 - **When.** Question and problem poses end runs, so the learner's thinking time always falls
   **between** runs. Compaction never touches a live run (`server/compaction.ts:1-28`):
-  - **Settle kick** (`kickCompaction`, `:338`) runs after settlement, in the background, while the
+  - **Settle kick** (`kickCompaction`, `:344`) runs after settlement, in the background, while the
     learner reads.
-  - **Turn-start gate** (`ensureCompacted`, `:297`): every turn first waits for an in-flight
+  - **Turn-start gate** (`ensureCompacted`, `:303`): every turn first waits for an in-flight
     compaction. If the record is still over threshold, it compacts synchronously.
   - **Overflow recovery**: a run that died on context length is compacted by the next turn's gate.
 - **Threshold.** `effectiveThresholdTokens` (`:155`) is the setting (default **150,000**) capped
@@ -159,6 +159,13 @@ When the last assistant response failed (`stopReason: "error"`), the learner can
 - **Marker.** A `custom` message with `customType: "compaction"` (`newCompactionMarker`, `:284`).
   Its content is a header plus the summary, and `details.firstKeptMessageId` points at the cut.
   **The full history stays on disk.**
+- **Learner writes during summarization.** Before saving, the service re-reads the **current**
+  chat. It inserts the marker at the end of the transcript captured before the summary call,
+  **before** any messages appended during that call (`src/server/compaction.ts:250-264`). It keeps
+  current edits as well as concurrent appends: a skipped question stays skipped, a discarded
+  practice problem stays discarded, and an artifact's invert switch stays set. A skip still
+  leaves the chat in its dismissal pause, as if it happened after compaction
+  (`tests/compaction-service.test.ts:706-788`).
 - **Effect.** `toLlmMessages` (`core/native-messages.ts:653`) renders the active (newest) marker's
   summary once, as a user message at the top, then everything from `firstKeptMessageId` onward.
 - **Accounting.** Summary usage goes into the chat's `turns` log. See LearnHarness

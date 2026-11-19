@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-18.
+> Updated at the end of every piece of work. Last update: 2026-11-19.
 
 ## Where we are
 
@@ -19,7 +19,10 @@
 - One-line port handshake, rotating file logs, SIGTERM and desktop stdin-EOF shutdown.
 - `make dev` runs the sidecar and Vite with a temporary data dir and `/api` proxy.
 - Round-2 desktop handshake/token/EOF/log checks and curl through Vite passed; dev data cleaned up.
-- Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
+- LearnHarness specification is now `cb25c8e` (v0.6.1 + docs): all 43 intervening commits reviewed,
+  Part A behavior updated, and references into changed files checked (including Part B).
+- Compaction preserves learner writes and pause ordering; M6 must account for marker insertion
+  before concurrent appends in the agreed append-only entry log. Design decisions remain unchanged.
 
 ## Next
 

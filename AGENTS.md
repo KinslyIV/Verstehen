@@ -83,7 +83,7 @@ minimal, modeled on T3 Code.
 - **Decided** is whatever [`docs/decisions.md`](docs/decisions.md) and
   [`docs/architecture.md`](docs/architecture.md) say. Follow them as written.
 - **LearnHarness behavior is the specification.** The Part A docs (`docs/learnharness/`) describe it
-  with `file:line` references at LearnHarness commit `a636647`. When a doc and the LearnHarness code
+  with `file:line` references at LearnHarness commit `cb25c8e`. When a doc and the LearnHarness code
   disagree, the code is right. Report the mismatch; don't fix the doc to match yourself.
 - **A behavior change from LearnHarness** needs a decision recorded in `docs/decisions.md`, in the
   same commit as the code that uses it: the user's while planning, the orchestrator's (marked for

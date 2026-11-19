@@ -1,6 +1,6 @@
 # Storage and events
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 
 ## What is stored where

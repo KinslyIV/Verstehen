@@ -1,6 +1,6 @@
 # Question tools
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 
 Question tools are how the agent asks the learner something and **waits** for the answer. They
@@ -204,6 +204,12 @@ re-issues the question.
 - `questionNeedsReveal` (`question-core.ts:234`): a teach-phase **check** arrives collapsed
   behind a "Check your understanding" reveal. A **predict** question, a probe question, or an
   ask question never does.
+- **Tool-content recovery** is display-only. A complete standalone code fence with consistently
+  encoded line breaks can have **one local JSON-string layer** decoded as a unit. Native literals,
+  enclosing code examples, mixed physical/encoded layout, invalid JSON escapes, and incomplete
+  fences remain protected; rejected fences are also shielded from generic layout recovery
+  (`src/core/content-reader.ts:19-94`, `:244-307`). Stored question arguments, option identities,
+  grading, and submissions are not changed (LearnHarness `docs/tool-content-recovery.md:5-18`).
 
 ## Port notes
 

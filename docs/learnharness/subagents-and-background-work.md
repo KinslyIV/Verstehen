@@ -1,6 +1,6 @@
 # Subagents and background work
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 
 LearnHarness's subagents are not agents the main agent "talks to". They are **background

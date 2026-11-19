@@ -1,6 +1,6 @@
 # Knowledge graph and imports
 
-> Status: **first draft**. LearnHarness commit `a636647`. All statements describe **current
+> Status: **first draft**. LearnHarness commit `cb25c8e`. All statements describe **current
 > behavior** unless marked.
 
 The knowledge graph is a **global, cross-session** record of the *true ideas* that teaching
@@ -48,6 +48,15 @@ deletes the chains that use it.
   community detection are involved. Hulls are drawn for clusters with at least 3 members.
 - **Positions** come from a separate rebuildable ledger written by layout settling. Camera state is
   device-local *(per LH docs)*.
+
+### Source lookup in a snapshot
+
+`graphSnapshot` reads the sources map **once per snapshot**, builds an id → file-path map, and
+uses it for every provenance source (`src/core/graph.ts:531-551`). A live chat wins over a notes
+source with the same id. The last row for a duplicate source id wins; an empty path still counts
+as present. Missing chats and missing file sources are left out of `nodeSessions`
+(`src/core/graph.ts:542-556`). The lookup is rebuilt on the next snapshot, so changed paths are
+visible then (`tests/graph.test.ts:480-517`).
 
 ### Storage
 
@@ -200,15 +209,22 @@ Prompt: `AUDITOR_INSTRUCTIONS` (`:559`). Loop: `runAuditor` (`:587`), at most 16
 ## Graph UI
 
 - **Canvas** (`components/graph-view.tsx`, `components/graph-canvas.ts`) renders the snapshot.
-- **Chains table** (`components/chain-table.tsx`) lists chains.
+- **Chains table** lists chains. Expanded proposition rows render statements as static Markdown
+  and math, with inline code matching the surrounding text (`components/chain-table.tsx:541-566`).
+  Space on a statement's button or link keeps its native action; row and checkbox selection
+  retain the existing keyboard behavior (`components/chain-navigation.ts:65-83`).
 - **Node detail cards** show the statement, aliases, and provenance links back into sessions.
+  The name and statement render as static Markdown and math, with inline code matching the card's
+  text (`components/graph-view.tsx:900-919`). Card placement is recomputed
+  when rich content or the container resizes: below the selected node, flipped above near the
+  bottom, and clamped horizontally (`components/graph-view.tsx:923-945`, `:1461-1468`).
 - **Coverage indicator** (`components/extraction-coverage.tsx`) shows how much of the session has been
   extracted.
 - **Routes** are under `app/api/graph/`: `route.ts` (snapshot), `nodes`, `sources`, `import`,
   `coverage`, `positions`, `render-settings`, `status`, `costs`.
 
-*The UI behavior above was located by file name and LH docs, and hasn't been traced in component
-code.*
+*Canvas, coverage, routes, and the existing detail-card description were located by file name
+and LH docs; only the rendering and placement changes above were traced in component code.*
 
 ## Port notes
 
