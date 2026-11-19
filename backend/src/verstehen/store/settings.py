@@ -6,6 +6,8 @@ JSON = TypeAdapter(JsonValue)
 
 
 class SettingsStore:
+    """Persist JSON settings by key, returning None for missing keys."""
+
     def __init__(self, database: Database):
         self.database = database
 

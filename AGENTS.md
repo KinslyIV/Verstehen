@@ -47,8 +47,12 @@ All design authority belongs to the human. **Never guess a design or implementat
   required behavior for simplicity, and never add an abstraction for a problem we don't have yet.
 - **The code explains itself.** Names, types, and small functions carry the meaning. If code needs a
   long comment to be understood, rewrite the code.
-- **Comments are rare and short: at most 3 lines** (docstrings included; `make check` enforces it).
-  Never use a comment to justify a workaround. Fix the cause, or ask (see No guessing).
+- **Comments and docstrings are short: at most 3 lines** (`make check` enforces it). Describe a
+  function or class only when its name and signature don't say what it does at a glance; say what,
+  and why only when needed, never step-by-step how. Skip the obvious. Use Python docstrings or
+  `/** ... */` JSDoc above TypeScript/Svelte functions. Enforce usefulness in review, not a check.
+  Never use a comment to justify a workaround or explain strange code. Rewrite it instead,
+  or ask (see No guessing).
 - **Follow the Zen of Python** (`import this`), but not where it makes the code harder to
   understand. Understandable wins.
 - **The codebase is the prompt.** Agents copy what they see, so there is one way to do each thing.

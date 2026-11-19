@@ -4,40 +4,27 @@
 
 ## Where we are
 
-**M1 static UI layout implemented; make-verify flow and packaging remain.**
+**M1, walking skeleton: repo, checks, sidecar, and static UI layout are on `main`.**
 
-- Python 3.14 uv project with empty feature packages and enforced dependency layers.
-- SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte components; static lesson layout
-  and full-page appearance settings.
-- `make setup`, `make check`, `make test`, `make fmt`, and `make lock-migrations`.
-- Comment/docstring length and migration immutability checks, with 66 offline pytest tests and warnings treated as errors.
-- `make setup` then `make check` passed from a clean source archive; Vitest and the SPA build pass.
-- FastAPI sidecar with desktop token and browser-only request checks, Tauri CORS, and health route.
-- One WAL database connection with private state, shared transaction/read helpers, and JSON settings store.
-- Migration runner and checker share strict file-name and duplicate-number validation.
-- API routes use module-level routers and `Depends` with the lifespan database on `app.state`.
-- Starlette TestClient uses `httpx2`; Python 3.14 checks pass without warning exceptions.
-- One-line port handshake, rotating file logs, SIGTERM and desktop stdin-EOF shutdown.
-- `make dev` runs the sidecar and Vite with a temporary data dir and `/api` proxy.
-- Round-2 desktop handshake/token/EOF/log checks and curl through Vite passed; dev data cleaned up.
-- Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
-- Shared lesson route-group shell with local shell state; new-session content at `/` and
-  `/session/new`, remembered sidebar and resizable right panel.
-- Static editable composer with sending disabled until M2; no API calls.
-- Dark / Light / System appearance using mode-watcher, with pre-paint initialization.
-- Eleven Chromium component behavior tests render through the lesson layout; theme default test
-  imports mode-watcher only after pre-paint initialization to cover a cold launch.
-- Internal links use SvelteKit resolve; shadcn hooks alias matches components/ui/hooks.
-- Review choices recorded for user review, including the required mode-watcher import-time seed.
-- Production build and headless Chromium route/navigation, composer, panel reload, and theme sanity
-  checks passed; lesson, open-panel, and light-settings screenshots inspected.
+- **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
+  order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
+  `dev`, and `lock-migrations`. Custom checks: comment length, migration lockfile.
+- **Sidecar:** FastAPI on 127.0.0.1 with the desktop token or browser-only checks, the JSON port
+  handshake, stdin-EOF and SIGTERM shutdown, a rotating log, and `GET /api/health`.
+- **Store:** one WAL SQLite connection behind `transaction()` / `read()`, the migration runner, and
+  the `settings` table.
+- **UI:** the static lesson layout (sidebar, new-session screen, composer with sending disabled,
+  resizable right panel) and settings with Dark / Light / System appearance. No API calls yet.
+- **Docs:** the docstring rule is in AGENTS.md. Part A (LearnHarness) and Part B (the port) remain
+  the specification.
 
 ## Next
 
-1. `make verify` + fake model + verify skill, including the App layout flow. Chromium system
-   dependencies are installed; agents install Playwright's Chromium into the user cache.
-2. Packaging proof with `make app` inside an Arch container, then laptop installation.
-3. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+1. `make verify` + fake model + verify skill, including the App layout flow (branch `m1-verify`,
+   being rebased onto `main`).
+2. The LearnHarness spec moves to `cb25c8e` (branch `lh-spec-cb25c8e`, in progress).
+3. Packaging proof with `make app` inside an Arch container, then laptop installation.
+4. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
 

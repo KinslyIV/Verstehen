@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision:** Give a function or class a short docstring when its name and signature don’t say what it does at a glance; skip obvious descriptions. Say what, and why only when needed, never step-by-step how. Never explain weird code with a docstring; rewrite it instead. Use Python docstrings and `/** ... */` JSDoc above TypeScript/Svelte functions, at most 3 lines. Enforce usefulness in review, not a check. | Faster reading; descriptions only where they add something. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Sidebar widths use shadcn defaults: 16rem desktop, 18rem mobile. | Keep the generated sizing. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Settings sections switch locally in-page, starting at Appearance. | No section routes are needed in M1. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Right-panel visibility uses its own localStorage key; width uses paneforge autoSaveId. | Persist visibility separately from pane sizes. |

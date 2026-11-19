@@ -7,6 +7,7 @@ MIGRATIONS = Path(__file__).with_name("migrations")
 
 
 async def migrate(database: Database, directory: Path = MIGRATIONS) -> None:
+    """Apply pending numbered migrations, each atomically with its history row."""
     paths = migration_files(directory)
     async with database.transaction() as connection:
         await connection.execute(

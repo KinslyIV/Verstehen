@@ -17,6 +17,7 @@ MESSAGE = "shorten to at most 3 lines, or let names and types carry the meaning"
 def line_blocks(
     source: str, prefix: str | None, delimiters: dict[str, str]
 ) -> list[tuple[int, int]]:
+    """Return inclusive, one-based line ranges for full-line comments and delimited blocks."""
     blocks = []
     lines = source.splitlines()
     index = 0
@@ -40,6 +41,7 @@ def line_blocks(
 
 
 def python_blocks(source: str) -> list[tuple[int, int]]:
+    """Return inclusive, one-based line ranges for Python full-line comments and docstrings."""
     comment_lines = {
         token.start[0]
         for token in tokenize.generate_tokens(io.StringIO(source).readline)
@@ -62,6 +64,7 @@ def python_blocks(source: str) -> list[tuple[int, int]]:
 
 
 def comment_blocks(path: Path) -> list[tuple[int, int]]:
+    """Return comment and docstring line ranges, including Svelte scripts and markup."""
     source = path.read_text()
     if path.suffix == ".py":
         return python_blocks(source)
@@ -85,6 +88,7 @@ def comment_blocks(path: Path) -> list[tuple[int, int]]:
 
 
 def check(root: Path) -> list[str]:
+    """Return diagnostics for oversized comment blocks and unparseable Python sources."""
     errors = []
     for path in sorted(root.rglob("*")):
         relative = path.relative_to(root)
