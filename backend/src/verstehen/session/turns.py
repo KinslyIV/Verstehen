@@ -144,8 +144,8 @@ class Turns:
             try:
                 result = await stage(state)
             except Exception as error:
-                state.runtime.remember_failure(str(error))
                 if state.run:
+                    state.runtime.remember_failure(str(error))
                     state.run.publish(TurnEvent(type="error", error_text=str(error)))
                     await self.finish(state)
                     state.run.close()

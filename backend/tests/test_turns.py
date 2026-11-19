@@ -537,7 +537,7 @@ def test_retry_recheck_refuses_and_releases_claim_without_remembering_failure(
     asyncio.run(scenario())
 
 
-def test_unexpected_value_error_before_claim_is_500_and_remembered(tmp_path: Path):
+def test_unexpected_error_before_claim_is_500_and_not_remembered(tmp_path: Path):
     async def scenario():
         async with service(tmp_path) as (turns, session_id):
 
@@ -548,10 +548,7 @@ def test_unexpected_value_error_before_claim_is_500_and_remembered(tmp_path: Pat
             result = await turns.start(session_id, TurnInput(type="text", text="Hello"))
             assert isinstance(result, Refused) and result.status == 500
             runtime = turns.runtimes.get(session_id)
-            assert (
-                runtime.run is None
-                and runtime.failure == "Unexpected validation failure"
-            )
+            assert runtime.run is None and runtime.failure is None
             assert await turns.entries.list(session_id) == []
 
     asyncio.run(scenario())
