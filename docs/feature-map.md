@@ -3,6 +3,16 @@
 Every feature the learner can use, how to reach it, and how to verify it. Each new or changed feature
 updates its entry in the same commit. `make verify` runs the flows named here.
 
+During editing, batch affected flow names with `make verify FLOW='flow-a flow-b'`, or use
+`make verify-run FLOW='flow-a flow-b'` when the frontend build guard passes. Run the full suite
+before merging UI work and after shared UI or runtime changes. Each flow keeps an isolated sidecar,
+preview, temporary data directory, assertions, screenshot, and always-on trace. Logic
+permutations belong in offline tests; these real flows cover representative integrated states.
+Record the command, revision or dirty state, flows, and screenshot/trace evidence. Review can
+reuse passing results only while relevant source, configuration, dependencies, and environment
+are unchanged and no new issue appears; rerun after meaningful edits, failure, or a new concern.
+See the [verify skill](../.agents/skills/verify/SKILL.md) for build guard limits.
+
 | Feature | How to reach it | Verify flow | Tests |
 |---|---|---|---|
 | App layout | `/` or `/session/new`; pages in `app/src/routes/(lesson)/` share the lesson shell; sidebar Settings link opens `/settings` outside the group | `layout-lesson-dark`, `layout-sidebar-collapsed`, `layout-right-panel-open`, `settings-appearance-light`, `settings-models-light` | `app/src/routes/layout.svelte.test.ts`: new_session_button_opens_new_session_screen; root_shows_new_session_screen; right_panel_starts_closed; right_panel_open_state_and_width_are_remembered; sidebar_toggles_with_ctrl_b; theme_defaults_to_dark; theme_choice_is_remembered; system_theme_follows_os; settings_shows_stub_sections |

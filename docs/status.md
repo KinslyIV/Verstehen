@@ -21,6 +21,22 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   the shared verify skill. Nineteen isolated Chromium cases cover layout/settings, streaming
   lessons, markdown, thinking, reload, Stop/Retry, session management, no-model refusal, and long replies, with
   screenshots and traces.
+- **Validation iteration:** `make check-backend` and `make check-frontend` expose the existing full
+  stages for focused editing; `make check` still runs all stages before every commit. Guarded
+  `make verify-run FLOW='flow-a flow-b'` reuses unchanged SPA builds; `make verify` always builds.
+  Thirty-eight offline cases cover stale inputs, configuration, dependencies, environment, failed
+  builds, changed/missing output, and conservative dotenv/symlink handling. Full UI verification
+  remains required before merging UI work and after shared UI/runtime changes. Review may reuse
+  passing evidence only while relevant inputs stay unchanged and no new issue appears.
+  Before M2 integration, full checks passed in 79.718 s (122 pytest + 15 Vitest tests); full verification
+  passed in 45.344 s and all six screenshots were inspected. The unchanged all-flow rerun passed
+  in 41.686 s and a selected two-flow rerun in 14.863 s, with no frontend build. Browser timings
+  varied substantially; these are local observations, not a controlled speedup benchmark.
+  Serial ESLint remains: measured concurrency was slower, and no lint cache was added.
+  Integration with M2 preserves the generated API-type check in `check-backend`. Combined
+  `make check` passed (200 Python and 68 frontend tests); full `make verify` passed all
+  19 cases. Inspected dark/light lesson, thinking-stream, and markdown screenshots; the
+  unchanged M2 frontend also passed the build-reuse guard.
 - **Packaging:** `make app` builds the Tauri shell and PyInstaller onedir in Arch, runs frozen
   dependency and sidecar smoke checks, and produces `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
   Builds reuse a prepared Arch toolchain image and compile the frontend once; `make app-image`
