@@ -4,6 +4,12 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision:** Chat UI pieces come from **shadcn-svelte's official AI Elements** (copied in with the shadcn-svelte CLI), not the community `svelte-ai-elements` registry. Add each piece only in the milestone that needs it (M2: chat/conversation, message, prompt input, reasoning, shimmer; M5: plan; M7: tool, task). Adapt them to our own message types: no AI SDK chat runtime, and the `ai` package at most for types. Question cards never come from AI Elements; their behavior is ported from LH. Before M2, check that `svelte-streamdown` covers LH's markdown (code, math, Mermaid, CJK). | LH builds its chat on Vercel's AI Elements (`components/ai-elements/` at cb25c8e); the official port is maintained with the shadcn-svelte we already use. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Tauri identifier `local.verstehen.app`; window 1280×800, hidden until the sidecar is healthy. | Placeholder identity for a personal, undistributed app. |
+| 2026-11-19 | **Orchestrator decision, for user review:** The webview may call only `sidecar_connection`; the Rust shell owns sidecar spawning and the error dialog. The command refuses calls before the sidecar is ready. | Minimum webview permissions. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Readiness polls `/api/health` every 100 ms with a 1 s request timeout, bypassing proxies; on exit the shell kills the sidecar, and a crashed shell closes its stdin. | Fast, local-only startup check. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Package license `LicenseRef-Proprietary`; no stripping or debug package; depends also on `glibc` and `zlib`; `makepkg --nodeps` in the container so Chromium isn't installed there. | Cautious defaults for a private package. |
+| 2026-11-19 | **Orchestrator decision, for user review:** Icons and `Cargo.lock` are committed and used as they are; Rust builds with `--locked`; versions in `pyproject.toml`, `Cargo.toml`, and `tauri.conf.json` must match (`make check`). | One source for each build input. |
 | 2026-11-19 | **User decision (M1 task 4 planning):** Packaging proof is `verstehen --self-check`: resvg renders PNG, pypdfium2 creates and opens a PDF, the Playwright driver reports its version, and the SDK's bundled Claude CLI reports its version. `make app` runs it frozen; the user repeats it on the laptop. | Prove native dependencies offline before features depend on them. |
 | 2026-11-19 | **User decision (M1 task 4 planning):** Use PyInstaller onedir, with the executable and `_internal/` beside the Tauri binary in `/usr/lib/verstehen/`. | Keep native dependencies together without extraction on startup. |
 | 2026-11-19 | **User decision (M1 task 4 planning):** The webview reads port and token through `sidecar_connection`, used only by `src/lib/api/` inside Tauri; browser requests keep relative `/api` URLs. | One transport module for desktop and browser. |
@@ -322,7 +328,8 @@ A conversation with the fake model, saved and replayable.
   settlement order, one turn per session, refusal leaves no trace.
 - The teacher agent with LH's prompt tree copied, prompt composition, and override files.
 - The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
-- **UI:** the session list, a new session, the streamed thread, and the session controller.
+- **UI:** the session list, a new session, the streamed thread, and the session controller. The thread
+  and composer use shadcn-svelte AI Elements (see the decision above).
 
 ### M3. Real providers
 
