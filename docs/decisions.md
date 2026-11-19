@@ -4,6 +4,11 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision (M1 task 4 planning):** Packaging proof is `verstehen --self-check`: resvg renders PNG, pypdfium2 creates and opens a PDF, the Playwright driver reports its version, and the SDK's bundled Claude CLI reports its version. `make app` runs it frozen; the user repeats it on the laptop. | Prove native dependencies offline before features depend on them. |
+| 2026-11-19 | **User decision (M1 task 4 planning):** Use PyInstaller onedir, with the executable and `_internal/` beside the Tauri binary in `/usr/lib/verstehen/`. | Keep native dependencies together without extraction on startup. |
+| 2026-11-19 | **User decision (M1 task 4 planning):** The webview reads port and token through `sidecar_connection`, used only by `src/lib/api/` inside Tauri; browser requests keep relative `/api` URLs. | One transport module for desktop and browser. |
+| 2026-11-19 | **User decision (M1 task 4 planning):** The shell waits for the port line and a 200 health response before showing the window; failure or 30 seconds shows a native error dialog naming the log, then quits. | Never show a disconnected startup window. |
+| 2026-11-19 | **User decision (M1 task 4 planning):** Package and command `verstehen`, launcher “Verstehen” in Education, placeholder icons generated from favicon.svg. | Establish the installable desktop entry for M1. |
 | 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
 | 2026-11-19 | **Orchestrator decision, for user review:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |

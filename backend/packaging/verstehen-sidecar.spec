@@ -1,0 +1,19 @@
+from pathlib import Path
+from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_submodules, copy_metadata
+
+root = Path(SPECPATH).parent
+binaries = []
+datas = collect_data_files("verstehen", includes=["store/migrations/*.sql"])
+datas += copy_metadata("verstehen", recursive=True)
+hiddenimports = collect_submodules("uvicorn")
+for package in ("playwright", "claude_agent_sdk", "pypdfium2", "pypdfium2_raw", "resvg_py"):
+    data, binary, hidden = collect_all(package)
+    datas += data
+    binaries += binary
+    hiddenimports += hidden
+
+a = Analysis([str(root / "packaging/entrypoint.py")], pathex=[str(root / "src")],
+             binaries=binaries, datas=datas, hiddenimports=hiddenimports)
+pyz = PYZ(a.pure)
+exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="verstehen-sidecar", console=True)
+coll = COLLECT(exe, a.binaries, a.datas, name="verstehen-sidecar")

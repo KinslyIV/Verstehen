@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Verstehen
+Comment=Learn with an AI tutor
+Exec=verstehen
+Icon=verstehen
+Terminal=false
+Categories=Education;

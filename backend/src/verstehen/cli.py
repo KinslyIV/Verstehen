@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import logging
@@ -73,6 +74,12 @@ async def serve(settings: Settings) -> None:
 
 def main() -> None:
     """Load launch settings and run the sidecar with file logging."""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--self-check", action="store_true")
+    if parser.parse_args().self_check:
+        from verstehen.self_check import run_self_check
+
+        raise SystemExit(0 if run_self_check() else 1)
     try:
         settings = load_settings()
         configure_logging(settings)

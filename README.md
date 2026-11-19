@@ -56,3 +56,13 @@ New numbered SQL migrations are recorded with `make lock-migrations`.
 `make dev` starts the browser-only sidecar and Vite with an `/api` proxy and a fresh temporary
 data directory. Open the Vite URL (normally `http://localhost:5173`); Ctrl-C stops both.
 `VERSTEHEN_PORT` overrides the sidecar's development port (default 8765).
+
+## Build and install
+
+On Pixal, run `make app` (Docker without sudo). It updates an Arch container and builds
+`dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`. Named Docker volumes retain Cargo, npm, uv,
+and package download caches between builds.
+
+Copy `dist/*.pkg.tar.zst` to the Arch laptop and install with `sudo pacman -U <file>`.
+Open **Verstehen** from the launcher. Run `/usr/lib/verstehen/verstehen-sidecar --self-check`
+to confirm the frozen dependencies. The Tauri shell is checked manually on the laptop.

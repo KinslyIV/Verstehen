@@ -89,6 +89,18 @@ export default defineConfig(
 		files: ['src/**/*.{ts,js,svelte}'],
 		ignores: ['src/lib/api/**'],
 		rules: {
+			'no-restricted-imports': [
+				'error',
+				{
+					paths: [
+						{
+							name: '@tauri-apps/api/core',
+							importNames: ['invoke'],
+							message: 'Move connection commands into src/lib/api/.'
+						}
+					]
+				}
+			],
 			'no-restricted-globals': [
 				'error',
 				{
