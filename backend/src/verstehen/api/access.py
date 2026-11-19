@@ -8,6 +8,7 @@ from verstehen.config import Settings
 
 
 def addressed_origin(request: Request) -> tuple[str, str] | None:
+    """Return the normalized Host hostname and origin, or None for an invalid Host."""
     host = request.headers.get("host")
     if not host:
         return None
@@ -34,6 +35,7 @@ def addressed_origin(request: Request) -> tuple[str, str] | None:
 
 
 def host_allowed(hostname: str, settings: Settings) -> bool:
+    """Allow localhost names, any IP address, and explicitly configured hostnames."""
     if hostname == "localhost" or hostname.endswith(".localhost"):
         return True
     try:
@@ -44,6 +46,7 @@ def host_allowed(hostname: str, settings: Settings) -> bool:
 
 
 def request_refusal(request: Request, settings: Settings) -> str | None:
+    """Return an access-denial reason, or None when the launch mode permits the request."""
     if settings.desktop:
         supplied = request.headers.get("x-verstehen-token", "")
         if not settings.token or not hmac.compare_digest(

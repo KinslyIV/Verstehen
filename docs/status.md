@@ -1,8 +1,12 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-18.
+> Updated at the end of every piece of work. Last update: 2026-11-19.
 
 ## Where we are
+
+- Docstring rule recorded in AGENTS, decisions, and patterns; descriptions added where names and
+  signatures leave purpose or guarantees unclear. No behavior changes. `make check` passes
+  (66 Python tests); changed Python ASTs match the originals after removing docstrings.
 
 **M1 task 2: round-2 review fixes implemented and verified.**
 

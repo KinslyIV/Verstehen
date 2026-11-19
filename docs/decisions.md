@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision:** Give a function or class a short docstring when its name and signature don’t say what it does at a glance; skip obvious descriptions. Say what, and why only when needed, never step-by-step how. Never explain weird code with a docstring; rewrite it instead. Use Python docstrings and `/** ... */` JSDoc above TypeScript/Svelte functions, at most 3 lines. Enforce usefulness in review, not a check. | Faster reading; descriptions only where they add something. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_TOKEN` without `VERSTEHEN_DESKTOP=1`, including an empty token, refuses to start; `VERSTEHEN_DESKTOP` accepts only `"1"`. | Fail closed on an incomplete or mistyped desktop launch. |
 | 2026-11-18 | **Orchestrator decision, for user review:** `VERSTEHEN_PORT=0` or unset chooses a free port; the bound socket is held through startup. | Report the actual port without a bind race. |
 | 2026-11-18 | **Orchestrator decision, for user review:** The SQLite file is `<data dir>/verstehen.db`. | One stable database path owned by the sidecar. |

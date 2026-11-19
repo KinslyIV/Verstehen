@@ -13,6 +13,7 @@ class Settings:
 
 
 def load_settings() -> Settings:
+    """Validate launch environment variables and create the data directory."""
     desktop_flag = os.environ.get("VERSTEHEN_DESKTOP")
     token = os.environ.get("VERSTEHEN_TOKEN")
     if desktop_flag not in (None, "1"):

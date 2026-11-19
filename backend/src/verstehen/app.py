@@ -13,8 +13,11 @@ from verstehen.store.migrate import migrate
 
 
 def create_app(settings: Settings) -> FastAPI:
+    """Build the API with database lifecycle, access checks, and desktop CORS."""
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
+        """Keep a migrated database available to routes for the application lifetime."""
         async with open_database(settings.data_dir / "verstehen.db") as database:
             await migrate(database)
             app.state.database = database
@@ -24,6 +27,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.middleware("http")
     async def access(request: Request, call_next: RequestResponseEndpoint) -> Response:
+        """Reject API requests that fail the launch mode’s access policy."""
         if request.url.path == "/api" or request.url.path.startswith("/api/"):
             refusal = request_refusal(request, settings)
             if refusal:

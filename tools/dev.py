@@ -6,6 +6,7 @@ import time
 
 
 def main() -> None:
+    """Run the browser sidecar and Vite with temporary data, stopping both on exit."""
     children: list[subprocess.Popen] = []
     stopping = False
 

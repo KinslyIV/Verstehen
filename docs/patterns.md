@@ -6,6 +6,7 @@ is updated in the same commit.
 
 | Pattern | Reference to copy |
 |---|---|
+| Docstring | [`request_refusal`](../backend/src/verstehen/api/access.py) |
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
 | Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |

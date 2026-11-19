@@ -8,10 +8,12 @@ MIGRATIONS = Path("backend/src/verstehen/store/migrations")
 
 
 def read_lock(lock: Path) -> dict[str, str]:
+    """Read the migration lockfile as a mapping from filename to SHA-256 digest."""
     return dict(line.split("  ", 1)[::-1] for line in lock.read_text().splitlines())
 
 
 def check(root: Path, *, lock_new: bool = False) -> list[str]:
+    """Return migration diagnostics, optionally recording new files when all checks pass."""
     directory = root / MIGRATIONS
     lock = directory.with_suffix(".lock")
     entries = read_lock(lock)

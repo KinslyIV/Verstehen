@@ -5,6 +5,7 @@ MIGRATION_NAME = re.compile(r"[0-9]{4}_.+\.sql")
 
 
 def migration_files(directory: Path) -> list[Path]:
+    """Return migrations in number order, rejecting invalid names and duplicate numbers."""
     paths = sorted(
         path
         for path in directory.iterdir()

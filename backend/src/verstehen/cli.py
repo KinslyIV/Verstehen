@@ -13,6 +13,7 @@ from verstehen.config import Settings, load_settings
 
 
 def configure_logging(settings: Settings) -> None:
+    """Send application and server logs to a rotating file in the data directory."""
     directory = settings.data_dir / "logs"
     directory.mkdir(parents=True, exist_ok=True)
     handler = RotatingFileHandler(
@@ -32,7 +33,10 @@ def configure_logging(settings: Settings) -> None:
 
 
 class SidecarServer(uvicorn.Server):
+    """A loopback API server that announces its listening port on stdout."""
+
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:
+        """Start listening, then emit the one-line JSON port handshake."""
         await super().startup(sockets=sockets)
         if self.started and sockets:
             port = sockets[0].getsockname()[1]
@@ -41,6 +45,7 @@ class SidecarServer(uvicorn.Server):
 
 
 async def serve(settings: Settings) -> None:
+    """Run the loopback sidecar, shutting down on desktop stdin EOF."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.bind(("127.0.0.1", settings.port))
         config = uvicorn.Config(
@@ -55,6 +60,7 @@ async def serve(settings: Settings) -> None:
             loop = asyncio.get_running_loop()
 
             def watch_stdin() -> None:
+                """Request server shutdown when the desktop parent closes stdin."""
                 while sys.stdin.buffer.read(4096):
                     pass
                 loop.call_soon_threadsafe(setattr, server, "should_exit", True)
@@ -66,6 +72,7 @@ async def serve(settings: Settings) -> None:
 
 
 def main() -> None:
+    """Load launch settings and run the sidecar with file logging."""
     try:
         settings = load_settings()
         configure_logging(settings)
