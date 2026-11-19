@@ -178,6 +178,7 @@ def test_models_filter_visibility_known_data_and_keep_account_bearers_separate(
                     "high",
                 ]
                 assert offered[0].default_thinking_level == "medium"
+                assert offered[0].accepts_images
                 assert offered[0].context_limit == 400000
                 assert not offered[0].priced
                 assert account.state == "ready" and account.reason is None
@@ -481,7 +482,7 @@ def test_replaced_account_cannot_send_or_mark_new_sign_in_expired(tmp_path: Path
     asyncio.run(scenario())
 
 
-def test_catalog_capabilities_require_explicit_data(
+def test_catalog_uses_resolved_image_support_and_explicit_reasoning_efforts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 
@@ -493,13 +494,13 @@ def test_catalog_capabilities_require_explicit_data(
         model = catalog_model("gpt-5.5", "GPT Five", provider)
         assert model is not None
         assert model.thinking_levels == [] and model.default_thinking_level is None
-        assert not model.accepts_images
+        assert model.accepts_images
         monkeypatch.setattr(
             AccountProvider,
             "model_profile",
             staticmethod(
                 lambda model_name: OpenAIModelProfile(
-                    supports_image_input=True,
+                    supports_image_input=False,
                     openai_reasoning_efforts=frozenset[OpenAIReasoningEffort](
                         ("low", "medium", "high", "xhigh", "max")
                     ),
@@ -507,9 +508,35 @@ def test_catalog_capabilities_require_explicit_data(
             ),
         )
         model = catalog_model("gpt-5.5", "GPT Five", provider)
-        assert model is not None and model.accepts_images
+        assert model is not None and not model.accepts_images
         assert model.thinking_levels == ["low", "medium", "high", "xhigh"]
         assert model.context_limit == 1000000
+    finally:
+        asyncio.run(adapter.close())
+
+
+def test_catalog_defaults_to_low_before_minimal_when_medium_is_unsupported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    store = CredentialsStore(tmp_path)
+    stored = store.sign_in(credentials())
+    adapter = ChatGPTAccountAdapter(store)
+    monkeypatch.setattr(
+        AccountProvider,
+        "model_profile",
+        staticmethod(
+            lambda model_name: OpenAIModelProfile(
+                openai_reasoning_efforts=frozenset[OpenAIReasoningEffort](
+                    ("minimal", "low", "high")
+                ),
+            )
+        ),
+    )
+    try:
+        model = catalog_model("gpt-5", "GPT Five", adapter.provider(stored.id))
+        assert model is not None
+        assert model.thinking_levels == ["minimal", "low", "high"]
+        assert model.default_thinking_level == "low"
     finally:
         asyncio.run(adapter.close())
 

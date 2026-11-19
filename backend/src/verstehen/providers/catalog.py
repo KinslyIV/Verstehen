@@ -3,6 +3,18 @@ from pydantic_ai.models import Model
 from pydantic_ai.settings import ThinkingEffort
 
 
+def default_thinking_level(levels: list[ThinkingEffort]) -> ThinkingEffort | None:
+    order: tuple[ThinkingEffort, ...] = (
+        "medium",
+        "low",
+        "high",
+        "minimal",
+        "xhigh",
+        "max",
+    )
+    return next((level for level in order if level in levels), None)
+
+
 class CatalogModel(BaseModel):
     id: str
     name: str

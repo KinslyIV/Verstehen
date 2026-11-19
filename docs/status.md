@@ -157,22 +157,23 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   stable install host identity, browser OAuth/sign-in status/reconnect/removal routes, account-owned
   authenticated clients and persisted refresh, known/visible model filtering, inference authorization
   handling, and removal/replacement guards at dispatch. Generated API types include the new routes.
-  Capability handling is conservative: unpinned thinking levels are hidden and no image support is
-  inferred from Pydantic AI's generic default; currently no ChatGPT vision-slot models are offered.
+  Round 1 review fixes: image support now uses the resolved Pydantic AI model profile, so
+  models accept the vision slot unless the profile disables image input. Unpinned thinking levels
+  stay hidden; defaults follow LH's full `medium`, `low`, `high`, `minimal`, `xhigh`, `max` order
+  through shared `default_thinking_level(levels)` in `providers/catalog.py`. The capability
+  decision is marked corrected by orchestrator review; no Claude Code code changed.
   Three T3 orchestrator decisions are recorded for user review. The opt-in live test is documented
   in [feature map](feature-map.md#chatgpt-live-smoke-test-opt-in); it was not run.
-  Final `VITEST_MAX_WORKERS=1 make check` passed (281 Python, 68 frontend tests, one live
-  test deselected), including 21 new offline ChatGPT cases. Earlier default-worker full checks
-  hit the existing thinking auto-close flake and one panel-width restoration assertion; one
-  intervening run was terminated by SIGTERM. No assertions or test cases were removed.
-  On `d12b751` plus the T3 dirty state, full `make verify` initially passed 19/20 flows;
-  the known brief Stop-button assertion failed in `session-performance-realistic`, including
-  its targeted rerun. The unchanged full guarded rerun,
-  `make verify-run FLOW='--workers=1'`, passed all 20 flows. Inspected `screenshot.png` with
-  retained `trace.zip` under `app/verify-output/`:
-  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
-  `session-model-title.flow.ts-session-model-title`, and
-  `settings-appearance-light.flow.ts-settings-appearance-light`.
+  Round 1 verification on `1306550` plus these review fixes: 29 focused offline cases passed;
+  `VITEST_MAX_WORKERS=1 make check` passed (289 Python, 68 frontend tests, one live test
+  deselected). The first full check hit the previously recorded thinking auto-close timing flake;
+  the unchanged full rerun passed. Full `make verify FLOW='--workers=1'` passed 19/20 flows,
+  hitting the known brief Stop-button assertion in `session-performance-realistic`. Guarded
+  `make verify-run FLOW='session-performance-realistic --workers=1 --output=verify-output/review-rerun'`
+  passed unchanged. Inspected screenshots and retained traces under `app/verify-output/` for
+  `layout-lesson-dark.flow.ts-layout-lesson-dark`, `session-model-title.flow.ts-session-model-title`,
+  `settings-appearance-light.flow.ts-settings-appearance-light`, and
+  `review-rerun/session-performance-realis-1d389-ssion-performance-realistic`.
   No real endpoints, credentials, user data, or packaging builds were used.
 
 - **T1 provider core (implementation):** typed settings and defaults, migration 0003 (session pins

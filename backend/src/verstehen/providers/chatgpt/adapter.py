@@ -21,7 +21,7 @@ from pydantic_ai.providers.openai_chatgpt import (
 from pydantic_ai.settings import ModelSettings, ThinkingEffort
 
 from verstehen.providers.accounts import Account, AccountUnavailable
-from verstehen.providers.catalog import CatalogModel
+from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.providers.chatgpt.credentials import (
     AccountCredentialSource,
     CredentialsStore,
@@ -195,12 +195,8 @@ def catalog_model(
         id=model_id,
         name=name,
         thinking_levels=levels,
-        default_thinking_level="medium"
-        if "medium" in levels
-        else next(iter(levels), None),
-        accepts_images=(provider.model_profile(model_id) or {}).get(
-            "supports_image_input", False
-        ),
+        default_thinking_level=default_thinking_level(levels),
+        accepts_images=profile["supports_image_input"],
         context_limit=profile.get("context_window"),
     )
 
