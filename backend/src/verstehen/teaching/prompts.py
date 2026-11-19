@@ -7,9 +7,9 @@ PROMPTS_DIR = Path(__file__).with_suffix("")
 FRAGMENT_RE = re.compile(r"\d+-[\w.-]+\.md", re.ASCII)
 
 
-async def compose_instructions(settings: SettingsStore, data_dir: Path) -> str:
+async def compose_instructions(settings_store: SettingsStore, data_dir: Path) -> str:
     """Compose the teacher's source fragments with enabled, readable overrides."""
-    switches = await settings.get("agent.prompts")
+    switches = await settings_store.get("agent.prompts")
     paths = [PROMPTS_DIR / "system-prompt.md"]
     for directory in ("teacher", "shared"):
         paths.extend(

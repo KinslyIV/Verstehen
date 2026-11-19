@@ -6,16 +6,18 @@ is updated in the same commit.
 
 | Pattern | Reference to copy |
 |---|---|
-| Docstring | [`request_refusal`](../backend/src/verstehen/api/access.py) |
+| Function docstring | [`request_refusal`](../backend/src/verstehen/api/access.py) |
+| Class responsibility description | [`SessionService`](../backend/src/verstehen/session/sessions.py) (role and API/store/runtime boundary; add only when needed) |
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
 | Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |
 | Append-only entry store and validated payloads | [`store/entries.py`](../backend/src/verstehen/store/entries.py) (`EntriesStore`; session imports entry models directly) |
 | Prompt composition | [`teaching/prompts.py`](../backend/src/verstehen/teaching/prompts.py) (`compose_instructions`) |
-| Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`Turns.model_gate`, `Refused` / `Continue`) |
+| Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`TurnService.model_gate`, `Refused` / `Continue`) |
+| Service/store naming | `SessionService` / `TurnService`; `session_service` / `turn_service`; `sessions_store` / `entries_store` / `settings_store` (see [`app.py`](../backend/src/verstehen/app.py)) |
 | Session runtime and replay | [`session/runtime.py`](../backend/src/verstehen/session/runtime.py) (`SessionRuntime`, `TurnRun`) |
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
-| API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `session/sessions.py`) |
+| API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `SessionService` in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
 | Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
 | Component test (Vitest browser mode) | [`enter_sends_but_shift_enter_keeps_a_newline`](../app/src/lib/components/composer.svelte.test.ts) |

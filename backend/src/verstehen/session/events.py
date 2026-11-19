@@ -21,6 +21,10 @@ class Notification(BaseModel):
 
 
 class Notifications:
+    """Broadcast sidecar-wide session changes to currently connected subscribers.
+    Each subscription owns a queue; notifications are neither persisted nor replayed.
+    """
+
     def __init__(self):
         self.subscribers: set[asyncio.Queue[Notification]] = set()
 

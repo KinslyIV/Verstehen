@@ -149,6 +149,15 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 - The table list is approved, and so are WAL mode, one write connection owned by the store layer, and short transactions.
   Payload columns hold JSON validated by Pydantic models on the way in and out.
 
+## Session services (decided)
+
+`SessionService` coordinates session management and snapshots; `TurnService` coordinates turn
+preparation, background inference, and settlement. Routes inject them through
+`SessionServiceDependency` / `TurnServiceDependency`; app-owned instances are `session_service` /
+`turn_service`. Store variables and fields are `sessions_store`, `entries_store`, and
+`settings_store`. `Session` remains the saved data model and `SessionRuntime` the live state holder.
+Module paths, routes, and HTTP payload names are unchanged.
+
 ## Live state: SessionRuntime (Q3)
 
 One `SessionRuntime` per open session replaces LearnHarness's per-chat `globalThis` registries.

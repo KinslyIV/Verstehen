@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Literal
+from typing import List, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field
@@ -47,7 +47,7 @@ class SessionsStore:
             else Session.model_validate(dict(zip(Session.model_fields, row)))
         )
 
-    async def list(self) -> list[Session]:
+    async def list(self) -> List[Session]:
         async with self.database.read() as connection:
             async with connection.execute(
                 "SELECT id, title, kind, created_at, updated_at FROM sessions ORDER BY updated_at DESC"

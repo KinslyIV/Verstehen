@@ -135,23 +135,23 @@ def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):
         ]
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            session = await sessions.create("First")
-            store = EntriesStore(database)
-            await store.append(session.id, entries)
-            await store.append(session.id, entries)
-            assert await store.list(session.id) == entries
-            assert await sessions.rename(session.id, "  New title  ") is True
+            sessions_store = SessionsStore(database)
+            session = await sessions_store.create("First")
+            entries_store = EntriesStore(database)
+            await entries_store.append(session.id, entries)
+            await entries_store.append(session.id, entries)
+            assert await entries_store.list(session.id) == entries
+            assert await sessions_store.rename(session.id, "  New title  ") is True
             with pytest.raises(ValueError, match="must not be empty"):
-                await sessions.rename(session.id, " \n")
+                await sessions_store.rename(session.id, " \n")
         async with open_database(tmp_path / "test.db") as database:
-            sessions = SessionsStore(database)
-            saved = await sessions.get(session.id)
+            sessions_store = SessionsStore(database)
+            saved = await sessions_store.get(session.id)
             assert saved is not None and saved.title == "New title"
             assert await EntriesStore(database).list(session.id) == entries
-            assert await sessions.list() == [saved]
-            assert await sessions.delete(session.id) is True
-            assert await sessions.get(session.id) is None
+            assert await sessions_store.list() == [saved]
+            assert await sessions_store.delete(session.id) is True
+            assert await sessions_store.get(session.id) is None
             assert await EntriesStore(database).list(session.id) == []
 
     asyncio.run(run())
@@ -161,10 +161,10 @@ def test_entry_batches_are_atomic_and_cannot_target_a_missing_session(tmp_path: 
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            store = EntriesStore(database)
+            entries_store = EntriesStore(database)
             with pytest.raises(Exception, match="FOREIGN KEY"):
-                await store.append("missing", [UserEntry(text="hello")])
-            assert await store.list("missing") == []
+                await entries_store.append("missing", [UserEntry(text="hello")])
+            assert await entries_store.list("missing") == []
 
     asyncio.run(run())
 
@@ -173,12 +173,12 @@ def test_sessions_list_newest_activity_first(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            first = await sessions.create("First")
-            second = await sessions.create("Second")
-            assert [s.id for s in await sessions.list()] == [second.id, first.id]
+            sessions_store = SessionsStore(database)
+            first = await sessions_store.create("First")
+            second = await sessions_store.create("Second")
+            assert [s.id for s in await sessions_store.list()] == [second.id, first.id]
             await EntriesStore(database).append(first.id, [UserEntry(text="hi")])
-            assert [s.id for s in await sessions.list()] == [first.id, second.id]
+            assert [s.id for s in await sessions_store.list()] == [first.id, second.id]
 
     asyncio.run(run())
 
@@ -196,19 +196,19 @@ def test_duplicate_append_preserves_payload_sequence_and_updated_at(tmp_path: Pa
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            session = await sessions.create("First")
-            store = EntriesStore(database)
+            sessions_store = SessionsStore(database)
+            session = await sessions_store.create("First")
+            entries_store = EntriesStore(database)
             first = UserEntry(text="first")
             second = UserEntry(text="second")
-            await store.append(session.id, [first])
-            saved = await sessions.get(session.id)
-            await store.append(
+            await entries_store.append(session.id, [first])
+            saved = await sessions_store.get(session.id)
+            await entries_store.append(
                 session.id, [first.model_copy(update={"text": "changed"})]
             )
-            assert await sessions.get(session.id) == saved
-            await store.append(session.id, [first, second])
-            assert await store.list(session.id) == [first, second]
+            assert await sessions_store.get(session.id) == saved
+            await entries_store.append(session.id, [first, second])
+            assert await entries_store.list(session.id) == [first, second]
             async with database.read() as connection:
                 async with connection.execute(
                     "SELECT seq FROM entries ORDER BY seq"
@@ -225,18 +225,18 @@ def test_store_validates_mutated_payloads_before_writing_and_saved_payloads_on_r
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
             session = await SessionsStore(database).create("First")
-            store = EntriesStore(database)
+            entries_store = EntriesStore(database)
             bad = UserEntry(text="bad").model_copy(update={"text": {"wrong": "shape"}})
             with pytest.raises(ValidationError):
-                await store.append(session.id, [UserEntry(text="good"), bad])
-            assert await store.list(session.id) == []
-            await store.append(session.id, [UserEntry(text="good")])
+                await entries_store.append(session.id, [UserEntry(text="good"), bad])
+            assert await entries_store.list(session.id) == []
+            await entries_store.append(session.id, [UserEntry(text="good")])
             async with database.transaction() as connection:
                 await connection.execute(
                     "UPDATE entries SET payload = ?", ('{"kind":"user"}',)
                 )
             with pytest.raises(ValidationError):
-                await store.list(session.id)
+                await entries_store.list(session.id)
 
     asyncio.run(run())
 
@@ -289,13 +289,13 @@ def test_rename_keeps_updated_at_so_the_list_order_is_unchanged(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            first = await sessions.create("First")
-            second = await sessions.create("Second")
-            before = await sessions.list()
+            sessions_store = SessionsStore(database)
+            first = await sessions_store.create("First")
+            second = await sessions_store.create("Second")
+            before = await sessions_store.list()
             assert [session.id for session in before] == [second.id, first.id]
-            assert await sessions.rename(first.id, "Renamed") is True
-            after = await sessions.list()
+            assert await sessions_store.rename(first.id, "Renamed") is True
+            after = await sessions_store.list()
             assert [session.id for session in after] == [second.id, first.id]
             assert [session.updated_at for session in after] == [
                 session.updated_at for session in before
@@ -309,11 +309,11 @@ def test_rename_reports_an_unknown_session(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            session = await sessions.create("First")
-            assert await sessions.rename("missing", "New title") is False
-            assert await sessions.rename(session.id, "First") is True
-            assert await sessions.get(session.id) == session
+            sessions_store = SessionsStore(database)
+            session = await sessions_store.create("First")
+            assert await sessions_store.rename("missing", "New title") is False
+            assert await sessions_store.rename(session.id, "First") is True
+            assert await sessions_store.get(session.id) == session
 
     asyncio.run(run())
 
@@ -322,11 +322,11 @@ def test_delete_reports_an_unknown_session(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            sessions = SessionsStore(database)
-            session = await sessions.create("First")
-            assert await sessions.delete("missing") is False
-            assert await sessions.get(session.id) == session
-            assert await sessions.delete(session.id) is True
-            assert await sessions.delete(session.id) is False
+            sessions_store = SessionsStore(database)
+            session = await sessions_store.create("First")
+            assert await sessions_store.delete("missing") is False
+            assert await sessions_store.get(session.id) == session
+            assert await sessions_store.delete(session.id) is True
+            assert await sessions_store.delete(session.id) is False
 
     asyncio.run(run())

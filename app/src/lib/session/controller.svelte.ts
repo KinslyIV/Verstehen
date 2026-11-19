@@ -10,6 +10,9 @@ import {
 	type TurnInput
 } from '#lib/api/client.js';
 
+/** Own one mounted session thread's reactive state, send/attach recovery, and saved/live entry merge.
+ * Disposal cancels this controller's reads and streams; the backend owns the running turn.
+ */
 export class SessionController {
 	record = $state<SessionDetail>();
 	entries = $state<Entry[]>([]);

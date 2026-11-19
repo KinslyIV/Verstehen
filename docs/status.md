@@ -47,7 +47,23 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   The shell waits for healthy startup; the API client reads its connection through Tauri. The
   package bundles neither Chromium (optional) nor the Claude Code CLI (the installed `claude` is
   used); the download buttons for both come in M3 and M7.
-- **Docs:** the docstring rule is in AGENTS.md. The LearnHarness specification is `cb25c8e`
+- **Docs:** selective class responsibility guidance is in AGENTS.md and workflow review criteria.
+  Session coordination/state classes now describe their role, ownership, or lifetime; obvious data
+  wrappers and self-explanatory methods remain undocumented. Automatic comment checks still only
+  enforce existing length/syntax rules, with no blanket docstring requirement. All subagents use
+  GPT-6.1 Sol (`gpt-6.1-sol`), medium reasoning effort, and the default tier; parent settings stay
+  unchanged. `SessionService` / `TurnService`, explicit store names, and descriptive dependency
+  aliases now distinguish orchestration, persistence, and session data across application/tests/docs.
+  Module paths, API payloads, `Session`, and `SessionRuntime` retain their existing roles. Frontend
+  changes are JSDoc-only. At base `62e41c0` plus these changes, full `make check` passed
+  (200 Python, 68 frontend tests), and full `make verify` passed all 19 flows. Python ASTs match
+  after stripping docstrings and reversing the approved renames; no new tests or checker rules.
+  One unchanged thinking-timer test initially failed, then passed in isolation and the full rerun.
+  Inspected `screenshot.png` in `app/verify-output/`: `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `markdown-rendering.flow.ts-markdown-rendering-{dark,light}`, `session-error-retry.flow.ts-session-error-retry`,
+  `session-no-model.flow.ts-session-no-model`, `session-thinking-streaming-8b812-ion-thinking-streaming-dark`,
+  and `session-thinking-streaming-beaf3-on-thinking-streaming-light`; each also retains `trace.zip`.
+  The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
   Part A errors fixed: graph detail cards show no aliases, and two stages save before the turn
   claim (compaction gate, sibling gate).
@@ -100,6 +116,14 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   pass. UI verification passed all 19 cases across runs: the full run was terminated after
   18 passes, then both streaming-thinking cases passed in a targeted rerun. Inspected dark/light
   lesson screenshots and the final light streaming-thinking screenshot.
+
+- **Class clarity integration:** merged `m2-plan` (`ef57be8`) into main together with the four
+  existing `typing.List` annotation edits. Service/store names, selective responsibility
+  descriptions, and medium-effort subagent guidance are included. On the combined merge state,
+  `make check` passed (200 Python, 68 frontend tests). Full `make verify` initially passed 18 cases
+  but missed the brief Stop-button state in `session-performance`; the full guarded
+  `make verify-run` rerun passed all 19 cases. Inspected dark/light lesson screenshots at
+  `app/verify-output/session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}/screenshot.png`.
 
 ## Next
 

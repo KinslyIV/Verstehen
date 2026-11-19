@@ -1,5 +1,5 @@
 from datetime import UTC, datetime
-from typing import Annotated, Literal
+from typing import Annotated, List, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
@@ -37,7 +37,7 @@ class UserEntry(EntryBase):
 
 class AssistantEntry(EntryBase):
     kind: Literal["assistant"] = "assistant"
-    parts: list[Annotated[TextPart | ThinkingPart, Field(discriminator="type")]]
+    parts: List[Annotated[TextPart | ThinkingPart, Field(discriminator="type")]]
     stop_reason: Literal["stop", "aborted", "error"] = "stop"
     error_text: str | None = None
     provider: str | None = None
@@ -85,7 +85,7 @@ class EntriesStore:
     def __init__(self, database: Database):
         self.database = database
 
-    async def append(self, session_id: str, entries: list[Entry]) -> None:
+    async def append(self, session_id: str, entries: List[Entry]) -> None:
         validated = [ENTRY.validate_python(entry) for entry in entries]
         async with self.database.transaction() as connection:
             inserted = False
@@ -112,7 +112,7 @@ class EntriesStore:
                     (datetime.now(UTC).isoformat(), session_id),
                 )
 
-    async def list(self, session_id: str) -> list[Entry]:
+    async def list(self, session_id: str) -> List[Entry]:
         async with self.database.read() as connection:
             async with connection.execute(
                 "SELECT payload FROM entries WHERE session_id = ? ORDER BY seq",

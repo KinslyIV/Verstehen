@@ -77,8 +77,8 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            settings = SettingsStore(database)
-            default = await compose_instructions(settings, tmp_path)
+            settings_store = SettingsStore(database)
+            default = await compose_instructions(settings_store, tmp_path)
             source = (PROMPTS_DIR / segment).read_text().strip()
             override = tmp_path / "prompts" / segment
             override.parent.mkdir(parents=True)
@@ -99,8 +99,8 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
                     else True
                 }
             )
-            await settings.set("agent.prompts", switches)
-            composed = await compose_instructions(settings, tmp_path)
+            await settings_store.set("agent.prompts", switches)
+            composed = await compose_instructions(settings_store, tmp_path)
             if case in {
                 "switch_off",
                 "switch_absent",
@@ -120,7 +120,7 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
                 if case == "fresh_edit":
                     override.write_text("UPDATED")
                     assert await compose_instructions(
-                        settings, tmp_path
+                        settings_store, tmp_path
                     ) == default.replace(source, "UPDATED")
 
     asyncio.run(run())
@@ -149,12 +149,12 @@ def test_prompt_discovery_filters_filenames_orders_segments_and_drops_empty_text
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            settings = SettingsStore(database)
-            await settings.set(
+            settings_store = SettingsStore(database)
+            await settings_store.set(
                 "agent.prompts", {"../outside.md": True, "teacher/README.md": True}
             )
             assert (
-                await compose_instructions(settings, tmp_path)
+                await compose_instructions(settings_store, tmp_path)
                 == "BASE\n\n---\n\nFIRST\n\n---\n\nSECOND\n\n---\n\nAPPENDIX"
             )
 

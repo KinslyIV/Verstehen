@@ -8,16 +8,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from starlette.responses import JSONResponse, StreamingResponse
 
-from verstehen.api.deps import get_sessions, get_turns
+from verstehen.api.deps import get_session_service, get_turn_service
 from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
-from verstehen.session.sessions import Sessions
-from verstehen.session.turns import TurnInput, Turns
+from verstehen.session.sessions import SessionService
+from verstehen.session.turns import TurnInput, TurnService
 from verstehen.store.entries import Entry
 from verstehen.store.sessions import Session
 
-Service = Annotated[Sessions, Depends(get_sessions)]
-TurnService = Annotated[Turns, Depends(get_turns)]
+SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
+TurnServiceDependency = Annotated[TurnService, Depends(get_turn_service)]
 HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -77,8 +77,8 @@ class Ok(BaseModel):
 
 
 @router.get("/api/sessions", response_model=SessionList)
-async def list_sessions(service: Service) -> SessionList:
-    result = await service.list()
+async def list_sessions(session_service: SessionServiceDependency) -> SessionList:
+    result = await session_service.list()
     return SessionList(
         sessions=[
             SessionItem(**item.session.model_dump(), busy=item.busy) for item in result
@@ -87,14 +87,16 @@ async def list_sessions(service: Service) -> SessionList:
 
 
 @router.post("/api/sessions", response_model=Created)
-async def create_session(body: TitleInput, service: Service) -> Created:
-    session = await service.create(body.title)
+async def create_session(
+    body: TitleInput, session_service: SessionServiceDependency
+) -> Created:
+    session = await session_service.create(body.title)
     return Created(id=session.id)
 
 
 @router.get("/api/sessions/{session_id}", response_model=SessionDetail)
-async def get_session(session_id: str, service: Service):
-    result = await service.get(session_id)
+async def get_session(session_id: str, session_service: SessionServiceDependency):
+    result = await session_service.get(session_id)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return SessionDetail(
@@ -106,8 +108,10 @@ async def get_session(session_id: str, service: Service):
 
 
 @router.patch("/api/sessions/{session_id}", response_model=Renamed)
-async def rename_session(session_id: str, body: TitleInput, service: Service):
-    result = await service.rename(session_id, body.title)
+async def rename_session(
+    session_id: str, body: TitleInput, session_service: SessionServiceDependency
+):
+    result = await session_service.rename(session_id, body.title)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Renamed(title=result)
@@ -118,8 +122,8 @@ async def rename_session(session_id: str, body: TitleInput, service: Service):
     response_model=Ok,
     responses={409: {"model": TurnInFlight}},
 )
-async def delete_session(session_id: str, service: Service):
-    result = await service.delete(session_id)
+async def delete_session(session_id: str, session_service: SessionServiceDependency):
+    result = await session_service.delete(session_id)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Ok()
@@ -130,8 +134,10 @@ async def delete_session(session_id: str, service: Service):
     response_model=Ok,
     responses={409: {"model": ApiError}, 503: {"model": ModelsNotConfigured}},
 )
-async def input_session(session_id: str, body: TurnInput, service: TurnService):
-    result = await service.start(session_id, body)
+async def input_session(
+    session_id: str, body: TurnInput, turn_service: TurnServiceDependency
+):
+    result = await turn_service.start(session_id, body)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Ok()
@@ -142,8 +148,8 @@ async def input_session(session_id: str, body: TurnInput, service: TurnService):
     response_model=Ok,
     responses={409: {"model": NotRunning}},
 )
-async def abort_session(session_id: str, service: Service):
-    result = await service.abort(session_id)
+async def abort_session(session_id: str, session_service: SessionServiceDependency):
+    result = await session_service.abort(session_id)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Ok()
@@ -174,8 +180,8 @@ def frame(event: TurnEvent) -> str:
         }
     },
 )
-async def stream_session(session_id: str, service: Service):
-    result = await service.stream(session_id)
+async def stream_session(session_id: str, session_service: SessionServiceDependency):
+    result = await session_service.stream(session_id)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return StreamingResponse(
@@ -199,9 +205,9 @@ async def stream_session(session_id: str, service: Service):
         }
     },
 )
-async def events(service: Service):
+async def events(session_service: SessionServiceDependency):
     return StreamingResponse(
-        notification_frames(service.subscribe()),
+        notification_frames(session_service.subscribe()),
         media_type="text/event-stream",
         headers=HEADERS,
     )
