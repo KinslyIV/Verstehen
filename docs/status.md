@@ -130,6 +130,9 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 1. **M3 real providers:** T1 core is reviewed at `d12b751`; T2 Claude Code is implemented
    on `m3-t2-claude-code` for review ([plan](plans/m3-real-providers.md)).
    T3 ChatGPT is separate parallel work; T4 UI follows T2/T3.
+1. **M3 real providers:** T1 core is reviewed at `d12b751`; T3 ChatGPT backend is implemented
+   for review ([plan](plans/m3-real-providers.md)). T2 Claude Code proceeds independently on T1;
+   T4 then integrates provider Settings and the model menu.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions
@@ -150,6 +153,31 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 - Later providers remain in [architecture](architecture.md#open-questions).
 
 ## M3 progress
+
+- **T1 provider core:** built and reviewed on `m3-t1-core` (`d12b751`): typed settings, account
+  adapters, catalog/resolution, session model pins, background policy, usage, and foreground titles.
+- **T3 ChatGPT backend:** built on T1 in `m3-t3-chatgpt`: private atomic multi-account credentials,
+  stable install host identity, browser OAuth/sign-in status/reconnect/removal routes, account-owned
+  authenticated clients and persisted refresh, known/visible model filtering, inference authorization
+  handling, and removal/replacement guards at dispatch. Generated API types include the new routes.
+  Round 1 review fixes: image support now uses the resolved Pydantic AI model profile, so
+  models accept the vision slot unless the profile disables image input. Unpinned thinking levels
+  stay hidden; defaults follow LH's full `medium`, `low`, `high`, `minimal`, `xhigh`, `max` order
+  through shared `default_thinking_level(levels)` in `providers/catalog.py`. The capability
+  decision is marked corrected by orchestrator review; no Claude Code code changed.
+  Three T3 orchestrator decisions are recorded for user review. The opt-in live test is documented
+  in [feature map](feature-map.md#chatgpt-live-smoke-test-opt-in); it was not run.
+  Round 1 verification on `1306550` plus these review fixes: 29 focused offline cases passed;
+  `VITEST_MAX_WORKERS=1 make check` passed (289 Python, 68 frontend tests, one live test
+  deselected). The first full check hit the previously recorded thinking auto-close timing flake;
+  the unchanged full rerun passed. Full `make verify FLOW='--workers=1'` passed 19/20 flows,
+  hitting the known brief Stop-button assertion in `session-performance-realistic`. Guarded
+  `make verify-run FLOW='session-performance-realistic --workers=1 --output=verify-output/review-rerun'`
+  passed unchanged. Inspected screenshots and retained traces under `app/verify-output/` for
+  `layout-lesson-dark.flow.ts-layout-lesson-dark`, `session-model-title.flow.ts-session-model-title`,
+  `settings-appearance-light.flow.ts-settings-appearance-light`, and
+  `review-rerun/session-performance-realis-1d389-ssion-performance-realistic`.
+  No real endpoints, credentials, user data, or packaging builds were used.
 
 - **T1 provider core (implementation):** typed settings and defaults, migration 0003 (session pins
   and per-call usage), account-adapter interfaces, fresh catalog/role resolution, provider background
@@ -236,3 +264,4 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   No real-model calls, credential reads, real user
   data, actual CLI downloads, UI changes, or packaging builds. Next: orchestrator re-review;
   ChatGPT remains separate parallel T3 work and Settings/model UI remains T4. No new open questions.
+  T1 review is complete at `d12b751`; T2/T3 build on that revision.

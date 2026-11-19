@@ -7,12 +7,16 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
 from verstehen.api.access import request_refusal
+from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.health import router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.config import Settings
-from verstehen.providers.accounts import AccountsService
+from verstehen.providers.accounts import AccountAdapter, AccountsService
+from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+from verstehen.providers.chatgpt.credentials import CredentialsStore
+from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
 from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter
 from verstehen.providers.claude_code.download import DownloadService
 from verstehen.providers.fake import FakeAccountAdapter
@@ -50,13 +54,17 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.data_dir, settings.provider_events
             )
             claude_code_download_service = DownloadService(settings.data_dir)
+            chatgpt_adapter = ChatGPTAccountAdapter(CredentialsStore(settings.data_dir))
+            chatgpt_sign_in_service = ChatGPTSignInService(chatgpt_adapter)
             app.state.claude_code_adapter = claude_code_adapter
             app.state.claude_code_download_service = claude_code_download_service
-            accounts_service = AccountsService(
+            app.state.chatgpt_sign_in_service = chatgpt_sign_in_service
+            adapters: list[AccountAdapter] = (
                 [FakeAccountAdapter(settings.fake_model_script)]
                 if settings.fake_model_script
-                else [claude_code_adapter]
+                else [chatgpt_adapter, claude_code_adapter]
             )
+            accounts_service = AccountsService(adapters)
             resolver_service = ResolverService(settings_store, accounts_service)
             provider_policy = ProviderPolicy(settings_store)
             usage_store = UsageStore(database)
@@ -94,6 +102,8 @@ def create_app(settings: Settings) -> FastAPI:
                 await title_service.close()
                 await claude_code_download_service.close()
                 claude_code_adapter.close()
+                await chatgpt_sign_in_service.close()
+                await chatgpt_adapter.close()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -126,4 +136,5 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
+    app.include_router(chatgpt_router)
     return app
