@@ -24,7 +24,6 @@ export default defineConfig({
 		proxy: { '/api': `http://127.0.0.1:${process.env.VERSTEHEN_PORT ?? '8765'}` }
 	},
 	test: {
-		passWithNoTests: true,
 		expect: { requireAssertions: true },
 		projects: [
 			{

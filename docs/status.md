@@ -20,6 +20,11 @@
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
 - **Docs:** the docstring rule is in AGENTS.md. The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
+  Part A errors fixed: graph detail cards show no aliases, and two stages save before the turn
+  claim (compaction gate, sibling gate).
+- **Reviewed decisions:** the orchestrator reviewed the M1 decisions marked for user review. A
+  setting is never stored as `null`, so a missing setting reads as `None`. The typed settings shape
+  is decided when planning M3.
 
 ## Next
 
@@ -32,7 +37,4 @@
   the summarized chat ended, before messages appended during summarization, and keeps learner edits
   made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
   planning M6.
-- **Two Part A mistakes from before `cb25c8e`, not yet corrected:** graph detail cards don't show
-  aliases (knowledge graph doc); compaction saves before the turn claim, contrary to "nothing
-  durable happens before stage 9" (turn lifecycle doc).
 - Later providers remain in [architecture](architecture.md#open-questions).

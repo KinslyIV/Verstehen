@@ -213,8 +213,9 @@ Prompt: `AUDITOR_INSTRUCTIONS` (`:559`). Loop: `runAuditor` (`:587`), at most 16
   and math, with inline code matching the surrounding text (`components/chain-table.tsx:541-566`).
   Space on a statement's button or link keeps its native action; row and checkbox selection
   retain the existing keyboard behavior (`components/chain-navigation.ts:65-83`).
-- **Node detail cards** show the statement, aliases, and provenance links back into sessions.
-  The name and statement render as static Markdown and math, with inline code matching the card's
+- **Node detail cards** show the name, the statement, and a "Sessions" list: a link per session,
+  plain text for an imported-notes file, or "No sessions recorded." Aliases are not shown
+  (`components/graph-view.tsx:1620-1665`). The name and statement render as static Markdown and math, with inline code matching the card's
   text (`components/graph-view.tsx:900-919`). Card placement is recomputed
   when rich content or the container resizes: below the selected node, flipped above near the
   bottom, and clamped horizontally (`components/graph-view.tsx:923-945`, `:1461-1468`).
