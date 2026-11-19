@@ -127,7 +127,10 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 
 ## Next
 
-1. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
+1. **M3 real providers: plan approved** ([plan](plans/m3-real-providers.md)). T1 (settings,
+   accounts, resolution, policy, titles) next; then T2 Claude Code and T3 ChatGPT in parallel; then
+   T4 UI.
+2. M4 question tools, M5 teaching flow.
 
 ## Open questions
 
@@ -139,10 +142,6 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   peak tasks remain; smooth sustained streaming is not established. The fake provider emits
   only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
   block approach is retained; no further profiling or renderer redesign in T4.
-
-- **M3 thinking from another model:** port the model-match filter when the session model is
-  available (`@earendil-works/pi-ai@1.4.0`, `dist/api/transform-messages.js:90-95`); M2 keeps thinking
-  regardless of which model produced it.
 
 - **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
   the summarized chat ended, before messages appended during summarization, and keeps learner edits
