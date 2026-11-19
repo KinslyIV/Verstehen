@@ -23,7 +23,7 @@ beforeEach(() => {
 	controller = new SessionController('one', 1, 20);
 });
 afterEach(() => controller.dispose());
-test('refused_send_restores_draft_and_shows_no_model_notice', async () => {
+test('refused_send_restores_draft_and_opens_setup', async () => {
 	await controller.load();
 	controller.draft = 'Algebra';
 	vi.mocked(api.postInput).mockRejectedValue(
@@ -31,7 +31,7 @@ test('refused_send_restores_draft_and_shows_no_model_notice', async () => {
 	);
 	await controller.send();
 	expect(controller.draft).toBe('Algebra');
-	expect(controller.notice).toBe('No model is set up yet.');
+	expect(controller.setupOpen).toBe(true);
 	expect(controller.busy).toBe(false);
 	expect(controller.entries).toEqual([]);
 });
@@ -113,4 +113,18 @@ test('saved_provider_failure_is_visible_after_server_restart', async () => {
 	);
 	await controller.load();
 	expect(controller.error).toBe('Provider failed');
+});
+
+test('unusable_model_opens_menu_with_reason_and_keeps_the_draft', async () => {
+	await controller.load();
+	controller.draft = 'Keep me';
+	vi.mocked(api.postInput).mockRejectedValue(
+		new api.ApiError(503, 'model_unavailable', 'unavailable', 'Sign in again.')
+	);
+	await controller.send();
+	expect(controller.draft).toBe('Keep me');
+	expect(controller.modelMenuOpen).toBe(true);
+	expect(controller.notice).toBe('Sign in again.');
+	expect(controller.error).toBeNull();
+	expect(controller.entries).toEqual([]);
 });

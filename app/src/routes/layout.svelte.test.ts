@@ -6,7 +6,13 @@ import Lesson from './lesson-test-harness.svelte';
 import './layout.css';
 import appHtml from '../app.html?raw';
 
-vi.mock('#lib/api/client.js', () => ({
+vi.mock('#lib/api/client.js', async (original) => ({
+	...(await original<typeof import('#lib/api/client.js')>()),
+	getModels: async () => ({ accounts: [], slots: {} }),
+	listChatGPTAccounts: async () => [],
+	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
+	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
+	claudeCodeDownload: async () => ({ state: 'idle' }),
 	listSessions: async () => [],
 	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
 		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
@@ -145,13 +151,15 @@ test('system_theme_follows_os', async () => {
 	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(true);
 });
 
-test('settings_shows_stub_sections', async () => {
+test('settings_shows_models_and_accounts', async () => {
 	const { default: Settings } = await import('#lib/components/settings.svelte');
 	const screen = await render(Settings);
-	for (const name of ['Models', 'Logins']) {
+	for (const name of ['Models', 'Accounts']) {
 		await screen.getByRole('button', { name, exact: true }).click();
 		await expect.element(screen.getByRole('heading', { name })).toBeVisible();
-		await expect.element(screen.getByText('Coming in a later version.')).toBeVisible();
+		await expect
+			.element(screen.getByText(name === 'Models' ? 'Main' : 'Claude Code', { exact: true }))
+			.toBeVisible();
 	}
 	await expect
 		.element(page.getByRole('button', { name: 'Toggle right panel' }))

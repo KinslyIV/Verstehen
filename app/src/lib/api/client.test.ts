@@ -73,3 +73,37 @@ test('SSE reports an early end without DONE', async () => {
 	const { readEvents } = await import('./client');
 	expect(await readEvents(new Response('data: {}\n\n'), () => {})).toBe(false);
 });
+
+test('model_refusals_retain_the_reason_and_missing_slots', async () => {
+	const { getModels, ApiError } = await import('./client');
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue(
+			new Response(
+				JSON.stringify({
+					code: 'model_unavailable',
+					error: 'Unavailable',
+					reason: 'Sign in again.',
+					missing: ['cheap']
+				}),
+				{ status: 503 }
+			)
+		)
+	);
+	await expect(getModels()).rejects.toMatchObject({
+		code: 'model_unavailable',
+		reason: 'Sign in again.',
+		missing: ['cheap']
+	});
+	await expect(getModels()).rejects.toBeInstanceOf(ApiError);
+});
+
+test('desktop_sign_in_opens_the_system_browser_through_the_existing_shell', async () => {
+	const { openSignIn } = await import('./client');
+	vi.mocked(isTauri).mockReturnValue(true);
+	vi.mocked(invoke).mockClear().mockResolvedValue(undefined);
+	await openSignIn('https://auth.openai.com/authorize');
+	expect(invoke).toHaveBeenCalledExactlyOnceWith('plugin:shell|open', {
+		path: 'https://auth.openai.com/authorize'
+	});
+});

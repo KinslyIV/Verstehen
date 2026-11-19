@@ -206,3 +206,18 @@ def test_next_turn_uses_session_model_pick_and_normalized_thinking_level(
         reply = client.get(url).json()["entries"][-1]
         assert reply["parts"][0]["text"] == "Learning plants"
         assert client.get("/api/settings").json()["models"]["strong"]["model"] == "fake"
+
+
+def test_background_and_slot_repairs_allow_unchanged_unavailable_pins(tmp_path: Path):
+    with configured_client(tmp_path) as client:
+        service = cast(FastAPI, client.app).state.provider_service
+        settings = client.get("/api/settings").json()
+        service.accounts_service.adapters.clear()
+        settings["background"]["chatgpt"] = False
+        response = client.put("/api/settings", json=settings)
+        assert response.status_code == 200
+        assert response.json() == settings
+        settings["models"]["cheap"] = None
+        assert client.put("/api/settings", json=settings).status_code == 200
+        settings["models"]["cheap"] = {"account": "removed", "model": "fake"}
+        assert client.put("/api/settings", json=settings).status_code == 503

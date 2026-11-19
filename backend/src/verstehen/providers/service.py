@@ -33,9 +33,10 @@ class ProviderService:
         return await self.settings_store.read()
 
     async def save_settings(self, settings: Settings) -> Settings:
+        previous = await self.settings_store.read()
         for slot in ModelSlots.model_fields:
             pick = getattr(settings.models, slot)
-            if pick is not None:
+            if pick is not None and pick != getattr(previous.models, slot):
                 model = await self.resolver_service.catalog_model(pick)
                 if slot == "vision" and not model.accepts_images:
                     raise ResolutionError(

@@ -7,6 +7,15 @@ export type Entry = SessionDetail['entries'][number];
 export type TurnInput = components['schemas']['TurnInput'];
 export type TurnEvent = components['schemas']['TurnEvent'];
 export type Notification = components['schemas']['Notification'];
+export type ModelPick = components['schemas']['ModelPick'];
+export type ModelCatalog = components['schemas']['ModelCatalog'];
+export type CatalogModel = components['schemas']['CatalogModel'];
+export type Settings = components['schemas']['Settings'];
+export type ModelSlots = components['schemas']['ModelSlots'];
+export type Account = components['schemas']['Account'];
+export type BinaryStatus = components['schemas']['BinaryStatus'];
+export type DownloadProgress = components['schemas']['DownloadProgress'];
+export type SignInStatus = components['schemas']['SignInStatus'];
 let token: string | undefined;
 let connection: Promise<string> | undefined;
 
@@ -28,7 +37,9 @@ export class ApiError extends Error {
 	constructor(
 		public status: number,
 		public code: string | undefined,
-		message: string
+		message: string,
+		public reason?: string,
+		public missing?: string[]
 	) {
 		super(message);
 	}
@@ -49,7 +60,9 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 		throw new ApiError(
 			response.status,
 			body.code,
-			body.error ?? `HTTP ${response.status}: ${response.statusText}`
+			body.error ?? `HTTP ${response.status}: ${response.statusText}`,
+			body.reason,
+			body.missing
 		);
 	}
 	return response;
@@ -61,9 +74,12 @@ export async function health(): Promise<{ status: string }> {
 export async function listSessions(signal?: AbortSignal): Promise<SessionItem[]> {
 	return (await (await request('/api/sessions', { signal })).json()).sessions;
 }
-export async function createSession(title: string): Promise<components['schemas']['Created']> {
+export async function createSession(
+	title: string,
+	model?: ModelPick | null
+): Promise<components['schemas']['Created']> {
 	return (
-		await request('/api/sessions', { method: 'POST', body: JSON.stringify({ title }) })
+		await request('/api/sessions', { method: 'POST', body: JSON.stringify({ title, model }) })
 	).json();
 }
 const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
@@ -142,4 +158,55 @@ export async function streamNotifications(
 	await readEvents(await request('/api/events', { signal }), (type, data) =>
 		receive({ ...JSON.parse(data), type })
 	);
+}
+
+export async function getModels(): Promise<ModelCatalog> {
+	return (await request('/api/models')).json();
+}
+export async function getSettings(): Promise<Settings> {
+	return (await request('/api/settings')).json();
+}
+export async function saveSettings(settings: Settings): Promise<Settings> {
+	return (await request('/api/settings', { method: 'PUT', body: JSON.stringify(settings) })).json();
+}
+export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
+	return (
+		await request('/api/settings/default-model', { method: 'POST', body: JSON.stringify(pick) })
+	).json();
+}
+export async function setSessionModel(id: string, model: ModelPick): Promise<void> {
+	await request(sessionPath(id), { method: 'PATCH', body: JSON.stringify({ model }) });
+}
+export async function listChatGPTAccounts(): Promise<Account[]> {
+	return (await request('/api/accounts/chatgpt')).json();
+}
+export async function startChatGPTSignIn(
+	account?: string
+): Promise<components['schemas']['SignInStarted']> {
+	return (
+		await request(
+			account
+				? `/api/accounts/chatgpt/${encodeURIComponent(account)}/sign-in`
+				: '/api/accounts/chatgpt',
+			{ method: 'POST' }
+		)
+	).json();
+}
+export async function getSignIn(id: string): Promise<SignInStatus> {
+	return (await request(`/api/accounts/chatgpt/sign-in/${encodeURIComponent(id)}`)).json();
+}
+export async function removeChatGPTAccount(id: string): Promise<void> {
+	await request(`/api/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+export async function getClaudeCode(): Promise<BinaryStatus> {
+	return (await request('/api/accounts/claude-code')).json();
+}
+export async function claudeCodeDownload(start = false): Promise<DownloadProgress> {
+	return (
+		await request('/api/accounts/claude-code/download', { method: start ? 'POST' : 'GET' })
+	).json();
+}
+export async function openSignIn(url: string): Promise<void> {
+	if (isTauri()) await invoke('plugin:shell|open', { path: url });
+	else window.open(url, '_blank', 'noopener,noreferrer');
 }

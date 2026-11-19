@@ -35,3 +35,5 @@ is updated in the same commit.
 | Session controller | [`session/controller.svelte.ts`](../app/src/lib/session/controller.svelte.ts): send, bounded conflict wait, replay, one recovery, append-only adoption; UI consumes rune state. |
 | Lesson component | [`session-thread.svelte`](../app/src/lib/components/session-thread.svelte): mount the controller, dispose its requests, compose official UI with app-owned entry rendering. |
 | Tauri command | [`sidecar_connection`](../app/src-tauri/src/lib.rs), invoked only in `src/lib/api/client.ts`. |
+| Model selection UI | [`model-menu.svelte`](../app/src/lib/components/model-menu.svelte) is the controlled account/model/level view shared by composer, Settings, and setup; [`model-controls.svelte`](../app/src/lib/components/model-controls.svelte) owns popover, shortcut, session/global/default writes. Pure selection rules live in `models/picks.ts`. |
+| Account settings UI | [`settings-accounts.svelte`](../app/src/lib/components/settings-accounts.svelte) owns account actions and process-status polling; reused in Settings and setup's nested Settings dialog. Polling timers are disposed on unmount. |

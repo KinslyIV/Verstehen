@@ -4,6 +4,8 @@
 	import { setMode, userPrefersMode } from 'mode-watcher';
 	import { Button } from '#lib/components/ui/button/index.js';
 
+	import SettingsModels from './settings-models.svelte';
+	import SettingsAccounts from './settings-accounts.svelte';
 	let section = $state('Appearance');
 	const themes = [
 		{ value: 'dark', label: 'Dark', icon: Moon },
@@ -21,7 +23,7 @@
 	<div class="mx-auto flex max-w-5xl gap-12 px-6 py-12">
 		<nav aria-label="Settings sections" class="flex w-44 shrink-0 flex-col gap-1">
 			<h1 class="mb-6 px-3 text-lg font-semibold tracking-tight">Settings</h1>
-			{#each ['Appearance', 'Models', 'Logins'] as item (item)}
+			{#each ['Appearance', 'Models', 'Accounts'] as item (item)}
 				<Button
 					variant={section === item ? 'secondary' : 'ghost'}
 					class="justify-start"
@@ -47,8 +49,10 @@
 						</Button>
 					{/each}
 				</div>
+			{:else if section === 'Models'}
+				<SettingsModels />
 			{:else}
-				<p class="mt-6 text-sm text-muted-foreground">Coming in a later version.</p>
+				<SettingsAccounts />
 			{/if}
 		</main>
 	</div>

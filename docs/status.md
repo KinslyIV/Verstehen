@@ -125,14 +125,30 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   `make verify-run` rerun passed all 19 cases. Inspected dark/light lesson screenshots at
   `app/verify-output/session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}/screenshot.png`.
 
+## M3 progress
+
+- **T1–T3:** finished and reviewed on `m3-providers` (`d7e2ae0`): typed slots and account
+  resolution, per-provider background policy, model-written titles, Claude Code discovery/download,
+  and multiple ChatGPT accounts/sign-in.
+- **T4 UI:** shared account/model/level menu in the composer, Settings, and setup; session-local
+  Main picks, global Cheap/Vision slots, explicit default saving, keyboard shortcuts, and level
+  retention/wrap. Settings now has Models and Accounts with sign-in/removal, state/version,
+  background switches, and tested-Claude download progress. Setup preserves drafts and never sends
+  on Save; unavailable models open the menu with their reason. Existing notification refresh keeps
+  model-written titles live in the header/sidebar.
+- **T4 implementation decisions for review:** offline account-route mocks; setup reuses Settings
+  Accounts in a nested dialog; settings writes permit unchanged unavailable pins while validating
+  changed picks; system-browser sign-in uses the existing shell plugin with an OpenAI URL restriction.
+- **T4 validation:** `make check` passes (334 Python, 80 frontend tests; two live cases excluded).
+  Full `make verify FLOW='--workers=1'` passes all 31 cases; every final screenshot was inspected.
+  Earlier loaded runs hit existing conflict-poll/brief-Stop timing failures; unchanged reruns passed
+  without weakening assertions. Final-source `make app` passed in 276 s with its smoke checks. Full commands,
+  constraints, and the 31 screenshot paths are in [T4 verification evidence](m3-t4-verification.md).
+
 ## Next
 
-1. **M3 real providers:** T1 core is reviewed at `d12b751`; T2 Claude Code is implemented
-   on `m3-t2-claude-code` for review ([plan](plans/m3-real-providers.md)).
-   T3 ChatGPT is separate parallel work; T4 UI follows T2/T3.
-1. **M3 real providers:** T1 core is reviewed at `d12b751`; T3 ChatGPT backend is implemented
-   for review ([plan](plans/m3-real-providers.md)). T2 Claude Code proceeds independently on T1;
-   T4 then integrates provider Settings and the model menu.
+1. **M3 real providers:** review and integrate T4 UI on the reviewed T1–T3 backends
+   ([plan](plans/m3-real-providers.md)). Check desktop appearance and real sign-in on the Arch laptop.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions

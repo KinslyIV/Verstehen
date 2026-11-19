@@ -36,5 +36,10 @@
 			"icons/icon.ico"
 		],
 		"externalBin": ["binaries/verstehen-sidecar"]
+	},
+	"plugins": {
+		"shell": {
+			"open": "^https://auth\\.openai\\.com/.*"
+		}
 	}
 }
