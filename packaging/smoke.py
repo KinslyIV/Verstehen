@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import secrets
@@ -8,6 +9,14 @@ import tempfile
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+from verstehen.store.database import open_database
+from verstehen.store.settings import SettingsStore
+
+
+async def check_migration(path: Path) -> None:
+    async with open_database(path) as database:
+        assert await SettingsStore(database).get("packaging-smoke") is None
 
 
 def smoke(binary: Path) -> None:
@@ -47,6 +56,7 @@ def smoke(binary: Path) -> None:
                 process.stdin.close()
                 assert process.wait(timeout=10) == 0
                 assert (Path(directory) / "verstehen.db").exists()
+                asyncio.run(check_migration(Path(directory) / "verstehen.db"))
                 assert b"" == process.stdout.read()
                 print(
                     "health with token: 200; without token: 403; stdin EOF: exit 0; migrations: OK"

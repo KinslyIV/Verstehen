@@ -20,6 +20,7 @@ npx tauri build --no-bundle
 cd ../packaging
 PKGDEST=/output makepkg --force --nodeps
 pacman -Qp /output/verstehen-*.pkg.tar.zst
+pacman -Qlp /output/verstehen-*.pkg.tar.zst > /output/package-contents.txt
 cp ../app/src-tauri/Cargo.lock /output/Cargo.lock
 rustc --version
 npm list --prefix ../app @tauri-apps/cli

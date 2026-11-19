@@ -20,4 +20,4 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 getrandom = "0.3"
 reqwest = { version = "0.12", default-features = false }
-tokio = { version = "1", features = ["time", "sync"] }
+tokio = { version = "1", features = ["time", "sync", "macros"] }

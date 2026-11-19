@@ -19,5 +19,4 @@ is updated in the same commit.
 | Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
 | Fake-model script | [`health.json`](../app/verify/scripts/health.json) |
 | API client function | [`health`](../app/src/lib/api/client.ts) |
-
 | Tauri command | [`sidecar_connection`](../app/src-tauri/src/lib.rs), invoked only in `src/lib/api/client.ts`. |
