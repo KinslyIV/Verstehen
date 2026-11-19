@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-19 | **User decision:** Chat UI pieces come from **shadcn-svelte's official AI Elements** (copied in with the shadcn-svelte CLI), not the community `svelte-ai-elements` registry. Add each piece only in the milestone that needs it (M2: chat/conversation, message, prompt input, reasoning, shimmer; M5: plan; M7: tool, task). Adapt them to our own message types: no AI SDK chat runtime, and the `ai` package at most for types. Question cards never come from AI Elements; their behavior is ported from LH. Before M2, check that `svelte-streamdown` covers LH's markdown (code, math, Mermaid, CJK). | LH builds its chat on Vercel's AI Elements (`components/ai-elements/` at cb25c8e); the official port is maintained with the shadcn-svelte we already use. |
 | 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
 | 2026-11-19 | **Orchestrator decision, for user review:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
 | 2026-11-19 | **Orchestrator decision, for user review:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
@@ -317,7 +318,8 @@ A conversation with the fake model, saved and replayable.
   settlement order, one turn per session, refusal leaves no trace.
 - The teacher agent with LH's prompt tree copied, prompt composition, and override files.
 - The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
-- **UI:** the session list, a new session, the streamed thread, and the session controller.
+- **UI:** the session list, a new session, the streamed thread, and the session controller. The thread
+  and composer use shadcn-svelte AI Elements (see the decision above).
 
 ### M3. Real providers
 
