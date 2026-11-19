@@ -82,8 +82,13 @@ async function ready(url: string, child: ChildProcess): Promise<void> {
 	throw new Error(`Vite preview was not ready at ${url}`);
 }
 
-export const test = base.extend<{ script: string; browserErrors: void }>({
+export const test = base.extend<{
+	script: string;
+	expectedStatuses: number[];
+	browserErrors: void;
+}>({
 	script: ['', { option: true }],
+	expectedStatuses: [[], { option: true }],
 	baseURL: async ({ script }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
@@ -93,7 +98,7 @@ export const test = base.extend<{ script: string; browserErrors: void }>({
 		Object.assign(env, {
 			VERSTEHEN_DATA_DIR: directory,
 			VERSTEHEN_PORT: '0',
-			VERSTEHEN_FAKE_MODEL: resolve(appDirectory, script)
+			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL: resolve(appDirectory, script) })
 		});
 		const children: ChildProcess[] = [];
 		try {
@@ -127,23 +132,40 @@ export const test = base.extend<{ script: string; browserErrors: void }>({
 		}
 	},
 	browserErrors: [
-		async ({ page }, use, testInfo) => {
+		async ({ page, expectedStatuses }, use, testInfo) => {
 			const errors: string[] = [];
 			page.on('console', (message) => {
-				if (message.type() === 'error') errors.push(`Console error: ${message.text()}`);
+				if (
+					message.type() === 'error' &&
+					!expectedStatuses.some((status) =>
+						message
+							.text()
+							.startsWith(
+								`Failed to load resource: the server responded with a status of ${status} (`
+							)
+					)
+				)
+					errors.push(`Console error: ${message.text()}`);
 			});
 			page.on('pageerror', (error) => errors.push(`Uncaught page error: ${error.message}`));
-			page.on('requestfailed', (request) =>
-				errors.push(
-					`Failed request: ${request.method()} ${request.url()}: ${request.failure()?.errorText}`
-				)
+			page.on(
+				'requestfailed',
+				(request) =>
+					!(
+						request.failure()?.errorText.includes('ERR_ABORTED') &&
+						request.method() === 'GET' &&
+						/\/api\/(events|sessions(?:\/[^/]+(?:\/stream)?)?)$/.test(request.url())
+					) &&
+					errors.push(
+						`Failed request: ${request.method()} ${request.url()}: ${request.failure()?.errorText}`
+					)
 			);
 			try {
 				await use();
 			} finally {
 				if (!page.isClosed()) {
 					const path = testInfo.outputPath('screenshot.png');
-					await page.screenshot({ path, fullPage: true });
+					await page.screenshot({ path, fullPage: true, animations: 'disabled' });
 					await testInfo.attach('final-page', { path, contentType: 'image/png' });
 				}
 				expect(errors, 'Browser errors must be fixed').toEqual([]);

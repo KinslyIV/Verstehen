@@ -1,10 +1,16 @@
-import { beforeEach, expect, test } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent, server } from 'vitest/browser';
 import Root from './(lesson)/+page.svelte';
 import Lesson from './lesson-test-harness.svelte';
 import './layout.css';
 import appHtml from '../app.html?raw';
+
+vi.mock('#lib/api/client.js', () => ({
+	listSessions: async () => [],
+	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
+		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+}));
 
 declare module 'vitest/browser' {
 	interface BrowserCommands {
@@ -31,21 +37,6 @@ test('root_shows_new_session_screen', async () => {
 	await expect
 		.element(screen.getByText('The teacher will open by probing what you already know.'))
 		.toBeVisible();
-});
-
-test('composer_accepts_text_but_send_is_disabled', async () => {
-	const screen = await render(Lesson);
-	await screen.getByRole('textbox').fill('Linear algebra');
-	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra');
-	await expect.element(screen.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
-});
-
-test('enter_does_not_send_without_backend', async () => {
-	const screen = await render(Lesson);
-	await screen.getByRole('textbox').fill('Linear algebra');
-	await userEvent.keyboard('{Enter}');
-	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra\n');
-	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
 });
 
 test('right_panel_starts_closed', async () => {

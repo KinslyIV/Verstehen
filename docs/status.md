@@ -4,7 +4,7 @@
 
 ## Where we are
 
-**M1, walking skeleton: repo, checks, sidecar, static UI layout, and task 3 verification are done.**
+**M1 is done. M2 T1–T3 are reviewed; T4 lesson UI is implemented on `m2-t4-ui`.**
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -13,8 +13,9 @@
   handshake, stdin-EOF and SIGTERM shutdown, a rotating log, and `GET /api/health`.
 - **Store:** one WAL SQLite connection behind `transaction()` / `read()`, the migration runner, and
   the `settings` table.
-- **UI:** the static lesson layout (sidebar, new-session screen, composer with sending disabled,
-  resizable right panel) and settings with Dark / Light / System appearance. No API calls yet.
+- **UI:** a live lesson thread, session sidebar, new-session handover, composer, Stop, Retry,
+  thinking, rename, and delete. Settings retain Dark / Light / System appearance; the resizable
+  right panel stays a placeholder for M5.
 - **Verification:** scripted streaming fake model, token-aware API client for M2, `make verify`, and
   the shared verify skill. Six isolated Chromium flows cover proxy health, dark lesson, collapsed
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
@@ -39,17 +40,36 @@
 - **T3 markdown renderer (reviewed):** official Message wrapper, unified with LH's parsing and
   sanitization, math delimiters, streaming repair, Shiki code blocks, app-owned Mermaid, and plain
   learner text. Browser screenshots go to `app/markdown-output/` (gitignored).
-- **T4 lesson UI:** next, including the `markdown-rendering` flow through the real thread.
+- **T4 lesson UI:** token-aware JSON and fetch-SSE clients, rune session controller with bounded
+  409 wait and one read-only recovery, opening-prompt handover, live sidebar, rename/delete,
+  thread, reasoning, Stop/Retry, and no-model notice with restored draft. Official AI Elements
+  use message-scroller/message/bubble, input-group, trace, and the shimmer utility. Removed the
+  disabled-send placeholder and its two obsolete tests. Fixed Vite's Host rewrite (browser writes
+  otherwise failed the backend's same-origin check), and the delete-notification refetch race.
+- **T4 markdown performance:** top-level block splitting ported from streamdown 2.5.0; finished
+  blocks retain their parse and DOM while the tail changes. The T3 cases remain covered, plus a
+  finished-block parse/DOM regression test. `make check` passes (158 backend, 62 frontend tests);
+  `make verify` passes all 17 cases, and every final screenshot was inspected.
+  See [T4 verification](t4-verification.md).
 
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
 2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
    teacher prompt), T2 (turns, streaming, API), and T3 (markdown renderer) are reviewed.
-   Next: T4 (lesson UI).
+   T4 (lesson UI) is implemented; next: orchestrator review.
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions
+
+- **Known streaming performance limit (T4):** one huge paragraph re-parses as one block, as in LH.
+  Isolated ~100 ms fake-model runs: huge-paragraph fixture, whole reply → blocks: composer input
+  **41 → 41 ms**, longest task **289 → 337 ms**. Realistic **4,536-word** fixture (paragraphs,
+  headings, lists, four code blocks, math, one Mermaid), whole reply → blocks: input
+  **575 → 412 ms**, longest task **152 → 282 ms**. Blocks improve realistic input latency but
+  peak tasks remain; smooth sustained streaming is not established. The fake provider emits
+  only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
+  block approach is retained; no further profiling or renderer redesign in T4.
 
 - **M3 thinking from another model:** port the model-match filter when the session model is
   available (`@earendil-works/pi-ai@1.4.0`, `dist/api/transform-messages.js:90-95`); M2 keeps thinking

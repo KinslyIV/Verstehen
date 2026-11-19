@@ -1,10 +1,13 @@
 <script lang="ts">
+	import * as Bubble from '#lib/components/ui/bubble/index.js';
 	import * as Message from '#lib/components/ui/message/index.js';
 	let { content }: { content: string } = $props();
 </script>
 
 <Message.Root align="end">
 	<Message.Content>
-		<div class="self-end rounded-xl bg-muted px-4 py-3 whitespace-pre-wrap">{content}</div>
+		<Bubble.Root variant="muted" align="end">
+			<Bubble.Content class="whitespace-pre-wrap">{content}</Bubble.Content>
+		</Bubble.Root>
 	</Message.Content>
 </Message.Root>

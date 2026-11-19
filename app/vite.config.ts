@@ -18,10 +18,20 @@ export default defineConfig({
 		})
 	],
 	server: {
-		proxy: { '/api': `http://127.0.0.1:${process.env.VERSTEHEN_PORT ?? '8765'}` }
+		proxy: {
+			'/api': {
+				target: `http://127.0.0.1:${process.env.VERSTEHEN_PORT ?? '8765'}`,
+				changeOrigin: false
+			}
+		}
 	},
 	preview: {
-		proxy: { '/api': `http://127.0.0.1:${process.env.VERSTEHEN_PORT ?? '8765'}` }
+		proxy: {
+			'/api': {
+				target: `http://127.0.0.1:${process.env.VERSTEHEN_PORT ?? '8765'}`,
+				changeOrigin: false
+			}
+		}
 	},
 	test: {
 		expect: { requireAssertions: true },

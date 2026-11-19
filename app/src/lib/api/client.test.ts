@@ -20,3 +20,25 @@ test('health reports an HTTP failure', async () => {
 	vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(null, { status: 503 })));
 	await expect(health()).rejects.toThrow('HTTP 503');
 });
+
+test('SSE decodes split UTF-8, CRLF frames, comments, and terminal marker', async () => {
+	const { readEvents } = await import('./client');
+	const bytes = new TextEncoder().encode(
+		': ping\r\n\r\nevent: chats-changed\r\ndata: {"text":"中文"}\r\n\r\ndata: [DONE]\n\n'
+	);
+	const events: string[][] = [];
+	const response = new Response(
+		new ReadableStream({
+			start(controller) {
+				for (const byte of bytes) controller.enqueue(new Uint8Array([byte]));
+				controller.close();
+			}
+		})
+	);
+	expect(await readEvents(response, (event, data) => events.push([event, data]))).toBe(true);
+	expect(events).toEqual([['chats-changed', '{"text":"中文"}']]);
+});
+test('SSE reports an early end without DONE', async () => {
+	const { readEvents } = await import('./client');
+	expect(await readEvents(new Response('data: {}\n\n'), () => {})).toBe(false);
+});

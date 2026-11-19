@@ -1,0 +1,4 @@
+[
+	{ "text": "A partial explanation.", "error": "Scripted provider failure", "delay_ms": 100 },
+	{ "text": "Retry succeeded. What do you know about slope?", "delay_ms": 100 }
+]
