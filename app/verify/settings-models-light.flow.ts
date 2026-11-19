@@ -12,5 +12,13 @@ test('settings-models-light', async ({ page }) => {
 		'aria-current',
 		'page'
 	);
-	await expect(page.getByText('Coming in a later version.')).toBeVisible();
+	await expect(page.getByRole('button', { name: 'Choose Main model' })).toContainText(
+		'Scripted teacher'
+	);
+	await expect(page.getByRole('button', { name: 'Choose Cheap model' })).toContainText(
+		'Scripted title'
+	);
+	await expect(page.getByRole('button', { name: 'Choose Vision model' })).toContainText(
+		'Scripted teacher'
+	);
 });

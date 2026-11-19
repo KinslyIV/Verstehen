@@ -3,12 +3,14 @@ from contextlib import aclosing
 from dataclasses import dataclass
 from typing import List
 
+from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.titles import title_from_prompt
 from verstehen.store.entries import EntriesStore, Entry
 from verstehen.store.sessions import Session, SessionsStore
+from verstehen.store.settings import ModelPick
 
 
 @dataclass
@@ -36,11 +38,13 @@ class SessionService:
         entries_store: EntriesStore,
         runtimes: RuntimeRegistry,
         notifications: Notifications,
+        resolver_service: ResolverService,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.runtimes = runtimes
         self.notifications = notifications
+        self.resolver_service = resolver_service
 
     async def list(self) -> List[ListedSession]:
         return [
@@ -48,9 +52,18 @@ class SessionService:
             for session in await self.sessions_store.list()
         ]
 
-    async def create(self, title: str | None) -> Session:
+    async def create(
+        self, title: str | None, pick: ModelPick | None = None
+    ) -> Session | Refused:
+        if pick is not None:
+            try:
+                pick = await self.resolver_service.normalize(pick)
+            except ResolutionError as error:
+                return Refused(503, error.envelope())
+        else:
+            pick = (await self.resolver_service.settings_store.read()).models.strong
         session = await self.sessions_store.create(
-            title_from_prompt(title or "Untitled session")
+            title_from_prompt(title or "Untitled session"), pick
         )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
@@ -82,6 +95,41 @@ class SessionService:
             Notification(type="chats-changed", session_id=session_id)
         )
         return title
+
+    async def update(
+        self,
+        session_id: str,
+        title: str | None,
+        pick: ModelPick | None,
+        has_title: bool,
+    ) -> str | Refused:
+        if await self.sessions_store.get(session_id) is None:
+            return Refused(404, {"error": "Not found"})
+        if pick is None:
+            return await self.rename(session_id, title)
+        if has_title and not (title or "").strip():
+            return Refused(400, {"error": "title must be a non-empty string"})
+        result = await self.set_model(session_id, pick)
+        if isinstance(result, Refused) or not has_title:
+            return result
+        return await self.rename(session_id, title)
+
+    async def set_model(self, session_id: str, pick: ModelPick) -> str | Refused:
+        session = await self.sessions_store.get(session_id)
+        if session is None:
+            return Refused(404, {"error": "Not found"})
+        if "thinking_level" not in pick.model_fields_set:
+            pick = pick.model_copy(update={"thinking_level": session.thinking_level})
+        try:
+            pick = await self.resolver_service.normalize(pick)
+        except ResolutionError as error:
+            return Refused(503, error.envelope())
+        if not await self.sessions_store.set_model(session_id, pick):
+            return Refused(404, {"error": "Not found"})
+        self.notifications.publish(
+            Notification(type="chats-changed", session_id=session_id)
+        )
+        return session.title
 
     async def delete(self, session_id: str) -> None | Refused:
         runtime = self.runtimes.get(session_id)

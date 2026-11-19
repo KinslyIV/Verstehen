@@ -4,8 +4,8 @@
 
 ## Where we are
 
-**M1 and M2 are complete and merged into `main`. The M1 package was installed and confirmed
-on the Arch laptop; M2 has passed offline checks and UI verification.**
+**M1 and M2 are complete and merged into `main`. M3 (real providers) is implemented and reviewed
+on `m3-t4-ui` (T1–T4), awaiting the user's merge and the laptop check.**
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -125,9 +125,143 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   `make verify-run` rerun passed all 19 cases. Inspected dark/light lesson screenshots at
   `app/verify-output/session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}/screenshot.png`.
 
+## M3 progress
+
+- **T1–T3:** finished and reviewed on `m3-providers` (`d7e2ae0`): typed slots and account
+  resolution, per-provider background policy, model-written titles, Claude Code discovery/download,
+  and multiple ChatGPT accounts/sign-in.
+- **T4 UI:** shared account/model/level menu in the composer, Settings, and setup; session-local
+  Main picks, global Cheap/Vision slots, explicit default saving, keyboard shortcuts, and level
+  retention/wrap. Settings now has Models and Accounts with sign-in/removal, state/version,
+  background switches, and tested-Claude download progress. Setup preserves drafts and never sends
+  on Save; unavailable models open the menu with their reason. Existing notification refresh keeps
+  model-written titles live in the header/sidebar.
+- **T4 implementation decisions for review:** offline account-route mocks; setup reuses Settings
+  Accounts in a nested dialog; settings writes permit unchanged unavailable pins while validating
+  changed picks; system-browser sign-in uses the existing shell plugin with an OpenAI URL restriction.
+- **T4 validation:** `make check` passes (334 Python, 80 frontend tests; two live cases excluded).
+  Full `make verify FLOW='--workers=1'` passes all 31 cases; every final screenshot was inspected.
+  Earlier loaded runs hit existing conflict-poll/brief-Stop timing failures; unchanged reruns passed
+  without weakening assertions. Final-source `make app` passed in 276 s with its smoke checks. Full commands,
+  constraints, and the 31 screenshot paths are in [T4 verification evidence](m3-t4-verification.md).
+
+- **T1 provider core:** built and reviewed on `m3-t1-core` (`d12b751`): typed settings, account
+  adapters, catalog/resolution, session model pins, background policy, usage, and foreground titles.
+- **T3 ChatGPT backend:** built on T1 in `m3-t3-chatgpt`: private atomic multi-account credentials,
+  stable install host identity, browser OAuth/sign-in status/reconnect/removal routes, account-owned
+  authenticated clients and persisted refresh, known/visible model filtering, inference authorization
+  handling, and removal/replacement guards at dispatch. Generated API types include the new routes.
+  Round 1 review fixes: image support now uses the resolved Pydantic AI model profile, so
+  models accept the vision slot unless the profile disables image input. Unpinned thinking levels
+  stay hidden; defaults follow LH's full `medium`, `low`, `high`, `minimal`, `xhigh`, `max` order
+  through shared `default_thinking_level(levels)` in `providers/catalog.py`. The capability
+  decision is marked corrected by orchestrator review; no Claude Code code changed.
+  Three T3 orchestrator decisions are recorded for user review. The opt-in live test is documented
+  in [feature map](feature-map.md#chatgpt-live-smoke-test-opt-in); it was not run.
+  Round 1 verification on `1306550` plus these review fixes: 29 focused offline cases passed;
+  `VITEST_MAX_WORKERS=1 make check` passed (289 Python, 68 frontend tests, one live test
+  deselected). The first full check hit the previously recorded thinking auto-close timing flake;
+  the unchanged full rerun passed. Full `make verify FLOW='--workers=1'` passed 19/20 flows,
+  hitting the known brief Stop-button assertion in `session-performance-realistic`. Guarded
+  `make verify-run FLOW='session-performance-realistic --workers=1 --output=verify-output/review-rerun'`
+  passed unchanged. Inspected screenshots and retained traces under `app/verify-output/` for
+  `layout-lesson-dark.flow.ts-layout-lesson-dark`, `session-model-title.flow.ts-session-model-title`,
+  `settings-appearance-light.flow.ts-settings-appearance-light`, and
+  `review-rerun/session-performance-realis-1d389-ssion-performance-realistic`.
+  No real endpoints, credentials, user data, or packaging builds were used.
+
+- **T1 provider core (implementation):** typed settings and defaults, migration 0003 (session pins
+  and per-call usage), account-adapter interfaces, fresh catalog/role resolution, provider background
+  policy, context lookup, session model/default routes, and generated API types. Fake scripts now use
+  `VERSTEHEN_FAKE_MODEL_SCRIPT` and explicitly configured account slots; the M2 no-model notice stays.
+  One-shot cheap-model titles run as foreground beside the first turn, use the approved prompt,
+  replace prior renames, and log failures without retry. Raw provider logging is opt-in through
+  `VERSTEHEN_PROVIDER_EVENTS=1`. Sidecar calls retain only the startup JSON on stdout and
+  disable the SDK banner as previously decided; subprocess regressions cover debug logging on/off.
+  T2/T3 adapters and T4 UI remain separate tasks.
+  At base `6ac92e3` plus the complete T1 dirty state, final `make check` passed
+  (254 Python, 68 frontend tests); final full `make verify` passed all 20 flows, including
+  `session-model-title`. Inspected `screenshot.png` (and retained `trace.zip`) under
+  `app/verify-output/`: `session-model-title.flow.ts-session-model-title`,
+  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `session-no-model.flow.ts-session-no-model`, and `session-error-retry.flow.ts-session-error-retry`.
+  An earlier frontend run hit the already-known thinking-timer flake; final serial full checks passed.
+  Five T1 implementation decisions are marked for user review in `docs/decisions.md`.
+  No real models, credentials, user data, or packaging builds were used.
+
+- **T1 review round 1 fixes:** removed backend appearance and regenerated API types; appearance
+  stays in mode-watcher localStorage before first paint. The plan is corrected and that decision
+  is marked for user review. Turn admission refusal returns 403 `background_not_allowed` before
+  any write or claim; title admission refusal logs failure without dispatching a call. Adapters
+  raise `AccountUnavailable(reason, state)` instead of mutating accounts; resolution maps it to
+  `ResolutionError`, and catalogs expose the failed account's state/reason with no models.
+  All typed settings writes, including Set as default and test setup, use `SettingsStore.write`;
+  prompt-switch key/value writes no longer special-case typed fields. Patterns and feature-map
+  coverage are updated. On base `4e89ce4` plus these review fixes, focused backend checks and full
+  `make check` passed (260 Python, 68 frontend tests); full `make verify` passed all 20 flows.
+  Inspected `screenshot.png` with retained `trace.zip` under `app/verify-output/`:
+  `session-model-title.flow.ts-session-model-title`,
+  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `session-no-model.flow.ts-session-no-model`, `session-error-retry.flow.ts-session-error-retry`,
+  and `settings-appearance-light.flow.ts-settings-appearance-light`.
+  No real models, credentials, real data, or packaging builds were used.
+  Next: orchestrator review, then T2/T3 on T1. No new open questions.
+
+- **T2 Claude Code (implementation):** based on reviewed T1 `d12b751`, on
+  `m3-t2-claude-code`. Vendored `h0rv/pydantic-ai-claude-code` at `8a78bdd` with the MIT license
+  and patch inventory in `providers/claude_code/VENDORED.md`. The bridge uses only our system
+  instructions, terminal `ResultMessage.usage`, and the app-owned absolute CLI path/full lockdown.
+  It forwards raw SDK events through the existing optional provider-event logger. Added the
+  Anthropic extra to the existing pinned Pydantic AI dependency for the bridge's wire mapping.
+  Discovery prefers the downloaded tested version, then PATH, then LH's known POSIX directories;
+  states are not_installed / too_old / untested / tested, minimum 2.1.259, tested 2.1.327.
+  The one Claude Code account offers opus/sonnet/haiku, images, and five thinking levels; only
+  the CLI's local summary report supplies context limits. Fake-script mode remains isolated.
+  Download streams to a temporary file, verifies the pinned SHA-256, and installs atomically
+  with executable permissions; progress/failure has start/poll routes and generated API types.
+  Three implementation decisions (API shape, unreadable versions/default effort, local summary
+  probe/fake isolation) are marked for user review in `docs/decisions.md`.
+  At base `d12b751` plus the complete T2 dirty state, final `make check` passed
+  (290 Python, 68 frontend tests; one live test deselected). All 20 fake-model UI cases passed across the full
+  `make verify` run and guarded `make verify-run FLOW='markdown-rendering session-thinking-streaming'`
+  (4 passed). The full run was terminated after 18 passes and one dark-markdown 30 s timeout,
+  before the final light-thinking case completed; both dark/light flow pairs passed unchanged
+  on rerun. Inspected `screenshot.png` (with retained `trace.zip`) under `app/verify-output/`:
+  `session-new-and-stream.flow.ts-session-new-and-stream-dark`,
+  `session-model-title.flow.ts-session-model-title`,
+  `markdown-rendering.flow.ts-markdown-rendering-dark`, and
+  `session-thinking-streaming-beaf3-on-thinking-streaming-light`.
+  The 30 new offline tests cover temporary binaries, fake SDK streams, and fake HTTP,
+  including cancellation and cleanup.
+  The opt-in live test is excluded from default pytest runs and was not run. User command:
+  `uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py`.
+  No real model calls, login/credential reads, real data, actual CLI downloads, or packaging
+  builds. Next: orchestrator review; Settings/model UI remains T4.
+
+- **T2 review round 1 fixes:** Claude Code and fake adapters share LH's thinking-default helper
+  (medium → low → high → minimal → xhigh → max); unset Claude SDK effort now matches its catalog's
+  medium default. Corrected the earlier high-default orchestrator decision to cite LH's order.
+  The Claude account caches binary inspection by resolved path, nanosecond modification time,
+  size, and inode; concurrent lookups share the inspection, and untested warnings occur once per
+  inspection. Discovery still runs on each lookup, so updates and downloaded copies are detected.
+  Regression tests cover the complete default order, unset SDK effort, repeated/concurrent lookups,
+  and timestamp, size, inode, symlink-target, and downloaded-copy invalidation. Patterns and the
+  feature map include the shared helper and regression coverage. No new design decisions.
+  Validation on `b167fcc` plus these review fixes: three full `make check` runs passed all
+  static checks and 304 Python tests (one live test deselected), but each hit the documented
+  unchanged thinking-timer frontend flake (67 passed, one failed). All five reasoning tests
+  passed in isolation; a direct full frontend rerun also finished at 67 passed, one failed.
+  A passing full check is still required before committing these fixes.
+  No real-model calls, credential reads, real user
+  data, actual CLI downloads, UI changes, or packaging builds. Next: orchestrator re-review;
+  ChatGPT remains separate parallel T3 work and Settings/model UI remains T4. No new open questions.
+  T1 review is complete at `d12b751`; T2/T3 build on that revision.
+
 ## Next
 
-1. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
+1. **M3:** the user merges `m3-t4-ui`, installs the `make app` package on the laptop, and checks
+   sign-in, the model menu, and a real lesson; the opt-in live tests confirm both providers.
+2. M4 question tools, M5 teaching flow.
 
 ## Open questions
 
@@ -140,12 +274,12 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
   block approach is retained; no further profiling or renderer redesign in T4.
 
-- **M3 thinking from another model:** port the model-match filter when the session model is
-  available (`@earendil-works/pi-ai@1.4.0`, `dist/api/transform-messages.js:90-95`); M2 keeps thinking
-  regardless of which model produced it.
-
 - **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
   the summarized chat ended, before messages appended during summarization, and keeps learner edits
   made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
   planning M6.
 - Later providers remain in [architecture](architecture.md#open-questions).
+
+- **Load-sensitive frontend tests:** `right_panel_open_state_and_width_are_remembered` (M1 layout)
+  failed once under load in M3 integration and passed on an unchanged rerun; the reasoning
+  auto-close test was fixed by clicking synchronously under fake timers. Fix the layout test next.

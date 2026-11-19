@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { ArrowUp, Square } from '@lucide/svelte';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	let {
@@ -6,13 +7,15 @@
 		busy = false,
 		disabled = false,
 		onsend,
-		onstop
+		onstop,
+		models
 	}: {
 		draft?: string;
 		busy?: boolean;
 		disabled?: boolean;
 		onsend: () => void;
 		onstop?: () => void;
+		models?: Snippet;
 	} = $props();
 </script>
 
@@ -31,6 +34,7 @@
 			}}
 		/>
 		<InputGroup.Addon align="block-end" class="justify-end">
+			{@render models?.()}
 			{#if busy}<InputGroup.Button aria-label="Stop" size="icon-sm" onclick={onstop}>
 					<Square class="size-4" />
 				</InputGroup.Button>

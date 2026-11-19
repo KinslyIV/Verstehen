@@ -15,6 +15,7 @@ from verstehen.session.sessions import SessionService
 from verstehen.session.turns import TurnInput, TurnService
 from verstehen.store.entries import Entry
 from verstehen.store.sessions import Session
+from verstehen.store.settings import ModelPick, SlotName
 
 SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
 TurnServiceDependency = Annotated[TurnService, Depends(get_turn_service)]
@@ -27,7 +28,12 @@ class ApiError(BaseModel):
 
 class ModelsNotConfigured(ApiError):
     code: Literal["models_not_configured"] = "models_not_configured"
-    missing: list[Literal["strong"]]
+    missing: list[SlotName]
+
+
+class ModelUnavailable(ApiError):
+    code: Literal["model_unavailable"] = "model_unavailable"
+    reason: str
 
 
 class TurnInFlight(ApiError):
@@ -44,6 +50,10 @@ router = APIRouter(responses={400: {"model": ApiError}, 404: {"model": ApiError}
 
 class TitleInput(BaseModel):
     title: str | None = ""
+
+
+class SessionInput(TitleInput):
+    model: ModelPick | None = None
 
 
 class SessionItem(BaseModel):
@@ -86,11 +96,15 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     )
 
 
-@router.post("/api/sessions", response_model=Created)
-async def create_session(
-    body: TitleInput, session_service: SessionServiceDependency
-) -> Created:
-    session = await session_service.create(body.title)
+@router.post(
+    "/api/sessions",
+    response_model=Created,
+    responses={503: {"model": ModelUnavailable}},
+)
+async def create_session(body: SessionInput, session_service: SessionServiceDependency):
+    session = await session_service.create(body.title, body.model)
+    if isinstance(session, Refused):
+        return JSONResponse(session.reason, status_code=session.status)
     return Created(id=session.id)
 
 
@@ -107,11 +121,17 @@ async def get_session(session_id: str, session_service: SessionServiceDependency
     )
 
 
-@router.patch("/api/sessions/{session_id}", response_model=Renamed)
+@router.patch(
+    "/api/sessions/{session_id}",
+    response_model=Renamed,
+    responses={503: {"model": ModelUnavailable}},
+)
 async def rename_session(
-    session_id: str, body: TitleInput, session_service: SessionServiceDependency
+    session_id: str, body: SessionInput, session_service: SessionServiceDependency
 ):
-    result = await session_service.rename(session_id, body.title)
+    result = await session_service.update(
+        session_id, body.title, body.model, "title" in body.model_fields_set
+    )
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Renamed(title=result)
@@ -132,7 +152,10 @@ async def delete_session(session_id: str, session_service: SessionServiceDepende
 @router.post(
     "/api/sessions/{session_id}/input",
     response_model=Ok,
-    responses={409: {"model": ApiError}, 503: {"model": ModelsNotConfigured}},
+    responses={
+        409: {"model": ApiError},
+        503: {"model": ModelsNotConfigured | ModelUnavailable},
+    },
 )
 async def input_session(
     session_id: str, body: TurnInput, turn_service: TurnServiceDependency

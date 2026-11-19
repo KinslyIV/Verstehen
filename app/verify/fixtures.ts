@@ -89,7 +89,7 @@ export const test = base.extend<{
 }>({
 	script: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
-	baseURL: async ({ script }, use) => {
+	baseURL: async ({ script, playwright }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		const env = Object.fromEntries(
@@ -98,7 +98,7 @@ export const test = base.extend<{
 		Object.assign(env, {
 			VERSTEHEN_DATA_DIR: directory,
 			VERSTEHEN_PORT: '0',
-			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL: resolve(appDirectory, script) })
+			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
 		const children: ChildProcess[] = [];
 		try {
@@ -122,6 +122,23 @@ export const test = base.extend<{
 			children.push(preview);
 			const url = `http://127.0.0.1:${previewPort}`;
 			await ready(url, preview);
+			if (script !== 'none') {
+				const api = await playwright.request.newContext({ baseURL: url });
+				try {
+					const response = await api.put('/api/settings', {
+						data: {
+							models: {
+								strong: { account: 'fake', model: 'fake' },
+								cheap: { account: 'fake', model: 'fake-title' },
+								vision: { account: 'fake', model: 'fake' }
+							}
+						}
+					});
+					expect(response.ok()).toBe(true);
+				} finally {
+					await api.dispose();
+				}
+			}
 			await use(url);
 		} finally {
 			try {

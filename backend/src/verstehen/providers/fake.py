@@ -21,6 +21,10 @@ from pydantic_ai.models.function import (
     FunctionModel,
 )
 
+from verstehen.providers.accounts import Account
+from verstehen.providers.catalog import CatalogModel, default_thinking_level
+from verstehen.store.settings import ModelPick
+
 
 class ScriptToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -31,6 +35,7 @@ class ScriptToolCall(BaseModel):
 class ScriptReply(BaseModel):
     model_config = ConfigDict(extra="forbid")
     text: str | None = None
+    title: str | None = None
     thinking: str | None = None
     error: str | None = None
     delay_ms: int = 0
@@ -119,3 +124,66 @@ def fake_model(script_path: Path) -> FunctionModel:
             }
 
     return FunctionModel(respond, stream_function=stream)
+
+
+class FakeAccountAdapter:
+    """Expose scripted lesson replies and independent title responses as one account.
+    App wiring only installs this adapter when a fake-model script was supplied at launch.
+    """
+
+    def __init__(self, script_path: Path):
+        self.script_path = script_path
+        self.models_by_id: dict[str, FunctionModel] = {}
+
+    async def accounts(self) -> list[Account]:
+        return [Account(id="fake", kind="fake", label="Scripted model")]
+
+    async def models(self, account: Account) -> list[CatalogModel]:
+        return [
+            CatalogModel(
+                id="fake",
+                name="Scripted teacher",
+                accepts_images=True,
+                thinking_levels=["low", "medium", "high"],
+                default_thinking_level=default_thinking_level(
+                    ["low", "medium", "high"]
+                ),
+            ),
+            CatalogModel(
+                id="fake-title",
+                name="Scripted title",
+                thinking_levels=["low"],
+                default_thinking_level=default_thinking_level(["low"]),
+            ),
+        ]
+
+    async def build_model(self, account: Account, pick: ModelPick) -> FunctionModel:
+        if pick.model not in self.models_by_id:
+            if pick.model == "fake-title":
+
+                async def title_text() -> str:
+                    reply = load_script(self.script_path)[0]
+                    await asyncio.sleep(reply.delay_ms / 1000)
+                    if reply.title is None:
+                        raise RuntimeError("No title reply scripted")
+                    return reply.title
+
+                async def title(
+                    messages: list[ModelMessage], info: AgentInfo
+                ) -> ModelResponse:
+                    return ModelResponse(parts=[TextPart(await title_text())])
+
+                async def title_stream(
+                    messages: list[ModelMessage], info: AgentInfo
+                ) -> AsyncIterator[str]:
+                    yield await title_text()
+
+                self.models_by_id[pick.model] = FunctionModel(
+                    title, stream_function=title_stream
+                )
+            else:
+                self.models_by_id[pick.model] = fake_model(self.script_path)
+        return self.models_by_id[pick.model]
+
+    async def context_limit(self, account: Account, model: str) -> int | None:
+        return None

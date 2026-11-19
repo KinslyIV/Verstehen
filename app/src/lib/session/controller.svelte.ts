@@ -21,6 +21,8 @@ export class SessionController {
 	loading = $state(true);
 	error = $state<string | null>(null);
 	notice = $state<string | null>(null);
+	setupOpen = $state(false);
+	modelMenuOpen = $state(false);
 	private saved: Entry[] = [];
 	private live: Entry[] = [];
 	private lifetime = new AbortController();
@@ -158,8 +160,11 @@ export class SessionController {
 		} catch (error) {
 			if (!accepted && type === 'text') this.draft = text;
 			if (error instanceof ApiError && error.code === 'models_not_configured')
-				this.notice = 'No model is set up yet.';
-			else this.fail(error);
+				this.setupOpen = true;
+			else if (error instanceof ApiError && error.code === 'model_unavailable') {
+				this.notice = error.reason ?? error.message;
+				this.modelMenuOpen = true;
+			} else this.fail(error);
 			if (accepted) {
 				this.busy = false;
 				await this.attach();

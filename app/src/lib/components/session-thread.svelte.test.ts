@@ -4,6 +4,7 @@ import * as api from '#lib/api/client.js';
 import SessionThread from './session-thread.svelte';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
+	getModels: async () => ({ accounts: [], slots: {} }),
 	getSession: vi.fn(),
 	postInput: vi.fn(),
 	streamTurn: vi.fn()

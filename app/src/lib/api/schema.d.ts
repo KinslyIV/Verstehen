@@ -126,10 +126,191 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/settings': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Settings */
+		get: operations['get_settings_api_settings_get'];
+		/** Put Settings */
+		put: operations['put_settings_api_settings_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/models': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Models */
+		get: operations['get_models_api_models_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/settings/default-model': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Set Default Model */
+		post: operations['set_default_model_api_settings_default_model_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/claude-code': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Status */
+		get: operations['get_status_api_accounts_claude_code_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/claude-code/download': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Download */
+		get: operations['get_download_api_accounts_claude_code_download_get'];
+		put?: never;
+		/** Start Download */
+		post: operations['start_download_api_accounts_claude_code_download_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/chatgpt': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Accounts */
+		get: operations['list_accounts_api_accounts_chatgpt_get'];
+		put?: never;
+		/** Start Sign In */
+		post: operations['start_sign_in_api_accounts_chatgpt_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/chatgpt/sign-in/{sign_in_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Sign In Status */
+		get: operations['sign_in_status_api_accounts_chatgpt_sign_in__sign_in_id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/chatgpt/{account_id}/sign-in': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Sign In Again */
+		post: operations['sign_in_again_api_accounts_chatgpt__account_id__sign_in_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/chatgpt/{account_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Remove Account */
+		delete: operations['remove_account_api_accounts_chatgpt__account_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** Account */
+		Account: {
+			/** Id */
+			id: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'fake' | 'claude_code' | 'chatgpt';
+			/** Label */
+			label: string;
+			/**
+			 * State
+			 * @default ready
+			 */
+			state: string;
+			/** Reason */
+			reason?: string | null;
+		};
+		/** AccountCatalog */
+		AccountCatalog: {
+			account: components['schemas']['Account'];
+			/** Models */
+			models: components['schemas']['CatalogModel'][];
+		};
 		/** ApiError */
 		ApiError: {
 			/** Error */
@@ -164,10 +345,93 @@ export interface components {
 			/** Model */
 			model?: string | null;
 		};
+		/** BackgroundSettings */
+		BackgroundSettings: {
+			/**
+			 * Chatgpt
+			 * @default true
+			 */
+			chatgpt: boolean;
+			/**
+			 * Claude Code
+			 * @default true
+			 */
+			claude_code: boolean;
+		};
+		/** BinaryStatus */
+		BinaryStatus: {
+			/**
+			 * State
+			 * @enum {string}
+			 */
+			state: 'not_installed' | 'too_old' | 'untested' | 'tested';
+			/** Path */
+			path?: string | null;
+			/** Version */
+			version?: string | null;
+			/**
+			 * Minimum Version
+			 * @default 2.1.259
+			 */
+			minimum_version: string;
+			/**
+			 * Tested Version
+			 * @default 2.1.327
+			 */
+			tested_version: string;
+			/** Reason */
+			reason?: string | null;
+		};
+		/** CatalogModel */
+		CatalogModel: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Thinking Levels */
+			thinking_levels?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max')[];
+			/** Default Thinking Level */
+			default_thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+			/**
+			 * Accepts Images
+			 * @default false
+			 */
+			accepts_images: boolean;
+			/** Context Limit */
+			context_limit?: number | null;
+			/**
+			 * Priced
+			 * @default false
+			 */
+			priced: boolean;
+		};
 		/** Created */
 		Created: {
 			/** Id */
 			id: string;
+		};
+		/** DownloadProgress */
+		DownloadProgress: {
+			/**
+			 * State
+			 * @default idle
+			 * @enum {string}
+			 */
+			state: 'idle' | 'downloading' | 'complete' | 'failed';
+			/**
+			 * Version
+			 * @default 2.1.327
+			 */
+			version: string;
+			/**
+			 * Received Bytes
+			 * @default 0
+			 */
+			received_bytes: number;
+			/** Total Bytes */
+			total_bytes?: number | null;
+			/** Error */
+			error?: string | null;
 		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
@@ -214,6 +478,40 @@ export interface components {
 			 */
 			display: boolean;
 		};
+		/** ModelCatalog */
+		ModelCatalog: {
+			/** Accounts */
+			accounts: components['schemas']['AccountCatalog'][];
+			slots: components['schemas']['ModelSlots'];
+		};
+		/** ModelPick */
+		ModelPick: {
+			/** Account */
+			account: string;
+			/** Model */
+			model: string;
+			/** Thinking Level */
+			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+		};
+		/** ModelSlots */
+		ModelSlots: {
+			strong?: components['schemas']['ModelPick'] | null;
+			cheap?: components['schemas']['ModelPick'] | null;
+			vision?: components['schemas']['ModelPick'] | null;
+		};
+		/** ModelUnavailable */
+		ModelUnavailable: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default model_unavailable
+			 * @constant
+			 */
+			code: 'model_unavailable';
+			/** Reason */
+			reason: string;
+		};
 		/** ModelsNotConfigured */
 		ModelsNotConfigured: {
 			/** Error */
@@ -225,7 +523,7 @@ export interface components {
 			 */
 			code: 'models_not_configured';
 			/** Missing */
-			missing: 'strong'[];
+			missing: ('strong' | 'cheap' | 'vision')[];
 		};
 		/** NotRunning */
 		NotRunning: {
@@ -287,6 +585,12 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at?: string;
+			/** Model Account */
+			model_account?: string | null;
+			/** Model Id */
+			model_id?: string | null;
+			/** Thinking Level */
+			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
 			/** Entries */
 			entries: (
 				| components['schemas']['UserEntry']
@@ -298,6 +602,15 @@ export interface components {
 			turn_in_flight: boolean;
 			/** Turn Error */
 			turn_error: string | null;
+		};
+		/** SessionInput */
+		SessionInput: {
+			/**
+			 * Title
+			 * @default
+			 */
+			title: string | null;
+			model?: components['schemas']['ModelPick'] | null;
 		};
 		/** SessionItem */
 		SessionItem: {
@@ -322,6 +635,32 @@ export interface components {
 		SessionList: {
 			/** Sessions */
 			sessions: components['schemas']['SessionItem'][];
+		};
+		/** Settings */
+		Settings: {
+			models?: components['schemas']['ModelSlots'];
+			background?: components['schemas']['BackgroundSettings'];
+		};
+		/** SignInStarted */
+		SignInStarted: {
+			/** Id */
+			id: string;
+			/** Url */
+			url: string;
+		};
+		/** SignInStatus */
+		SignInStatus: {
+			/** Id */
+			id: string;
+			/**
+			 * State
+			 * @default pending
+			 * @enum {string}
+			 */
+			state: 'pending' | 'connected' | 'failed';
+			account?: components['schemas']['Account'] | null;
+			/** Reason */
+			reason?: string | null;
 		};
 		/** TextPart */
 		TextPart: {
@@ -349,14 +688,6 @@ export interface components {
 			 * @default false
 			 */
 			redacted: boolean;
-		};
-		/** TitleInput */
-		TitleInput: {
-			/**
-			 * Title
-			 * @default
-			 */
-			title: string | null;
 		};
 		/** ToolResultEntry */
 		ToolResultEntry: {
@@ -524,7 +855,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['TitleInput'];
+				'application/json': components['schemas']['SessionInput'];
 			};
 		};
 		responses: {
@@ -562,6 +893,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -684,7 +1024,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['TitleInput'];
+				'application/json': components['schemas']['SessionInput'];
 			};
 		};
 		responses: {
@@ -722,6 +1062,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -792,7 +1141,9 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['ModelsNotConfigured'];
+					'application/json':
+						| components['schemas']['ModelsNotConfigured']
+						| components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -938,6 +1289,465 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_settings_api_settings_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	put_settings_api_settings_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['Settings'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	get_models_api_models_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelCatalog'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	set_default_model_api_settings_default_model_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ModelPick'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelPick'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	get_status_api_accounts_claude_code_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BinaryStatus'];
+				};
+			};
+		};
+	};
+	get_download_api_accounts_claude_code_download_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadProgress'];
+				};
+			};
+		};
+	};
+	start_download_api_accounts_claude_code_download_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadProgress'];
+				};
+			};
+		};
+	};
+	list_accounts_api_accounts_chatgpt_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Account'][];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	start_sign_in_api_accounts_chatgpt_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignInStarted'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	sign_in_status_api_accounts_chatgpt_sign_in__sign_in_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				sign_in_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignInStatus'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sign_in_again_api_accounts_chatgpt__account_id__sign_in_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				account_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignInStarted'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	remove_account_api_accounts_chatgpt__account_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				account_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};

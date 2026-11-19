@@ -7,6 +7,8 @@
 	import { SessionController } from '#lib/session/controller.svelte.js';
 	import { OPENING_FAILURE, readOpening, stashOpening } from '#lib/session/opening.js';
 	import Composer from './composer.svelte';
+	import ModelControls from './model-controls.svelte';
+	import SetupDialog from './setup-dialog.svelte';
 	import Reasoning from './reasoning.svelte';
 	import RenameSession from './rename-session.svelte';
 	let { id }: { id: string } = $props();
@@ -98,17 +100,36 @@
 				Retry
 			</Button>
 		</div>{/if}
-	{#if controller.notice}<p
-			role="status"
-			class="mx-auto w-full max-w-3xl px-6 text-sm text-muted-foreground"
-		>
-			{controller.notice}
-		</p>{/if}
 	<Composer
 		bind:draft={controller.draft}
 		busy={controller.busy}
 		disabled={controller.loading}
 		onsend={() => void controller.send()}
 		onstop={() => void controller.stop()}
-	/>
+	>
+		{#snippet models()}<ModelControls
+				sessionId={id}
+				pick={controller.record?.model_account && controller.record?.model_id
+					? {
+							account: controller.record.model_account,
+							model: controller.record.model_id,
+							thinking_level: controller.record.thinking_level
+						}
+					: null}
+				onpick={(pick) => {
+					if (controller.record) {
+						controller.record.model_account = pick.account;
+						controller.record.model_id = pick.model;
+						controller.record.thinking_level = pick.thinking_level;
+					}
+					controller.notice = null;
+				}}
+				bind:open={controller.modelMenuOpen}
+				notice={controller.notice}
+			/>{/snippet}
+	</Composer>
+	{#if controller.setupOpen}<SetupDialog
+			onclose={() => (controller.setupOpen = false)}
+			ondone={() => (controller.setupOpen = false)}
+		/>{/if}
 </section>

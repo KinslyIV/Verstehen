@@ -1,4 +1,5 @@
 import json
+from contextlib import contextmanager
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -8,15 +9,29 @@ from verstehen.config import Settings
 from verstehen.store.entries import AssistantEntry
 
 
+@contextmanager
 def client_for(tmp_path: Path, replies=None):
     path = None
     if replies is not None:
         path = tmp_path / "script.json"
         path.write_text(json.dumps(replies))
-    return TestClient(
+    with TestClient(
         create_app(Settings(tmp_path, fake_model_script=path)),
         base_url="http://localhost",
-    )
+    ) as client:
+        if replies is not None:
+            response = client.put(
+                "/api/settings",
+                json={
+                    "models": {
+                        "strong": {"account": "fake", "model": "fake"},
+                        "cheap": {"account": "fake", "model": "fake-title"},
+                        "vision": {"account": "fake", "model": "fake"},
+                    }
+                },
+            )
+            assert response.status_code == 200
+        yield client
 
 
 def test_session_crud_and_unknown_sessions(tmp_path: Path):

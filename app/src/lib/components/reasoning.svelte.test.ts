@@ -60,8 +60,10 @@ test('closing_before_the_delay_cancels_the_pending_auto_close', async () => {
 	await screen.rerender({ streaming: false });
 	const trigger = screen.getByRole('button', { name: "AGENT'S THINKING" });
 	await vi.advanceTimersByTimeAsync(500);
-	await trigger.click();
-	await trigger.click();
+	(trigger.element() as HTMLElement).click();
+	flushSync();
+	(trigger.element() as HTMLElement).click();
+	flushSync();
 	await vi.advanceTimersByTimeAsync(999);
 	flushSync();
 	expect(trigger.element()).toHaveAttribute('aria-expanded', 'true');

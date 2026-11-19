@@ -2,6 +2,7 @@ import argparse
 import asyncio
 import json
 import logging
+import os
 import socket
 import sys
 import threading
@@ -74,6 +75,7 @@ async def serve(settings: Settings) -> None:
 
 def main() -> None:
     """Load launch settings and run the sidecar with file logging."""
+    os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-check", action="store_true")
     if parser.parse_args().self_check:
