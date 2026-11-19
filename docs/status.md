@@ -1,13 +1,14 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-18.
+> Updated at the end of every piece of work. Last update: 2026-11-19.
 
 ## Where we are
 
-**M1 task 2: round-2 review fixes implemented and verified.**
+**M1 static UI layout implemented; make-verify flow and packaging remain.**
 
 - Python 3.14 uv project with empty feature packages and enforced dependency layers.
-- SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte initialization; no real UI yet.
+- SvelteKit SPA, TypeScript, Tailwind v4, neutral shadcn-svelte components; static lesson layout
+  and full-page appearance settings.
 - `make setup`, `make check`, `make test`, `make fmt`, and `make lock-migrations`.
 - Comment/docstring length and migration immutability checks, with 66 offline pytest tests and warnings treated as errors.
 - `make setup` then `make check` passed from a clean source archive; Vitest and the SPA build pass.
@@ -20,14 +21,19 @@
 - `make dev` runs the sidecar and Vite with a temporary data dir and `/api` proxy.
 - Round-2 desktop handshake/token/EOF/log checks and curl through Vite passed; dev data cleaned up.
 - Part A LearnHarness docs and Part B architecture, scope, and decisions remain the specification.
+- Shared new-session screen at `/` and `/session/new`, remembered sidebar and resizable right panel.
+- Static editable composer with sending disabled until M2; no API calls.
+- Dark / Light / System appearance using mode-watcher, with pre-paint initialization.
+- Eleven Chromium component behavior tests in the second Vitest project.
+- Production build and headless Chromium route/navigation, composer, panel reload, and theme sanity
+  checks passed; lesson, open-panel, and light-settings screenshots inspected.
 
 ## Next
 
-1. `make verify` + fake model + verify skill. The user must first run
-   `sudo npx playwright install-deps chromium` once on Pixal; agents install Playwright's Chromium.
+1. `make verify` + fake model + verify skill, including the App layout flow. Chromium system
+   dependencies are installed; agents install Playwright's Chromium into the user cache.
 2. Packaging proof with `make app` inside an Arch container, then laptop installation.
-3. Empty UI layout (sidebar, lesson/composer, right panel, settings).
-4. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+3. M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
 

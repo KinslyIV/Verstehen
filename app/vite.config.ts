@@ -1,3 +1,4 @@
+import { playwright } from '@vitest/browser-playwright';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
@@ -23,6 +24,27 @@ export default defineConfig({
 		passWithNoTests: true,
 		expect: { requireAssertions: true },
 		projects: [
+			{
+				extends: './vite.config.ts',
+				test: {
+					name: 'client',
+					include: ['src/**/*.svelte.{test,spec}.ts'],
+					setupFiles: ['vitest-browser-svelte'],
+					browser: {
+						enabled: true,
+						provider: playwright({ launchOptions: { channel: 'chromium' } }),
+						instances: [{ browser: 'chromium' }],
+						headless: true,
+						screenshotDirectory: '.svelte-kit/vitest',
+						commands: {
+							async setColorScheme({ page }, colorScheme: 'dark' | 'light') {
+								await page.emulateMedia({ colorScheme });
+							}
+						},
+						viewport: { width: 1280, height: 800 }
+					}
+				}
+			},
 			{
 				extends: './vite.config.ts',
 				test: {

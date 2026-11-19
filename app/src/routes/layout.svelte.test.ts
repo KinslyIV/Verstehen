@@ -1,0 +1,165 @@
+import { beforeEach, expect, test } from 'vitest';
+import { render } from 'vitest-browser-svelte';
+import { page, userEvent, server } from 'vitest/browser';
+import { ModeWatcher } from 'mode-watcher';
+import Root from './+page.svelte';
+import Session from './session/new/+page.svelte';
+import Settings from '#lib/components/settings.svelte';
+import './layout.css';
+import appHtml from '../app.html?raw';
+
+declare module 'vitest/browser' {
+	interface BrowserCommands {
+		setColorScheme: (colorScheme: 'dark' | 'light') => Promise<void>;
+	}
+}
+
+beforeEach(() => {
+	localStorage.clear();
+	document.cookie = 'sidebar_state=; path=/; max-age=0';
+});
+
+test('new_session_button_opens_new_session_screen', async () => {
+	const screen = await render(Session);
+	await expect
+		.element(screen.getByRole('link', { name: 'New session' }))
+		.toHaveAttribute('href', '/session/new');
+	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('root_shows_new_session_screen', async () => {
+	const screen = await render(Root);
+	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+	await expect
+		.element(screen.getByText('The teacher will open by probing what you already know.'))
+		.toBeVisible();
+});
+
+test('composer_accepts_text_but_send_is_disabled', async () => {
+	const screen = await render(Session);
+	await screen.getByRole('textbox').fill('Linear algebra');
+	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra');
+	await expect.element(screen.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
+});
+
+test('enter_does_not_send_without_backend', async () => {
+	const screen = await render(Session);
+	await screen.getByRole('textbox').fill('Linear algebra');
+	await userEvent.keyboard('{Enter}');
+	await expect.element(screen.getByRole('textbox')).toHaveValue('Linear algebra\n');
+	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('right_panel_starts_closed', async () => {
+	const screen = await render(Session);
+	await expect
+		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
+		.toHaveAttribute('aria-expanded', 'false');
+	await expect.element(screen.getByRole('complementary')).not.toBeInTheDocument();
+});
+
+test('right_panel_open_state_and_width_are_remembered', async () => {
+	let screen = await render(Session);
+	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
+	await expect.element(screen.getByRole('heading', { name: 'Plan' })).toBeVisible();
+	const panel = () => document.querySelector<HTMLElement>('[data-pane-id="right-panel"]')!;
+	await expect.poll(() => panel()?.getBoundingClientRect().width).toBeGreaterThan(0);
+	const initialWidth = panel().getBoundingClientRect().width;
+	screen.getByRole('separator').element().focus();
+	await userEvent.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
+	await expect.poll(() => panel().getBoundingClientRect().width).toBeGreaterThan(initialWidth);
+	const resizedWidth = panel().getBoundingClientRect().width;
+	await expect
+		.poll(() => {
+			const saved = JSON.parse(localStorage.getItem('paneforge:verstehen-lesson') ?? '{}');
+			return Object.values(saved).some((value) => (value as { layout: number[] }).layout[1] > 25);
+		})
+		.toBe(true);
+	await screen.unmount();
+	screen = await render(Session);
+	await expect
+		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
+		.toHaveAttribute('aria-expanded', 'true');
+	await expect
+		.poll(() => Math.abs(panel().getBoundingClientRect().width - resizedWidth))
+		.toBeLessThan(2);
+	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
+	await screen.unmount();
+	screen = await render(Session);
+	await expect
+		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
+		.toHaveAttribute('aria-expanded', 'false');
+	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
+	await expect
+		.poll(() => Math.abs(panel().getBoundingClientRect().width - resizedWidth))
+		.toBeLessThan(2);
+});
+
+test('sidebar_toggles_with_ctrl_b', async () => {
+	let screen = await render(Session);
+	await userEvent.keyboard('{Control>}b{/Control}');
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
+		.toBe('collapsed');
+	await screen.unmount();
+	screen = await render(Session);
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
+		.toBe('collapsed');
+	await screen.getByRole('button', { name: 'Toggle Sidebar' }).click();
+	await expect
+		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
+		.toBe('expanded');
+});
+
+test('theme_defaults_to_dark', async () => {
+	await server.commands.setColorScheme('light');
+	const source = new DOMParser().parseFromString(appHtml, 'text/html');
+	const script = document.createElement('script');
+	script.textContent = source.querySelector('script')!.textContent;
+	document.head.append(script);
+	script.remove();
+	expect(document.documentElement.classList.contains('dark')).toBe(true);
+	expect(localStorage.getItem('mode-watcher-mode')).toBe('dark');
+	await render(ModeWatcher, { defaultMode: 'dark' });
+	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(true);
+});
+
+test('theme_choice_is_remembered', async () => {
+	const watcher = await render(ModeWatcher, { defaultMode: 'dark' });
+	let screen = await render(Settings);
+	await screen.getByRole('button', { name: 'Light', exact: true }).click();
+	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(false);
+	await expect.poll(() => localStorage.getItem('mode-watcher-mode')).toBe('light');
+	await screen.unmount();
+	await watcher.unmount();
+	await render(ModeWatcher, { defaultMode: 'dark' });
+	screen = await render(Settings);
+	await expect
+		.element(screen.getByRole('button', { name: 'Light', exact: true }))
+		.toHaveAttribute('aria-pressed', 'true');
+	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(false);
+});
+
+test('system_theme_follows_os', async () => {
+	await render(ModeWatcher, { defaultMode: 'dark' });
+	const screen = await render(Settings);
+	await screen.getByRole('button', { name: 'System', exact: true }).click();
+	await server.commands.setColorScheme('light');
+	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(false);
+	await server.commands.setColorScheme('dark');
+	await expect.poll(() => document.documentElement.classList.contains('dark')).toBe(true);
+});
+
+test('settings_shows_stub_sections', async () => {
+	const screen = await render(Settings);
+	for (const name of ['Models', 'Logins']) {
+		await screen.getByRole('button', { name, exact: true }).click();
+		await expect.element(screen.getByRole('heading', { name })).toBeVisible();
+		await expect.element(screen.getByText('Coming in a later version.')).toBeVisible();
+	}
+	await expect
+		.element(page.getByRole('button', { name: 'Toggle right panel' }))
+		.not.toBeInTheDocument();
+	await expect.element(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
+});

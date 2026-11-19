@@ -35,6 +35,10 @@ export default defineConfig(
 		}
 	},
 	{
+		files: ['src/lib/components/ui/button/button.svelte'],
+		rules: { 'svelte/no-navigation-without-resolve': 'off' }
+	},
+	{
 		files: ['src/**/*.{ts,js,svelte}'],
 		plugins: { boundaries },
 		settings: {

@@ -12,3 +12,4 @@ is updated in the same commit.
 | API route | [`api/health.py`](../backend/src/verstehen/api/health.py) (`router`, using `api/deps.py` and `Depends`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
 | Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
+| Component test (Vitest browser mode) | [`composer_accepts_text_but_send_is_disabled`](../app/src/routes/layout.svelte.test.ts) |
