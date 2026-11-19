@@ -5,12 +5,16 @@ from typing import Literal
 
 from pydantic import BaseModel
 from pydantic_ai import Agent
-from pydantic_ai.models import Model
 
+from verstehen.providers.events import log_provider_event
+from verstehen.providers.policy import ProviderPolicy
+from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
+from verstehen.providers.usage import UsageModel
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry, SessionRuntime, TurnRun
+from verstehen.session.titles import TitleService
 from verstehen.store.entries import (
     AssistantEntry,
     EntriesStore,
@@ -21,6 +25,7 @@ from verstehen.store.entries import (
 )
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
+from verstehen.store.usage import UsageStore
 from verstehen.teaching.prompts import compose_instructions
 from verstehen.teaching.teacher import build_teacher
 
@@ -40,6 +45,7 @@ class TurnState:
     input: TurnInput
     runtime: SessionRuntime
     entries: list[Entry]
+    resolved: ResolvedModel | None = None
     run: TurnRun | None = None
     teacher: Agent[None, str] | None = None
 
@@ -60,15 +66,23 @@ class TurnService:
         entries_store: EntriesStore,
         settings_store: SettingsStore,
         data_dir: Path,
-        model: Model | None,
+        resolver_service: ResolverService,
+        provider_policy: ProviderPolicy,
+        usage_store: UsageStore,
+        title_service: TitleService,
         runtimes: RuntimeRegistry,
         notifications: Notifications,
+        provider_events: bool = False,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.settings_store = settings_store
         self.data_dir = data_dir
-        self.model = model
+        self.resolver_service = resolver_service
+        self.provider_policy = provider_policy
+        self.usage_store = usage_store
+        self.title_service = title_service
+        self.provider_events = provider_events
         self.runtimes = runtimes
         self.notifications = notifications
 
@@ -87,15 +101,14 @@ class TurnService:
         return Continue(state)
 
     async def model_gate(self, state: TurnState) -> Refused | Continue:
-        if self.model is None:
-            return Refused(
-                503,
-                {
-                    "error": "No model configured — set up your models first",
-                    "code": "models_not_configured",
-                    "missing": ["strong"],
-                },
-            )
+        session = await self.sessions_store.get(state.session_id)
+        if session is None:
+            return Refused(404, {"error": "Unknown session"})
+        try:
+            state.resolved = await self.resolver_service.resolve("teacher", session)
+        except ResolutionError as error:
+            return Refused(503, error.envelope())
+        await self.provider_policy.admit("foreground", state.resolved.account)
         return Continue(state)
 
     async def claim(self, state: TurnState) -> Refused | Continue:
@@ -122,16 +135,26 @@ class TurnService:
         else:
             entry = UserEntry(text=state.input.text or "")
             await self.entries_store.append(state.session_id, [entry])
+            first_message = not state.entries
             state.entries.append(entry)
+            if first_message:
+                self.title_service.start(state.session_id, entry.text)
             self.notifications.publish(
                 Notification(type="chats-changed", session_id=state.session_id)
             )
         return Continue(state)
 
     async def build_teacher(self, state: TurnState) -> Refused | Continue:
-        assert self.model is not None
+        assert state.resolved is not None
         instructions = await compose_instructions(self.settings_store, self.data_dir)
-        state.teacher = build_teacher(self.model, instructions)
+        model = UsageModel(
+            state.resolved,
+            self.usage_store,
+            state.session_id,
+            "teacher",
+            self.provider_events,
+        )
+        state.teacher = build_teacher(model, instructions, state.resolved.settings)
         return Continue(state)
 
     async def run_background(self, state: TurnState) -> Refused | Continue:
@@ -178,7 +201,8 @@ class TurnService:
                 async for node in agent_run:
                     if Agent.is_model_request_node(node):
                         async with node.stream(agent_run.ctx) as stream:
-                            async for _event in stream:
+                            async for event in stream:
+                                log_provider_event(self.provider_events, event)
                                 response = stream.response
                                 parts: list[TextPart | ThinkingPart] = []
                                 for part in response.parts:

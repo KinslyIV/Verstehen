@@ -335,8 +335,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - **Images** work through the vendored `ClaudeCodeModel` in user messages and tool results
   ([check](decisions.md#image-and-context-window-check-2026-11-18)).
 - **Logging:** a log file in the data dir, plus a debug switch that records raw provider events.
-- **Context window:** the runtime-reported limit where available, then Pydantic AI's model data, then
-  a value the user enters.
+- **Context window:** the runtime-reported limit where available, then Pydantic AI's model data,
+  else unknown (M3 decision). Claude Code uses only its runtime report. The user never enters it.
 
 ## Images and files (decided)
 

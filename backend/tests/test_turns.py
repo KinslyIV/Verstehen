@@ -6,19 +6,24 @@ from typing import Literal
 
 import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse
-from pydantic_ai.models.function import AgentInfo, FunctionModel
+from pydantic_ai.models.function import AgentInfo, DeltaThinkingPart, FunctionModel
 
 from verstehen.api.sessions import notification_frames, turn_frames
-from verstehen.providers.fake import fake_model
+from verstehen.providers.accounts import AccountAdapter, AccountsService
+from verstehen.providers.fake import FakeAccountAdapter, fake_model
+from verstehen.providers.policy import ProviderPolicy
+from verstehen.providers.resolve import ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.runtime import RuntimeRegistry, TurnRun
 from verstehen.session.sessions import SessionService
+from verstehen.session.titles import TitleService
 from verstehen.session.turns import Continue, Refused, TurnInput, TurnService
 from verstehen.store.database import open_database
 from verstehen.store.entries import AssistantEntry, EntriesStore, UserEntry
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
+from verstehen.store.usage import UsageStore
 
 
 @asynccontextmanager
@@ -26,20 +31,44 @@ async def turn_service_context(tmp_path: Path, model=None):
     async with open_database(tmp_path / "test.db") as database:
         await migrate(database)
         runtimes = RuntimeRegistry()
+        settings_store = SettingsStore(database)
+        adapters: list[AccountAdapter] = []
+        if model is not None:
+            path = tmp_path / "script.json"
+            if not path.exists():
+                path.write_text("[]")
+            adapter = FakeAccountAdapter(path)
+            adapter.models_by_id["fake"] = model
+            adapters.append(adapter)
+            await settings_store.set(
+                "models", {"strong": {"account": "fake", "model": "fake"}}
+            )
+        resolver_service = ResolverService(settings_store, AccountsService(adapters))
+        policy = ProviderPolicy(settings_store)
+        usage_store = UsageStore(database)
+        sessions_store = SessionsStore(database)
+        notifications = Notifications()
+        title_service = TitleService(
+            resolver_service, policy, usage_store, sessions_store, notifications
+        )
         turn_service = TurnService(
             SessionsStore(database),
             EntriesStore(database),
             SettingsStore(database),
             tmp_path,
-            model,
+            resolver_service,
+            policy,
+            usage_store,
+            title_service,
             runtimes,
-            Notifications(),
+            notifications,
         )
         session = await turn_service.sessions_store.create("Test")
         try:
             yield turn_service, session.id
         finally:
             await runtimes.close()
+            await title_service.close()
 
 
 def session_service_for(turn_service: TurnService) -> SessionService:
@@ -48,6 +77,7 @@ def session_service_for(turn_service: TurnService) -> SessionService:
         turn_service.entries_store,
         turn_service.runtimes,
         turn_service.notifications,
+        turn_service.resolver_service,
     )
 
 
@@ -135,12 +165,13 @@ def test_refusals_save_nothing_and_model_gate_has_lh_envelope(tmp_path: Path):
 
 def test_second_turn_gets_409_and_stop_keeps_partial_thinking_and_text(tmp_path: Path):
     async def scenario():
+        async def stream(messages: list[ModelMessage], info: AgentInfo):
+            yield {0: DeltaThinkingPart(content="Consider this")}
+            yield "A partial reply"
+            await asyncio.Event().wait()
+
         async with turn_service_context(
-            tmp_path,
-            scripted(
-                tmp_path,
-                [{"thinking": "Consider this", "text": "A long reply", "delay_ms": 20}],
-            ),
+            tmp_path, FunctionModel(stream_function=stream)
         ) as (turn_service, session_id):
             run = await start(turn_service, session_id)
             result = await turn_service.start(

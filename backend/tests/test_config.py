@@ -7,7 +7,7 @@ from verstehen.config import load_settings
 
 @pytest.fixture(autouse=True)
 def environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
-    for name in ("DESKTOP", "TOKEN", "PORT", "ALLOWED_HOSTS", "FAKE_MODEL"):
+    for name in ("DESKTOP", "TOKEN", "PORT", "ALLOWED_HOSTS", "FAKE_MODEL_SCRIPT"):
         monkeypatch.delenv(f"VERSTEHEN_{name}", raising=False)
     monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path / "data"))
 
@@ -44,6 +44,14 @@ def test_settings_read_environment_once(monkeypatch: pytest.MonkeyPatch):
 def test_missing_fake_model_script_refuses_to_start(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
-    monkeypatch.setenv("VERSTEHEN_FAKE_MODEL", str(tmp_path / "missing.json"))
+    monkeypatch.setenv("VERSTEHEN_FAKE_MODEL_SCRIPT", str(tmp_path / "missing.json"))
     with pytest.raises(ValueError, match="Invalid fake-model script.*missing.json"):
         load_settings()
+
+
+@pytest.mark.parametrize("value,enabled", [(None, False), ("0", False), ("1", True)])
+def test_provider_event_logging_requires_explicit_one(monkeypatch, value, enabled):
+    monkeypatch.delenv("VERSTEHEN_PROVIDER_EVENTS", raising=False)
+    if value is not None:
+        monkeypatch.setenv("VERSTEHEN_PROVIDER_EVENTS", value)
+    assert load_settings().provider_events is enabled

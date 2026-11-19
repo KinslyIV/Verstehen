@@ -13,6 +13,7 @@ class Settings:
     port: int = 0
     allowed_hosts: tuple[str, ...] = ()
     fake_model_script: Path | None = None
+    provider_events: bool = False
 
 
 def load_settings() -> Settings:
@@ -36,7 +37,7 @@ def load_settings() -> Settings:
         ) from None
     if not 0 <= port <= 65535:
         raise ValueError("VERSTEHEN_PORT must be between 0 and 65535.")
-    script = os.environ.get("VERSTEHEN_FAKE_MODEL")
+    script = os.environ.get("VERSTEHEN_FAKE_MODEL_SCRIPT")
     fake_model_script = Path(script).expanduser() if script is not None else None
     if fake_model_script is not None:
         load_script(fake_model_script)
@@ -49,4 +50,12 @@ def load_settings() -> Settings:
         for name in os.environ.get("VERSTEHEN_ALLOWED_HOSTS", "").split(",")
         if name.strip()
     )
-    return Settings(data_dir, desktop, token, port, allowed_hosts, fake_model_script)
+    return Settings(
+        data_dir,
+        desktop,
+        token,
+        port,
+        allowed_hosts,
+        fake_model_script,
+        os.environ.get("VERSTEHEN_PROVIDER_EVENTS") == "1",
+    )

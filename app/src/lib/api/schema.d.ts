@@ -126,10 +126,87 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/settings': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Settings */
+		get: operations['get_settings_api_settings_get'];
+		/** Put Settings */
+		put: operations['put_settings_api_settings_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/models': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Models */
+		get: operations['get_models_api_models_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/settings/default-model': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Set Default Model */
+		post: operations['set_default_model_api_settings_default_model_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** Account */
+		Account: {
+			/** Id */
+			id: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'fake' | 'claude_code' | 'chatgpt';
+			/** Label */
+			label: string;
+			/**
+			 * State
+			 * @default ready
+			 */
+			state: string;
+			/** Reason */
+			reason?: string | null;
+		};
+		/** AccountCatalog */
+		AccountCatalog: {
+			account: components['schemas']['Account'];
+			/** Models */
+			models: components['schemas']['CatalogModel'][];
+		};
 		/** ApiError */
 		ApiError: {
 			/** Error */
@@ -163,6 +240,42 @@ export interface components {
 			provider?: string | null;
 			/** Model */
 			model?: string | null;
+		};
+		/** BackgroundSettings */
+		BackgroundSettings: {
+			/**
+			 * Chatgpt
+			 * @default true
+			 */
+			chatgpt: boolean;
+			/**
+			 * Claude Code
+			 * @default true
+			 */
+			claude_code: boolean;
+		};
+		/** CatalogModel */
+		CatalogModel: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Thinking Levels */
+			thinking_levels?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max')[];
+			/** Default Thinking Level */
+			default_thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+			/**
+			 * Accepts Images
+			 * @default false
+			 */
+			accepts_images: boolean;
+			/** Context Limit */
+			context_limit?: number | null;
+			/**
+			 * Priced
+			 * @default false
+			 */
+			priced: boolean;
 		};
 		/** Created */
 		Created: {
@@ -214,6 +327,40 @@ export interface components {
 			 */
 			display: boolean;
 		};
+		/** ModelCatalog */
+		ModelCatalog: {
+			/** Accounts */
+			accounts: components['schemas']['AccountCatalog'][];
+			slots: components['schemas']['ModelSlots'];
+		};
+		/** ModelPick */
+		ModelPick: {
+			/** Account */
+			account: string;
+			/** Model */
+			model: string;
+			/** Thinking Level */
+			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+		};
+		/** ModelSlots */
+		ModelSlots: {
+			strong?: components['schemas']['ModelPick'] | null;
+			cheap?: components['schemas']['ModelPick'] | null;
+			vision?: components['schemas']['ModelPick'] | null;
+		};
+		/** ModelUnavailable */
+		ModelUnavailable: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default model_unavailable
+			 * @constant
+			 */
+			code: 'model_unavailable';
+			/** Reason */
+			reason: string;
+		};
 		/** ModelsNotConfigured */
 		ModelsNotConfigured: {
 			/** Error */
@@ -225,7 +372,7 @@ export interface components {
 			 */
 			code: 'models_not_configured';
 			/** Missing */
-			missing: 'strong'[];
+			missing: ('strong' | 'cheap' | 'vision')[];
 		};
 		/** NotRunning */
 		NotRunning: {
@@ -287,6 +434,12 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at?: string;
+			/** Model Account */
+			model_account?: string | null;
+			/** Model Id */
+			model_id?: string | null;
+			/** Thinking Level */
+			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
 			/** Entries */
 			entries: (
 				| components['schemas']['UserEntry']
@@ -298,6 +451,15 @@ export interface components {
 			turn_in_flight: boolean;
 			/** Turn Error */
 			turn_error: string | null;
+		};
+		/** SessionInput */
+		SessionInput: {
+			/**
+			 * Title
+			 * @default
+			 */
+			title: string | null;
+			model?: components['schemas']['ModelPick'] | null;
 		};
 		/** SessionItem */
 		SessionItem: {
@@ -322,6 +484,17 @@ export interface components {
 		SessionList: {
 			/** Sessions */
 			sessions: components['schemas']['SessionItem'][];
+		};
+		/** Settings */
+		Settings: {
+			/**
+			 * Appearance
+			 * @default dark
+			 * @enum {string}
+			 */
+			appearance: 'dark' | 'light' | 'system';
+			models?: components['schemas']['ModelSlots'];
+			background?: components['schemas']['BackgroundSettings'];
 		};
 		/** TextPart */
 		TextPart: {
@@ -349,14 +522,6 @@ export interface components {
 			 * @default false
 			 */
 			redacted: boolean;
-		};
-		/** TitleInput */
-		TitleInput: {
-			/**
-			 * Title
-			 * @default
-			 */
-			title: string | null;
 		};
 		/** ToolResultEntry */
 		ToolResultEntry: {
@@ -524,7 +689,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['TitleInput'];
+				'application/json': components['schemas']['SessionInput'];
 			};
 		};
 		responses: {
@@ -562,6 +727,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -684,7 +858,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['TitleInput'];
+				'application/json': components['schemas']['SessionInput'];
 			};
 		};
 		responses: {
@@ -722,6 +896,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -792,7 +975,9 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['ModelsNotConfigured'];
+					'application/json':
+						| components['schemas']['ModelsNotConfigured']
+						| components['schemas']['ModelUnavailable'];
 				};
 			};
 		};
@@ -938,6 +1123,184 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_settings_api_settings_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	put_settings_api_settings_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['Settings'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	get_models_api_models_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelCatalog'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	set_default_model_api_settings_default_model_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ModelPick'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelPick'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
 				};
 			};
 		};

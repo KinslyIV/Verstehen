@@ -127,9 +127,8 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 
 ## Next
 
-1. **M3 real providers: plan approved** ([plan](plans/m3-real-providers.md)). T1 (settings,
-   accounts, resolution, policy, titles) next; then T2 Claude Code and T3 ChatGPT in parallel; then
-   T4 UI.
+1. **M3 real providers:** T1 core is implemented on `m3-t1-core`, pending review
+   ([plan](plans/m3-real-providers.md)). Next: T2 Claude Code and T3 ChatGPT on T1; then T4 UI.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions
@@ -148,3 +147,24 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
   planning M6.
 - Later providers remain in [architecture](architecture.md#open-questions).
+
+## M3 progress
+
+- **T1 provider core (implementation):** typed settings and defaults, migration 0003 (session pins
+  and per-call usage), account-adapter interfaces, fresh catalog/role resolution, provider background
+  policy, context lookup, session model/default routes, and generated API types. Fake scripts now use
+  `VERSTEHEN_FAKE_MODEL_SCRIPT` and explicitly configured account slots; the M2 no-model notice stays.
+  One-shot cheap-model titles run as foreground beside the first turn, use the approved prompt,
+  replace prior renames, and log failures without retry. Raw provider logging is opt-in through
+  `VERSTEHEN_PROVIDER_EVENTS=1`. Sidecar calls retain only the startup JSON on stdout and
+  disable the SDK banner as previously decided; subprocess regressions cover debug logging on/off.
+  T2/T3 adapters and T4 UI remain separate tasks.
+  At base `6ac92e3` plus the complete T1 dirty state, final `make check` passed
+  (254 Python, 68 frontend tests); final full `make verify` passed all 20 flows, including
+  `session-model-title`. Inspected `screenshot.png` (and retained `trace.zip`) under
+  `app/verify-output/`: `session-model-title.flow.ts-session-model-title`,
+  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `session-no-model.flow.ts-session-no-model`, and `session-error-retry.flow.ts-session-error-retry`.
+  An earlier frontend run hit the already-known thinking-timer flake; final serial full checks passed.
+  Five T1 implementation decisions are marked for user review in `docs/decisions.md`.
+  No real models, credentials, user data, or packaging builds were used.

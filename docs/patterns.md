@@ -10,7 +10,10 @@ is updated in the same commit.
 | Class responsibility description | [`SessionService`](../backend/src/verstehen/session/sessions.py) (role and API/store/runtime boundary; add only when needed) |
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
-| Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`) |
+| Account adapter | [`providers/accounts.py`](../backend/src/verstehen/providers/accounts.py) (`AccountAdapter`; app-owned adapters discover safe account data, refresh their catalog, build a model, and report runtime context limits; unavailable refresh/build raises `ResolutionError`) |
+| Model resolution | [`providers/resolve.py`](../backend/src/verstehen/providers/resolve.py) (`ResolverService`; resolve fresh slots/session picks, normalize supported thinking levels, no fallback) |
+| Per-call model accounting | [`providers/usage.py`](../backend/src/verstehen/providers/usage.py) (`UsageModel`; wraps both request paths and saves `RequestUsage` through `UsageStore`; raw adapter events use `log_provider_event`) |
+| Store module | [`store/settings.py`](../backend/src/verstehen/store/settings.py) (`SettingsStore`; `read`/`write` use typed defaults and whole top-level fields; `get`/`set` also retain prompt switches) |
 | Append-only entry store and validated payloads | [`store/entries.py`](../backend/src/verstehen/store/entries.py) (`EntriesStore`; session imports entry models directly) |
 | Prompt composition | [`teaching/prompts.py`](../backend/src/verstehen/teaching/prompts.py) (`compose_instructions`) |
 | Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`TurnService.model_gate`, `Refused` / `Continue`) |
@@ -24,7 +27,7 @@ is updated in the same commit.
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
 | Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
-| Fake-model script | [`health.json`](../app/verify/scripts/health.json) |
+| Fake-model script | [`model-title.json`](../app/verify/scripts/model-title.json) (streamed replies; optional first-reply `title` feeds `fake-title` independently) |
 | API client function | [`getSession`](../app/src/lib/api/client.ts) (generated types stay behind the client; JSON and SSE use token headers) |
 | Assistant markdown | [`assistant-message.svelte`](../app/src/lib/markdown/assistant-message.svelte): Streamdown top-level blocks with stable child props; each block uses the unified pipeline, sanitized HAST nodes, and app-owned controls inside official Message. |
 | Renderer browser evidence | [`markdown.svelte.test.ts`](../app/src/routes/markdown.svelte.test.ts): complete and streaming fixtures, dark/light screenshots in `app/markdown-output/`; T4 adds real-thread verification. |
