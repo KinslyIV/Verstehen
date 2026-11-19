@@ -5,7 +5,7 @@
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
 	import LearnerMessage from '#lib/markdown/learner-message.svelte';
 	import { SessionController } from '#lib/session/controller.svelte.js';
-	import { readOpening, stashOpening } from '#lib/session/opening.js';
+	import { OPENING_FAILURE, readOpening, stashOpening } from '#lib/session/opening.js';
 	import Composer from './composer.svelte';
 	import Reasoning from './reasoning.svelte';
 	import RenameSession from './rename-session.svelte';
@@ -22,8 +22,7 @@
 						stashOpening(id, opening.text, true);
 						await controller.send();
 					} catch {
-						controller.error =
-							'Couldn’t open the session. Your message is still here. Try sending again.';
+						controller.error = OPENING_FAILURE;
 					}
 				}
 			}

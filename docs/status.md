@@ -50,7 +50,12 @@
   blocks retain their parse and DOM while the tail changes. The T3 cases remain covered, plus a
   finished-block parse/DOM regression test. `make check` passes (158 backend, 62 frontend tests);
   `make verify` passes all 17 cases, and every final screenshot was inspected.
-  See [T4 verification](t4-verification.md).
+- **T4 review round 2:** thinking stays collapsed until the learner opens it; a row mounted
+  during streaming auto-closes once, one second after settlement. Removed the duplicate thinking
+  rule, reused the opening-failure constant, and moved verification coverage into the feature map.
+  Component regressions cover the timing, manual toggles, and replies that never streamed.
+  Round 2: `make check` passes (158 backend, 67 frontend tests); `make verify` passes all
+  19 cases. Inspected dark/light thread and streaming-thinking screenshots: one clean rule.
 
 ## Next
 
