@@ -25,9 +25,42 @@ export default defineConfig({
 	},
 	test: {
 		expect: { requireAssertions: true },
+		attachmentsDir: '.svelte-kit/vitest-artifacts',
 		projects: [
 			{
 				extends: './vite.config.ts',
+				optimizeDeps: {
+					include: [
+						'@lucide/svelte',
+						'@lucide/svelte/icons/panel-left',
+						'@lucide/svelte/icons/x',
+						'bits-ui',
+						'paneforge',
+						'tailwind-variants',
+						'shiki',
+						'mermaid',
+						'mode-watcher',
+						'@streamdown/cjk',
+						'unified',
+						'remark-parse',
+						'remark-gfm',
+						'remark-math',
+						'remark-breaks',
+						'remark-rehype',
+						'rehype-raw',
+						'rehype-sanitize',
+						'rehype-harden',
+						'rehype-katex',
+						'remend',
+						'mdast-util-from-markdown',
+						'mdast-util-math',
+						'micromark-extension-math',
+						'hast-util-to-html',
+						'hast-util-to-text',
+						'unist-util-visit',
+						'cn'
+					]
+				},
 				test: {
 					name: 'client',
 					include: ['src/**/*.svelte.{test,spec}.ts'],

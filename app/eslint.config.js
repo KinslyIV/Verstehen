@@ -35,6 +35,15 @@ export default defineConfig(
 		}
 	},
 	{
+		// These HTML sinks receive sanitized KaTeX HAST or strict Mermaid SVG.
+		files: ['src/lib/markdown/nodes.svelte', 'src/lib/markdown/mermaid-block.svelte'],
+		rules: { 'svelte/no-at-html-tags': 'off' }
+	},
+	{
+		files: ['src/lib/markdown/safe-link.svelte'],
+		rules: { 'svelte/no-navigation-without-resolve': 'off' }
+	},
+	{
 		files: ['src/lib/components/ui/button/button.svelte'],
 		rules: { 'svelte/no-navigation-without-resolve': 'off' }
 	},

@@ -118,7 +118,9 @@ T1 and T3 run in parallel; T2 builds on T1; T4 builds on T1–T3. Each task has 
 - Learner text: plain, whitespace kept (`components/chat.tsx:1869-1871`). Path chips come later.
 - **Tests:** Vitest browser tests with the spike's fixtures: breaks, CJK emphasis and link
   boundaries, math (`$5`, legacy delimiters), hardening, streaming prefixes.
-- **Verify flow:** `markdown-rendering`.
+- **Verification:** Vitest browser component tests render complete fixtures and mounted streaming
+  prefixes in dark and light, saving screenshots under `app/markdown-output/` (gitignored).
+  No fixture route or second build mode. The `markdown-rendering` verify flow moves to T4.
 
 ### T4. The lesson UI (app)
 
@@ -136,6 +138,7 @@ T1 and T3 run in parallel; T2 builds on T1; T4 builds on T1–T3. Each task has 
   while streaming, then a collapsed "Agent's thinking"; `components/ai-elements/reasoning.tsx:132-141`),
   and shimmer. Stop button while a turn runs. A failed reply shows its error and Retry. The
   "No model is set up yet." notice.
-- **Verify flows:** `session-new-and-stream`, `session-reload-mid-turn`, `session-stop`,
+- **Verify flows:** `markdown-rendering` (real thread with fake-model fixture reply),
+  `session-new-and-stream`, `session-reload-mid-turn`, `session-stop`,
   `session-error-retry`, `session-rename-delete`, `session-no-model`.
 - **Feature map:** entries for each feature above.

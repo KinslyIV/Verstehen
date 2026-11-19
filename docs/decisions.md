@@ -401,3 +401,7 @@ Probe, plan, teach, as in LH.
 - Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
+
+## M2 T3 renderer verification (2026-11-19)
+
+Orchestrator decision, for user review: T3 proves the renderer with Vitest browser screenshots; the markdown-rendering verify flow moves to T4 and runs through the real thread with a fake-model script, instead of a verification-only route.

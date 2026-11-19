@@ -23,3 +23,6 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
 /verify-output
+
+/markdown-output
+/.vitest

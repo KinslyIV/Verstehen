@@ -26,12 +26,23 @@
   setting is never stored as `null`, so a missing setting reads as `None`. The typed settings shape
   is decided when planning M3.
 
+## M2 progress
+
+- **T3 markdown renderer complete:** official Message wrapper, unified/LH parsing and sanitization,
+  math delimiter compatibility, streaming repair, Shiki source-copy blocks, app-owned Mermaid,
+  table/TeX copy, alerts, link confirmation, and plain learner text. Dependencies match LH's lock.
+- Browser tests cover complete and streaming fixtures in dark/light, source-copy controls,
+  Mermaid updates/error recovery, and a long stream retaining finalized DOM. LH's 17 pure
+  math-transform cases are ported. Browser screenshots: `app/markdown-output/` (gitignored).
+- Verification decision: no fixture route or build flag. T4 adds `markdown-rendering` to
+  `make verify`, through the real thread with a fake-model fixture reply.
+
 ## Next
 
 1. Packaging proof with `make app` inside an Arch container, then laptop installation.
 2. **M2 session core: plan approved** ([plan](plans/m2-session-core.md)). T1 (saved session,
-   teacher prompt) and T3 (markdown renderer) run first, then T2 (turns, streaming, API), then T4
-   (lesson UI).
+   teacher prompt) is the backend prerequisite; T3 (markdown renderer) is complete. Next are
+   T2 (turns, streaming, API) and T4 (lesson UI and real-thread markdown verification).
 3. M3 real providers (with model-written titles), M4 question tools, M5 teaching flow.
 
 ## Open questions
