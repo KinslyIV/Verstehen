@@ -4,8 +4,8 @@
 
 ## Where we are
 
-**M1 and M2 are complete and merged into `main`. The M1 package was installed and confirmed
-on the Arch laptop; M2 has passed offline checks and UI verification.**
+**M1 and M2 are complete and merged into `main`. M3 (real providers) is implemented and reviewed
+on `m3-t4-ui` (T1–T4), awaiting the user's merge and the laptop check.**
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -145,31 +145,6 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   without weakening assertions. Final-source `make app` passed in 276 s with its smoke checks. Full commands,
   constraints, and the 31 screenshot paths are in [T4 verification evidence](m3-t4-verification.md).
 
-## Next
-
-1. **M3 real providers:** review and integrate T4 UI on the reviewed T1–T3 backends
-   ([plan](plans/m3-real-providers.md)). Check desktop appearance and real sign-in on the Arch laptop.
-2. M4 question tools, M5 teaching flow.
-
-## Open questions
-
-- **Known streaming performance limit (T4):** one huge paragraph re-parses as one block, as in LH.
-  Isolated ~100 ms fake-model runs: huge-paragraph fixture, whole reply → blocks: composer input
-  **41 → 41 ms**, longest task **289 → 337 ms**. Realistic **4,536-word** fixture (paragraphs,
-  headings, lists, four code blocks, math, one Mermaid), whole reply → blocks: input
-  **575 → 412 ms**, longest task **152 → 282 ms**. Blocks improve realistic input latency but
-  peak tasks remain; smooth sustained streaming is not established. The fake provider emits
-  only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
-  block approach is retained; no further profiling or renderer redesign in T4.
-
-- **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
-  the summarized chat ended, before messages appended during summarization, and keeps learner edits
-  made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
-  planning M6.
-- Later providers remain in [architecture](architecture.md#open-questions).
-
-## M3 progress
-
 - **T1 provider core:** built and reviewed on `m3-t1-core` (`d12b751`): typed settings, account
   adapters, catalog/resolution, session model pins, background policy, usage, and foreground titles.
 - **T3 ChatGPT backend:** built on T1 in `m3-t3-chatgpt`: private atomic multi-account credentials,
@@ -281,3 +256,30 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   data, actual CLI downloads, UI changes, or packaging builds. Next: orchestrator re-review;
   ChatGPT remains separate parallel T3 work and Settings/model UI remains T4. No new open questions.
   T1 review is complete at `d12b751`; T2/T3 build on that revision.
+
+## Next
+
+1. **M3:** the user merges `m3-t4-ui`, installs the `make app` package on the laptop, and checks
+   sign-in, the model menu, and a real lesson; the opt-in live tests confirm both providers.
+2. M4 question tools, M5 teaching flow.
+
+## Open questions
+
+- **Known streaming performance limit (T4):** one huge paragraph re-parses as one block, as in LH.
+  Isolated ~100 ms fake-model runs: huge-paragraph fixture, whole reply → blocks: composer input
+  **41 → 41 ms**, longest task **289 → 337 ms**. Realistic **4,536-word** fixture (paragraphs,
+  headings, lists, four code blocks, math, one Mermaid), whole reply → blocks: input
+  **575 → 412 ms**, longest task **152 → 282 ms**. Blocks improve realistic input latency but
+  peak tasks remain; smooth sustained streaming is not established. The fake provider emits
+  only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
+  block approach is retained; no further profiling or renderer redesign in T4.
+
+- **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
+  the summarized chat ended, before messages appended during summarization, and keeps learner edits
+  made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
+  planning M6.
+- Later providers remain in [architecture](architecture.md#open-questions).
+
+- **Load-sensitive frontend tests:** `right_panel_open_state_and_width_are_remembered` (M1 layout)
+  failed once under load in M3 integration and passed on an unchanged rerun; the reasoning
+  auto-close test was fixed by clicking synchronously under fake timers. Fix the layout test next.
