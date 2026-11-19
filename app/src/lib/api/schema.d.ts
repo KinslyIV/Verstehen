@@ -178,6 +178,41 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/accounts/claude-code': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Status */
+		get: operations['get_status_api_accounts_claude_code_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/accounts/claude-code/download': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Download */
+		get: operations['get_download_api_accounts_claude_code_download_get'];
+		put?: never;
+		/** Start Download */
+		post: operations['start_download_api_accounts_claude_code_download_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -254,6 +289,30 @@ export interface components {
 			 */
 			claude_code: boolean;
 		};
+		/** BinaryStatus */
+		BinaryStatus: {
+			/**
+			 * State
+			 * @enum {string}
+			 */
+			state: 'not_installed' | 'too_old' | 'untested' | 'tested';
+			/** Path */
+			path?: string | null;
+			/** Version */
+			version?: string | null;
+			/**
+			 * Minimum Version
+			 * @default 2.1.259
+			 */
+			minimum_version: string;
+			/**
+			 * Tested Version
+			 * @default 2.1.327
+			 */
+			tested_version: string;
+			/** Reason */
+			reason?: string | null;
+		};
 		/** CatalogModel */
 		CatalogModel: {
 			/** Id */
@@ -281,6 +340,29 @@ export interface components {
 		Created: {
 			/** Id */
 			id: string;
+		};
+		/** DownloadProgress */
+		DownloadProgress: {
+			/**
+			 * State
+			 * @default idle
+			 * @enum {string}
+			 */
+			state: 'idle' | 'downloading' | 'complete' | 'failed';
+			/**
+			 * Version
+			 * @default 2.1.327
+			 */
+			version: string;
+			/**
+			 * Received Bytes
+			 * @default 0
+			 */
+			received_bytes: number;
+			/** Total Bytes */
+			total_bytes?: number | null;
+			/** Error */
+			error?: string | null;
 		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
@@ -1295,6 +1377,66 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	get_status_api_accounts_claude_code_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BinaryStatus'];
+				};
+			};
+		};
+	};
+	get_download_api_accounts_claude_code_download_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadProgress'];
+				};
+			};
+		};
+	};
+	start_download_api_accounts_claude_code_download_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DownloadProgress'];
 				};
 			};
 		};

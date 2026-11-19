@@ -31,6 +31,8 @@ See the [verify skill](../.agents/skills/verify/SKILL.md) for build guard limits
 | Model-written title | The first accepted learner message starts a foreground cheap-slot title call in parallel with the teacher. Successful titles refresh the header/sidebar, replacing an earlier rename; failure keeps the current name without retry. | `session-model-title` | `test_provider_core.py`: exact prompt, first-turn concurrency, last-wins rename, cleanup, empty/failing reply, no retry; teacher/title usage rows; refused title admission logs without calls or writes |
 | Model settings and session pins (API; menu/Settings UI comes in T4) | `GET/PUT /api/settings`, `GET /api/models`, `POST /api/settings/default-model`, session POST/PATCH `model` pick. Strong defaults new sessions; picks/patches stay local. | Existing lesson flows configure all slots through the API; no-model flow leaves them empty | `test_provider_api.py`, `test_provider_core.py`: defaults, round trip, vision validation, every role/slot, legacy fallback, stamping, thinking levels, explicit default, typed writes, background policy, admission refusal saves nothing, context lookup; appearance is frontend-only |
 | Unusable session model (API; menu notice comes in T4) | Send with a removed/unavailable account or model returns 503 `model_unavailable` and its reason before saving input. | Offline refusal tests; T4 adds the model-menu flow | `test_provider_core.py`, `test_provider_api.py`: removed account, sign-in state, missing model, typed refresh/build failures, catalog state/reason, no writes or claim |
+| Claude Code account (API; Settings UI comes in T4) | `GET /api/accounts/claude-code` returns installation state, path, version, minimum/tested versions; `/api/models` exposes one `claude_code` account and opus/sonnet/haiku with image support and five thinking levels. | T4 adds Settings account-state flows | `test_claude_code.py`, `test_claude_code_api.py`: discovery order, versions/warnings, safe catalog, adapter failures without account mutation, lockdown, plain instructions, terminal-result usage, local summary context only |
+| Download tested Claude Code (API; Settings button comes in T4) | `POST /api/accounts/claude-code/download` starts one background download; `GET` polls bytes, total, state, and error. Verified 2.1.327 copy takes discovery priority. | T4 adds Settings download flow | Fake HTTP tests: checksum success/mismatch, HTTP failure preserves old copy, cancellation cleans partial file, progress/failure routes; no actual CLI download |
 | Long reply responsiveness | Stream a several-thousand-word fake reply with code, math, Mermaid; retain editable composer. | `session-performance`, `session-performance-realistic` | Performance attachment records input action latency and main-thread long tasks |
 
 ## Desktop app
@@ -43,3 +45,9 @@ on stdin EOF. The user checks the Tauri window and appearance on the laptop; age
 refreshes the toolchain explicitly. Verify with a second `make app`: the image ID stays the same,
 the log contains no pacman toolchain installation and one `vite build`, and all packaging smoke
 checks pass.
+
+## Live provider checks
+
+Claude Code opt-in live check (not run by `make check`):
+`uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py`.
+Uses a temporary data directory and the installed CLI; sends one short Haiku reply and reports its version.

@@ -33,7 +33,11 @@ def configured_client(tmp_path: Path):
 
 def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
     tmp_path: Path,
+    monkeypatch,
 ):
+    monkeypatch.setattr(
+        "verstehen.providers.claude_code.binary.resolve_binary", lambda _: None
+    )
     with TestClient(
         create_app(Settings(tmp_path)), base_url="http://localhost"
     ) as client:
@@ -43,7 +47,18 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
             "background": {"chatgpt": True, "claude_code": True},
         }
         assert client.get("/api/models").json() == {
-            "accounts": [],
+            "accounts": [
+                {
+                    "account": {
+                        "id": "claude_code",
+                        "kind": "claude_code",
+                        "label": "Claude Code",
+                        "state": "not_installed",
+                        "reason": "Install Claude Code or download the tested version.",
+                    },
+                    "models": [],
+                }
+            ],
             "slots": settings["models"],
         }
         response = client.post(

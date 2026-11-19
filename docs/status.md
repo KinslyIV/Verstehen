@@ -127,8 +127,9 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
 
 ## Next
 
-1. **M3 real providers:** T1 core is implemented on `m3-t1-core`, pending review
-   ([plan](plans/m3-real-providers.md)). Next: T2 Claude Code and T3 ChatGPT on T1; then T4 UI.
+1. **M3 real providers:** T1 core is reviewed at `d12b751`; T2 Claude Code is implemented
+   on `m3-t2-claude-code` for review ([plan](plans/m3-real-providers.md)).
+   T3 ChatGPT is separate parallel work; T4 UI follows T2/T3.
 2. M4 question tools, M5 teaching flow.
 
 ## Open questions
@@ -186,3 +187,34 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   and `settings-appearance-light.flow.ts-settings-appearance-light`.
   No real models, credentials, real data, or packaging builds were used.
   Next: orchestrator review, then T2/T3 on T1. No new open questions.
+
+- **T2 Claude Code (implementation):** based on reviewed T1 `d12b751`, on
+  `m3-t2-claude-code`. Vendored `h0rv/pydantic-ai-claude-code` at `8a78bdd` with the MIT license
+  and patch inventory in `providers/claude_code/VENDORED.md`. The bridge uses only our system
+  instructions, terminal `ResultMessage.usage`, and the app-owned absolute CLI path/full lockdown.
+  It forwards raw SDK events through the existing optional provider-event logger. Added the
+  Anthropic extra to the existing pinned Pydantic AI dependency for the bridge's wire mapping.
+  Discovery prefers the downloaded tested version, then PATH, then LH's known POSIX directories;
+  states are not_installed / too_old / untested / tested, minimum 2.1.259, tested 2.1.327.
+  The one Claude Code account offers opus/sonnet/haiku, images, and five thinking levels; only
+  the CLI's local summary report supplies context limits. Fake-script mode remains isolated.
+  Download streams to a temporary file, verifies the pinned SHA-256, and installs atomically
+  with executable permissions; progress/failure has start/poll routes and generated API types.
+  Three implementation decisions (API shape, unreadable versions/default effort, local summary
+  probe/fake isolation) are marked for user review in `docs/decisions.md`.
+  At base `d12b751` plus the complete T2 dirty state, final `make check` passed
+  (290 Python, 68 frontend tests; one live test deselected). All 20 fake-model UI cases passed across the full
+  `make verify` run and guarded `make verify-run FLOW='markdown-rendering session-thinking-streaming'`
+  (4 passed). The full run was terminated after 18 passes and one dark-markdown 30 s timeout,
+  before the final light-thinking case completed; both dark/light flow pairs passed unchanged
+  on rerun. Inspected `screenshot.png` (with retained `trace.zip`) under `app/verify-output/`:
+  `session-new-and-stream.flow.ts-session-new-and-stream-dark`,
+  `session-model-title.flow.ts-session-model-title`,
+  `markdown-rendering.flow.ts-markdown-rendering-dark`, and
+  `session-thinking-streaming-beaf3-on-thinking-streaming-light`.
+  The 30 new offline tests cover temporary binaries, fake SDK streams, and fake HTTP,
+  including cancellation and cleanup.
+  The opt-in live test is excluded from default pytest runs and was not run. User command:
+  `uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py`.
+  No real model calls, login/credential reads, real data, actual CLI downloads, or packaging
+  builds. Next: orchestrator review; Settings/model UI remains T4.

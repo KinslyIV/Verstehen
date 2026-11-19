@@ -7,11 +7,14 @@ from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
 from verstehen.api.access import request_refusal
+from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.health import router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.config import Settings
 from verstehen.providers.accounts import AccountsService
+from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter
+from verstehen.providers.claude_code.download import DownloadService
 from verstehen.providers.fake import FakeAccountAdapter
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
@@ -43,10 +46,16 @@ def create_app(settings: Settings) -> FastAPI:
             entries_store = EntriesStore(database)
             settings_store = SettingsStore(database)
             notifications = Notifications()
+            claude_code_adapter = ClaudeCodeAccountAdapter(
+                settings.data_dir, settings.provider_events
+            )
+            claude_code_download_service = DownloadService(settings.data_dir)
+            app.state.claude_code_adapter = claude_code_adapter
+            app.state.claude_code_download_service = claude_code_download_service
             accounts_service = AccountsService(
                 [FakeAccountAdapter(settings.fake_model_script)]
                 if settings.fake_model_script
-                else []
+                else [claude_code_adapter]
             )
             resolver_service = ResolverService(settings_store, accounts_service)
             provider_policy = ProviderPolicy(settings_store)
@@ -83,6 +92,8 @@ def create_app(settings: Settings) -> FastAPI:
             finally:
                 await runtimes.close()
                 await title_service.close()
+                await claude_code_download_service.close()
+                claude_code_adapter.close()
 
     app = FastAPI(lifespan=lifespan)
 
@@ -114,4 +125,5 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(providers_router)
+    app.include_router(claude_code_router)
     return app
