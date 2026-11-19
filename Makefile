@@ -1,4 +1,4 @@
-.PHONY: setup check test fmt lock-migrations dev verify app app-image
+.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run app app-image
 
 setup:
 	uv sync --project backend --locked
@@ -6,6 +6,10 @@ setup:
 	cd app && npx playwright install chromium
 
 check:
+	$(MAKE) check-backend
+	$(MAKE) check-frontend
+
+check-backend:
 	uv run --project backend ruff check .
 	uv run --project backend ruff format --check .
 	uv run --project backend pyrefly check --config pyrefly.toml
@@ -14,6 +18,8 @@ check:
 	uv run --project backend python tools/check_migrations.py
 	uv run --project backend python tools/check_versions.py
 	uv run --project backend pytest -c backend/pyproject.toml
+
+check-frontend:
 	npm run check --prefix app
 	cd app && npx eslint .
 	cd app && npx prettier --check .
@@ -35,7 +41,11 @@ dev:
 	uv run --project backend python tools/dev.py
 
 verify:
-	npm run build --prefix app
+	uv run --project backend python tools/verify_build.py build
+	cd app && npx playwright test $(FLOW)
+
+verify-run:
+	uv run --project backend python tools/verify_build.py check
 	cd app && npx playwright test $(FLOW)
 
 app:

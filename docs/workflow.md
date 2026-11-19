@@ -23,6 +23,17 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 
 - **Each task runs on its own branch** off `main`, in its own T3 worktree. The implementer commits
   as it goes, and `make check` must pass before every commit.
+- While editing, run `make check-backend` or `make check-frontend` for the affected area and batch
+  affected UI flows with `make verify FLOW='flow-a flow-b'`. `make verify-run FLOW='flow-a flow-b'`
+  reuses an unchanged frontend build with a stale-build guard; see the
+  [verify skill](../.agents/skills/verify/SKILL.md). Full `make check` remains required before each
+  commit. For UI work, full `make verify` is required before merge; also run it after shared UI
+  or runtime changes. Unrelated documentation or offline tooling work does not require UI flows.
+- Keep cheap logic permutations in offline tests and use representative real UI flows for
+  integration. This keeps iteration focused as coverage grows; the full suite still checks the
+  integrated app. Each flow retains its own sidecar, preview, temporary data, assertions,
+  screenshot, and always-on trace. Maintain the feature map; do not save time by dropping coverage.
+- Run `make app` when packaging changes need proof, not for unrelated changes.
 - **The implementer never asks the user.** It asks the orchestrator.
 - **The orchestrator never asks the user either.** It decides, choosing what fits the approved plan
   and the docs most closely, and the most cautious option when unsure. Each decision goes into
@@ -36,7 +47,12 @@ How work goes from an idea to merged code. Agents run on Pixal, the user works i
 
 - The orchestrator reviews the branch against the plan, [AGENTS.md](../AGENTS.md), the
   [architecture](architecture.md), and LearnHarness's behavior. It also checks that `make check`
-  passes and looks at the `make verify` screenshots.
+  passes and, for UI or shared runtime changes, looks at the `make verify` screenshots.
+- A reviewer may reuse passing results only when relevant source, configuration, dependencies,
+  and environment are unchanged and no new issue has appeared. Record the command, revision or
+  dirty state, selected flows, and screenshot/trace evidence. Rerun after meaningful edits, a
+  failure, or a new concern. The SPA build guard checks build reuse, not whether earlier test
+  results still cover the reviewed change.
 - **The review is skeptical of existing code too**, not just the new diff. Code the change builds
   on is reviewed as well. Bad design, bad choices, and errors are fixed (the same problem is
   searched for elsewhere), and old code is rewritten or removed on the branch when there is a need

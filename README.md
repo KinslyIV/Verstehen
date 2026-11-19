@@ -50,8 +50,23 @@ Prerequisites: uv, Node.js 24 with npm, and make. Docker is needed later for Arc
 Python 3.14 is pinned in `backend/.python-version`.
 
 Run `make setup` after cloning (locked `uv sync` and `npm ci`), then `make check` before
-committing. `make test` runs tests; `make fmt` formats Python and frontend files.
+committing. During editing, `make check-backend` runs the Python and shared-rule stages;
+`make check-frontend` runs Svelte types, ESLint, Prettier, and Vitest. Full `make check` still
+runs both, in order and stopping on failure. `make test` runs tests; `make fmt` formats files.
 New numbered SQL migrations are recorded with `make lock-migrations`.
+
+`make verify` builds the SPA and runs all isolated fake-model Chromium flows, saving screenshots
+and traces in `app/verify-output/`. During editing, batch affected flows with
+`make verify FLOW='layout-lesson-dark settings-appearance-light'`. With the same frontend build
+inputs, `make verify-run FLOW='layout-lesson-dark settings-appearance-light'` skips the build;
+missing or stale builds fail with instructions to run `make verify`. Backend and flow-script
+edits do not rebuild the SPA. For UI work, run all flows before merge; also run all flows after
+shared UI or runtime changes. Unrelated documentation or offline tooling work does not require
+UI verification.
+See the [verify skill](.agents/skills/verify/SKILL.md) for guard limits and evidence requirements.
+Review may reuse passing checks only while relevant source, configuration, dependencies, and
+environment remain unchanged and no new issue appears. Record the command, revision or dirty
+state, flows, and evidence; rerun after meaningful edits, failure, or a new concern.
 
 `make dev` starts the browser-only sidecar and Vite with an `/api` proxy and a fresh temporary
 data directory. Open the Vite URL (normally `http://localhost:5173`); Ctrl-C stops both.
