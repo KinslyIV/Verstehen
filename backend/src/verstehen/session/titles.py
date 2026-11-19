@@ -63,7 +63,8 @@ class TitleService:
     async def generate(self, session_id: str, first_message: str) -> None:
         try:
             resolved = await self.resolver_service.resolve("title")
-            await self.provider_policy.admit("foreground", resolved.account)
+            if not await self.provider_policy.admit("foreground", resolved.account):
+                raise PermissionError("Provider policy does not allow title generation")
             model = UsageModel(
                 resolved, self.usage_store, session_id, "title", self.provider_events
             )

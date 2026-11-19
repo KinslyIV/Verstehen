@@ -21,9 +21,16 @@ class Account(BaseModel):
         return self.state in ("ready", "tested", "untested")
 
 
+class AccountUnavailable(Exception):
+    def __init__(self, reason: str, state: str = "needs_sign_in"):
+        super().__init__(reason)
+        self.reason = reason
+        self.state = state
+
+
 class AccountAdapter(Protocol):
-    """Supply account discovery, catalog refresh, and model construction for one kind.
-    Adapters own credentials and runtime context reports; callers only use safe account data.
+    """Own discovery, credentials, catalog refresh, model builds, and context reports.
+    models/build_model raise AccountUnavailable(reason, state); never mutate the given account.
     """
 
     async def accounts(self) -> list[Account]: ...

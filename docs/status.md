@@ -168,3 +168,21 @@ on the Arch laptop; M2 has passed offline checks and UI verification.**
   An earlier frontend run hit the already-known thinking-timer flake; final serial full checks passed.
   Five T1 implementation decisions are marked for user review in `docs/decisions.md`.
   No real models, credentials, user data, or packaging builds were used.
+
+- **T1 review round 1 fixes:** removed backend appearance and regenerated API types; appearance
+  stays in mode-watcher localStorage before first paint. The plan is corrected and that decision
+  is marked for user review. Turn admission refusal returns 403 `background_not_allowed` before
+  any write or claim; title admission refusal logs failure without dispatching a call. Adapters
+  raise `AccountUnavailable(reason, state)` instead of mutating accounts; resolution maps it to
+  `ResolutionError`, and catalogs expose the failed account's state/reason with no models.
+  All typed settings writes, including Set as default and test setup, use `SettingsStore.write`;
+  prompt-switch key/value writes no longer special-case typed fields. Patterns and feature-map
+  coverage are updated. On base `4e89ce4` plus these review fixes, focused backend checks and full
+  `make check` passed (260 Python, 68 frontend tests); full `make verify` passed all 20 flows.
+  Inspected `screenshot.png` with retained `trace.zip` under `app/verify-output/`:
+  `session-model-title.flow.ts-session-model-title`,
+  `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+  `session-no-model.flow.ts-session-no-model`, `session-error-retry.flow.ts-session-error-retry`,
+  and `settings-appearance-light.flow.ts-settings-appearance-light`.
+  No real models, credentials, real data, or packaging builds were used.
+  Next: orchestrator review, then T2/T3 on T1. No new open questions.

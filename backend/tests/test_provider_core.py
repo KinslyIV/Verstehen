@@ -11,7 +11,7 @@ from pydantic_ai.messages import ModelMessage, ModelResponse, TextPart, ToolCall
 from pydantic_ai.models.function import AgentInfo, FunctionModel
 from pydantic_ai.usage import RequestUsage
 
-from verstehen.providers.accounts import Account, AccountsService
+from verstehen.providers.accounts import Account, AccountsService, AccountUnavailable
 from verstehen.providers.catalog import context_limit
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.fake import FakeAccountAdapter
@@ -91,23 +91,20 @@ def test_settings_defaults_round_trip_and_whole_top_level_fields(tmp_path: Path)
                 "chatgpt": True,
                 "claude_code": True,
             }
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             saved = await settings_store.read()
-            await settings_store.set("background", {"chatgpt": False})
+            saved.background.chatgpt = False
+            await settings_store.write(saved)
             assert (await settings_store.read()).models == saved.models
             assert not (await settings_store.read()).background.chatgpt
             assert (await settings_store.read()).background.claude_code
-            await settings_store.write(Settings(appearance="light"))
-            assert await settings_store.read() == Settings(appearance="light")
-            assert await settings_store.get("models") == {
-                "strong": None,
-                "cheap": None,
-                "vision": None,
-            }
+            await settings_store.write(Settings())
+            assert await settings_store.read() == Settings()
+            assert (await settings_store.read()).models.strong is None
             with pytest.raises(ValidationError):
-                await settings_store.set("appearance", "invalid")
+                Settings.model_validate({"appearance": "light"})
             with pytest.raises(ValidationError):
-                await settings_store.set("models", {"strong": {"account": "fake"}})
+                Settings.model_validate({"models": {"strong": {"account": "fake"}}})
 
     asyncio.run(scenario())
 
@@ -124,7 +121,7 @@ def test_resolve_uses_each_roles_slot_and_conversation_uses_session(
             session_service,
             _,
         ):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             session = await session_service.sessions_store.create(
                 "Pinned",
                 ModelPick(account="fake", model="fake-title", thinking_level="low"),
@@ -147,7 +144,7 @@ def test_resolve_missing_role_slot_never_falls_back(tmp_path: Path, role, slot):
         async with core(tmp_path) as (settings_store, _, resolver, *_):
             models = picks()
             models.pop(slot)
-            await settings_store.set("models", models)
+            await settings_store.write(Settings.model_validate({"models": models}))
             with pytest.raises(ResolutionError) as raised:
                 await resolver.resolve(role)
             assert raised.value.envelope()["missing"] == [slot]
@@ -160,7 +157,7 @@ def test_sessions_stamp_strong_menu_pick_is_local_and_set_default_is_explicit(
 ):
     async def scenario():
         async with core(tmp_path) as (settings_store, _, resolver, session_service, _):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             first = await session_service.create("first")
             assert not isinstance(first, Refused)
             assert first.model_pick == ModelPick(**picks()["strong"])
@@ -171,7 +168,11 @@ def test_sessions_stamp_strong_menu_pick_is_local_and_set_default_is_explicit(
             providers = ProviderService(
                 settings_store, resolver.accounts_service, resolver
             )
+            settings = await settings_store.read()
+            settings.background.chatgpt = False
+            await settings_store.write(settings)
             await providers.set_default(chosen)
+            assert (await settings_store.read()).background == settings.background
             assert (await settings_store.read()).models.cheap == ModelPick(
                 **picks()["cheap"]
             )
@@ -187,7 +188,7 @@ def test_sessions_stamp_strong_menu_pick_is_local_and_set_default_is_explicit(
 def test_switching_model_keeps_supported_level_or_uses_new_default(tmp_path: Path):
     async def scenario():
         async with core(tmp_path) as (settings_store, _, _, session_service, _):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             session = await session_service.create("first")
             assert not isinstance(session, Refused)
             await session_service.set_model(
@@ -220,10 +221,14 @@ def test_background_uses_fresh_provider_switch_and_foreground_always_runs(
         async with core(tmp_path) as (settings_store, _, _, _, turns):
             account = Account(id="one", kind=kind, label="One")
             assert await turns.provider_policy.admit("background", account)
-            await settings_store.set("background", {kind: False})
+            await settings_store.write(
+                Settings.model_validate({"background": {kind: False}})
+            )
             assert not await turns.provider_policy.admit("background", account)
             assert await turns.provider_policy.admit("foreground", account)
-            await settings_store.set("background", {kind: True})
+            await settings_store.write(
+                Settings.model_validate({"background": {kind: True}})
+            )
             assert await turns.provider_policy.admit("background", account)
 
     asyncio.run(scenario())
@@ -246,7 +251,9 @@ def test_context_limit_uses_runtime_then_model_data_else_unknown(
     assert context_limit(model, kind, runtime) == expected
 
 
-@pytest.mark.parametrize("failure", ["removed", "sign_in", "model_removed"])
+@pytest.mark.parametrize(
+    "failure", ["removed", "sign_in", "model_removed", "refresh_failed", "build_failed"]
+)
 def test_unusable_session_model_refusal_saves_nothing_and_keeps_pin(
     tmp_path: Path, failure
 ):
@@ -258,7 +265,7 @@ def test_unusable_session_model_refusal_saves_nothing_and_keeps_pin(
             sessions,
             turns,
         ):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             session = await sessions.create("Cut title")
             assert not isinstance(session, Refused)
             if failure == "removed":
@@ -277,6 +284,18 @@ def test_unusable_session_model_refusal_saves_nothing_and_keeps_pin(
                     ]
 
                 adapter.accounts = accounts
+            elif failure in ("refresh_failed", "build_failed"):
+
+                async def unavailable_models(account):
+                    raise AccountUnavailable("Sign in again")
+
+                async def unavailable_build(account, pick):
+                    raise AccountUnavailable("Sign in again")
+
+                if failure == "refresh_failed":
+                    adapter.models = unavailable_models
+                else:
+                    adapter.build_model = unavailable_build
             else:
 
                 async def models(account):
@@ -298,7 +317,7 @@ def test_unusable_session_model_refusal_saves_nothing_and_keeps_pin(
 def test_title_starts_with_first_turn_foreground_and_replaces_rename(tmp_path: Path):
     async def scenario():
         async with core(tmp_path) as (settings_store, adapter, _, sessions, turns):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             started = asyncio.Event()
             proceed = asyncio.Event()
             purposes = []
@@ -361,7 +380,7 @@ def test_title_failure_or_empty_reply_keeps_cut_title_and_never_retries(
 ):
     async def scenario():
         async with core(tmp_path) as (settings_store, adapter, _, sessions, turns):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             calls = []
 
             def title(messages: list[ModelMessage], info: AgentInfo):
@@ -398,7 +417,7 @@ def test_usage_is_one_row_per_call_with_request_usage_fields(tmp_path: Path):
             sessions,
             turns,
         ):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             usage = RequestUsage(
                 input_tokens=20,
                 output_tokens=12,
@@ -455,7 +474,7 @@ def test_one_agent_run_with_two_model_calls_records_two_usage_rows(tmp_path: Pat
             sessions,
             turns,
         ):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             calls = []
 
             def respond(messages: list[ModelMessage], info: AgentInfo):
@@ -486,7 +505,7 @@ def test_one_agent_run_with_two_model_calls_records_two_usage_rows(tmp_path: Pat
 def test_failed_title_is_not_requested_again_on_later_turns(tmp_path: Path):
     async def scenario():
         async with core(tmp_path) as (settings_store, adapter, _, sessions, turns):
-            await settings_store.set("models", picks())
+            await settings_store.write(Settings.model_validate({"models": picks()}))
             calls = []
 
             def title(messages: list[ModelMessage], info: AgentInfo):
@@ -539,5 +558,94 @@ def test_m2_sessions_migrate_with_nullable_model_and_legacy_fallback(tmp_path: P
                 and session.thinking_level is None
             )
             assert session.title == "Old title"
+
+    asyncio.run(scenario())
+
+
+def test_refused_admission_saves_nothing_and_does_not_start_title(tmp_path: Path):
+    async def scenario():
+        async with core(tmp_path) as (settings_store, _, _, sessions, turns):
+            await settings_store.write(Settings.model_validate({"models": picks()}))
+            session = await sessions.create("Cut title")
+            assert not isinstance(session, Refused)
+
+            async def refuse(purpose, account):
+                return False
+
+            turns.provider_policy.admit = refuse
+            result = await turns.start(session.id, TurnInput(type="text", text="Hello"))
+            assert isinstance(result, Refused) and result.status == 403
+            assert result.reason["code"] == "background_not_allowed"
+            assert await turns.entries_store.list(session.id) == []
+            assert await turns.usage_store.list(session.id) == []
+            assert await sessions.sessions_store.get(session.id) == session
+            assert turns.runtimes.get(session.id).run is None
+            assert not turns.title_service.tasks
+
+    asyncio.run(scenario())
+
+
+def test_refused_title_admission_logs_failure_without_call_or_rename(
+    tmp_path: Path, caplog
+):
+    async def scenario():
+        async with core(tmp_path) as (settings_store, adapter, _, sessions, turns):
+            await settings_store.write(Settings.model_validate({"models": picks()}))
+            calls = []
+
+            def title(messages, info):
+                calls.append(messages)
+                return ModelResponse(parts=[TextPart("New title")])
+
+            async def refuse(purpose, account):
+                return False
+
+            adapter.models_by_id["fake-title"] = FunctionModel(title)
+            turns.provider_policy.admit = refuse
+            session = await sessions.create("Cut title")
+            assert not isinstance(session, Refused)
+            await turns.title_service.generate(session.id, "Hello")
+            assert await sessions.sessions_store.get(session.id) == session
+            assert await turns.usage_store.list(session.id) == []
+            assert calls == []
+            assert "Title generation failed" in caplog.text
+            assert "Provider policy does not allow title generation" in caplog.text
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("state", ["needs_sign_in", "not_installed"])
+def test_catalog_refresh_failure_reports_account_state_and_reason_without_mutation(
+    tmp_path: Path, state
+):
+    async def scenario():
+        async with core(tmp_path) as (settings_store, adapter, resolver, *_):
+            account = (await adapter.accounts())[0]
+            before = account.model_copy(deep=True)
+
+            async def accounts():
+                return [account]
+
+            async def models(account):
+                raise AccountUnavailable("Account unavailable during refresh", state)
+
+            adapter.accounts = accounts
+            adapter.models = models
+            await settings_store.write(Settings.model_validate({"models": picks()}))
+            service = ProviderService(
+                settings_store, resolver.accounts_service, resolver
+            )
+            catalog = await service.catalog()
+            assert catalog.accounts[0].models == []
+            assert catalog.accounts[0].account.state == state
+            assert (
+                catalog.accounts[0].account.reason
+                == "Account unavailable during refresh"
+            )
+            assert account == before
+            with pytest.raises(
+                ResolutionError, match="Account unavailable during refresh"
+            ):
+                await resolver.resolve("teacher")
 
     asyncio.run(scenario())

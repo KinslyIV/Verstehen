@@ -22,7 +22,7 @@ from verstehen.store.database import open_database
 from verstehen.store.entries import AssistantEntry, EntriesStore, UserEntry
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
-from verstehen.store.settings import SettingsStore
+from verstehen.store.settings import Settings, SettingsStore
 from verstehen.store.usage import UsageStore
 
 
@@ -40,8 +40,10 @@ async def turn_service_context(tmp_path: Path, model=None):
             adapter = FakeAccountAdapter(path)
             adapter.models_by_id["fake"] = model
             adapters.append(adapter)
-            await settings_store.set(
-                "models", {"strong": {"account": "fake", "model": "fake"}}
+            await settings_store.write(
+                Settings.model_validate(
+                    {"models": {"strong": {"account": "fake", "model": "fake"}}}
+                )
             )
         resolver_service = ResolverService(settings_store, AccountsService(adapters))
         policy = ProviderPolicy(settings_store)

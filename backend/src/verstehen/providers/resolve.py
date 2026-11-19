@@ -4,7 +4,12 @@ from typing import Literal
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 
-from verstehen.providers.accounts import Account, AccountAdapter, AccountsService
+from verstehen.providers.accounts import (
+    Account,
+    AccountAdapter,
+    AccountsService,
+    AccountUnavailable,
+)
 from verstehen.providers.catalog import CatalogModel, context_limit
 from verstehen.store.sessions import Session
 from verstehen.store.settings import ModelPick, SettingsStore, SlotName
@@ -98,11 +103,10 @@ class ResolverService:
             raise ResolutionError(
                 account.reason or "The selected account needs sign-in."
             )
-        models = await adapter.models(account)
-        if not account.usable:
-            raise ResolutionError(
-                account.reason or "The selected account needs sign-in."
-            )
+        try:
+            models = await adapter.models(account)
+        except AccountUnavailable as error:
+            raise ResolutionError(error.reason) from error
         for model in models:
             if model.id == pick.model:
                 return account, adapter, model
@@ -132,7 +136,10 @@ class ResolverService:
         pick = pick.model_copy(
             update={"thinking_level": catalog.populate_level(pick.thinking_level)}
         )
-        model = await adapter.build_model(account, pick)
+        try:
+            model = await adapter.build_model(account, pick)
+        except AccountUnavailable as error:
+            raise ResolutionError(error.reason) from error
         limit = await adapter.context_limit(account, pick.model)
         return ResolvedModel(
             model,

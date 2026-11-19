@@ -13,8 +13,9 @@ opt-in live tests pass when the user runs them; the feature map and status are u
 
 1. **Settings shape:** one typed Pydantic `Settings` model with defaults in code; each top-level
    field is one row in the existing `settings` table; read fresh for every turn (LH). Fields:
-   `appearance` (exists), `models` (strong / cheap / vision slots, each `{account, model,
-   thinking_level}`, no default), `background` (`{chatgpt: true, claude_code: true}`).
+   `models` (strong / cheap / vision slots, each `{account, model, thinking_level}`, no default),
+   `background` (`{chatgpt: true, claude_code: true}`). Appearance stays in the app’s localStorage
+   (mode-watcher, read before first paint); it is not a backend field (T1 review correction).
 2. **Slots and roles** exactly as LH (`ROLE_SLOT`, `src/core/settings.ts:326`). No defaults
    (`src/server/model-catalog.ts:60-90`): no configured slot means 503 `models_not_configured`.
 3. **Sessions own their model.** A session stores account, model, and thinking level from birth;

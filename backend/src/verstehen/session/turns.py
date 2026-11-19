@@ -108,7 +108,14 @@ class TurnService:
             state.resolved = await self.resolver_service.resolve("teacher", session)
         except ResolutionError as error:
             return Refused(503, error.envelope())
-        await self.provider_policy.admit("foreground", state.resolved.account)
+        if not await self.provider_policy.admit("foreground", state.resolved.account):
+            return Refused(
+                403,
+                {
+                    "error": "Provider policy does not allow this request",
+                    "code": "background_not_allowed",
+                },
+            )
         return Continue(state)
 
     async def claim(self, state: TurnState) -> Refused | Continue:

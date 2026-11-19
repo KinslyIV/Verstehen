@@ -39,7 +39,6 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
     ) as client:
         settings = client.get("/api/settings").json()
         assert settings == {
-            "appearance": "dark",
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
         }
@@ -91,7 +90,7 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
         before = client.get("/api/settings").json()
         for body in (
             {"models": None},
-            {"appearance": None},
+            {"appearance": "light"},
             {"unknown": 1},
             {"models": {"strong": {"account": "fake"}}},
         ):
@@ -103,8 +102,7 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
         )
         assert response.status_code == 503 and "images" in response.json()["reason"]
         assert client.get("/api/settings").json() == before
-        assert client.put("/api/settings", json={"appearance": "light"}).json() == {
-            "appearance": "light",
+        assert client.put("/api/settings", json={}).json() == {
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
         }

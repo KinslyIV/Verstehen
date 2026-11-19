@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from verstehen.providers.accounts import Account, AccountsService
+from verstehen.providers.accounts import Account, AccountsService, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.store.settings import ModelPick, ModelSlots, Settings, SettingsStore
@@ -57,14 +57,20 @@ class ProviderService:
         pick = await self.resolver_service.normalize(pick)
         settings = await self.settings_store.read()
         settings.models.strong = pick
-        await self.settings_store.set("models", settings.models.model_dump(mode="json"))
+        await self.settings_store.write(settings)
         return pick
 
     async def catalog(self) -> ModelCatalog:
         accounts = []
         for adapter in self.accounts_service.adapters:
             for account in await adapter.accounts():
-                models = await adapter.models(account) if account.usable else []
+                try:
+                    models = await adapter.models(account) if account.usable else []
+                except AccountUnavailable as error:
+                    account = account.model_copy(
+                        update={"state": error.state, "reason": error.reason}
+                    )
+                    models = []
                 accounts.append(AccountCatalog(account=account, models=models))
         return ModelCatalog(
             accounts=accounts, slots=(await self.settings_store.read()).models

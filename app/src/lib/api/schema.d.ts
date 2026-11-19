@@ -487,12 +487,6 @@ export interface components {
 		};
 		/** Settings */
 		Settings: {
-			/**
-			 * Appearance
-			 * @default dark
-			 * @enum {string}
-			 */
-			appearance: 'dark' | 'light' | 'system';
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
 		};

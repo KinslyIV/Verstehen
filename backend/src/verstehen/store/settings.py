@@ -31,7 +31,6 @@ class BackgroundSettings(BaseModel):
 
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    appearance: Literal["dark", "light", "system"] = "dark"
     models: ModelSlots = Field(default_factory=ModelSlots)
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
 
@@ -77,8 +76,6 @@ class SettingsStore:
                 f"Setting {key!r} cannot be stored as null: None from get() means "
                 "the key is missing. Store a non-null value instead."
             )
-        if key in Settings.model_fields:
-            value = Settings.model_validate({key: value}).model_dump(mode="json")[key]
         encoded = JSON.dump_json(JSON.validate_python(value)).decode()
         async with self.database.transaction() as connection:
             await connection.execute(
