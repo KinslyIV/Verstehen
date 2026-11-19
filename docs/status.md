@@ -20,6 +20,11 @@
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
 - **Packaging:** `make app` builds the Tauri shell and PyInstaller onedir in Arch, runs frozen
   dependency and sidecar smoke checks, and produces `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
+  Builds reuse a prepared Arch toolchain image and compile the frontend once; `make app-image`
+  explicitly refreshes the toolchain. Cargo, npm, and uv caches persist between builds.
+  Verified a warm build in 285 seconds with the same image, one frontend build, and passing smoke
+  checks. The first build took 524 seconds including image creation; these are not a controlled
+  comparison with the previous build process.
   The shell waits for healthy startup; the API client reads its connection through Tauri. The
   package bundles neither Chromium (optional) nor the Claude Code CLI (the installed `claude` is
   used); the download buttons for both come in M3 and M7.

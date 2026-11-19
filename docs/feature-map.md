@@ -13,3 +13,8 @@ updates its entry in the same commit. `make verify` runs the flows named here.
 Install the Arch package and open **Verstehen** from the launcher. `make app` verifies the frozen
 self-check, port handshake, authenticated health, refusal without a token, migrations, and shutdown
 on stdin EOF. The user checks the Tauri window and appearance on the laptop; agents do not run it.
+
+`make app` reuses the prepared Arch toolchain image and builds the frontend once. `make app-image`
+refreshes the toolchain explicitly. Verify with a second `make app`: the image ID stays the same,
+the log contains no pacman toolchain installation and one `vite build`, and all packaging smoke
+checks pass.

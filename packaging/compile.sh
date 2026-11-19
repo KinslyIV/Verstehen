@@ -16,7 +16,7 @@ cd app
 cargo fmt --manifest-path src-tauri/Cargo.toml --check
 npm run build
 cargo clippy --locked --manifest-path src-tauri/Cargo.toml -- -D warnings
-npx tauri build --no-bundle -- --locked
+npx tauri build --no-bundle --config '{"build":{"beforeBuildCommand":""}}' -- --locked
 cd ../packaging
 PKGDEST=/output makepkg --force --nodeps
 pacman -Qp /output/verstehen-*.pkg.tar.zst

@@ -116,6 +116,7 @@ Every change comes with a way to prove it works, and you run it before you say i
 | `make verify` | the app with the fake model in headless Chromium: scripted flows that save screenshots and traces |
 | `make fmt` | fix formatting |
 | `make app` | build the desktop app as an Arch package, inside an `archlinux` container |
+| `make app-image` | refresh the prepared Arch build image with the newest packages |
 
 - **Logic** gets a test named after the behavior. Tests are offline, using Pydantic AI's
   `FunctionModel` and a temporary data dir.

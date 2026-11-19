@@ -1,6 +1,5 @@
 #!/bin/bash
 set -euo pipefail
-pacman -Syu --noconfirm --needed base-devel rust nodejs npm uv webkit2gtk-4.1 gtk3 librsvg patchelf
 groupadd -g "$BUILD_GID" builder
 useradd -m -u "$BUILD_UID" -g "$BUILD_GID" builder
 mkdir -p /build /cache/cargo /cache/target /cache/npm /cache/uv

@@ -1,4 +1,4 @@
-.PHONY: setup check test fmt lock-migrations dev verify app
+.PHONY: setup check test fmt lock-migrations dev verify app app-image
 
 setup:
 	uv sync --project backend --locked
@@ -40,3 +40,6 @@ verify:
 
 app:
 	bash packaging/build.sh
+
+app-image:
+	docker build --pull --no-cache --tag verstehen-build - < packaging/Dockerfile

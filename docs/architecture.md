@@ -48,8 +48,9 @@ flowchart LR
 | **App build** | `make app` builds inside an `archlinux` container (Docker or Podman) and produces an Arch package via a PKGBUILD | `sudo pacman -U` installs it; pacman pulls WebKitGTK (Chromium is optional) |
 | **Real models** | only in opt-in live tests | the user's Claude Code and ChatGPT logins |
 
-- Arch is rolling, so the build container is updated before each build. After a big WebKitGTK
-  update on the laptop, the app is rebuilt.
+- `make app` reuses a prepared Arch toolchain image, created on the first build. `make app-image`
+  explicitly refreshes it with newer Arch packages. After a big WebKitGTK update on the laptop,
+  refresh the image and rebuild the app.
 
 ## Repository layout (Q6)
 

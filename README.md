@@ -59,9 +59,9 @@ data directory. Open the Vite URL (normally `http://localhost:5173`); Ctrl-C sto
 
 ## Build and install
 
-On Pixal, run `make app` (Docker without sudo). It updates an Arch container and builds
-`dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`. Named Docker volumes retain Cargo, npm, uv,
-and package download caches between builds.
+On Pixal, run `make app` (Docker without sudo). It builds `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`
+in a prepared Arch image (`verstehen-build`), created on the first run. Named Docker volumes retain
+Cargo, npm, and uv caches between builds. Run `make app-image` to refresh the image with newer Arch packages.
 
 Copy `dist/*.pkg.tar.zst` to the Arch laptop and install with `sudo pacman -U <file>`.
 Open **Verstehen** from the launcher. Run `/usr/lib/verstehen/verstehen-sidecar --self-check`
