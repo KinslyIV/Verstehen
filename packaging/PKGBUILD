@@ -4,7 +4,8 @@ pkgrel=1
 pkgdesc='A local learning app with an AI tutor'
 arch=('x86_64')
 license=('LicenseRef-Proprietary')
-depends=('webkit2gtk-4.1' 'gtk3' 'chromium' 'glibc' 'zlib')
+depends=('webkit2gtk-4.1' 'gtk3' 'glibc' 'zlib')
+optdepends=('chromium: test generated demos with an installed browser')
 options=('!strip' '!debug')
 
 package() {

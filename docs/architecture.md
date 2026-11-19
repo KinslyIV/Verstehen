@@ -44,8 +44,8 @@ flowchart LR
 | | Pixal (Ubuntu home server) | Laptop `vogue-merry` (Arch) |
 |---|---|---|
 | **Role** | development: coding agents write, test, and verify | runs the installed desktop app |
-| **Browser** | Playwright's own Chromium (`playwright install chromium`), for `make verify` and demo-worker tests | Arch's `/usr/bin/chromium`, for the demo worker |
-| **App build** | `make app` builds inside an `archlinux` container (Docker or Podman) and produces an Arch package via a PKGBUILD | `sudo pacman -U` installs it; pacman pulls WebKitGTK and Chromium |
+| **Browser** | Playwright's own Chromium (`playwright install chromium`), for `make verify` and demo-worker tests | an installed Chromium-family browser for the demo worker, or Playwright's Chromium downloaded on request |
+| **App build** | `make app` builds inside an `archlinux` container (Docker or Podman) and produces an Arch package via a PKGBUILD | `sudo pacman -U` installs it; pacman pulls WebKitGTK (Chromium is optional) |
 | **Real models** | only in opt-in live tests | the user's Claude Code and ChatGPT logins |
 
 - Arch is rolling, so the build container is updated before each build. After a big WebKitGTK
@@ -253,8 +253,9 @@ Port of the 13 stages in [turn lifecycle](learnharness/turn-lifecycle.md), in mo
 - **Two ways a steer reaches the teacher** (as in LH): delivered live by the `before_model_request`
   hook if a turn is running, otherwise via an idle wake turn. Both use the deterministic
   `steer_<jobId>` id, so delivery happens at most once.
-- **The demo worker** tests with Playwright driving the system Chromium from Arch
-  (`/usr/bin/chromium`, decided). A setting can point to another Chromium-family browser.
+- **The demo worker** tests with Playwright driving a Chromium-family browser: the setting, else
+  one found on PATH. If none is found, demo testing is unavailable and Settings offers to download
+  Playwright's Chromium into the data dir (decided).
 
 ## Events to the UI (Q2)
 
@@ -291,9 +292,11 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
   implements the `OpenAIChatGPTCredentialSource` protocol (`load()` / `save()`) on top of the
   credentials file.
 - **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`.
-  - It runs **the Claude Code CLI bundled in the `claude-agent-sdk` wheel** (decided), not the
-    self-updating `/usr/bin/claude`. The CLI version changes only when we bump the SDK in
-    `uv.lock`, and the opt-in live test runs after each bump. It reuses the existing Claude login.
+  - It runs **the installed `claude`** (decided 2026-11-19; the package doesn't bundle the CLI).
+    Verstehen records the version it was tested with and warns in Settings and the log when the
+    installed one differs. Settings can download exactly the tested version (checksum-verified) into
+    the data dir, and Verstehen then uses that copy. The opt-in live test re-checks a new version.
+    It reuses the existing Claude login.
   - **Constraint:** the Claude Code login is for personal use in this private app. Anthropic
     doesn't allow third-party products to offer claude.ai login, so Verstehen is never distributed
     with it.
@@ -387,9 +390,9 @@ In the port:
 ## Packaging and data (Q9, Q15)
 
 - **Release:** the Python server is frozen with PyInstaller and shipped as a Tauri sidecar
-  (`externalBin`). No browser is bundled: Playwright uses the system Chromium.
-- **Proven in milestone 1** (decided): a minimal frozen sidecar (a hello endpoint that imports every
-  heavy dependency: Playwright, pypdfium2, resvg-py, the SDK with its bundled CLI) is built into a
+  (`externalBin`). No browser and no Claude Code CLI are bundled (decided 2026-11-19).
+- **Proven in milestone 1** (decided): a minimal frozen sidecar (`verstehen --self-check` exercises every
+  heavy dependency: Playwright, pypdfium2, resvg-py, the Claude Agent SDK) is built into a
   Tauri app before features depend on packaging.
 - **Development:** the server runs with `uv run`, the UI with the Tauri dev server.
 - **Data dir:** `~/.local/share/verstehen` by default, overridable with `VERSTEHEN_DATA_DIR`. Tests

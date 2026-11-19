@@ -1,5 +1,8 @@
+import importlib
+import importlib.metadata
 import io
 import json
+import shutil
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
@@ -45,10 +48,13 @@ def check_playwright() -> str:
 
 
 def check_claude() -> str:
-    import claude_agent_sdk
-
-    cli = Path(claude_agent_sdk.__file__).parent / "_bundled/claude"
-    return command_version([str(cli), "--version"])
+    """Prove the SDK is included and report the installed `claude`, which is optional."""
+    importlib.import_module("claude_agent_sdk")
+    sdk = f"SDK {importlib.metadata.version('claude-agent-sdk')}"
+    cli = shutil.which("claude")
+    if cli is None:
+        return f"{sdk}; claude not installed"
+    return f"{sdk}; claude {command_version([cli, '--version'])}"
 
 
 def run_self_check() -> bool:

@@ -4,7 +4,7 @@
 
 ## Where we are
 
-**M1 implementation is complete; M1 is done once the user confirms it on the Arch laptop.**
+**M1, walking skeleton, is done:** the user installed the package on the Arch laptop and confirmed it.
 
 - **Repo and checks:** `backend/` (Python 3.14, uv) with empty feature packages and enforced package
   order; `app/` (SvelteKit SPA, Tailwind v4, shadcn-svelte). `make setup`, `check`, `test`, `fmt`,
@@ -20,15 +20,15 @@
   sidebar, open right panel, light Appearance, and light Models, with screenshots and traces.
 - **Packaging:** `make app` builds the Tauri shell and PyInstaller onedir in Arch, runs frozen
   dependency and sidecar smoke checks, and produces `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
-  The shell waits for healthy startup; the API client reads its connection through Tauri.
+  The shell waits for healthy startup; the API client reads its connection through Tauri. The
+  package bundles neither Chromium (optional) nor the Claude Code CLI (the installed `claude` is
+  used); the download buttons for both come in M3 and M7.
 - **Docs:** the docstring rule is in AGENTS.md. The LearnHarness specification is `cb25c8e`
   (v0.6.1); Part A was re-checked against it.
 
 ## Next
 
-1. User: install the package on the Arch laptop, open Verstehen, and run the frozen `--self-check`
-   ([instructions](../README.md#build-and-install)); confirm startup, appearance, and shutdown.
-2. Then M2 session core, M3 real providers, M4 question tools, M5 teaching flow.
+1. M2 session core, then M3 real providers, M4 question tools, M5 teaching flow.
 
 ## Open questions
 
