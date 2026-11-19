@@ -75,7 +75,6 @@ def test_settings_round_trip(tmp_path: Path):
             values: list[JsonValue] = [
                 {"nested": [True, None, 1, 1.25, "å"]},
                 "text",
-                None,
             ]
             for value in values:
                 await settings.set("key", value)
@@ -85,6 +84,18 @@ def test_settings_round_trip(tmp_path: Path):
                 await settings.set("bad", cast(JsonValue, object()))
         async with open_database(tmp_path / "test.db") as database:
             assert await SettingsStore(database).get("persistent") == {"enabled": True}
+
+    asyncio.run(run())
+
+
+def test_settings_refuse_null_so_none_means_missing(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings = SettingsStore(database)
+            with pytest.raises(ValueError, match="cannot be stored as null"):
+                await settings.set("key", None)
+            assert await settings.get("key") is None
 
     asyncio.run(run())
 

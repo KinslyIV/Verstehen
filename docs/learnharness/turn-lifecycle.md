@@ -31,7 +31,10 @@ order:
 
 Two rules hold throughout:
 
-- **Nothing durable happens before stage 9.** Every refusal before the claim leaves no trace.
+- **Only two stages save before the claim.** The compaction gate (stage 5) can save a compaction
+  (`ensureCompacted`, `src/server/compaction.ts:303`, saving at `:264`). The sibling gate (stage 8)
+  saves the answer and returns without a turn (`:547-554`). The refusals themselves save nothing,
+  but a refusal after stage 5 keeps a compaction made there.
 - **One turn per chat.** `turn-liveness.ts` keeps a `globalThis` map of chats with an active turn
   (`beginTurn`, `:59`; `isTurnRunning`, `:103`). It's stored on `globalThis` because Next.js dev
   gives every route its own module instance (`turn-liveness.ts:1-22`). It's in memory only: a
