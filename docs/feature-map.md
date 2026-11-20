@@ -205,3 +205,16 @@ These routes and hooks work before the T3/T4 UI. Verification is offline in
 | Session trace deletion | `DELETE /api/sessions/{id}?mode=preserve-graph` or `delete-nodes` | Both trace modes; turn/job 409 and extraction wind-down 503; cancellation; existing `session-rename-delete` flow |
 | Prober graph tools | `list_sessions` and `list_propositions` when extraction and prober graph tools are enabled | Effective gate permutations; read-only graph session/proposition views |
 | Graph settings | `GET/PUT /api/settings`: `graph`, `agent.graph_tools` | Defaults, finite positive integer/floor sanitization, invalid chunk fallback, tool gating |
+
+### M9 T3 knowledge graph page
+
+| Feature | How to reach it | Verify flow | Tests |
+|---|---|---|---|
+| Knowledge graph page | Sidebar **Knowledge graph** opens `/graph`; the right panel is hidden there. A graph with nodes draws on one canvas; an empty graph shows the start hint; with Graph rendering off the page shows the summary (propositions, chains, teaching sessions, imported notes) | `graph-canvas-dark`, `graph-canvas-light`, `graph-rendering-off` | Vitest `src/lib/graph/*.test.ts` |
+| Canvas and detail card | Regions, edges and arrowheads, nodes, region labels fading into node labels with zoom, hover glow, click for the card (name, statement, Sessions list; plain text for notes files; "No sessions recorded."), any camera move or empty-stage click closes it, node drag with live physics saves positions | `graph-canvas-dark`, `graph-canvas-light` | `canvas.test.ts` (label gate, picking, arrows, label wrapping and updates, blur), `card-placement.test.ts` |
+| Layout settling | When the snapshot has nodes without a position the page settles the layout and saves it with `PUT /api/graph/positions` | `graph-canvas-dark` (graph seeded without positions) | `layout.test.ts`, `layout-settle.test.ts` |
+| Search and render settings | Search box hides nodes, edges and labels; the gear opens Display, Regions, Physics and depth sliders; settings save to the server and survive reload | `graph-search-settings` | `search.test.ts`, `render-settings.test.ts` |
+| Cost pill and pipeline pills | Cost number (click for the stage and per-source breakdown) and one pill per running extraction under the top-right controls; the graph and costs refetch when a run finishes or `graph-changed` arrives | `graph-extraction` | `costs.test.ts` |
+| Extraction onto the graph | A lesson past the chunk size runs the extractor, auditor, and merge; the new nodes and their session cluster appear on the page | `graph-extraction` | backend `test_extraction*.py` |
+| Notes import | **Extract files…** → Files or Folder; three uploads at a time, folder picks skip hidden files, skipped and failed files are summarized under the controls | `graph-import` | `import-queue.test.ts` |
+| Chains button | Opens a placeholder dialog until the chains table (T4) replaces it | `graph-rendering-off` | |

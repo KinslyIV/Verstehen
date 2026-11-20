@@ -21,6 +21,14 @@ export type Account = components['schemas']['Account'];
 export type BinaryStatus = components['schemas']['BinaryStatus'];
 export type DownloadProgress = components['schemas']['DownloadProgress'];
 export type SignInStatus = components['schemas']['SignInStatus'];
+export type GraphSnapshot = components['schemas']['GraphSnapshot'];
+export type GraphRenderSettings = components['schemas']['GraphRenderSettings'];
+export type RegionTuning = components['schemas']['RegionTuning'];
+export type PhysicsTuning = components['schemas']['PhysicsTuning'];
+export type GraphCostSummary = components['schemas']['GraphCostSummary'];
+export type CostTotals = components['schemas']['CostTotals'];
+export type RunningExtraction = components['schemas']['RunningExtraction'];
+export type ImportResult = components['schemas']['ImportResult'];
 let token: string | undefined;
 let connection: Promise<string> | undefined;
 
@@ -58,7 +66,9 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 	const response = await fetch(`${base}${path}`, {
 		...init,
 		headers: {
-			...(init.body ? { 'content-type': 'application/json' } : {}),
+			...(init.body && !(init.body instanceof FormData)
+				? { 'content-type': 'application/json' }
+				: {}),
 			...init.headers,
 			...(token ? { 'x-verstehen-token': token } : {})
 		}
@@ -327,4 +337,35 @@ export async function streamSideChat(
 }
 export async function stopSideChat(id: string, threadId: string): Promise<void> {
 	await request(`${sidePath(id)}/${encodeURIComponent(threadId)}/stop`, { method: 'POST' });
+}
+
+export async function getGraph(signal?: AbortSignal): Promise<GraphSnapshot> {
+	return (await request('/api/graph', { signal })).json();
+}
+export async function putGraphPositions(
+	positions: Record<string, { x: number; y: number }>
+): Promise<void> {
+	await request('/api/graph/positions', { method: 'PUT', body: JSON.stringify(positions) });
+}
+export async function getGraphRenderSettings(
+	signal?: AbortSignal
+): Promise<GraphRenderSettings | null> {
+	return (await request('/api/graph/render-settings', { signal })).json();
+}
+export async function putGraphRenderSettings(settings: GraphRenderSettings): Promise<void> {
+	await request('/api/graph/render-settings', { method: 'PUT', body: JSON.stringify(settings) });
+}
+export async function getGraphCosts(signal?: AbortSignal): Promise<GraphCostSummary> {
+	return (await request('/api/graph/costs', { signal })).json();
+}
+export async function getExtractionStatus(signal?: AbortSignal): Promise<RunningExtraction[]> {
+	return (await (await request('/api/graph/status', { signal })).json()).runs;
+}
+/** Imports one notes file; `path` is its folder-relative name, the identity of its source. */
+export async function importNotes(file: File, path: string): Promise<ImportResult> {
+	const form = new FormData();
+	form.append('files', file);
+	form.append('paths', path);
+	return (await (await request('/api/graph/import', { method: 'POST', body: form })).json())
+		.results[0];
 }

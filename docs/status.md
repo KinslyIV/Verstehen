@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T2 review fixes).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T3 graph page).
 
 ## M9 progress
 
@@ -38,6 +38,12 @@ Inspected `screenshot.png` and retained `trace.zip` under `app/verify-output/` f
 `session-rename-delete.flow.ts-session-rename-delete`,
 `t2-rerun/teaching-handoff.flow.ts-teaching-handoff-dark`, and
 `t2-question-final/question-ask.flow.ts-question-ask`.
+
+T3 graph page is implemented on `m9-plan`: the **Knowledge graph** sidebar entry and `/graph` route (right panel hidden there); the TypeScript port of LH's canvas renderer, layout (d3-force, with the page-side settle and positions save), search, render settings panel, cost pill, pipeline pills, notes import queue, detail card, and the empty and rendering-off summary views, all in `app/src/lib/graph/`. The chains button opens a placeholder dialog and Start session waits for T4's picks. Nine T3 decisions are recorded for user review. `d3-force`, `d3-selection`, and `d3-zoom` are pinned in `package.json`.
+
+Verification: Vitest ports of LH's pure-helper tests (canvas, layout, render settings, import queue) plus settle, search, card placement, and costs. Verify flows `graph-extraction`, `graph-canvas-dark`, `graph-canvas-light`, `graph-search-settings`, `graph-import`, and `graph-rendering-off` passed; screenshots inspected under `app/verify-output/`.
+
+Next (T4): chains table, picks and Start session, delete dialogs and the node context menu, coverage ring and Extract now, Jobs-tab extraction rows, Settings → Graph.
 
 Next: orchestrator review of T2, then T3 graph page and T4 session/table surfaces. The existing
 session DELETE default remains preserve-graph until T4 sends its explicit selection. The task

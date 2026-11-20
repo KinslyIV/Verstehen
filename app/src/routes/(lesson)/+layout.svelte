@@ -2,7 +2,8 @@
 	import SessionList from '#lib/components/session-list.svelte';
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
-	import { PanelRight, Plus, Settings } from '@lucide/svelte';
+	import { page } from '$app/state';
+	import { PanelRight, Plus, Settings, Waypoints } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
 	import * as Resizable from '#lib/components/ui/resizable/index.js';
@@ -28,6 +29,7 @@
 	];
 	let activeTab = $state('plan');
 	let watched = $state.raw<SessionController>();
+	const onGraph = $derived(page.route.id === '/(lesson)/graph');
 	const plan = $derived(watched?.plan);
 	const statuses = $derived(
 		plan && watched ? derivePlanStatuses(plan, watched.entries) : undefined
@@ -83,6 +85,14 @@
 			<Button href={resolve('/(lesson)/session/new')} variant="outline" class="justify-start gap-2">
 				<Plus class="size-4" /> New session
 			</Button>
+			<Button
+				href={resolve('/(lesson)/graph')}
+				variant="ghost"
+				class="justify-start gap-2 text-muted-foreground"
+				aria-current={onGraph ? 'page' : undefined}
+			>
+				<Waypoints class="size-4" /> Knowledge graph
+			</Button>
 		</Sidebar.Header>
 		<Sidebar.Content class="gap-1 p-3">
 			<SessionList />
@@ -100,15 +110,15 @@
 	<main class="flex min-w-0 flex-1 flex-col">
 		<header class="flex h-14 shrink-0 items-center justify-between border-b px-4">
 			<Sidebar.Trigger />
-			<Button
-				variant="ghost"
-				size="icon"
-				aria-label="Toggle right panel"
-				aria-expanded={panelOpen}
-				onclick={togglePanel}
-			>
-				<PanelRight class="size-4" />
-			</Button>
+			{#if !onGraph}<Button
+					variant="ghost"
+					size="icon"
+					aria-label="Toggle right panel"
+					aria-expanded={panelOpen}
+					onclick={togglePanel}
+				>
+					<PanelRight class="size-4" />
+				</Button>{/if}
 		</header>
 
 		<div class="min-h-0 flex-1">
@@ -116,7 +126,7 @@
 				<Resizable.Pane id="lesson" order={1} defaultSize={75} minSize={60}>
 					{@render children()}
 				</Resizable.Pane>
-				{#if panelOpen}
+				{#if panelOpen && !onGraph}
 					<Resizable.Handle aria-label="Resize right panel" />
 					<Resizable.Pane id="right-panel" order={2} defaultSize={25} minSize={20} maxSize={40}>
 						<aside class="h-full bg-sidebar/30" aria-label="Plan and activity">

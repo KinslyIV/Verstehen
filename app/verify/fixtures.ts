@@ -101,10 +101,39 @@ async def main():
 asyncio.run(main())
 `;
 
+const seedGraphSource = `
+import asyncio
+import json
+import sys
+from pathlib import Path
+from verstehen.store.database import open_database
+from verstehen.store.graph import GraphChain, GraphNode, GraphStore, NotesSource, ProvenancePoint, timestamp
+
+async def main():
+    spec = json.loads(Path(sys.argv[2]).read_text())
+    async with open_database(Path(sys.argv[1]) / "verstehen.db") as database:
+        async with GraphStore(database).transaction() as ledger:
+            for node in spec["nodes"]:
+                ledger.nodes.append(GraphNode(id=node["id"], name=node["name"], statement=node["statement"], provenance=[ProvenancePoint(session_id=node["session"])]))
+            for chain in spec["chains"]:
+                ledger.chains.append(GraphChain(id=chain["id"], premises=chain["premises"], conclusion=chain["conclusion"], provenance=[ProvenancePoint(session_id=chain["session"])]))
+            for source in spec.get("sources", []):
+                ledger.sources.append(NotesSource(id=source["id"], file_path=source["file_path"], imported_at=timestamp()))
+
+asyncio.run(main())
+`;
+
+export interface GraphSeed {
+	nodes: { id: string; name: string; statement: string; session: string }[];
+	chains: { id: string; premises: string[]; conclusion: string; session: string }[];
+	sources?: { id: string; file_path: string }[];
+}
+
 export const test = base.extend<{
 	script: string;
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
+	seedGraph: (seed: GraphSeed) => Promise<void>;
 	expectedStatuses: number[];
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
@@ -139,6 +168,17 @@ export const test = base.extend<{
 			await runFile(
 				resolve(appDirectory, '../backend/.venv/bin/python'),
 				['-c', appendEntries, dataDirectory, sessionId, file],
+				{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
+			);
+		});
+	},
+	seedGraph: async ({ dataDirectory }, use) => {
+		await use(async (seed) => {
+			const file = resolve(dataDirectory, 'seed-graph.json');
+			await writeFile(file, JSON.stringify(seed));
+			await runFile(
+				resolve(appDirectory, '../backend/.venv/bin/python'),
+				['-c', seedGraphSource, dataDirectory, file],
 				{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
 			);
 		});

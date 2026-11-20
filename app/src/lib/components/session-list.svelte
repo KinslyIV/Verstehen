@@ -51,6 +51,16 @@
 							);
 							return;
 						}
+						if (event.type === 'graph-changed') {
+							window.dispatchEvent(
+								new CustomEvent('verstehen:graph-changed', { detail: event.revision })
+							);
+							return;
+						}
+						if (event.type === 'extractions-changed') {
+							window.dispatchEvent(new CustomEvent('verstehen:extractions-changed'));
+							return;
+						}
 						if (event.type === 'side-chats-changed') {
 							window.dispatchEvent(
 								new CustomEvent('verstehen:side-chats-changed', { detail: event.session_id })
@@ -73,6 +83,8 @@
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 				window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: '' }));
 				window.dispatchEvent(new CustomEvent('verstehen:side-chats-changed', { detail: '' }));
+				window.dispatchEvent(new CustomEvent('verstehen:graph-changed'));
+				window.dispatchEvent(new CustomEvent('verstehen:extractions-changed'));
 			}
 		})();
 		const timer = setInterval(() => {
