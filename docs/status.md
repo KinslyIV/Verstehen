@@ -4,7 +4,7 @@
 
 ## Where we are
 
-**M1–M3 are merged into `main`.** The M3 laptop check found that Accounts
+**M1–M4 are merged into `main`.** The M3 laptop check found that Accounts
 could open before the desktop frontend had a sidecar connection. The startup fix makes early
 requests wait for the connection, clears failed lookups for retry, and displays Accounts errors.
 The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
@@ -265,7 +265,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. **M4:** merged into `main`; try a real lesson with questions on the laptop.
 3. **M5 teaching flow:** the plan ([M5 plan](plans/m5-teaching-flow.md), branch `m5-plan`) is
-   approved. T1 (backend) is in progress, then T2 (UI).
+   approved. T1 (backend) is on `m5-t1-teaching-flow` for review. T2 (UI) builds on T1.
 
 ## Open questions
 
@@ -303,5 +303,14 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   beside Submit, and restored Space activation for focused buttons outside the answer rows.
 - **M4 review:** complete; the orchestrator accepted T1, T2, and round 2. Final runs on round 2:
   `make check` (378 backend, 112 Vitest tests) and full `make verify` (45 cases) pass. Branch
-  `m4-plan` holds all of M4 and awaits the user's merge. Teach-phase reveal and reading thinking
+  `m4-plan` held the integrated work before it merged. Teach-phase reveal and reading thinking
   are scheduled for M5.
+
+## M5 progress
+
+- **T1 — backend teaching flow.** The probe assessment ends probing and the session starts the
+  teacher's planning turn. Saved entries determine phase, owed handoff, the current plan, and
+  node position. Teacher tools validate against the current plan. Session records and generated
+  API types support recovered handoffs, plan blocks, Claude prose delivery, and learner-file access.
+- **T2 — teaching UI.** Pending. Assessment cards, dividers, the plan diagram and tab, teach question
+  reveal, delivered prose, handoff recovery on open, and the file access editor are scoped there.

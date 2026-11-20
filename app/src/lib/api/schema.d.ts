@@ -460,6 +460,16 @@ export interface components {
 			/** Error */
 			error?: string | null;
 		};
+		/** FileAccessSettings */
+		FileAccessSettings: {
+			/**
+			 * Restricted
+			 * @default false
+			 */
+			restricted: boolean;
+			/** Folders */
+			folders?: string[];
+		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
 			/** Detail */
@@ -746,6 +756,7 @@ export interface components {
 			 * @enum {string}
 			 */
 			quizzing?: 'choice' | 'free';
+			file_access?: components['schemas']['FileAccessSettings'];
 		};
 		/** SignInStarted */
 		SignInStarted: {
@@ -863,7 +874,7 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question';
+			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question' | 'handoff';
 			/** Text */
 			text?: string | null;
 			/** Tool Call Id */

@@ -6,6 +6,7 @@ from collections.abc import AsyncIterable, AsyncIterator
 
 from pydantic_ai import Agent, CallDeferred, ModelRetry, RunContext, Tool
 from pydantic_ai.capabilities import AbstractCapability
+from pydantic_ai.capabilities.abstract import ValidatedToolArgs
 from pydantic_ai.exceptions import ToolFailed, UnexpectedModelBehavior
 from pydantic_ai.messages import (
     AgentStreamEvent,
@@ -22,6 +23,11 @@ from pydantic_ai.tools import (
     ToolReturn,
 )
 
+from verstehen.teaching.delivery import (
+    SEND_TO_USER_DELIVERY_RULE,
+    NarrationGuard,
+    send_to_user_tool,
+)
 from verstehen.teaching.questions.validation import (
     QUESTION_SCHEMAS,
     PlanNodeLookup,
@@ -154,22 +160,40 @@ class QuestionTools(AbstractCapability[None]):
     ) -> str | dict[str, object]:
         if tool_def.name not in self.names:
             return args
+        if tool_def.name not in ("quiz", "explain"):
+            self.validate_arguments(ctx, call, tool_def.name, args)
+        return {}
+
+    async def before_tool_execute(
+        self,
+        ctx: RunContext[None],
+        *,
+        call: ToolCallPart,
+        tool_def: ToolDefinition,
+        args: ValidatedToolArgs,
+    ) -> ValidatedToolArgs:
+        if tool_def.name in self.names and tool_def.name in ("quiz", "explain"):
+            self.validate_arguments(ctx, call, tool_def.name, call.args or {})
+        return args
+
+    def validate_arguments(
+        self, ctx: RunContext[None], call: ToolCallPart, name: str, args: object
+    ) -> None:
         response = ctx.messages[-1]
         assert isinstance(response, ModelResponse)
         if response.finish_reason == "length":
-            self.count_invalid_call(tool_def.name, truncated_call_text(tool_def.name))
-            return {}
+            self.count_invalid_call(name, truncated_call_text(name))
+            return
         try:
-            problems = validate_question(tool_def.name, args, self.plan_nodes)
+            problems = validate_question(name, args, self.plan_nodes)
         except QuestionStructureError as error:
-            self.count_invalid_call(tool_def.name, str(error))
+            self.count_invalid_call(name, str(error))
             raise ModelRetry(str(error)) from error
         if problems:
-            message = invalid_input_text(tool_def.name, problems)
-            self.count_invalid_call(tool_def.name, message)
+            message = invalid_input_text(name, problems)
+            self.count_invalid_call(name, message)
             self.problems[call.tool_call_id] = problems
             raise ModelRetry(message)
-        return {}
 
     def count_invalid_call(self, name: str, message: str) -> None:
         self.invalid_calls[name] += 1
@@ -232,8 +256,12 @@ def build_question_agent(
     settings: ModelSettings | None,
     names: tuple[str, ...],
     plan_nodes: PlanNodeLookup | None = None,
+    *,
+    extra_tools: tuple[Tool[None], ...] = (),
+    deliver_prose: bool = False,
+    guard_narration: bool = False,
 ) -> QuestionAgent:
-    tools = [
+    question_tools = [
         Tool.from_schema(
             defer_question,
             name,
@@ -243,6 +271,14 @@ def build_question_agent(
         )
         for name in names
     ]
+    tools = [*question_tools, *extra_tools]
+    capabilities: list[AbstractCapability[None]] = []
+    if deliver_prose:
+        tools.append(send_to_user_tool())
+        if guard_narration:
+            instructions += "\n\n---\n\n" + SEND_TO_USER_DELIVERY_RULE
+            capabilities.append(NarrationGuard(names))
+    capabilities.append(QuestionTools(names, plan_nodes))
     return Agent(
         model,
         instructions=instructions,
@@ -251,5 +287,5 @@ def build_question_agent(
         model_settings=settings,
         tools=tools,
         output_type=[str, DeferredToolRequests],
-        capabilities=[QuestionTools(names, plan_nodes)],
+        capabilities=capabilities,
     )

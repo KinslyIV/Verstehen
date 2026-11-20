@@ -20,6 +20,7 @@ from verstehen.store.entries import (
     AssistantEntry,
     EntriesStore,
     Entry,
+    MarkerEntry,
     TextPart,
     ThinkingPart,
     ToolCallPart,
@@ -29,6 +30,13 @@ from verstehen.store.entries import (
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.usage import UsageStore
+from verstehen.teaching.delivery import needs_send_to_user
+from verstehen.teaching.files.tools import file_tools
+from verstehen.teaching.handoff import HANDOFF_TEXT
+from verstehen.teaching.phases import handoff_owed, has_probe_done
+from verstehen.teaching.plan.history import current_plan, plan_blocks_for
+from verstehen.teaching.plan.tool import plan_tool
+from verstehen.teaching.plan.tree import PlanTree
 from verstehen.teaching.prober import build_prober
 from verstehen.teaching.prompts import compose_instructions
 from verstehen.teaching.questions.inputs import (
@@ -44,12 +52,13 @@ from verstehen.teaching.questions.pending import (
     needs_continuation,
 )
 from verstehen.teaching.questions.tools import QUESTION_PLACEHOLDER, QuestionAgent
+from verstehen.teaching.teacher import build_teacher
 
 JSON = TypeAdapter(JsonValue)
 
 
 class TurnInput(BaseModel):
-    type: Literal["text", "retry", "answer", "continue", "retry-question"]
+    type: Literal["text", "retry", "answer", "continue", "retry-question", "handoff"]
     text: str | None = None
     tool_call_id: str | None = None
     answer: QuestionAnswer | None = None
@@ -60,7 +69,7 @@ class TurnInput(BaseModel):
 @dataclass
 class TurnState:
     """Carry one input through turn stages and its background run.
-    Entries, the claimed run, and the prober are filled as preparation advances.
+    Entries, the claimed run, and the agent are filled as preparation advances.
     """
 
     session_id: str
@@ -69,8 +78,13 @@ class TurnState:
     entries: list[Entry]
     resolved: ResolvedModel | None = None
     run: TurnRun | None = None
-    prober: QuestionAgent | None = None
+    agent: QuestionAgent | None = None
+    response: AssistantEntry | None = None
     saved_without_turn: bool = False
+
+    @property
+    def role(self) -> Literal["teacher", "prober"]:
+        return "teacher" if has_probe_done(self.entries) else "prober"
 
 
 @dataclass
@@ -117,6 +131,19 @@ class TurnService:
                 if not input.text or not input.text.strip():
                     raise ValueError("text input requires non-empty text")
                 return [UserEntry(text=input.text)]
+            case "handoff":
+                if not handoff_owed(state.entries):
+                    raise ValueError("No probe handoff is owed")
+                if has_unresolved_question(state.entries):
+                    raise ValueError("A question is still pending")
+                return [
+                    MarkerEntry(
+                        entry_id=f"steer_probe_{state.session_id}",
+                        marker_type="probe-handoff",
+                        content=HANDOFF_TEXT,
+                        details={"chatId": state.session_id},
+                    )
+                ]
             case "retry":
                 retry_drops(state.entries)
             case "answer":
@@ -168,7 +195,7 @@ class TurnService:
         if session is None:
             return Refused(404, {"error": "Unknown session"})
         try:
-            state.resolved = await self.resolver_service.resolve("prober", session)
+            state.resolved = await self.resolver_service.resolve(state.role, session)
         except ResolutionError as error:
             return Refused(503, error.envelope())
         if not await self.provider_policy.admit("foreground", state.resolved.account):
@@ -209,6 +236,7 @@ class TurnService:
                 return Refused(
                     409, {"error": "A turn is already running for this session"}
                 )
+            resolved_role = state.role
             state.entries = await self.entries_store.list(state.session_id)
             try:
                 appends = self.input_appends(state)
@@ -216,27 +244,71 @@ class TurnService:
                 return Refused(400, {"error": str(error)})
             if self.should_save_without_turn(state, appends):
                 return await self.save_without_turn(state, appends)
+            if state.role != resolved_role:
+                gated = await self.model_gate(state)
+                if isinstance(gated, Refused):
+                    return gated
             claimed = await self.claim(state)
             if isinstance(claimed, Refused):
                 return claimed
             return await self.write_ahead(state, appends)
 
-    async def build_prober(self, state: TurnState) -> Refused | Continue:
+    async def build_agent(self, state: TurnState) -> Refused | Continue:
         assert state.resolved is not None
+        role = state.role
         instructions = await compose_instructions(
-            self.settings_store, self.data_dir, "prober"
+            self.settings_store, self.data_dir, role
         )
         quizzing = (await self.settings_store.read()).quizzing
         model = UsageModel(
             state.resolved,
             self.usage_store,
             state.session_id,
-            "prober",
+            role,
             self.provider_events,
         )
-        state.prober = build_prober(
-            model, instructions, state.resolved.settings, quizzing
+        deliver = needs_send_to_user(state.resolved.kind, state.resolved.pick.model)
+        files = file_tools(
+            self.settings_store,
+            self.data_dir,
+            accepts_images=model.profile.get("supports_image_input", True),
         )
+        if role == "prober":
+
+            def question_pending() -> bool:
+                return has_unresolved_question(state.entries) or (
+                    state.response is not None
+                    and has_unresolved_question([state.response])
+                )
+
+            state.agent = build_prober(
+                model,
+                instructions,
+                state.resolved.settings,
+                quizzing,
+                question_pending=question_pending,
+                extra_tools=files,
+                deliver_prose=deliver,
+            )
+        else:
+            tree = current_plan(state.entries)
+
+            def remember_plan(next_tree: PlanTree) -> None:
+                nonlocal tree
+                tree = next_tree
+
+            def node_ids() -> list[str]:
+                return [node.id for node in tree.nodes] if tree else []
+
+            state.agent = build_teacher(
+                model,
+                instructions,
+                state.resolved.settings,
+                quizzing=quizzing,
+                plan_nodes=node_ids,
+                extra_tools=(*files, plan_tool(remember_plan)),
+                deliver_prose=deliver,
+            )
         return Continue(state)
 
     async def run_background(self, state: TurnState) -> Refused | Continue:
@@ -250,7 +322,7 @@ class TurnService:
             self.validate,
             self.model_gate,
             self.claim_and_write_ahead,
-            self.build_prober,
+            self.build_agent,
             self.run_background,
         ):
             try:
@@ -269,7 +341,7 @@ class TurnService:
         return Continue(state)
 
     async def run(self, state: TurnState) -> None:
-        assert state.run is not None and state.prober is not None
+        assert state.run is not None and state.agent is not None
         run = state.run
         run.started = True
         entries: list[Entry] = []
@@ -278,13 +350,16 @@ class TurnService:
         try:
             if run.aborted:
                 raise asyncio.CancelledError
-            history = to_llm_messages(state.entries, retry=state.input.type == "retry")
-            async with state.prober.iter(message_history=history) as agent_run:
+            history = to_llm_messages(
+                state.entries, retry=state.input.type == "retry", data_dir=self.data_dir
+            )
+            async with state.agent.iter(message_history=history) as agent_run:
                 async for node in agent_run:
                     if Agent.is_model_request_node(node):
                         if reply is not None:
                             self.end_response(run, entries, reply, results)
                         reply = self.start_response(run)
+                        state.response = reply
                         results = []
                         async with node.stream(agent_run.ctx) as stream:
                             async for event in stream:
@@ -391,9 +466,12 @@ class TurnService:
         self.notify_changed(state.session_id)
 
     async def settle(self, state: TurnState, entries: list[Entry]) -> None:
-        await self.entries_store.append(state.session_id, entries)
+        markers = plan_blocks_for(state.entries, entries)
+        await self.entries_store.append(state.session_id, [*entries, *markers])
         self.notify_changed(state.session_id)
         await self.finish(state)
+        if not self.runtimes.closing and handoff_owed([*state.entries, *entries]):
+            await self.start(state.session_id, TurnInput(type="handoff"))
 
     async def finish(self, state: TurnState, *, apply_dismissal: bool = True) -> None:
         assert state.run is not None
@@ -430,6 +508,12 @@ def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
 
 def saved_tool_result(part: ToolReturnPart) -> ToolResultEntry | None:
     text = part.model_response_str(wrap_if_error=False)
+    if (
+        isinstance(part.content, list)
+        and isinstance(part.metadata, dict)
+        and "image" in part.metadata
+    ):
+        text = next((value for value in part.content if isinstance(value, str)), text)
     if part.outcome == "success" and part.metadata == QUESTION_PLACEHOLDER:
         return None
     return ToolResultEntry(

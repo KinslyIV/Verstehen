@@ -1,6 +1,18 @@
+import re
+from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
+from aiosqlite import Error as DatabaseError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    JsonValue,
+    TypeAdapter,
+    ValidationError,
+    model_validator,
+)
+from pydantic_core import PydanticCustomError
 
 from verstehen.store.database import Database
 
@@ -30,11 +42,72 @@ class BackgroundSettings(BaseModel):
     claude_code: bool = True
 
 
+FILE_ACCESS_ERROR = "File-access configuration cannot be read reliably. Learner-file access is blocked. Repair File access in Settings → Agent → Tools."
+
+
+class FileAccessSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    restricted: bool = False
+    folders: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_policy(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            raise PydanticCustomError(
+                "file_access_policy", "fileAccess must be an object"
+            )
+        if value.keys() - {"restricted", "folders"}:
+            raise PydanticCustomError(
+                "file_access_policy", "fileAccess contains unsupported fields"
+            )
+        if "restricted" in value and not isinstance(value["restricted"], bool):
+            raise PydanticCustomError(
+                "file_access_policy", "fileAccess.restricted must be a boolean"
+            )
+        entries = value.get("folders", [])
+        if not isinstance(entries, list):
+            raise PydanticCustomError(
+                "file_access_policy", "fileAccess.folders must be an array"
+            )
+        folders: list[str] = []
+        for entry in entries:
+            folder = entry.strip() if isinstance(entry, str) else ""
+            if "\0" in folder or not (
+                folder == "~"
+                or folder.startswith(("~/", "/", "\\\\"))
+                or re.match(r"^[A-Za-z]:[\\/]", folder)
+            ):
+                raise PydanticCustomError(
+                    "file_access_policy",
+                    "fileAccess.folders entries must be absolute paths (or start with ~/), without NUL characters",
+                )
+            if not (
+                folder == "~" or folder.startswith("~/") or Path(folder).is_absolute()
+            ):
+                raise PydanticCustomError(
+                    "file_access_policy",
+                    "fileAccess.folders must be absolute on the server filesystem (or start with ~/)",
+                )
+            if folder not in folders:
+                folders.append(folder)
+        return {**value, "folders": folders}
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
     models: ModelSlots = Field(default_factory=ModelSlots)
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
     quizzing: Quizzing = Field(default_factory=lambda: "choice")
+    file_access: FileAccessSettings = Field(default_factory=FileAccessSettings)
+
+
+def decode_file_access(encoded: str | None) -> FileAccessSettings:
+    return (
+        FileAccessSettings()
+        if encoded is None
+        else FileAccessSettings.model_validate_json(encoded)
+    )
 
 
 class SettingsStore:
@@ -48,12 +121,28 @@ class SettingsStore:
     async def read(self) -> Settings:
         async with self.database.read() as connection:
             async with connection.execute("SELECT key, value FROM settings") as cursor:
-                values = {
-                    key: JSON.validate_json(value)
-                    for key, value in await cursor.fetchall()
-                    if key in Settings.model_fields
-                }
-        return Settings.model_validate(values)
+                rows = {key: value for key, value in await cursor.fetchall()}
+        values = {
+            key: JSON.validate_json(value)
+            for key, value in rows.items()
+            if key in Settings.model_fields and key != "file_access"
+        }
+        try:
+            policy = decode_file_access(rows.get("file_access"))
+        except ValidationError:
+            policy = FileAccessSettings(restricted=True)
+        return Settings.model_validate({**values, "file_access": policy})
+
+    async def read_file_access(self) -> FileAccessSettings:
+        try:
+            async with self.database.read() as connection:
+                async with connection.execute(
+                    "SELECT value FROM settings WHERE key = 'file_access'"
+                ) as cursor:
+                    row = await cursor.fetchone()
+            return decode_file_access(row[0] if row is not None else None)
+        except (DatabaseError, ValidationError) as error:
+            raise ValueError(FILE_ACCESS_ERROR) from error
 
     async def write(self, settings: Settings) -> None:
         async with self.database.transaction() as connection:

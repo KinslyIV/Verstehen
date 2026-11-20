@@ -935,10 +935,15 @@ def test_free_recall_arms_recall_instead_of_probe_on_next_turn(tmp_path: Path):
             settings.quizzing = "free"
             await service.settings_store.write(settings)
             await completed(await start(service, session))
-            assert tools == [
-                {"probe", "ask_user_question"},
-                {"recall", "ask_user_question"},
-            ]
+            always_on = {
+                "ask_user_question",
+                "probe_done",
+                "read",
+                "ls",
+                "find",
+                "grep",
+            }
+            assert tools == [always_on | {"probe"}, always_on | {"recall"}]
 
     asyncio.run(scenario())
 

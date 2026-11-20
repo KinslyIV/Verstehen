@@ -66,19 +66,19 @@ def has_unresolved_question(entries: Sequence[Entry]) -> bool:
     return bool(question_calls_of(entries))
 
 
-def tail_ignoring_side_questions(entries: Sequence[Entry]) -> Sequence[Entry]:
+def tail_ignoring_display_markers(entries: Sequence[Entry]) -> Sequence[Entry]:
     end = len(entries)
     while (
         end
         and isinstance(entry := entries[end - 1], MarkerEntry)
-        and entry.marker_type in ("side-question", "side-question-told")
+        and entry.marker_type in ("side-question", "side-question-told", "plan-block")
     ):
         end -= 1
     return entries[:end]
 
 
 def ends_in_dismissal(entries: Sequence[Entry]) -> bool:
-    tail = tail_ignoring_side_questions(entries)
+    tail = tail_ignoring_display_markers(entries)
     last = tail[-1] if tail else None
     return (
         isinstance(last, ToolResultEntry)
@@ -88,7 +88,7 @@ def ends_in_dismissal(entries: Sequence[Entry]) -> bool:
 
 
 def needs_continuation(entries: Sequence[Entry]) -> bool:
-    tail = tail_ignoring_side_questions(entries)
+    tail = tail_ignoring_display_markers(entries)
     if not tail or not isinstance(last := tail[-1], ToolResultEntry):
         return False
     if ends_in_dismissal(tail) or (
@@ -99,6 +99,8 @@ def needs_continuation(entries: Sequence[Entry]) -> bool:
         return False
     resolved: set[str] = set()
     for entry in reversed(tail):
+        if entry.kind == "marker" and entry.marker_type == "plan-block":
+            continue
         if entry.kind == "tool_result":
             resolved.add(entry.tool_call_id)
             continue

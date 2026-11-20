@@ -109,7 +109,15 @@ def create_app(settings: Settings) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, error: RequestValidationError):
-        return JSONResponse({"error": "Invalid request body"}, status_code=400)
+        message = next(
+            (
+                issue["msg"]
+                for issue in error.errors()
+                if issue["type"] == "file_access_policy"
+            ),
+            "Invalid request body",
+        )
+        return JSONResponse({"error": message}, status_code=400)
 
     @app.middleware("http")
     async def access(request: Request, call_next: RequestResponseEndpoint) -> Response:

@@ -115,6 +115,11 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
             assert {tool.name for tool in info.function_tools} == {
                 "probe",
                 "ask_user_question",
+                "probe_done",
+                "read",
+                "ls",
+                "find",
+                "grep",
             }
             seen.extend(await turn_service.entries_store.list(session_id))
             yield "A reply"
@@ -502,7 +507,7 @@ def test_preparation_failure_closes_attached_stream_and_releases_claim(
                 await proceed.wait()
                 raise error_type("Could not build teacher")
 
-            turn_service.build_prober = fail
+            turn_service.build_agent = fail
             request = asyncio.create_task(
                 turn_service.start(session_id, TurnInput(type="text", text="Hello"))
             )

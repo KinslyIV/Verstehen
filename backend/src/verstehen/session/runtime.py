@@ -116,12 +116,14 @@ class RuntimeRegistry:
     """
 
     def __init__(self):
+        self.closing = False
         self.runtimes: dict[str, SessionRuntime] = {}
 
     def get(self, session_id: str) -> SessionRuntime:
         return self.runtimes.setdefault(session_id, SessionRuntime())
 
     async def close(self) -> None:
+        self.closing = True
         tasks = []
         for runtime in self.runtimes.values():
             if runtime.run and runtime.run.task:

@@ -1,3 +1,4 @@
+from pydantic_ai import Tool
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 
@@ -13,6 +14,8 @@ def build_teacher(
     *,
     quizzing: Quizzing = "choice",
     plan_nodes: PlanNodeLookup | None = None,
+    extra_tools: tuple[Tool[None], ...] = (),
+    deliver_prose: bool = False,
 ) -> QuestionAgent:
     return build_question_agent(
         model,
@@ -20,4 +23,7 @@ def build_teacher(
         settings,
         ("explain" if quizzing == "free" else "quiz", "ask_user_question"),
         plan_nodes,
+        extra_tools=extra_tools,
+        deliver_prose=deliver_prose,
+        guard_narration=True,
     )

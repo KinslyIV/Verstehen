@@ -34,6 +34,7 @@ from verstehen.store.settings import ModelPick
 class ScriptToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str
+    id: str | None = None
     arguments: dict[str, JsonValue] | str
 
 
@@ -42,6 +43,7 @@ class ScriptReply(BaseModel):
     text: str | None = None
     title: str | None = None
     thinking: str | None = None
+    thinking_signature: str | None = None
     error: str | None = None
     delay_ms: int = 0
     stop_reason: Literal["length"] | None = None
@@ -91,13 +93,17 @@ def fake_model(script_path: Path) -> FunctionModel:
             raise RuntimeError(reply.error)
         parts: list[TextPart | ThinkingPart | ToolCallPart] = []
         if reply.thinking is not None:
-            parts.append(ThinkingPart(reply.thinking))
+            parts.append(
+                ThinkingPart(reply.thinking, signature=reply.thinking_signature)
+            )
         if reply.text is not None:
             parts.append(TextPart(reply.text))
         for index, call in enumerate(reply.tool_calls or []):
             parts.append(
                 ToolCallPart(
-                    call.name, call.arguments, f"call-{request_number}-{index}"
+                    call.name,
+                    call.arguments,
+                    call.id or f"call-{request_number}-{index}",
                 )
             )
         return ModelResponse(parts=parts, finish_reason=reply.stop_reason)
@@ -107,10 +113,13 @@ def fake_model(script_path: Path) -> FunctionModel:
     ) -> AsyncIterator[str | DeltaToolCalls | DeltaThinkingCalls]:
         if reply.thinking is not None:
             size = max(1, len(reply.thinking) // 3)
-            for start in range(0, len(reply.thinking), size):
+            for start in range(0, max(1, len(reply.thinking)), size):
                 await asyncio.sleep(reply.delay_ms / 1000)
                 yield {
-                    -1: DeltaThinkingPart(content=reply.thinking[start : start + size])
+                    -1: DeltaThinkingPart(
+                        content=reply.thinking[start : start + size],
+                        signature=reply.thinking_signature if start == 0 else None,
+                    )
                 }
         if reply.text is not None:
             size = max(1, len(reply.text) // 3)
@@ -126,7 +135,7 @@ def fake_model(script_path: Path) -> FunctionModel:
                     json_args=call.arguments
                     if isinstance(call.arguments, str)
                     else json.dumps(call.arguments),
-                    tool_call_id=f"call-{number}-{index}",
+                    tool_call_id=call.id or f"call-{number}-{index}",
                 )
             }
 
@@ -170,6 +179,15 @@ class FakeAccountAdapter:
             CatalogModel(
                 id="fake",
                 name="Scripted teacher",
+                accepts_images=True,
+                thinking_levels=["low", "medium", "high"],
+                default_thinking_level=default_thinking_level(
+                    ["low", "medium", "high"]
+                ),
+            ),
+            CatalogModel(
+                id="fake-claude",
+                name="Scripted Claude",
                 accepts_images=True,
                 thinking_levels=["low", "medium", "high"],
                 default_thinking_level=default_thinking_level(

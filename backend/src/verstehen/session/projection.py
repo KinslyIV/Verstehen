@@ -1,6 +1,8 @@
 from collections.abc import Sequence
+from pathlib import Path
 
 from pydantic_ai.messages import (
+    BinaryContent,
     ModelMessage,
     ModelRequest,
     ModelResponse,
@@ -11,14 +13,23 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from verstehen.store.entries import AssistantEntry, Entry, ToolResultEntry, UserEntry
+from verstehen.store.entries import (
+    AssistantEntry,
+    Entry,
+    MarkerEntry,
+    ToolResultEntry,
+    UserEntry,
+)
+from verstehen.teaching.files.read import load_attachment
 
 INTERRUPTED_TEXT = "The question was interrupted — the learner never answered; continue without holding a result for it."
 
 
 def failed_response_at_end(entries: Sequence[Entry]) -> AssistantEntry | None:
     for entry in reversed(entries):
-        if entry.kind == "tool_result":
+        if entry.kind == "tool_result" or (
+            entry.kind == "marker" and entry.marker_type == "plan-block"
+        ):
             continue
         if entry.kind == "assistant" and entry.stop_reason == "error":
             return entry
@@ -86,7 +97,9 @@ def assistant_response(entry: AssistantEntry) -> ModelResponse:
 
 
 def tool_returns(
-    response: ModelResponse, results: list[ToolResultEntry]
+    response: ModelResponse,
+    results: list[ToolResultEntry],
+    data_dir: Path | None = None,
 ) -> list[ToolReturnPart]:
     calls = {
         part.tool_call_id: part
@@ -97,10 +110,14 @@ def tool_returns(
     for result in results:
         if calls.pop(result.tool_call_id, None) is None:
             continue
+        content: str | list[str | BinaryContent] = result.text
+        if data_dir is not None and result.tool_name == "read":
+            if attachment := load_attachment(result.details, data_dir):
+                content = [result.text, attachment]
         returned.append(
             ToolReturnPart(
                 result.tool_name,
-                result.text,
+                content,
                 result.tool_call_id,
                 timestamp=result.created_at,
                 outcome="failed" if result.is_error else "success",
@@ -120,12 +137,16 @@ def tool_returns(
 
 
 def to_llm_messages(
-    entries: Sequence[Entry], *, retry: bool = False
+    entries: Sequence[Entry], *, retry: bool = False, data_dir: Path | None = None
 ) -> list[ModelMessage]:
     """Project saved responses with their adjacent result batches."""
     drops = retry_drops(entries) if retry else set()
     messages: list[ModelMessage] = []
-    pending = iter(entries)
+    pending = (
+        entry
+        for entry in entries
+        if entry.kind != "marker" or entry.marker_type != "plan-block"
+    )
     entry = next(pending, None)
     while entry is not None:
         if isinstance(entry, AssistantEntry):
@@ -142,13 +163,22 @@ def to_llm_messages(
                 continue
             response = assistant_response(assistant)
             messages.append(response)
-            if returned := tool_returns(response, results):
+            if returned := tool_returns(response, results, data_dir):
                 messages.append(ModelRequest(parts=returned))
             continue
-        if isinstance(entry, UserEntry):
+        if isinstance(entry, UserEntry) or (
+            isinstance(entry, MarkerEntry) and entry.marker_type == "probe-handoff"
+        ):
             messages.append(
                 ModelRequest(
-                    parts=[UserPromptPart(entry.text, timestamp=entry.created_at)]
+                    parts=[
+                        UserPromptPart(
+                            entry.text
+                            if isinstance(entry, UserEntry)
+                            else entry.content,
+                            timestamp=entry.created_at,
+                        )
+                    ]
                 )
             )
         elif not isinstance(entry, ToolResultEntry):
