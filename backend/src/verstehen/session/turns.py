@@ -547,7 +547,7 @@ def update_response(
                 )
             )
     reply.parts = parts
-    reply.provider = response.provider_name
+    reply.provider = model.provider
     reply.model = model.model
     reply.usage = response_usage(response)
     if response.finish_reason == "length":

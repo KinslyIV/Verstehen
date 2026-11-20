@@ -4,12 +4,17 @@
 
 ## Where we are
 
-- **Reasoning resend (branch `reasoning-resend`, awaiting review):** saved thinking keeps the reasoning
-  item id and `model` is the requested id. The projection resends thinking only to the same
-  provider and model; ChatGPT thinking without an id is dropped. The M6 output-token floor now
-  applies to same-model ChatGPT replies with signed thinking. The fake model's streamed thinking
-  cannot carry an id (`DeltaThinkingPart` has no id field), so the end-to-end proof is
-  `test_chatgpt_reasoning_is_saved_and_resent_as_a_reasoning_item`. See [plan](plans/reasoning-resend.md).
+- **Reasoning resend (branch `reasoning-resend`, reviewed; live ChatGPT check pending):** saved
+  thinking keeps the reasoning item id; an entry's `provider` and `model` are the requested
+  model's. The projection resends thinking only to the same provider and model; ChatGPT thinking
+  without an id is dropped. The M6 output-token floor applies to same-model ChatGPT replies with
+  signed thinking. Proof: `test_chatgpt_reasoning_is_saved_and_resent_as_a_reasoning_item` (mock
+  transport) and `test_signed_thinking_is_resent_to_the_same_model_next_turn` (turn level). Review:
+  `make check` passed (472 backend, 144 frontend); full `make verify --workers=1` 57/58, the
+  failure `compaction-gate-reload` (5 s wait after compacting) under load average 8 on 4 cores; it
+  then passed alone and 12/12 serial repeats of the compaction flows. `make verify-live` passed.
+  The live ChatGPT check is `test_chatgpt_encrypted_reasoning_is_resent_and_accepted` (`-m live`,
+  browser sign-in). See [plan](plans/reasoning-resend.md).
 
 **M1–M4 are merged into `main`.** The M3 laptop check found that Accounts
 could open before the desktop frontend had a sidecar connection. The startup fix makes early
