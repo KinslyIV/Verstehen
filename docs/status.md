@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20.
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 planning).
 
 ## Where we are
 
@@ -278,6 +278,10 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 3. **M5 teaching flow:** implemented and reviewed ([M5 plan](plans/m5-teaching-flow.md)). Merge
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
+5. **M7 background jobs and workers:** planned on `m7-plan`
+   ([M7 plan](plans/m7-jobs-and-workers.md), approved 2026-11-20). Group 1
+   (T1 workers, T2 Settings → Tools, T3 learner images) starts off `main`; group 2 (T4 jobs,
+   delivery, wakes; T5 jobs UI) starts after M6 merges, rebased on `main`.
 
 4. **M6 compaction:** T1 backend and T2 UI done on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
    The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
