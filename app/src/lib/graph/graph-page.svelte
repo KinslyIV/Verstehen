@@ -73,7 +73,7 @@
 				<h1 class="text-lg font-medium text-foreground">Knowledge graph</h1>
 				<div class="max-w-sm text-sm">
 					<p>Start a session to begin learning.</p>
-					<p class="mt-1 text-xs">Attach your material with the paperclip or drag and drop.</p>
+					<p class="mt-1 text-xs">Add your notes with the Extract files button.</p>
 				</div>
 			</div>
 		</div>

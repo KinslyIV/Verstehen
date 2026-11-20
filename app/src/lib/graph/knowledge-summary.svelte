@@ -28,7 +28,7 @@
 	{#if empty}
 		<div class="pt-2 text-xs text-muted-foreground/70">
 			<p>Start a session to begin learning.</p>
-			<p class="mt-1">Attach your material with the paperclip or drag and drop.</p>
+			<p class="mt-1">Add your notes with the Extract files button.</p>
 		</div>
 	{/if}
 </div>
