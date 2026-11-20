@@ -11,7 +11,12 @@ from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolvedModel, ResolverService
 from verstehen.providers.usage import usage_record
-from verstehen.session.compaction import (
+from verstehen.session.events import Notification, Notifications
+from verstehen.session.runtime import RuntimeRegistry, SessionRuntime
+from verstehen.store.entries import EntriesStore, Entry
+from verstehen.store.sessions import SessionsStore
+from verstehen.store.settings import SettingsStore
+from verstehen.teaching.compaction import (
     SUMMARIZER_SYSTEM_PROMPT,
     active_compaction,
     compaction_cut_index,
@@ -23,11 +28,6 @@ from verstehen.session.compaction import (
     projected_context_tokens,
     serialize_for_summary,
 )
-from verstehen.session.events import Notification, Notifications
-from verstehen.session.runtime import RuntimeRegistry, SessionRuntime
-from verstehen.store.entries import EntriesStore, Entry
-from verstehen.store.sessions import SessionsStore
-from verstehen.store.settings import SettingsStore
 from verstehen.teaching.prompts import compose_instructions
 
 logger = logging.getLogger(__name__)

@@ -29,21 +29,6 @@ from backend.tests.test_turns import (
 )
 from verstehen.api.sessions import notification_frames
 from verstehen.providers.accounts import Account
-from verstehen.session.compaction import (
-    COMPACTED_HISTORY_HEADER,
-    SUMMARIZER_SYSTEM_PROMPT,
-    active_compaction,
-    compaction_cut_index,
-    compaction_prompt,
-    effective_limit,
-    estimate_context_tokens,
-    estimate_entry_tokens,
-    last_usage_index,
-    new_compaction_marker,
-    plan_tree_text,
-    projected_context_tokens,
-    serialize_for_summary,
-)
 from verstehen.session.events import Notification
 from verstehen.session.projection import (
     failed_response_at_end,
@@ -64,6 +49,21 @@ from verstehen.store.entries import (
 )
 from verstehen.store.entries import (
     TextPart as SavedText,
+)
+from verstehen.teaching.compaction import (
+    COMPACTED_HISTORY_HEADER,
+    SUMMARIZER_SYSTEM_PROMPT,
+    active_compaction,
+    compaction_cut_index,
+    compaction_prompt,
+    effective_limit,
+    estimate_context_tokens,
+    estimate_entry_tokens,
+    last_usage_index,
+    new_compaction_marker,
+    plan_tree_text,
+    projected_context_tokens,
+    serialize_for_summary,
 )
 from verstehen.teaching.questions.pending import (
     dangling_question_of,

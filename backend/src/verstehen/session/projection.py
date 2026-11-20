@@ -13,7 +13,6 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from verstehen.session.compaction import compacted_history, has_model_content
 from verstehen.store.entries import (
     AssistantEntry,
     Entry,
@@ -21,6 +20,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.teaching.compaction import compacted_history, has_model_content
 from verstehen.teaching.files.read import load_attachment
 
 INTERRUPTED_TEXT = "The question was interrupted — the learner never answered; continue without holding a result for it."

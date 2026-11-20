@@ -27,7 +27,6 @@ from verstehen.providers.fake import FakeAccountAdapter, fake_model, script_role
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
 from verstehen.session.cause import is_background_cause
-from verstehen.session.compaction import compaction_cut_index, serialize_for_summary
 from verstehen.session.events import Notifications
 from verstehen.session.jobs import JobService
 from verstehen.session.projection import to_llm_messages
@@ -52,6 +51,7 @@ from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import Settings, SettingsStore, ToolSettings
 from verstehen.store.usage import UsageStore
+from verstehen.teaching.compaction import compaction_cut_index, serialize_for_summary
 from verstehen.teaching.job_tools import ACKNOWLEDGEMENTS, JobDispatcher, job_tools
 
 BRIEF = (

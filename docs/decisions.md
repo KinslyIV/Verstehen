@@ -557,3 +557,26 @@ Probe, plan, teach, as in LH.
 - **Orchestrator decision, for user review:** browser download progress exposes the bundled
   driver's latest output line (bounded to 500 characters) and its percentage when available,
   rather than inventing byte counts the driver does not report.
+
+### Orchestrator decision, for user review (M8 T1): side chat dependency direction
+
+SideChatService stays in `sidechat/service.py`, with injected `before_ask(session_id)`
+(compaction wait), `announce(session_id)`, and the session lock. Its refusal type lives in
+`sidechat/`; API routes map it to HTTP. SessionService receives SideChatService and stops
+its live answers when deleting a session. This keeps dependencies within the declared layers.
+
+### Orchestrator decision, for user review (M8 T1): shared compaction functions
+
+Move the pure `session/compaction.py` module unchanged to `teaching/compaction.py`, updating
+all imports and documentation without a compatibility shim. Side chat reuses its cut lookup,
+UTF-16 counting, and reserve constant. Duplicating those functions would violate the single
+pattern rule; importing them from session would violate package order.
+
+### Orchestrator decision, for user review (M8 T1): backend side chat shapes
+
+Use snake_case API fields. SideAnchor contains `entry_id` and server-filled `block_text`;
+client text is ignored and part/block coordinates are omitted. Session detail's `side_segments`
+contains `by_entry`, `entry_points`, and `current`. Each boundary is the last visible assistant
+entry in its segment (prose or a displayable question), including boundaries within one run.
+Threads contain `id`, `anchor`, `created_at`, and `messages`; exchange fields use the same
+snake_case convention. Sources with LearnHarness's `c_` prefix are excluded from entry points.

@@ -20,7 +20,7 @@ is updated in the same commit.
 | Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`TurnService.model_gate`, `Refused` / `Continue`) |
 | Service/store naming | `SessionService` / `TurnService`; `session_service` / `turn_service`; `sessions_store` / `entries_store` / `settings_store` (see [`app.py`](../backend/src/verstehen/app.py)) |
 | Session runtime and replay | [`session/runtime.py`](../backend/src/verstehen/session/runtime.py) (`SessionRuntime`, `TurnRun`) |
-| Session compaction | [`CompactionService`](../backend/src/verstehen/session/compactions.py) reserves one runtime task under the session lock. [`compaction.py`](../backend/src/verstehen/session/compaction.py) owns cut and summary logic. [`EntriesStore.append_compaction`](../backend/src/verstehen/store/entries.py) saves the checkpoint and usage together. |
+| Session compaction | [`CompactionService`](../backend/src/verstehen/session/compactions.py) reserves one runtime task under the session lock. [`compaction.py`](../backend/src/verstehen/teaching/compaction.py) owns cut and summary logic. [`EntriesStore.append_compaction`](../backend/src/verstehen/store/entries.py) saves the checkpoint and usage together. |
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
 | API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `SessionService` in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |

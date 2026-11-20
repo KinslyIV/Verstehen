@@ -64,7 +64,7 @@ T1 (backend), then T2 (UI) on T1, both in this branch's worktree, run one after 
 
 ### T1. Compaction (backend)
 
-- **Pure logic** (`session/compaction.py`, LH `src/core/compaction.ts`), with LH's constants:
+- **Pure logic** (`teaching/compaction.py`, LH `src/core/compaction.ts`), with LH's constants:
   `KEEP_RECENT_TOKENS = 20_000`, `COMPACTION_RESERVE_TOKENS = 16_384`,
   `DEFAULT_COMPACTION_LIMIT = 150_000`, `COMPACTION_LIMIT_FLOOR = 32_000`,
   `SUMMARY_TOOL_RESULT_TRUNCATE = 2_000`.
