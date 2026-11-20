@@ -282,6 +282,9 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    ([M7 plan](plans/m7-jobs-and-workers.md), approved 2026-11-20). Group 1
    (T1 workers, T2 Settings → Tools, T3 learner images) starts off `main`; group 2 (T4 jobs,
    delivery, wakes; T5 jobs UI) starts after M6 merges, rebased on `main`.
+   Group 1 is implemented and reviewed: `m7-t1-workers` (`e14681b`), `m7-t2-tools-settings`
+   (`1e782e7`), `m7-t3-images` (`f25a7ee`); each passed full `make check`, and T2/T3 their verify
+   flows. Full `make verify` and `make verify-live` run when they are merged.
 
 4. **M6 compaction:** T1 backend and T2 UI done on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
    The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
