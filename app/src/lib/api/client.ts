@@ -267,3 +267,28 @@ export async function getImage(
 		await request(`/api/images/${encodeURIComponent(sha256)}.${extension}`, { signal })
 	).blob();
 }
+
+export type JobRecord = components['schemas']['JobRecord'];
+export type JobList = components['schemas']['JobList'];
+export async function getJobs(session: string, signal?: AbortSignal): Promise<JobList> {
+	return (await request(`/api/jobs?session=${encodeURIComponent(session)}`, { signal })).json();
+}
+export async function abortJob(id: string): Promise<void> {
+	await request(`/api/jobs/${encodeURIComponent(id)}/abort`, { method: 'POST' });
+}
+export async function steerSession(id: string, steerId: string, text: string): Promise<void> {
+	await request(`${sessionPath(id)}/steer`, {
+		method: 'POST',
+		body: JSON.stringify({ id: steerId, text })
+	});
+}
+export async function setArtifactView(
+	id: string,
+	entryId: string,
+	inverted: boolean
+): Promise<void> {
+	await request(`${sessionPath(id)}/artifact-views/${encodeURIComponent(entryId)}`, {
+		method: 'PUT',
+		body: JSON.stringify({ inverted })
+	});
+}

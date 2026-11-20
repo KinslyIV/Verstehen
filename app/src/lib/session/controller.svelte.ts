@@ -5,6 +5,8 @@ import {
 	ApiError,
 	getSession,
 	postInput,
+	setArtifactView,
+	steerSession,
 	streamTurn,
 	type Entry,
 	type QuestionAnswer,
@@ -20,6 +22,7 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
 import { phaseTimeline } from '#lib/teaching/phases.js';
 import { planFromResult, type Plan } from '#lib/teaching/plan.js';
@@ -57,6 +60,12 @@ export class SessionController {
 	retryBlocked = $derived(
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
 	);
+	readonly jobs: JobsFeed;
+	private steers = $state<{ id: string; text: string }[]>([]);
+	/** Steers sent mid-turn that have not yet landed in the thread. */
+	queuedSteers = $derived(
+		this.steers.filter((steer) => !this.entries.some((entry) => entry.entry_id === steer.id))
+	);
 	private saved: Entry[] = [];
 	private live: Entry[] = [];
 	private lifetime = new AbortController();
@@ -65,7 +74,9 @@ export class SessionController {
 		readonly id: string,
 		private pollMs = 500,
 		private waitMaxMs = 30_000
-	) {}
+	) {
+		this.jobs = new JobsFeed(id, () => void this.synchronize());
+	}
 
 	adoptRecord(record: SessionDetail): void {
 		const ids = new SvelteSet(record.entries.map((entry) => entry.entry_id));
@@ -121,6 +132,7 @@ export class SessionController {
 	async synchronize(): Promise<void> {
 		if (this.loading || this.lifetime.signal.aborted) return;
 		try {
+			void this.jobs.refresh();
 			const record = await this.refresh();
 			if (this.busy) return;
 			this.error = record.turn_error ?? this.savedFailure(record);
@@ -170,6 +182,7 @@ export class SessionController {
 
 	private apply(event: TurnEvent): void {
 		if (event.type === 'error') this.error = event.error_text ?? 'An error occurred.';
+		if (event.type === 'context_update') this.adoptContext(event.entries ?? []);
 		if (!event.message) return;
 		const message = event.message;
 		this.streamingEntryId = event.type === 'message_end' ? undefined : message.entry_id;
@@ -182,6 +195,15 @@ export class SessionController {
 		this.live.push(...results);
 		this.entries = [...this.saved, ...this.live];
 		if (results.length) this.updatePlan(true);
+	}
+
+	private adoptContext(entries: Entry[]): void {
+		const added = entries.filter(
+			(entry) => ![...this.saved, ...this.live].some((known) => known.entry_id === entry.entry_id)
+		);
+		if (!added.length) return;
+		this.live = [...this.live, ...added];
+		this.entries = [...this.saved, ...this.live];
 	}
 
 	async attach(): Promise<void> {
@@ -218,9 +240,35 @@ export class SessionController {
 	}
 
 	async send(type: 'text' | 'retry' = 'text'): Promise<void> {
-		if (this.busy || this.loading || this.compacting || (type === 'text' && !this.draft.trim()))
+		if (this.loading || this.compacting || (type === 'text' && !this.draft.trim())) return;
+		if (this.busy) {
+			if (type === 'text') await this.steer();
 			return;
+		}
 		await this.submit(type === 'text' ? { type, text: this.draft } : { type });
+	}
+
+	/** Steer the running turn; a refused steer (the turn just ended) is sent as a normal message. */
+	private async steer(): Promise<void> {
+		const text = this.draft;
+		const steer = { id: `steer_${crypto.randomUUID()}`, text };
+		this.draft = '';
+		this.steers.push(steer);
+		try {
+			await steerSession(this.id, steer.id, text);
+		} catch (error) {
+			this.steers = this.steers.filter((queued) => queued.id !== steer.id);
+			this.draft = text;
+			if (error instanceof ApiError && error.status === 409)
+				await this.submit({ type: 'text', text });
+			else this.fail(error);
+		}
+	}
+
+	setInverted(entryId: string, inverted: boolean): void {
+		if (this.record)
+			this.record.artifact_views = { ...this.record.artifact_views, [entryId]: inverted };
+		void setArtifactView(this.id, entryId, inverted).catch(() => {});
 	}
 
 	getQuestionDraft(key: string): QuestionDraft | undefined {
@@ -353,6 +401,7 @@ export class SessionController {
 		}
 	}
 	dispose(): void {
+		this.jobs.dispose();
 		this.lifetime.abort();
 	}
 }

@@ -1,4 +1,5 @@
 import type { Entry, ToolResult } from '#lib/api/client.js';
+import { isJobKind, type JobKind } from '#lib/jobs/jobs.js';
 import { sendToUserText } from './delivery.js';
 
 type Assistant = Extract<Entry, { kind: 'assistant' }>;
@@ -6,7 +7,8 @@ type ResponseItem =
 	| { kind: 'text'; text: string }
 	| { kind: 'probe'; args: unknown; result?: ToolResult }
 	| { kind: 'tool-retry' }
-	| { kind: 'image'; result?: ToolResult };
+	| { kind: 'image'; result?: ToolResult }
+	| { kind: 'job'; jobKind: JobKind; toolCallId: string };
 
 export function responseProse(
 	entry: Assistant,
@@ -31,6 +33,9 @@ export function responseProse(
 		} else if (part.tool_name === 'show_image') {
 			flushText();
 			items.push({ kind: 'image', result });
+		} else if (result && isJobKind(part.tool_name)) {
+			flushText();
+			items.push({ kind: 'job', jobKind: part.tool_name, toolCallId: part.tool_call_id });
 		} else if (part.tool_name === 'probe_done') {
 			flushText();
 			items.push({ kind: 'probe', args: part.arguments, result });

@@ -20,3 +20,17 @@ test('running_turn_exposes_stop_instead_of_send', async () => {
 		.element(screen.getByRole('button', { name: 'Send', exact: true }))
 		.not.toBeInTheDocument();
 });
+
+test('running_turn_sends_typed_text_with_enter_or_send_and_empty_enter_stops', async () => {
+	const send = vi.fn();
+	const stop = vi.fn();
+	const screen = await render(Composer, { busy: true, onsend: send, onstop: stop });
+	await screen.getByRole('textbox').fill('Use a bike');
+	await userEvent.keyboard('{Enter}');
+	expect(send).toHaveBeenCalledOnce();
+	await screen.getByRole('button', { name: 'Send', exact: true }).click();
+	expect(send).toHaveBeenCalledTimes(2);
+	await screen.getByRole('textbox').fill('');
+	await userEvent.keyboard('{Enter}');
+	expect(stop).toHaveBeenCalledOnce();
+});

@@ -16,6 +16,8 @@
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
+	import DispatchCard from '#lib/jobs/dispatch-card.svelte';
+	import MarkerCard from '#lib/jobs/marker-card.svelte';
 	import ImageCard from '#lib/teaching/image-card.svelte';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
@@ -40,6 +42,7 @@
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
+	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion>();
@@ -113,9 +116,16 @@
 		const sync = (event: Event) => {
 			if ((event as CustomEvent<string>).detail === id) void controller.synchronize();
 		};
+		const syncJobs = (event: Event) => {
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') controller.jobs.schedule();
+		};
 		window.addEventListener('verstehen:sessions-changed', sync);
+		window.addEventListener('verstehen:jobs-changed', syncJobs);
+		void controller.jobs.refresh();
 		return () => {
 			window.removeEventListener('verstehen:sessions-changed', sync);
+			window.removeEventListener('verstehen:jobs-changed', syncJobs);
 			unwatchPlan?.();
 			controller.dispose();
 		};
@@ -203,6 +213,12 @@
 											/>
 										{:else if item.kind === 'image'}
 											<ImageCard result={item.result} />
+										{:else if item.kind === 'job'}
+											<DispatchCard
+												kind={item.jobKind}
+												job={jobsByCall.get(item.toolCallId)}
+												now={controller.jobs.now}
+											/>
 										{:else if item.kind === 'probe'}
 											<ProbeAssessment args={item.args} result={item.result} />
 										{:else}
@@ -237,6 +253,18 @@
 								>
 									<PlanDiagram plan={block} />
 								</button>
+							</Scroller.Item>
+						{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
+							<Scroller.Item>
+								<MarkerCard
+									{entry}
+									inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
+									oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
+									onsenderror={(text) => {
+										controller.draft = text;
+										void controller.send();
+									}}
+								/>
 							</Scroller.Item>
 						{:else if card}
 							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
@@ -331,6 +359,8 @@
 			busy={controller.busy}
 			compacting={controller.compacting}
 			disabled={controller.loading}
+			placeholder="Ask, answer, or steer the lesson…"
+			queuedSteers={controller.queuedSteers}
 			onsend={() => void controller.send()}
 			onstop={() => void controller.stop()}
 			{models}

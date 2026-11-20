@@ -221,8 +221,8 @@ def fake_model(script_path: Path) -> FunctionModel:
 
 
 class FakeAccountAdapter:
-    """Expose scripted lesson replies and independent title responses as one account.
-    App wiring only installs this adapter when a fake-model script was supplied at launch.
+    """Expose one test account with scripted lessons, workers, and independent titles.
+    Installed only when a fake-model script was supplied at launch.
     """
 
     def __init__(self, script_path: Path):
@@ -271,9 +271,15 @@ class FakeAccountAdapter:
                         raise RuntimeError("No title reply scripted")
                     return reply.title
 
+                workers = fake_model(self.script_path)
+
                 async def title(
                     messages: list[ModelMessage], info: AgentInfo
                 ) -> ModelResponse:
+                    if script_role.get() != "teacher":
+                        return await workers.request(
+                            messages, info.model_settings, info.model_request_parameters
+                        )
                     return ModelResponse(parts=[TextPart(await title_text())])
 
                 async def title_stream(

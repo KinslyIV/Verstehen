@@ -123,4 +123,16 @@ Results reach the teacher injected before the next model call, by an idle wake t
 answer turn after a question. `GET /api/jobs?session=`, `POST /api/jobs/{id}/abort`,
 `POST /api/sessions/{id}/steer`, `PUT /api/sessions/{id}/artifact-views/{entry_id}`, and
 `jobs-changed` on `/api/events`. Delete is refused with `jobs_running` while a job computes.
-Verify offline with `backend/tests/test_jobs.py`; fake-model UI flows come with T5.
+Verify offline with `backend/tests/test_jobs.py`; the T5 flows below cover the UI integration.
+
+## Background jobs UI (M7 T5)
+
+| Feature | How to reach it | Verify flow | Offline coverage |
+|---|---|---|---|
+| Job dispatch and live feed | Ask a lesson to research, read a PDF, draw a figure, or build a demo. Dispatch cards follow the session job feed by tool call id; results arrive as cards. | `job-research-live` (dark/light) | `session-thread.svelte.test.ts`: feed matching by tool call id. `cards.svelte.test.ts`: live activity, settled/error states, and debounced feed. `test_jobs.py`: streamed acknowledgement. |
+| Job result cards | Research/PDF completion lines expand to briefs with sources/pages. Figures and demos have persistent invert switches; photo annotations hide inversion. Demos run in a sandboxed iframe with resize/error messages and Send to teacher. Figures and demos can be downloaded. | `job-demo`, `job-visual-annotate`, `job-abort` (failure delivery) | `cards.svelte.test.ts`: every marker kind, failures, and stable photo loading; `jobs.test.ts`: bridge and SVG/image helpers; controller view persistence. |
+| Jobs tab and End | Open the right panel → Jobs for computing jobs, elapsed, cost label, inline detail, total, and End. | `job-research-live`, `job-abort` | `cards.svelte.test.ts`: End pending/success/404/409/failure states. |
+| Automatic delivery | A finished result wakes an idle lesson; behind a question it waits for the answer turn. | `job-idle-wake`, `job-behind-question` | `test_jobs.py`: delivery/wake/question races. |
+| Composer steering | While a turn runs, type and press Enter or Send; queued text sits above the composer until it lands in the same run. | `composer-steer` | Composer/controller tests: Enter/Send/Stop, steer versus send, raced 409 fallback, context-update landing. |
+| Job recovery | Reopen/reload a session after a restart: fetch jobs to deliver pending results and rerun interrupted work. | `job-recovery-reload` (actual sidecar restart with seeded pending delivery and an orphaned worker) | `test_jobs.py`: recovery sweep and delivery idempotence. |
+| Delete with running jobs | Session context menu → Delete; running work gives the server error and Try again. | `delete-jobs-running` | `test_jobs.py`: refusal and cleanup. |

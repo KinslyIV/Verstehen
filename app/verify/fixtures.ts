@@ -106,10 +106,23 @@ export const test = base.extend<{
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	expectedStatuses: number[];
+	sidecarControl: { restart: () => Promise<void> };
+	restartSidecar: () => Promise<void>;
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
+	sidecarControl: async ({ dataDirectory }, use) => {
+		await use({
+			restart: async () => {
+				throw new Error(`Sidecar is not started for ${dataDirectory}`);
+			}
+		});
+	},
+	restartSidecar: async ({ baseURL, sidecarControl }, use) => {
+		if (!baseURL) throw new Error('Preview is not started');
+		await use(() => sidecarControl.restart());
+	},
 	dataDirectory: async ({ script }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
@@ -130,7 +143,7 @@ export const test = base.extend<{
 			);
 		});
 	},
-	baseURL: async ({ script, playwright, dataDirectory }, use) => {
+	baseURL: async ({ script, playwright, dataDirectory, sidecarControl }, use) => {
 		const env = Object.fromEntries(
 			Object.entries(process.env).filter(([key]) => !key.startsWith('VERSTEHEN_'))
 		);
@@ -141,26 +154,37 @@ export const test = base.extend<{
 		});
 		const children: ChildProcess[] = [];
 		try {
-			const sidecar = await start(resolve(appDirectory, '../backend/.venv/bin/verstehen'), [], env);
+			let sidecar = await start(resolve(appDirectory, '../backend/.venv/bin/verstehen'), [], env);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
 			const previewPort = await freePort();
-			const preview = await start(
-				process.execPath,
-				[
-					'node_modules/vite/bin/vite.js',
-					'preview',
-					'--host',
-					'127.0.0.1',
-					'--port',
-					String(previewPort),
-					'--strictPort'
-				],
-				{ ...env, VERSTEHEN_PORT: String(port) }
-			);
+			const startPreview = (sidecarPort: number) =>
+				start(
+					process.execPath,
+					[
+						'node_modules/vite/bin/vite.js',
+						'preview',
+						'--host',
+						'127.0.0.1',
+						'--port',
+						String(previewPort),
+						'--strictPort'
+					],
+					{ ...env, VERSTEHEN_PORT: String(sidecarPort) }
+				);
+			let preview = await startPreview(port);
 			children.push(preview);
 			const url = `http://127.0.0.1:${previewPort}`;
 			await ready(url, preview);
+			sidecarControl.restart = async () => {
+				await stop(preview);
+				await stop(sidecar);
+				sidecar = await start(resolve(appDirectory, '../backend/.venv/bin/verstehen'), [], env);
+				children.push(sidecar);
+				preview = await startPreview(await handshake(sidecar));
+				children.push(preview);
+				await ready(url, preview);
+			};
 			if (script !== 'none') {
 				const api = await playwright.request.newContext({ baseURL: url });
 				try {

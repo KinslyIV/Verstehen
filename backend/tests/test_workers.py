@@ -53,8 +53,9 @@ from verstehen.jobs.workers.web import (
     web_fetch,
     web_search,
 )
-from verstehen.providers.fake import fake_model, script_role
-from verstehen.store.settings import FileAccessSettings
+from verstehen.providers.accounts import Account
+from verstehen.providers.fake import FakeAccountAdapter, fake_model, script_role
+from verstehen.store.settings import FileAccessSettings, ModelPick
 from verstehen.teaching.files.access import SourceAccess
 
 
@@ -613,6 +614,33 @@ def test_fake_replies_are_consumed_only_by_their_role(tmp_path, streamed):
         finally:
             script_role.reset(token)
         assert (await agent.run("q")).output == "legacy"
+
+    asyncio.run(run())
+
+
+def test_fake_title_model_serves_worker_roles_from_the_script(tmp_path):
+    path = tmp_path / "script.json"
+    path.write_text(
+        json.dumps(
+            [
+                {"title": "A title", "role": "teacher", "text": "teach"},
+                {"role": "researcher", "text": "research"},
+            ]
+        )
+    )
+
+    async def run():
+        model = await FakeAccountAdapter(path).build_model(
+            Account(id="fake", kind="fake", label="Scripted"),
+            ModelPick(account="fake", model="fake-title"),
+        )
+        agent = Agent(model)
+        assert (await agent.run("q")).output == "A title"
+        token = script_role.set("researcher")
+        try:
+            assert (await agent.run("q")).output == "research"
+        finally:
+            script_role.reset(token)
 
     asyncio.run(run())
 

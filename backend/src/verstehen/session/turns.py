@@ -41,7 +41,7 @@ from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.handoff import HANDOFF_TEXT
 from verstehen.teaching.images import show_image_tool
-from verstehen.teaching.job_tools import JobDispatcher, job_tools
+from verstehen.teaching.job_tools import ACKNOWLEDGEMENTS, JobDispatcher, job_tools
 from verstehen.teaching.phases import handoff_owed, has_probe_done
 from verstehen.teaching.plan.history import current_plan, plan_blocks_for
 from verstehen.teaching.plan.tool import plan_tool
@@ -66,6 +66,12 @@ from verstehen.teaching.questions.tools import QUESTION_PLACEHOLDER, QuestionAge
 from verstehen.teaching.teacher import build_teacher
 
 JSON = TypeAdapter(JsonValue)
+STREAMED_RESULT_TOOLS = (
+    "probe_done",
+    "plan_init",
+    "send_to_user",
+    *ACKNOWLEDGEMENTS,
+)
 logger = logging.getLogger(__name__)
 
 
@@ -543,8 +549,7 @@ class TurnService:
                 results=[
                     result
                     for result in ordered
-                    if result.is_error
-                    or result.tool_name in ("probe_done", "plan_init", "send_to_user")
+                    if result.is_error or result.tool_name in STREAMED_RESULT_TOOLS
                 ]
                 or None,
             )

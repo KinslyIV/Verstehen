@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { LoaderCircle } from '@lucide/svelte';
 	import {
+		ApiError,
 		deleteSession,
 		listSessions,
 		streamNotifications,
@@ -20,6 +21,7 @@
 	let deleting = $state<SessionItem | null>(null);
 	let deletingBusy = $state(false);
 	let deleteError = $state<string | null>(null);
+	let deleteRetryable = $state(false);
 	let renaming = $state<string | null>(null);
 	let now = $state(new Date());
 	let requestNumber = 0;
@@ -43,6 +45,12 @@
 			while (!lifetime.signal.aborted) {
 				try {
 					await streamNotifications((event) => {
+						if (event.type === 'jobs-changed') {
+							window.dispatchEvent(
+								new CustomEvent('verstehen:jobs-changed', { detail: event.session_id })
+							);
+							return;
+						}
 						void refresh(lifetime.signal);
 						if (
 							!deletedIds.includes(event.session_id) &&
@@ -55,7 +63,9 @@
 				} catch (cause) {
 					if (!lifetime.signal.aborted) error = (cause as Error).message;
 				}
-				if (!lifetime.signal.aborted) await new Promise((resolve) => setTimeout(resolve, 1000));
+				if (lifetime.signal.aborted) break;
+				await new Promise((resolve) => setTimeout(resolve, 1000));
+				window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: '' }));
 			}
 		})();
 		const timer = setInterval(() => {
@@ -79,6 +89,7 @@
 			if (page.params.id === id) await goto(resolve('/(lesson)/session/new'));
 		} catch (cause) {
 			deleteError = (cause as Error).message;
+			deleteRetryable = cause instanceof ApiError && cause.status === 409;
 		} finally {
 			deletingBusy = false;
 		}
@@ -141,6 +152,7 @@
 				onclick={() => {
 					deleting = session;
 					deleteError = null;
+					deleteRetryable = false;
 				}}
 			>
 				Delete
@@ -160,7 +172,20 @@
 				Delete session?
 			</Dialog.Title><Dialog.Description>{deleting?.title}</Dialog.Description>
 		</Dialog.Header>
-		{#if deleteError}<p role="alert" class="text-sm text-destructive">{deleteError}</p>{/if}
+		{#if deleteError}<div
+				role="alert"
+				data-testid="delete-failure"
+				class="flex items-center gap-3 text-sm text-destructive"
+			>
+				<span>{deleteError}</span>{#if deleteRetryable}<Button
+						variant="outline"
+						size="sm"
+						disabled={deletingBusy}
+						onclick={() => void remove()}
+					>
+						Try again
+					</Button>{/if}
+			</div>{/if}
 		<Dialog.Footer>
 			<Button variant="ghost" disabled={deletingBusy} onclick={() => (deleting = null)}>
 				Cancel

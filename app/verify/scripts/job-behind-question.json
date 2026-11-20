@@ -1,0 +1,45 @@
+[
+	{
+		"role": "teacher",
+		"tool_calls": [
+			{
+				"name": "research",
+				"id": "research-1",
+				"arguments": {
+					"question": "What is the slope of a secant line?",
+					"context": "Explaining average rate of change."
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Which example should we use?",
+					"options": [
+						{
+							"label": "A bike",
+							"description": "Speed on a ride"
+						},
+						{
+							"label": "A clock",
+							"description": "A moving hand"
+						}
+					]
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"text": "Good choice. The research arrived while you answered: the secant slope is the average rate of change."
+	},
+	{
+		"role": "researcher",
+		"delay_ms": 1500,
+		"text": "## Summary\nA secant slope is the average rate of change between two points.\n\n## Findings\n1. **Definition** — the slope of the line through two points on a curve. [Khan Academy](https://www.khanacademy.org/math/ap-calculus-ab)\n2. **Use** — as the two points close in, the secant approaches the tangent. [Paul's Online Notes](https://tutorial.math.lamar.edu/)"
+	}
+]

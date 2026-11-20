@@ -226,6 +226,10 @@ class JobRunner:
             self.admission,
         )
         usage = JobUsage(account_kind=resolved.kind, model=resolved.pick.model)
+        await self.jobs_store.update(
+            job.id, JobPatch(usage=usage), only_if="status = 'running'"
+        )
+        self.notify_changed(job.session_id)
 
         async def report(activity: str) -> None:
             await self.jobs_store.update(

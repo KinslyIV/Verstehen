@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T4 jobs, delivery, and wakes).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T5 jobs UI).
 
 ## Where we are
 
@@ -438,4 +438,40 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   markers acknowledge their job in the same transaction. `DeliveryService` wakes idle sessions with
   every pending marker and otherwise waits for events. Added abort, `GET /api/jobs` with a
   30-second recovery sweep, steer, artifact-view, and delete-with-jobs routes; API types regenerated.
-  `make check` passed (626 backend, 167 Vitest tests; no verify flows: no learner-visible change yet). No UI yet (T5). Decisions are marked for review in `decisions.md`.
+  `make check` passed (626 backend, 167 Vitest tests; no verify flows: no learner-visible change yet). T5 below adds the UI. Decisions are marked for review in `decisions.md`.
+
+- **T5 — jobs UI (`m7-jobs`).** One session feed fetches on mount, debounced job events, and
+  resync. Dispatch cards match tool call ids; job markers render research/PDF briefs, SVG figures,
+  photo annotations, sandboxed demos, aborts, and failures as cards. Figure/demo inversion writes
+  the silent view table and survives reload; photo annotations never invert. Jobs shows running
+  work, elapsed time, subscription labels, details, totals, and LH's End states. Composer text
+  steers the running turn (queued until its context update), with a raced 409 falling back to Send.
+  Delete shows the running-jobs line and Try again. Desktop CSP follows M7 decision 14 and retains
+  blob images. Backend support fixes stream dispatch acknowledgements and expose the resolved
+  worker model before its first reply; fake Cheap-slot workers use role-tagged scripts.
+  Snapshot loading depends on the stable hash, so session refreshes keep the photo loaded.
+  Four T5 orchestrator decisions are recorded for review; the typed-draft Send button is the
+  documented LH difference. `VITEST_MAX_WORKERS=1 make check` passed (629 backend, 184 frontend
+  tests; 17 new Vitest cases). Full `make verify FLOW='--workers=1'` passed all 77 cases in
+  13.2 minutes on `d06d1c9` plus T5's uncommitted implementation. After a screenshot-only flow
+  adjustment, guarded `make verify-run FLOW='job-visual-annotate --workers=1
+  --output=verify-output/m7-t5-evidence'` passed its one case against the unchanged SPA build.
+  Earlier fixture/matcher failures were fixed; the known layout-width test flaked once and passed
+  the final full check. Earlier pipe-based verify runs received SIGTERM; the final PTY run completed.
+  No real-model calls, `make verify-live`, or packaging builds were run.
+  Next: orchestrator review of T5 and the integrated M7 branch. No new product questions.
+
+**T5 inspected screenshots:** all paths below are relative to `app/verify-output/`.
+Each case also retains `trace.zip`; the separate evidence rerun preserves the full-suite artifacts.
+
+| Flow | Screenshot paths | Inspected behavior |
+|---|---|---|
+| Research, dark/light | `job-research-live.flow.ts-job-research-live-{dark,light}/{running.png,screenshot.png}` | Live dispatch activity, elapsed/cost/detail/End row, then expanded sourced brief and empty Jobs tab. |
+| Idle wake | `job-idle-wake.flow.ts-job-idle-wake/screenshot.png` | Result card and teacher continuation without another learner send. |
+| Behind question | `job-behind-question.flow.ts-job-behind-question/{waiting.png,screenshot.png}` | Finished work waits behind the question, then its card lands with the answer turn. |
+| Demo | `job-demo.flow.ts-job-demo/screenshot.png` | Tested interactive iframe, persisted inversion after reload, and download control. |
+| Abort and failure | `job-abort.flow.ts-job-abort/screenshot.png` | Learner-abort line, worker-failure card, teacher acknowledgements, and empty Jobs tab. |
+| Restart recovery | `job-recovery-reload.flow.ts-job-recovery-reload/screenshot.png` | Interrupted worker re-runs after an actual sidecar restart; result survives reload. |
+| Composer steering | `composer-steer.flow.ts-composer-steer/{queued.png,screenshot.png}` | Quiet queued text above the composer, then a landed learner message in the same run with no retry line. |
+| Delete with jobs | `delete-jobs-running.flow.ts-delete-jobs-running/{jobs-running.png,screenshot.png}` | Exact running-jobs refusal and Try again; successful retry returns to an empty session list. |
+| Figure and photo | `m7-t5-evidence/job-visual-annotate.flow.ts-job-visual-annotate/{figure.png,screenshot.png}` | Inverted standalone figure with its switch; annotated photo retains natural colors and hides inversion. |

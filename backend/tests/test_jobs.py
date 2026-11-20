@@ -359,6 +359,27 @@ def test_result_status_and_pending_delivery_are_saved_together(tmp_path: Path):
     asyncio.run(scenario())
 
 
+def test_job_exposes_its_model_before_the_first_worker_reply(tmp_path: Path):
+    async def scenario():
+        async with stack(tmp_path, [worker(delay_ms=500), teacher(text="ok")]) as s:
+            job = await s.jobs.create(s.session_id, "research", "c", {"question": "Q"})
+            s.runner.start(job.id)
+            async with asyncio.timeout(2):
+                while True:
+                    saved = await s.jobs.get(job.id)
+                    assert saved is not None
+                    if saved.usage is not None:
+                        break
+                    await asyncio.sleep(0.01)
+            assert saved.status == "running"
+            assert saved.usage.account_kind == "fake"
+            assert saved.usage.model == "fake"
+            assert saved.usage.steps == 0
+            await s.idle()
+
+    asyncio.run(scenario())
+
+
 def test_result_during_running_turn_is_injected_before_next_model_call_and_saved_once(
     tmp_path: Path,
 ):
@@ -383,6 +404,36 @@ def test_result_during_running_turn_is_injected_before_next_model_call_and_saved
             assert BRIEF in s.recorder.teacher_texts(2)
             assert job.delivery == JobDelivery(kind="result", status="delivered")
             assert not s.runtime.delivery.updates
+
+    asyncio.run(scenario())
+
+
+def test_dispatch_acknowledgement_streams_with_its_response(tmp_path: Path):
+    async def scenario():
+        replies = [
+            teacher(tool_calls=[research_call()]),
+            teacher(text="Meanwhile."),
+            worker(),
+            teacher(text="Using the brief."),
+        ]
+        async with stack(tmp_path, replies) as s:
+            await start_turn(s)
+            run = s.runtime.run
+            assert run is not None
+            await s.idle()
+            streamed = [
+                result
+                for event in run.log
+                if event.type == "message_end"
+                for result in event.results or []
+            ]
+            assert len(streamed) == 1
+            assert streamed[0].tool_name == "research"
+            assert streamed[0].tool_call_id == "r1"
+            job = (await s.jobs.list(s.session_id))[0]
+            assert streamed[0].text == (
+                f"Dispatched (job {job.id}). {ACKNOWLEDGEMENTS['research']}"
+            )
 
     asyncio.run(scenario())
 
