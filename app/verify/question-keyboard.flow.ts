@@ -8,6 +8,7 @@ test('question-keyboard', async ({ page }) => {
 	const dock = page.getByTestId('question-dock');
 	const firstRow = dock.getByRole('radio').first();
 	await expect(firstRow).toBeVisible();
+	await expect(dock.getByRole('button', { name: 'Stop' })).toBeHidden();
 	await page.keyboard.press('ArrowDown');
 	await page.keyboard.press('ArrowUp');
 	await page.keyboard.press('ArrowUp');
