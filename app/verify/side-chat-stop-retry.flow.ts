@@ -22,6 +22,9 @@ test('side-chat-stop-retry', async ({ page }, testInfo) => {
 	await expect(retry).toBeVisible();
 	await page.screenshot({ path: testInfo.outputPath('failed.png'), animations: 'disabled' });
 	await retry.click();
-	await expect(sideThread(page).getByText('Retry worked')).toBeVisible();
+	await expect(sideThread(page).getByTestId('side-helper-message').last()).toContainText(
+		'Retry worked: slope is the change in height per step across.'
+	);
+	await expect(sideThread(page).getByRole('button', { name: 'Send side question' })).toBeVisible();
 	await expect(retry).toHaveCount(0);
 });
