@@ -264,8 +264,9 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 1. **M3:** install a package with the startup fix on the laptop, then check sign-in, the model
    menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. **M4:** merged into `main`; try a real lesson with questions on the laptop.
-3. **M5 teaching flow:** the plan ([M5 plan](plans/m5-teaching-flow.md), branch `m5-plan`) is
-   approved. T1 backend review is complete. Review the T2 implementation on `m5-t2-ui-r3`.
+3. **M5 teaching flow:** implemented and reviewed ([M5 plan](plans/m5-teaching-flow.md)). Merge
+   `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
+   Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
 
 ## Open questions
 
