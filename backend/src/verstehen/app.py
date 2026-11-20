@@ -11,10 +11,13 @@ from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
+from verstehen.api.jobs import router as jobs_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
+from verstehen.jobs.runner import JobRunner
+from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.jobs.workers.browser import BrowserDownloadService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -27,13 +30,16 @@ from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
 from verstehen.providers.search_keys import SearchKeysService
 from verstehen.providers.service import ProviderService
-from verstehen.session.events import Notifications
+from verstehen.session.events import Notification, Notifications
+from verstehen.session.jobs import JobService
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.sessions import SessionService
 from verstehen.session.titles import TitleService
 from verstehen.session.turns import TurnService
+from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore
+from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -90,10 +96,40 @@ def create_app(settings: Settings) -> FastAPI:
             app.state.provider_service = ProviderService(
                 settings_store, accounts_service, resolver_service
             )
-            app.state.session_service = SessionService(
-                sessions_store, entries_store, runtimes, notifications, resolver_service
+            jobs_store = JobsStore(database)
+
+            async def wake_session(session_id: str) -> None:
+                await turn_service.pump_deliveries(session_id)
+
+            def jobs_changed(session_id: str) -> None:
+                notifications.publish(
+                    Notification(type="jobs-changed", session_id=session_id)
+                )
+
+            job_runner = JobRunner(
+                jobs_store,
+                settings_store,
+                resolver_service,
+                provider_policy,
+                usage_store,
+                credentials_store,
+                WorkerAdmission(settings_store),
+                settings.data_dir,
+                wake_session,
+                jobs_changed,
+                settings.provider_events,
             )
-            app.state.turn_service = TurnService(
+            app.state.session_service = SessionService(
+                sessions_store,
+                entries_store,
+                runtimes,
+                notifications,
+                resolver_service,
+                jobs_store,
+                ArtifactViewsStore(database),
+                settings.data_dir,
+            )
+            app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
                 settings_store,
@@ -104,11 +140,23 @@ def create_app(settings: Settings) -> FastAPI:
                 title_service,
                 runtimes,
                 notifications,
+                jobs_store,
+                job_runner,
                 settings.provider_events,
             )
+            app.state.job_service = JobService(
+                sessions_store,
+                jobs_store,
+                job_runner,
+                runtimes,
+                turn_service.delivery_service,
+            )
+            turn_service.delivery_service.start_watching()
             try:
                 yield
             finally:
+                await turn_service.delivery_service.close()
+                await job_runner.close()
                 await browser_download_service.close()
                 await runtimes.close()
                 await title_service.close()
@@ -156,6 +204,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(images_router)
+    app.include_router(jobs_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

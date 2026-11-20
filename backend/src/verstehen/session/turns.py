@@ -1,5 +1,6 @@
 import asyncio
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -7,11 +8,15 @@ from pydantic import BaseModel, JsonValue, TypeAdapter
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
+from verstehen.jobs.runner import JobRunner
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
 from verstehen.providers.usage import UsageModel, response_usage
+from verstehen.session.cause import is_background_cause
 from verstehen.session.compactions import CompactionService
+from verstehen.session.context_updates import ContextEntry, ContextUpdates
+from verstehen.session.delivery import DeliveryService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.results import Refused
@@ -28,6 +33,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.usage import UsageStore
@@ -35,6 +41,7 @@ from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.handoff import HANDOFF_TEXT
 from verstehen.teaching.images import show_image_tool
+from verstehen.teaching.job_tools import JobDispatcher, job_tools
 from verstehen.teaching.phases import handoff_owed, has_probe_done
 from verstehen.teaching.plan.history import current_plan, plan_blocks_for
 from verstehen.teaching.plan.tool import plan_tool
@@ -50,6 +57,8 @@ from verstehen.teaching.questions.inputs import (
     validate_dismissal,
 )
 from verstehen.teaching.questions.pending import (
+    ends_in_dismissal,
+    ends_in_question_recovery,
     has_unresolved_question,
     needs_continuation,
 )
@@ -57,10 +66,13 @@ from verstehen.teaching.questions.tools import QUESTION_PLACEHOLDER, QuestionAge
 from verstehen.teaching.teacher import build_teacher
 
 JSON = TypeAdapter(JsonValue)
+logger = logging.getLogger(__name__)
 
 
 class TurnInput(BaseModel):
-    type: Literal["text", "retry", "answer", "continue", "retry-question", "handoff"]
+    type: Literal[
+        "text", "retry", "answer", "continue", "retry-question", "handoff", "steers"
+    ]
     text: str | None = None
     tool_call_id: str | None = None
     answer: QuestionAnswer | None = None
@@ -83,6 +95,7 @@ class TurnState:
     agent: QuestionAgent | None = None
     response: AssistantEntry | None = None
     saved_without_turn: bool = False
+    saved: list[Entry] = field(default_factory=list)
 
     @property
     def role(self) -> Literal["teacher", "prober"]:
@@ -111,6 +124,8 @@ class TurnService:
         title_service: TitleService,
         runtimes: RuntimeRegistry,
         notifications: Notifications,
+        jobs_store: JobsStore,
+        job_runner: JobRunner,
         provider_events: bool = False,
     ):
         self.sessions_store = sessions_store
@@ -124,6 +139,16 @@ class TurnService:
         self.provider_events = provider_events
         self.runtimes = runtimes
         self.notifications = notifications
+        self.jobs_store = jobs_store
+        self.job_runner = job_runner
+        self.delivery_service = DeliveryService(
+            sessions_store,
+            entries_store,
+            jobs_store,
+            runtimes,
+            notifications,
+            lambda session_id: self.start(session_id, TurnInput(type="steers")),
+        )
         self.compaction_service = CompactionService(
             sessions_store,
             entries_store,
@@ -157,6 +182,17 @@ class TurnService:
                         details={"chatId": state.session_id},
                     )
                 ]
+            case "steers":
+                markers = state.runtime.delivery.pending_markers()
+                if not markers:
+                    raise ValueError("No job results are waiting for delivery")
+                if (
+                    has_unresolved_question(state.entries)
+                    or ends_in_dismissal(state.entries)
+                    or ends_in_question_recovery(state.entries)
+                ):
+                    raise ValueError("The session is waiting for the learner")
+                return list(markers)
             case "retry":
                 retry_drops(state.entries)
             case "answer":
@@ -195,7 +231,9 @@ class TurnService:
                 appends = self.input_appends(state)
             except ValueError as error:
                 return Refused(400, {"error": str(error)})
-            if state.runtime.run is not None:
+            if state.runtime.run is not None or (
+                state.input.type == "steers" and state.runtime.compaction is not None
+            ):
                 return Refused(
                     409, {"error": "A turn is already running for this session"}
                 )
@@ -215,7 +253,13 @@ class TurnService:
             state.resolved = await self.resolver_service.resolve(state.role, session)
         except ResolutionError as error:
             return Refused(503, error.envelope())
-        if not await self.provider_policy.admit("foreground", state.resolved.account):
+        purpose = (
+            "background"
+            if state.input.type == "steers"
+            or (state.input.type == "continue" and is_background_cause(state.entries))
+            else "foreground"
+        )
+        if not await self.provider_policy.admit(purpose, state.resolved.account):
             return Refused(
                 403,
                 {
@@ -227,8 +271,13 @@ class TurnService:
 
     async def compaction_gate(self, state: TurnState) -> Refused | Continue:
         assert state.resolved is not None
+        pending = (
+            state.runtime.delivery.pending_markers()
+            if state.input.type == "steers"
+            else []
+        )
         await self.compaction_service.ensure_compacted(
-            state.session_id, state.role, state.resolved
+            state.session_id, state.role, state.resolved, pending
         )
         return Continue(state)
 
@@ -249,6 +298,7 @@ class TurnService:
             if not state.entries and isinstance(appends[0], UserEntry):
                 self.title_service.start(state.session_id, appends[0].text)
             state.entries.extend(appends)
+            state.runtime.delivery.discard(entry.entry_id for entry in appends)
             self.notify_changed(state.session_id)
         return Continue(state)
 
@@ -283,7 +333,8 @@ class TurnService:
         instructions = await compose_instructions(
             self.settings_store, self.data_dir, role
         )
-        quizzing = (await self.settings_store.read()).quizzing
+        settings = await self.settings_store.read()
+        quizzing = settings.quizzing
         model = UsageModel(
             state.resolved,
             self.usage_store,
@@ -297,6 +348,14 @@ class TurnService:
             self.data_dir,
             accepts_images=model.profile.get("supports_image_input", True),
         )
+        dispatcher = JobDispatcher(
+            state.session_id,
+            self.jobs_store,
+            self.job_runner.start,
+            self.settings_store,
+            self.data_dir,
+        )
+        updates = ContextUpdates(lambda: self.take_context_updates(state))
         if role == "prober":
 
             def question_pending() -> bool:
@@ -311,8 +370,12 @@ class TurnService:
                 state.resolved.settings,
                 quizzing,
                 question_pending=question_pending,
-                extra_tools=files,
+                extra_tools=(
+                    *files,
+                    *job_tools(dispatcher, settings.tools, prober=True),
+                ),
                 deliver_prose=deliver,
+                extra_capabilities=(updates,),
             )
         else:
             tree = current_plan(state.entries)
@@ -334,10 +397,28 @@ class TurnService:
                     *files,
                     plan_tool(remember_plan),
                     show_image_tool(self.settings_store, self.data_dir),
+                    *job_tools(dispatcher, settings.tools),
                 ),
                 deliver_prose=deliver,
+                extra_capabilities=(updates,),
             )
         return Continue(state)
+
+    async def take_context_updates(self, state: TurnState) -> list[ContextEntry]:
+        assert state.run is not None and state.resolved is not None
+        delivery = state.runtime.delivery
+        jobs_allowed = bool(delivery.pending_markers()) and (
+            await self.provider_policy.admit("background", state.resolved.account)
+        )
+        taken = delivery.take(
+            state.run,
+            jobs_allowed=jobs_allowed,
+            question_pending=has_unresolved_question([*state.entries, *state.saved]),
+        )
+        if taken:
+            state.saved.extend(taken)
+            state.run.publish(TurnEvent(type="context_update", entries=taken))
+        return taken
 
     async def run_background(self, state: TurnState) -> Refused | Continue:
         assert state.run is not None
@@ -373,7 +454,7 @@ class TurnService:
         assert state.run is not None and state.agent is not None
         run = state.run
         run.started = True
-        entries: list[Entry] = []
+        entries = state.saved
         results: list[ToolResultEntry] = []
         reply: AssistantEntry | None = None
         try:
@@ -507,17 +588,26 @@ class TurnService:
     async def settle(self, state: TurnState, entries: list[Entry]) -> None:
         markers = plan_blocks_for(state.entries, entries)
         await self.entries_store.append(state.session_id, [*entries, *markers])
+        state.runtime.delivery.discard(entry.entry_id for entry in entries)
         self.notify_changed(state.session_id)
         await self.finish(state)
         if not self.runtimes.closing and handoff_owed([*state.entries, *entries]):
             await self.start(state.session_id, TurnInput(type="handoff"))
         await self.compaction_service.kick(state.session_id, state.role)
+        await self.pump_deliveries(state.session_id)
+
+    async def pump_deliveries(self, session_id: str) -> None:
+        try:
+            await self.delivery_service.pump(session_id)
+        except Exception:
+            logger.exception("Delivery pump failed for session %s", session_id)
 
     async def finish(self, state: TurnState, *, apply_dismissal: bool = True) -> None:
         assert state.run is not None
         async with state.runtime.lock:
             if apply_dismissal and state.run.parked_dismissal is not None:
                 await self.apply_parked_dismissal(state, state.run.parked_dismissal)
+            state.runtime.delivery.release(state.run)
             state.runtime.release_turn(state.run)
         self.notifications.publish(
             Notification(type="turn-settled", session_id=state.session_id)

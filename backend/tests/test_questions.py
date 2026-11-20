@@ -943,6 +943,8 @@ def test_free_recall_arms_recall_instead_of_probe_on_next_turn(tmp_path: Path):
                 "ls",
                 "find",
                 "grep",
+                "research",
+                "pdf",
             }
             assert tools == [always_on | {"probe"}, always_on | {"recall"}]
 

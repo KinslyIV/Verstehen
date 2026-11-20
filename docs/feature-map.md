@@ -102,7 +102,7 @@ Uses a temporary data directory and the installed CLI; sends one short Haiku rep
 
 The standalone backend entry points are `run_researcher`, `run_pdf_reader`, `run_visual_maker`,
 and `run_demo_builder` in `jobs/workers/`. They take an injected model and activity/usage callbacks;
-requests and tasks can be cancelled. Jobs, delivery, and learner-facing registration come in T4.
+requests and tasks can be cancelled. T4 wires them into jobs (below); the UI comes in T5.
 The researcher accepts plain search keys and an injectable HTTP client/resolver; the PDF reader
 requires a learner-file policy; annotation accepts a preloaded learner image and snapshot reference;
 the demo builder requires an explicit browser executable and never delivers unverified HTML.
@@ -113,3 +113,14 @@ PDF page accounting, render/inspect/revise SVGs, retained annotation placeholder
 scripts, and demo gates/isolation using Playwright Chromium. No UI entry point exists yet.
 `verstehen --self-check` also renders a PDF page and tests an offline headless page when a browser
 is found; it reports an optional skip when none exists.
+
+
+## Jobs, delivery, and wakes (M7 T4, backend)
+
+The teacher calls `research`, `demo`, `visual`, or `pdf` (the prober only `research` and `pdf`;
+each only while its Settings → Tools switch is on) and gets the fire-and-forget acknowledgement.
+Results reach the teacher injected before the next model call, by an idle wake turn, or with the
+answer turn after a question. `GET /api/jobs?session=`, `POST /api/jobs/{id}/abort`,
+`POST /api/sessions/{id}/steer`, `PUT /api/sessions/{id}/artifact-views/{entry_id}`, and
+`jobs-changed` on `/api/events`. Delete is refused with `jobs_running` while a job computes.
+Verify offline with `backend/tests/test_jobs.py`; fake-model UI flows come with T5.

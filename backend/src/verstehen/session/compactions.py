@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -66,14 +67,18 @@ class CompactionService:
         session_id: str,
         role: TurnRole,
         resolved: ResolvedModel,
+        pending: Sequence[Entry] = (),
     ) -> None:
+        """Compact before a turn; `pending` entries it is about to append count toward the limit."""
         runtime = self.runtimes.get(session_id)
         if running := runtime.compaction:
             await asyncio.shield(running)
         async with runtime.lock:
             task = runtime.compaction
             if task is None:
-                task = await self.start_if_needed(session_id, runtime, role, resolved)
+                task = await self.start_if_needed(
+                    session_id, runtime, role, resolved, pending
+                )
         if task is not None:
             await asyncio.shield(task)
 
@@ -89,6 +94,7 @@ class CompactionService:
         runtime: SessionRuntime,
         role: TurnRole,
         resolved: ResolvedModel | None = None,
+        pending: Sequence[Entry] = (),
     ) -> asyncio.Task[None] | None:
         """Check admission and reserve the summary while holding the session lock."""
         if self.runtimes.closing or runtime.deleted or runtime.run is not None:
@@ -99,7 +105,7 @@ class CompactionService:
             instructions = await compose_instructions(
                 self.settings_store, self.data_dir, role
             )
-            tokens = projected_context_tokens(entries, instructions)
+            tokens = projected_context_tokens([*entries, *pending], instructions)
             if resolved is None:
                 session = await self.sessions_store.get(session_id)
                 if session is None:

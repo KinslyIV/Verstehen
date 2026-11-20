@@ -189,7 +189,8 @@ def to_llm_messages(
             continue
         if isinstance(entry, UserEntry) or (
             isinstance(entry, MarkerEntry)
-            and entry.marker_type in ("probe-handoff", "compaction")
+            and entry.marker_type
+            in ("probe-handoff", "compaction", "subagent-steer", "subagent-abort")
         ):
             messages.append(user_message(entry))
         elif not isinstance(entry, ToolResultEntry):

@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field
 
-JobKind = Literal["research", "demo", "visual", "pdf"]
+from verstehen.store.jobs import JobKind
 
 
 class ResearchInput(BaseModel):

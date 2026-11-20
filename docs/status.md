@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T1 standalone workers).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T4 jobs, delivery, and wakes).
 
 ## Where we are
 
@@ -429,3 +429,13 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   passed; inspected `app/verify-output/show-image.flow.ts-show-image/screenshot.png`.
   Next: orchestrator review; jobs, workers, annotation cards, and delete cleanup remain other tasks.
   No new open questions.
+- **T4 — jobs, delivery, and wakes (`m7-jobs`, backend).** Migration 0004 adds `jobs` and
+  `artifact_views`. The four job tools dispatch once per tool call id and acknowledge at once;
+  `JobRunner` resolves the role model fresh, asks background consent, runs T1's worker through the
+  FIFO `WorkerAdmission`, records usage rows, and saves result, status, and pending delivery in one
+  update before waking the session. A context-update capability injects job results (background
+  consent, never behind a pending question) and composer steers before every model request; saved
+  markers acknowledge their job in the same transaction. `DeliveryService` wakes idle sessions with
+  every pending marker and otherwise waits for events. Added abort, `GET /api/jobs` with a
+  30-second recovery sweep, steer, artifact-view, and delete-with-jobs routes; API types regenerated.
+  `make check` passed (626 backend, 167 Vitest tests; no verify flows: no learner-visible change yet). No UI yet (T5). Decisions are marked for review in `decisions.md`.

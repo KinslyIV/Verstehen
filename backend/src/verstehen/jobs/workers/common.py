@@ -19,6 +19,7 @@ from pydantic_ai.tools import ToolDefinition
 from pydantic_ai.usage import RequestUsage
 
 from verstehen.providers.fake import script_role
+from verstehen.store.jobs import JobUsage
 
 ActivityCallback = Callable[[str], None]
 UsageCallback = Callable[[RequestUsage], None]
@@ -147,3 +148,12 @@ async def run_cpu(function: Callable[..., Any], *args: Any, **kwargs: Any) -> An
     except asyncio.CancelledError:
         await asyncio.gather(task, return_exceptions=True)
         raise
+
+
+def add_usage(total: JobUsage, request: RequestUsage) -> None:
+    total.input_tokens += request.input_tokens
+    total.output_tokens += request.output_tokens
+    total.cache_read_tokens += request.cache_read_tokens
+    total.cache_write_tokens += request.cache_write_tokens
+    total.reasoning_tokens += request.output_reasoning_tokens
+    total.steps += 1

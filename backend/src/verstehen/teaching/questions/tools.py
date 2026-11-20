@@ -260,6 +260,7 @@ def build_question_agent(
     extra_tools: tuple[Tool[None], ...] = (),
     deliver_prose: bool = False,
     guard_narration: bool = False,
+    extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
     question_tools = [
         Tool.from_schema(
@@ -279,6 +280,7 @@ def build_question_agent(
             instructions += "\n\n---\n\n" + SEND_TO_USER_DELIVERY_RULE
             capabilities.append(NarrationGuard(names))
     capabilities.append(QuestionTools(names, plan_nodes))
+    capabilities.extend(extra_capabilities)
     return Agent(
         model,
         instructions=instructions,

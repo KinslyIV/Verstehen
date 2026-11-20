@@ -145,6 +145,40 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sessions/{session_id}/steer': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Steer Session */
+		post: operations['steer_session_api_sessions__session_id__steer_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sessions/{session_id}/artifact-views/{entry_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Artifact View */
+		put: operations['put_artifact_view_api_sessions__session_id__artifact_views__entry_id__put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/sessions/{session_id}/dismiss': {
 		parameters: {
 			query?: never;
@@ -224,6 +258,40 @@ export interface paths {
 		get: operations['get_image_api_images__sha256___ext__get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/jobs': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Jobs */
+		get: operations['list_jobs_api_jobs_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/jobs/{job_id}/abort': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Abort Job */
+		post: operations['abort_job_api_jobs__job_id__abort_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -420,6 +488,11 @@ export interface components {
 			/** Error */
 			error: string;
 		};
+		/** ArtifactViewInput */
+		ArtifactViewInput: {
+			/** Inverted */
+			inverted: boolean;
+		};
 		/** AssistantEntry */
 		AssistantEntry: {
 			/** Entry Id */
@@ -613,6 +686,135 @@ export interface components {
 			/** Detail */
 			detail?: components['schemas']['ValidationError'][];
 		};
+		/** JobDelivery */
+		JobDelivery: {
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'result' | 'abort' | 'failure';
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status: 'pending' | 'delivered';
+		};
+		/** JobList */
+		JobList: {
+			/** Jobs */
+			jobs: components['schemas']['JobRecord'][];
+			/** Turn In Flight */
+			turn_in_flight: boolean;
+		};
+		/** JobNotRunning */
+		JobNotRunning: {
+			/**
+			 * Ok
+			 * @default false
+			 * @constant
+			 */
+			ok: false;
+			/**
+			 * Reason
+			 * @default not_running
+			 * @constant
+			 */
+			reason: 'not_running';
+		};
+		/** JobRecord */
+		JobRecord: {
+			/** Id */
+			id?: string;
+			/** Session Id */
+			session_id: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'research' | 'demo' | 'visual' | 'pdf';
+			/** Tool Call Id */
+			tool_call_id: string;
+			input: components['schemas']['JsonValue'];
+			/**
+			 * Status
+			 * @default running
+			 * @enum {string}
+			 */
+			status: 'running' | 'done' | 'error';
+			/**
+			 * Activity
+			 * @default starting
+			 */
+			activity: string;
+			result?: components['schemas']['JsonValue'] | null;
+			/** Error */
+			error?: string | null;
+			delivery?: components['schemas']['JobDelivery'] | null;
+			usage?: components['schemas']['JobUsage'] | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at?: string;
+			/**
+			 * Updated At
+			 * Format: date-time
+			 */
+			updated_at?: string;
+		};
+		/**
+		 * JobUsage
+		 * @description Token totals of one worker run, summed over its model calls.
+		 */
+		JobUsage: {
+			/** Account Kind */
+			account_kind: string;
+			/** Model */
+			model: string;
+			/**
+			 * Input Tokens
+			 * @default 0
+			 */
+			input_tokens: number;
+			/**
+			 * Output Tokens
+			 * @default 0
+			 */
+			output_tokens: number;
+			/**
+			 * Cache Read Tokens
+			 * @default 0
+			 */
+			cache_read_tokens: number;
+			/**
+			 * Cache Write Tokens
+			 * @default 0
+			 */
+			cache_write_tokens: number;
+			/**
+			 * Reasoning Tokens
+			 * @default 0
+			 */
+			reasoning_tokens: number;
+			/**
+			 * Steps
+			 * @default 0
+			 */
+			steps: number;
+		};
+		/** JobsRunning */
+		JobsRunning: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default jobs_running
+			 * @constant
+			 */
+			code: 'jobs_running';
+			/** Job Ids */
+			job_ids: string[];
+		};
 		JsonValue: unknown;
 		/** MarkerEntry */
 		MarkerEntry: {
@@ -721,7 +923,8 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'turn-started' | 'turn-settled' | 'chats-changed' | 'compaction-changed';
+			type:
+				'turn-started' | 'turn-settled' | 'chats-changed' | 'compaction-changed' | 'jobs-changed';
 			/** Session Id */
 			session_id: string;
 			/** Running */
@@ -879,6 +1082,10 @@ export interface components {
 			turn_error: string | null;
 			/** Compacting */
 			compacting?: boolean;
+			/** Artifact Views */
+			artifact_views?: {
+				[key: string]: boolean;
+			};
 		};
 		/** SessionInput */
 		SessionInput: {
@@ -984,6 +1191,13 @@ export interface components {
 			/** Reason */
 			reason?: string | null;
 		};
+		/** SteerInput */
+		SteerInput: {
+			/** Id */
+			id: string;
+			/** Text */
+			text: string;
+		};
 		/** TextPart */
 		TextPart: {
 			/**
@@ -1080,8 +1294,17 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'message_start' | 'message_update' | 'message_end' | 'error' | 'turn-settled';
+			type:
+				| 'message_start'
+				| 'message_update'
+				| 'message_end'
+				| 'context_update'
+				| 'error'
+				| 'turn-settled';
 			message?: components['schemas']['AssistantEntry'] | null;
+			/** Entries */
+			entries?:
+				(components['schemas']['UserEntry'] | components['schemas']['MarkerEntry'])[] | null;
 			/** Results */
 			results?: components['schemas']['ToolResultEntry'][] | null;
 			/** Error Text */
@@ -1104,7 +1327,7 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question' | 'handoff';
+			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question' | 'handoff' | 'steers';
 			/** Text */
 			text?: string | null;
 			/** Tool Call Id */
@@ -1513,7 +1736,8 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['TurnInFlight'];
+					'application/json':
+						components['schemas']['TurnInFlight'] | components['schemas']['JobsRunning'];
 				};
 			};
 			/** @description Validation Error */
@@ -1658,6 +1882,122 @@ export interface operations {
 					'application/json':
 						| components['schemas']['ModelsNotConfigured']
 						| components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	steer_session_api_sessions__session_id__steer_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['SteerInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	put_artifact_view_api_sessions__session_id__artifact_views__entry_id__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				entry_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ArtifactViewInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};
@@ -1887,6 +2227,95 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	list_jobs_api_jobs_get: {
+		parameters: {
+			query: {
+				session: string;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobList'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	abort_job_api_jobs__job_id__abort_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				job_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JobNotRunning'];
+				};
 			};
 			/** @description Validation Error */
 			422: {

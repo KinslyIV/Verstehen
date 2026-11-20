@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 from typing import List, Literal
 from uuid import uuid4
@@ -28,6 +29,9 @@ class Session(BaseModel):
             model=self.model_id,
             thinking_level=self.thinking_level,
         )
+
+
+IMAGE_HASH = re.compile(r"[0-9a-f]{64}")
 
 
 class SessionsStore:
@@ -104,3 +108,27 @@ class SessionsStore:
                 "DELETE FROM sessions WHERE id = ?", (session_id,)
             ) as cursor:
                 return cursor.rowcount > 0
+
+    async def unreferenced_image_hashes(self, session_id: str) -> set[str]:
+        """Image hashes this session's entries or jobs mention that no other session does."""
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT payload FROM entries WHERE session_id = ? "
+                "UNION ALL SELECT result FROM jobs WHERE session_id = ? AND result IS NOT NULL",
+                (session_id, session_id),
+            ) as cursor:
+                mentioned = {
+                    found
+                    for row in await cursor.fetchall()
+                    for found in IMAGE_HASH.findall(row[0])
+                }
+            unreferenced = set()
+            for image_hash in mentioned:
+                async with connection.execute(
+                    "SELECT 1 FROM entries WHERE session_id != ? AND payload LIKE ? "
+                    "UNION ALL SELECT 1 FROM jobs WHERE session_id != ? AND result LIKE ? LIMIT 1",
+                    (session_id, f"%{image_hash}%", session_id, f"%{image_hash}%"),
+                ) as cursor:
+                    if await cursor.fetchone() is None:
+                        unreferenced.add(image_hash)
+        return unreferenced

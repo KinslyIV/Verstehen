@@ -41,6 +41,11 @@ class TurnInFlight(ApiError):
     code: Literal["turn_in_flight"] = "turn_in_flight"
 
 
+class JobsRunning(ApiError):
+    code: Literal["jobs_running"] = "jobs_running"
+    job_ids: list[str]
+
+
 class NotRunning(BaseModel):
     ok: Literal[False] = False
     reason: Literal["not_running"] = "not_running"
@@ -75,6 +80,16 @@ class SessionDetail(Session):
     turn_in_flight: bool
     turn_error: str | None
     compacting: bool = Field(default_factory=lambda: False)
+    artifact_views: dict[str, bool] = Field(default_factory=dict)
+
+
+class SteerInput(BaseModel):
+    id: str
+    text: str
+
+
+class ArtifactViewInput(BaseModel):
+    inverted: bool
 
 
 class Created(BaseModel):
@@ -129,6 +144,7 @@ async def get_session(session_id: str, session_service: SessionServiceDependency
         turn_in_flight=result.turn_in_flight,
         turn_error=result.turn_error,
         compacting=result.compacting,
+        artifact_views=result.artifact_views,
     )
 
 
@@ -151,7 +167,7 @@ async def rename_session(
 @router.delete(
     "/api/sessions/{session_id}",
     response_model=Ok,
-    responses={409: {"model": TurnInFlight}},
+    responses={409: {"model": TurnInFlight | JobsRunning}},
 )
 async def delete_session(session_id: str, session_service: SessionServiceDependency):
     result = await session_service.delete(session_id)
@@ -171,7 +187,38 @@ async def delete_session(session_id: str, session_service: SessionServiceDepende
 async def input_session(
     session_id: str, body: TurnInput, turn_service: TurnServiceDependency
 ):
+    if body.type == "steers":
+        return JSONResponse({"error": "unknown input type: steers"}, status_code=400)
     result = await turn_service.start(session_id, body)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return Ok()
+
+
+@router.post(
+    "/api/sessions/{session_id}/steer",
+    response_model=Ok,
+    responses={409: {"model": ApiError}},
+)
+async def steer_session(
+    session_id: str, body: SteerInput, turn_service: TurnServiceDependency
+):
+    result = await turn_service.delivery_service.steer(session_id, body.id, body.text)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return Ok()
+
+
+@router.put("/api/sessions/{session_id}/artifact-views/{entry_id}", response_model=Ok)
+async def put_artifact_view(
+    session_id: str,
+    entry_id: str,
+    body: ArtifactViewInput,
+    session_service: SessionServiceDependency,
+):
+    result = await session_service.set_artifact_view(
+        session_id, entry_id, body.inverted
+    )
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Ok()

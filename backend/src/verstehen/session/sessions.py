@@ -1,6 +1,8 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
 from verstehen.providers.resolve import ResolutionError, ResolverService
@@ -9,7 +11,9 @@ from verstehen.session.projection import failed_response_at_end
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.titles import title_from_prompt
-from verstehen.store.entries import EntriesStore, Entry
+from verstehen.store.artifact_views import ArtifactViewsStore
+from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
+from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionsStore
 from verstehen.store.settings import ModelPick
 
@@ -28,6 +32,7 @@ class SessionSnapshot:
     turn_in_flight: bool
     turn_error: str | None
     compacting: bool
+    artifact_views: dict[str, bool]
 
 
 class SessionService:
@@ -42,12 +47,18 @@ class SessionService:
         runtimes: RuntimeRegistry,
         notifications: Notifications,
         resolver_service: ResolverService,
+        jobs_store: JobsStore,
+        artifact_views_store: ArtifactViewsStore,
+        data_dir: Path,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.runtimes = runtimes
         self.notifications = notifications
         self.resolver_service = resolver_service
+        self.jobs_store = jobs_store
+        self.artifact_views_store = artifact_views_store
+        self.data_dir = data_dir
 
     async def list(self) -> List[ListedSession]:
         listed = []
@@ -92,7 +103,26 @@ class SessionService:
                 runtime.run is not None,
                 runtime.failure or (failed.error_text if failed else None),
                 runtime.compaction is not None,
+                await self.artifact_views_store.list(session_id),
             )
+
+    async def set_artifact_view(
+        self, session_id: str, entry_id: str, inverted: bool
+    ) -> None | Refused:
+        if await self.sessions_store.get(session_id) is None:
+            return Refused(404, {"error": "Not found"})
+        entries = await self.entries_store.list(session_id)
+        if not any(
+            isinstance(entry, MarkerEntry)
+            and entry.entry_id == entry_id
+            and entry.marker_type == "subagent-steer"
+            and isinstance(entry.details, dict)
+            and entry.details.get("kind") in ("demo", "visual")
+            for entry in entries
+        ):
+            return Refused(400, {"error": "No demo/figure steer with that message id"})
+        await self.artifact_views_store.set(session_id, entry_id, inverted)
+        return None
 
     async def rename(self, session_id: str, title: str | None) -> str | Refused:
         if await self.sessions_store.get(session_id) is None:
@@ -155,8 +185,20 @@ class SessionService:
                         "code": "turn_in_flight",
                     },
                 )
+            if running := await self.jobs_store.running(session_id):
+                return Refused(
+                    409,
+                    {
+                        "error": "Background jobs are still running in this session — try again when they finish",
+                        "code": "jobs_running",
+                        "job_ids": [job.id for job in running],
+                    },
+                )
+            orphaned = await self.sessions_store.unreferenced_image_hashes(session_id)
             await self.sessions_store.delete(session_id)
             runtime.mark_deleted()
+            runtime.delivery.clear()
+            await asyncio.to_thread(remove_images, self.data_dir, orphaned)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )
@@ -190,3 +232,9 @@ class SessionService:
 
     def subscribe(self) -> AsyncGenerator[Notification | None]:
         return self.notifications.subscribe()
+
+
+def remove_images(data_dir: Path, hashes: set[str]) -> None:
+    for image_hash in hashes:
+        for path in (data_dir / "images").glob(f"{image_hash}.*"):
+            path.unlink(missing_ok=True)

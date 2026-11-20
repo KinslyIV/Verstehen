@@ -5,6 +5,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from verstehen.store.database import Database
+from verstehen.store.jobs import mark_delivered
 from verstehen.store.usage import UsageRecord, insert_usage
 
 
@@ -108,6 +109,19 @@ Entry = Annotated[
     Field(discriminator="kind"),
 ]
 ENTRY = TypeAdapter(Entry)
+JOB_MARKER_TYPES = ("subagent-steer", "subagent-abort")
+
+
+def delivered_job_id(entry: Entry) -> str | None:
+    """The job a saved job marker delivers, so its delivery is acknowledged with it."""
+    if (
+        isinstance(entry, MarkerEntry)
+        and entry.marker_type in JOB_MARKER_TYPES
+        and isinstance(entry.details, dict)
+        and isinstance(job_id := entry.details.get("job_id"), str)
+    ):
+        return job_id
+    return None
 
 
 class EntriesStore:
@@ -145,6 +159,9 @@ class EntriesStore:
                 )
                 inserted = inserted or cursor.rowcount > 0
                 await cursor.close()
+                job_id = delivered_job_id(entry)
+                if job_id is not None:
+                    await mark_delivered(connection, job_id)
             if inserted:
                 await connection.execute(
                     "UPDATE sessions SET updated_at = ? WHERE id = ?",
