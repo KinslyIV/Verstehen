@@ -4,6 +4,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 
 def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
     tmp_path: Path,
@@ -29,6 +31,7 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
         "pypdfium2",
         "pillow",
         "regex",
+        "prompts",
         "playwright",
         "claude-agent-sdk",
     }
@@ -47,6 +50,7 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
         "check_pdfium",
         "check_pillow",
         "check_regex",
+        "check_prompts",
         "check_playwright",
         "check_claude",
     ):
@@ -62,3 +66,13 @@ def test_self_check_passes_without_an_installed_claude(monkeypatch):
 
     monkeypatch.setattr(self_check.shutil, "which", lambda name: None)
     assert self_check.check_claude().endswith("; claude not installed")
+
+
+def test_self_check_fails_when_a_prompt_directory_is_missing(monkeypatch, tmp_path):
+    from verstehen import self_check
+    from verstehen.teaching import prompts
+
+    (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="No prober prompt fragments"):
+        self_check.check_prompts()

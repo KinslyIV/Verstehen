@@ -55,6 +55,19 @@ def check_regex() -> str:
     return "pattern compiled and matched with a timeout"
 
 
+def check_prompts() -> str:
+    from verstehen.teaching.prompts import PROMPTS_DIR
+
+    if not (PROMPTS_DIR / "system-prompt.md").is_file():
+        raise RuntimeError("system-prompt.md is missing")
+    counts = {}
+    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
+        counts[directory] = len(list((PROMPTS_DIR / directory).glob("*.md")))
+        if not counts[directory]:
+            raise RuntimeError(f"No {directory} prompt fragments are bundled")
+    return ", ".join(f"{name} {count}" for name, count in counts.items())
+
+
 def command_version(command: list[str]) -> str:
     return subprocess.run(
         command, check=True, capture_output=True, text=True, timeout=20
@@ -86,6 +99,7 @@ def run_self_check() -> bool:
         ("pypdfium2", check_pdfium),
         ("pillow", check_pillow),
         ("regex", check_regex),
+        ("prompts", check_prompts),
         ("playwright", check_playwright),
         ("claude-agent-sdk", check_claude),
     ]

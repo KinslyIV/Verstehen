@@ -3,7 +3,9 @@ from PyInstaller.utils.hooks import collect_all, collect_data_files, collect_sub
 
 root = Path(SPECPATH).parent
 binaries = []
-datas = collect_data_files("verstehen", includes=["store/migrations/*.sql"])
+datas = collect_data_files(
+    "verstehen", includes=["store/migrations/*.sql", "teaching/prompts/**/*.md"]
+)
 datas += copy_metadata("verstehen", recursive=True)
 hiddenimports = collect_submodules("uvicorn")
 for package in ("playwright", "claude_agent_sdk", "pypdfium2", "pypdfium2_raw", "resvg_py"):
