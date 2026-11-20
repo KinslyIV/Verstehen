@@ -230,7 +230,9 @@ export const test = base.extend<{
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&
-						/\/api\/(events|sessions(?:\/[^/]+(?:\/stream)?)?)$/.test(request.url())
+						/\/api\/(events|sessions(?:\/[^/]+(?:\/stream|\/side-chats(?:\/[^/]+\/stream)?)?)?)$/.test(
+							request.url()
+						)
 					) &&
 					errors.push(
 						`Failed request: ${request.method()} ${request.url()}: ${request.failure()?.errorText}`

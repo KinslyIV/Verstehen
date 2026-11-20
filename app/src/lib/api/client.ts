@@ -1,5 +1,5 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import type { components } from './schema';
+import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
@@ -291,4 +291,40 @@ export async function setArtifactView(
 		method: 'PUT',
 		body: JSON.stringify({ inverted })
 	});
+}
+
+export type SideThread = components['schemas']['SideThread'];
+export type SideExchange = components['schemas']['SideExchange'];
+export type SideChatList = components['schemas']['SideChatList'];
+export type SideStreamEvent = components['schemas']['SideStreamEvent'];
+export type SideSegments = components['schemas']['SideSegments'];
+export type SideAskBody = NonNullable<
+	operations['ask_side_chat_api_sessions__session_id__side_chats_post']['requestBody']
+>['content']['application/json'];
+const sidePath = (id: string) => `${sessionPath(id)}/side-chats`;
+export async function getSideChats(id: string, signal?: AbortSignal): Promise<SideChatList> {
+	return (await request(sidePath(id), { signal })).json();
+}
+export async function askSideChat(
+	id: string,
+	body: SideAskBody,
+	signal?: AbortSignal
+): Promise<SideThread> {
+	return (
+		await request(sidePath(id), { method: 'POST', body: JSON.stringify(body), signal })
+	).json();
+}
+export async function streamSideChat(
+	id: string,
+	threadId: string,
+	receive: (event: SideStreamEvent) => void,
+	signal: AbortSignal
+): Promise<boolean> {
+	const response = await request(`${sidePath(id)}/${encodeURIComponent(threadId)}/stream`, {
+		signal
+	});
+	return readEvents(response, (_, data) => receive(JSON.parse(data)));
+}
+export async function stopSideChat(id: string, threadId: string): Promise<void> {
+	await request(`${sidePath(id)}/${encodeURIComponent(threadId)}/stop`, { method: 'POST' });
 }

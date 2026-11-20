@@ -144,9 +144,23 @@ Session detail exposes `side_segments` (`by_entry`, `entry_points`, `current`).
 `GET …/{thread}/stream` replays and streams helper text through SSE; `POST …/{thread}/stop`
 keeps partial text. `side-chats-changed` announces starts and settlements. The helper receives
 visible lesson content with open-question keys hidden and uses the session's foreground model.
-The UI arrives in T2; delivery to the teacher arrives in T3.
+The UI is below; delivery to the teacher arrives in T3.
 
 Verify offline with `backend/tests/test_side_chat.py` and `test_side_chat_api.py`: segment
 boundaries, shuffled open quizzes, answered questions, compaction redaction, model turns and
 input limits, durable threads, request deduplication, stop/retry/reload, context limits, tool-less
 helpers, usage admission, prompt overrides, role-isolated scripts, and session deletion.
+
+## Side chat UI (M8 T2)
+
+| Feature | How to reach it | Verify flow | Offline coverage |
+|---|---|---|---|
+| Side chat tab | Right panel → Side chat. With no thread opened it shows the current segment's thread or an empty composer. Messages show the learner's quotes, helper answers as markdown, "Answering" until text arrives, "Stopped", the error line, and the draft kept per thread. Close (shown when a thread or quote was opened) and Escape return to the current thread. Enter sends, Shift+Enter adds a line, 8,000-character limit. | `side-chat-ask` (dark/light) | `side-chat-panel.svelte.test.ts`: empty, streaming, stopped, failed with Retry, kept draft after a failed ask, drafts per thread; `thread.test.ts`: placeholders and retry rule |
+| Segment entry buttons | The quiet button under each segment's last teacher message: "Ask a side question", or "Open side conversation" once the segment has history. Opens the Side chat tab on that segment and focuses the input. | `side-chat-ask` (dark/light) | `session-thread.svelte.test.ts` mocks the side-chat list; the flow covers both button states |
+| Selection Ask | Select teacher text inside one message → Ask (disabled as "Shorten selection" over 4,000 characters). The selection waits above the input as a quote and is sent with the question. | `side-chat-selection` | `thread.test.ts`: the limit; `selection.svelte.test.ts`: TeX and block text, one-entry rule |
+| Stop, retry, reattach | The Send button becomes Stop while an answer runs and keeps the partial text as "Stopped". **Retry answer** appears for an unanswered question or a failed answer. Reloading during an answer reattaches to its stream. | `side-chat-stop-retry`, `side-chat-reload` | `side-chat-panel.svelte.test.ts`; `test_side_chat_api.py` for the stream |
+| Go to current step, Ctrl+J | **Go to current step →** appears when the open thread is not the current segment. Ctrl+J (Cmd+J) opens the panel on the Side chat tab at the current thread and focuses the input; a second press closes the panel. | `side-chat-current-step` | `side-chat-panel.svelte.test.ts`: only off the current segment; `layout.svelte.test.ts`: Ctrl+J opens and closes |
+| Open question | While a question is pending, asks from the current thread carry the dock's unsubmitted thinking or answer text as `working`. | `side-chat-open-question` (asserts the request body) | `test_side_chat.py`: the helper's working suffix |
+
+Side-chat changes reach the open session through the `side-chats-changed` notification and a refresh after every
+reconnect.

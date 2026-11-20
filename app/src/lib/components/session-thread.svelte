@@ -19,6 +19,8 @@
 	import DispatchCard from '#lib/jobs/dispatch-card.svelte';
 	import MarkerCard from '#lib/jobs/marker-card.svelte';
 	import ImageCard from '#lib/teaching/image-card.svelte';
+	import SideEntryButton from '#lib/sidechat/side-entry-button.svelte';
+	import SelectionAsk from '#lib/sidechat/selection-ask.svelte';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
@@ -75,6 +77,11 @@
 		viewport?.scrollTo({ top: viewport.scrollHeight });
 	}
 
+	function openSide(segmentId: string, quote?: string) {
+		controller.side.open(segmentId, quote);
+		panel?.open('side-chat');
+	}
+
 	function escape(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat)
 			return;
@@ -116,16 +123,23 @@
 		const sync = (event: Event) => {
 			if ((event as CustomEvent<string>).detail === id) void controller.synchronize();
 		};
+		const syncSideChats = (event: Event) => {
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') void controller.side.refresh();
+		};
 		const syncJobs = (event: Event) => {
 			const detail = (event as CustomEvent<string>).detail;
 			if (detail === id || detail === '') controller.jobs.schedule();
 		};
 		window.addEventListener('verstehen:sessions-changed', sync);
 		window.addEventListener('verstehen:jobs-changed', syncJobs);
+		window.addEventListener('verstehen:side-chats-changed', syncSideChats);
 		void controller.jobs.refresh();
+		void controller.side.refresh();
 		return () => {
 			window.removeEventListener('verstehen:sessions-changed', sync);
 			window.removeEventListener('verstehen:jobs-changed', syncJobs);
+			window.removeEventListener('verstehen:side-chats-changed', syncSideChats);
 			unwatchPlan?.();
 			controller.dispose();
 		};
@@ -207,10 +221,12 @@
 									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
 									{#each prose as item, i (i)}
 										{#if item.kind === 'text'}
-											<AssistantMessage
-												content={item.text}
-												streaming={streaming && i === prose.length - 1}
-											/>
+											<div data-source-entry-id={entry.entry_id}>
+												<AssistantMessage
+													content={item.text}
+													streaming={streaming && i === prose.length - 1}
+												/>
+											</div>
 										{:else if item.kind === 'image'}
 											<ImageCard result={item.result} />
 										{:else if item.kind === 'job'}
@@ -240,6 +256,14 @@
 									{/each}
 								</Scroller.Item>
 							{/if}
+							{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
+							{#if segmentId}<Scroller.Item>
+									<SideEntryButton
+										{segmentId}
+										hasHistory={controller.side.hasHistory(segmentId)}
+										onopen={openSide}
+									/>
+								</Scroller.Item>{/if}
 						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
 							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
 						{:else if block && entry.kind === 'marker' && entry.display}
@@ -350,6 +374,7 @@
 					if (pending) void controller.answerQuestion(pending, answer, draft);
 				}}
 				onstop={() => void controller.stop()}
+				onworking={(text) => (controller.working = text)}
 				{models}
 			/>
 		{/key}
@@ -374,6 +399,11 @@
 			onconfirm={confirmAbort}
 		/>
 	{/if}
+	<SelectionAsk
+		{viewport}
+		segmentFor={(entryId) => controller.record?.side_segments.by_entry[entryId]}
+		onask={openSide}
+	/>
 	{#if controller.setupOpen}<SetupDialog
 			onclose={() => (controller.setupOpen = false)}
 			ondone={() => (controller.setupOpen = false)}

@@ -23,6 +23,7 @@ import {
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
+import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
 import { phaseTimeline } from '#lib/teaching/phases.js';
 import { planFromResult, type Plan } from '#lib/teaching/plan.js';
@@ -61,6 +62,9 @@ export class SessionController {
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
 	);
 	readonly jobs: JobsFeed;
+	readonly side: SideChatFeed;
+	/** The open question's unsubmitted text, mirrored by the dock for side asks. */
+	working = '';
 	private steers = $state<{ id: string; text: string }[]>([]);
 	/** Steers sent mid-turn that have not yet landed in the thread. */
 	queuedSteers = $derived(
@@ -76,6 +80,11 @@ export class SessionController {
 		private waitMaxMs = 30_000
 	) {
 		this.jobs = new JobsFeed(id, () => void this.synchronize());
+		this.side = new SideChatFeed(
+			id,
+			() => this.record?.side_segments.current ?? null,
+			() => (this.pendingQuestion ? this.working : '')
+		);
 	}
 
 	adoptRecord(record: SessionDetail): void {
@@ -402,6 +411,7 @@ export class SessionController {
 	}
 	dispose(): void {
 		this.jobs.dispose();
+		this.side.dispose();
 		this.lifetime.abort();
 	}
 }

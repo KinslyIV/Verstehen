@@ -3,11 +3,30 @@ import { render } from 'vitest-browser-svelte';
 import { page, userEvent, server } from 'vitest/browser';
 import Root from './(lesson)/+page.svelte';
 import Lesson from './lesson-test-harness.svelte';
+import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
 import appHtml from '../app.html?raw';
 
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
+	getSession: async () => ({
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		side_segments: { by_entry: { a: 'a' }, entry_points: { a: 'a' }, current: 'a' },
+		entries: [
+			{
+				kind: 'assistant',
+				entry_id: 'a',
+				stop_reason: 'stop',
+				parts: [{ type: 'text', text: 'Slope is rise over run.' }]
+			}
+		]
+	}),
+	getJobs: async () => ({ jobs: [], turn_in_flight: false }),
+	getSideChats: async () => ({ threads: [], answering: {} }),
 	getModels: async () => ({ accounts: [], slots: {} }),
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
@@ -105,6 +124,21 @@ test('sidebar_toggles_with_ctrl_b', async () => {
 	await expect
 		.poll(() => document.querySelector('[data-slot="sidebar"]')?.getAttribute('data-state'))
 		.toBe('expanded');
+});
+
+test('ctrl_j_opens_the_side_chat_on_the_current_thread_and_a_second_press_closes_the_panel', async () => {
+	const screen = await render(Lesson, { page: SessionThreadPage });
+	await expect.element(screen.getByText('Slope is rise over run.')).toBeVisible();
+	await userEvent.keyboard('{Control>}j{/Control}');
+	await expect
+		.element(screen.getByRole('tab', { name: 'Side chat' }))
+		.toHaveAttribute('aria-selected', 'true');
+	await expect.element(screen.getByRole('textbox', { name: 'Side question' })).toHaveFocus();
+	await userEvent.keyboard('{Control>}j{/Control}');
+	await expect
+		.element(screen.getByRole('button', { name: 'Toggle right panel' }))
+		.toHaveAttribute('aria-expanded', 'false');
+	await expect.element(screen.getByRole('tab', { name: 'Side chat' })).not.toBeInTheDocument();
 });
 
 test('theme_defaults_to_dark', async () => {

@@ -1,0 +1,22 @@
+[
+	{
+		"role": "teacher",
+		"text": "A derivative describes how quickly a quantity changes. What do you already know about slope?"
+	},
+	{
+		"role": "sideQuestion",
+		"text": "Slope is rise over run, so a steeper line has a larger slope and it keeps going on and on.",
+		"delay_ms": 700
+	},
+	{
+		"role": "sideQuestion",
+		"text": "Partial helper text before the failure.",
+		"error": "Scripted helper failure",
+		"delay_ms": 100
+	},
+	{
+		"role": "sideQuestion",
+		"text": "Retry worked: slope is the change in height per step across.",
+		"delay_ms": 100
+	}
+]

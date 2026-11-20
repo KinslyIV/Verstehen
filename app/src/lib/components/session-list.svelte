@@ -51,6 +51,12 @@
 							);
 							return;
 						}
+						if (event.type === 'side-chats-changed') {
+							window.dispatchEvent(
+								new CustomEvent('verstehen:side-chats-changed', { detail: event.session_id })
+							);
+							return;
+						}
 						void refresh(lifetime.signal);
 						if (
 							!deletedIds.includes(event.session_id) &&
@@ -66,6 +72,7 @@
 				if (lifetime.signal.aborted) break;
 				await new Promise((resolve) => setTimeout(resolve, 1000));
 				window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: '' }));
+				window.dispatchEvent(new CustomEvent('verstehen:side-chats-changed', { detail: '' }));
 			}
 		})();
 		const timer = setInterval(() => {

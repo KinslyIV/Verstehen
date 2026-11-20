@@ -38,6 +38,7 @@
 		onexpand,
 		onsubmit,
 		onstop,
+		onworking,
 		models
 	}: {
 		question: Question;
@@ -52,6 +53,7 @@
 		onexpand: () => void;
 		onsubmit: (answer: QuestionAnswer, draft: QuestionDraft) => void;
 		onstop: () => void;
+		onworking?: (text: string) => void;
 		models?: Snippet;
 	} = $props();
 	let draft = $state(untrack(() => initialDraft ?? emptyDraft()));
@@ -74,6 +76,10 @@
 					draft.selection.selected.size > 0 ||
 					(draft.selection.otherSelected && !!draft.other.trim())
 	);
+	$effect(() => {
+		onworking?.((isText ? draft.text : draft.thinking).trim());
+		return () => onworking?.('');
+	});
 	const rowClass =
 		'flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-1 focus-visible:ring-ring';
 

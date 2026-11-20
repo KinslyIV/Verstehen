@@ -3,7 +3,7 @@ import type { SessionController } from '#lib/session/controller.svelte.js';
 
 export interface PlanPanel {
 	watch: (controller: SessionController) => () => void;
-	open: () => void;
+	open: (tab?: 'plan' | 'side-chat') => void;
 }
 
 const planPanelKey = Symbol('plan panel');

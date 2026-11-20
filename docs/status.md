@@ -493,6 +493,8 @@ Each case also retains `trace.zip`; the separate evidence rerun preserves the fu
   and `side-chats-changed`. The pure compaction module moved to `teaching/compaction.py`.
   Evidence: `make check` (669 backend, 184 frontend tests) and `make verify` 76/77; the one
   failure, `job-recovery-reload` (aborted `/api/jobs` polls during reload), passed 3/3 on rerun.
-- **Next:** T2 side chat UI, then T3 delivery to the teacher.
+- **T2 side chat UI: implemented** (review pending). Side chat tab, segment buttons, selection Ask,
+  Ctrl+J, stop/retry/reattach, drafts, `working`; flows `side-chat-*`.
+- **Next:** T3 delivery to the teacher.
 - **Flagged:** `job-recovery-reload` (M7) is flaky: an aborted jobs poll during reload counts as a
   browser error.
