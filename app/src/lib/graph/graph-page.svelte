@@ -4,8 +4,9 @@
 	import { resolve } from '$app/paths';
 	import { listSessions } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
-	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import type { Pt } from './canvas.js';
+	import ChainTable from './chain-table.svelte';
+	import DeleteNodeDialog from './delete-node-dialog.svelte';
 	import { GraphController } from './controller.svelte.js';
 	import CostControl from './cost-control.svelte';
 	import GraphCanvas from './graph-canvas.svelte';
@@ -13,7 +14,10 @@
 	import ImportNotes from './import-notes.svelte';
 	import KnowledgeSummary from './knowledge-summary.svelte';
 	import NodeCard from './node-card.svelte';
+	import NodeContextMenu from './node-context-menu.svelte';
+	import NodePicker from './node-picker.svelte';
 	import { NotesImport } from './notes-import.svelte.js';
+	import { picks } from './picks.svelte.js';
 	import PipelinePills from './pipeline-pills.svelte';
 	import RenderSettingsPanel from './render-settings-panel.svelte';
 	import { isNodeVisible, visibleNodeIds } from './search.js';
@@ -25,16 +29,22 @@
 	});
 	let query = $state('');
 	let selected = $state<{ nodeId: string; anchor: Pt }>();
-	let chainsOpen = $state(false);
+	let table = $state<'manage' | 'pick'>();
 	let teachSessions = $state(0);
-	/** The nodes picked for a new session; the chains table fills it. */
-	let picked = $state<string[]>([]);
+	let menu = $state<{ nodeId: string; anchor: Pt }>();
+	let deleting = $state<{ id: string; name: string }[]>();
 
 	const graph = $derived(controller.graph);
 	const nodes = $derived(graph?.snapshot.nodes ?? []);
 	const isEmpty = $derived(nodes.length === 0);
 	const visible = $derived(visibleNodeIds(nodes, query));
 	const card = $derived(selected && nodes.find((node) => node.id === selected?.nodeId));
+
+	function deleted(ids: string[]) {
+		deleting = undefined;
+		if (selected && ids.includes(selected.nodeId)) selected = undefined;
+		void controller.refreshGraph();
+	}
 
 	function search(value: string) {
 		query = value;
@@ -84,8 +94,18 @@
 				settings={controller.settings}
 				{visible}
 				clusterLabels={controller.clusterLabels}
-				onselect={(nodeId, anchor) => (selected = { nodeId, anchor })}
-				onclear={() => (selected = undefined)}
+				onselect={(nodeId, anchor) => {
+					menu = undefined;
+					selected = { nodeId, anchor };
+				}}
+				oncontext={(nodeId, anchor) => {
+					selected = undefined;
+					menu = nodeId ? { nodeId, anchor } : undefined;
+				}}
+				onclear={() => {
+					selected = undefined;
+					menu = undefined;
+				}}
 			/>
 			{#if card && selected}
 				<NodeCard
@@ -95,7 +115,22 @@
 					titles={controller.titles}
 					fileSources={graph.snapshot.file_sources}
 					anchor={selected.anchor}
+					ondelete={() => (deleting = [{ id: card.id, name: card.name }])}
 				/>
+			{/if}
+			{#if menu}
+				{@const target = nodes.find((node) => node.id === menu?.nodeId)}
+				{#if target}
+					<NodeContextMenu
+						x={menu.anchor.x}
+						y={menu.anchor.y}
+						ondelete={() => {
+							deleting = [{ id: target.id, name: target.name }];
+							menu = undefined;
+						}}
+						onclose={() => (menu = undefined)}
+					/>
+				{/if}
 			{/if}
 		</div>
 	{/if}
@@ -111,7 +146,7 @@
 					data-testid="open-chain-table"
 					title="Every reasoning chain"
 					class="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
-					onclick={() => (chainsOpen = true)}
+					onclick={() => (table = 'manage')}
 				>
 					<ListTree class="size-3" />
 					Chains
@@ -128,11 +163,25 @@
 				/>
 			{/if}
 		</div>
-		{#if picked.length > 0}
-			<Button href={resolve('/(lesson)/session/new')} size="sm" class="rounded-xl shadow-lg">
-				Start session
-			</Button>
-		{/if}
+		<div
+			class="flex items-center gap-2 rounded-full bg-card/85 py-0.5 pr-1 pl-1 shadow-lg backdrop-blur"
+		>
+			<NodePicker
+				count={picks.items.length}
+				onopen={() => (table = 'pick')}
+				onclear={() => picks.clear()}
+			/>
+			{#if picks.items.length > 0}
+				<Button
+					href={resolve('/(lesson)/session/new')}
+					size="sm"
+					data-testid="start-session"
+					class="rounded-full"
+				>
+					Start session
+				</Button>
+			{/if}
+		</div>
 		{#each notesImport.snapshot.errors as error, i (i)}
 			<p role="alert" class="max-w-full text-xs break-words whitespace-pre-wrap text-destructive">
 				{error}
@@ -151,13 +200,11 @@
 		{/if}
 		<PipelinePills runs={controller.runs} />
 	</div>
+	{#if table}
+		{#key table}<ChainTable mode={table} onclose={() => (table = undefined)} />{/key}
+	{/if}
 </section>
 
-<Dialog.Root bind:open={chainsOpen}>
-	<Dialog.Content>
-		<Dialog.Header>
-			<Dialog.Title>Chains</Dialog.Title>
-			<Dialog.Description>The chains table is coming in the next update.</Dialog.Description>
-		</Dialog.Header>
-	</Dialog.Content>
-</Dialog.Root>
+{#if deleting}
+	<DeleteNodeDialog nodes={deleting} onclose={() => (deleting = undefined)} ondeleted={deleted} />
+{/if}

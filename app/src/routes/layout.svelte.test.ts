@@ -26,6 +26,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 		]
 	}),
 	getJobs: async () => ({ jobs: [], turn_in_flight: false }),
+	getExtractionStatus: async () => [],
 	getSideChats: async () => ({ threads: [], answering: {} }),
 	getModels: async () => ({ accounts: [], slots: {} }),
 	listChatGPTAccounts: async () => [],

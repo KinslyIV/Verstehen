@@ -14,6 +14,8 @@ vi.mock('./snapshot.js', () => ({ loadSnapshot: vi.fn() }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getJobs: vi.fn(),
+	getExtractionStatus: async () => [],
+	getSettings: async () => ({}),
 	abortJob: vi.fn()
 }));
 afterEach(() => vi.resetAllMocks());

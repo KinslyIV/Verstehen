@@ -1,15 +1,22 @@
-import { getJobs, type JobRecord } from '#lib/api/client.js';
+import {
+	getExtractionStatus,
+	getJobs,
+	type JobRecord,
+	type RunningExtraction
+} from '#lib/api/client.js';
 
 const DEBOUNCE_MS = 250;
 
-/** One session's jobs, fetched on mount, on `jobs-changed` (debounced), and on resync.
+/** One session's jobs and running extractions, refetched on their change events (debounced) and on resync.
  * A job that stops running calls `onSettled` so the session adopts what it delivered.
  */
 export class JobsFeed {
 	jobs = $state.raw<JobRecord[]>([]);
+	extractions = $state.raw<RunningExtraction[]>([]);
 	now = $state(Date.now());
 	running = $derived(this.jobs.filter((job) => job.status === 'running'));
 	private requestNumber = 0;
+	private extractionRequest = 0;
 	private statuses: Record<string, string> = {};
 	private lifetime = new AbortController();
 	private debounce: ReturnType<typeof setTimeout> | undefined;
@@ -42,11 +49,24 @@ export class JobsFeed {
 		}
 	}
 
+	async refreshExtractions(): Promise<void> {
+		const request = ++this.extractionRequest;
+		try {
+			const runs = await getExtractionStatus(this.lifetime.signal);
+			if (this.lifetime.signal.aborted || request !== this.extractionRequest) return;
+			this.extractions = runs.filter((run) => run.session_id === this.sessionId);
+			this.keepClock();
+		} catch {
+			/* The next extractions-changed announcement fetches again. */
+		}
+	}
+
 	private keepClock(): void {
-		if (this.running.length && !this.ticker) {
+		const active = this.running.length > 0 || this.extractions.length > 0;
+		if (active && !this.ticker) {
 			this.now = Date.now();
 			this.ticker = setInterval(() => (this.now = Date.now()), 1000);
-		} else if (!this.running.length && this.ticker) {
+		} else if (!active && this.ticker) {
 			clearInterval(this.ticker);
 			this.ticker = undefined;
 		}

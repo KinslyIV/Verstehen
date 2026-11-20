@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T3 graph page).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T4 chains table and session surfaces).
 
 ## M9 progress
 
@@ -43,12 +43,11 @@ T3 graph page is implemented on `m9-plan`: the **Knowledge graph** sidebar entry
 
 Verification: Vitest ports of LH's pure-helper tests (canvas, layout, render settings, import queue) plus settle, search, card placement, and costs. Verify flows `graph-extraction`, `graph-canvas-dark`, `graph-canvas-light`, `graph-search-settings`, `graph-import`, and `graph-rendering-off` passed; screenshots inspected under `app/verify-output/`.
 
-Next (T4): chains table, picks and Start session, delete dialogs and the node context menu, coverage ring and Extract now, Jobs-tab extraction rows, Settings → Graph.
+T4 is implemented on `m9-plan`: the chains table (source → chain → statements, KaTeX-joined chip lines, sort, fuzzy search, keyboard navigation, folders with rename and drag moves, selection bar), picks with one shared selection (the chip on both screens, **Start session** on the graph page, `graph_context` sent with the new session), the node, source, and session-trace delete dialogs (right-click and card Delete), the coverage ring and the session menu block with **Extract now**, extraction rows in the Jobs tab with End, and Settings → Graph. Ten T4 decisions are recorded for user review, including a T2 backend fix: the `graph-context` marker is now projected to the model.
 
-Next: orchestrator review of T2, then T3 graph page and T4 session/table surfaces. The existing
-session DELETE default remains preserve-graph until T4 sends its explicit selection. The task
-instruction forbids real-model calls, so `make verify-live` is left for the orchestrator's authorized
-integration verification.
+Verification: Vitest for chain lines, selection to chains, sort and search, folder moves, keyboard navigation, pick chip states, coverage fill and states, delete dialog copy and retry, and the graph settings field. Verify flows `graph-chains-table`, `graph-picks`, `graph-delete`, `graph-coverage`, and `settings-graph` pass; screenshots inspected under `app/verify-output/`.
+
+Next: orchestrator review of T3 and T4, then `make verify-live` (real Claude Code, run by the orchestrator).
 
 ## Where we are
 

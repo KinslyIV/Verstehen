@@ -17,6 +17,6 @@ test('graph-rendering-off', async ({ page, request, seedGraph }) => {
 	await expect(page.getByRole('button', { name: 'Graph display settings' })).toHaveCount(0);
 	await expect(page.getByTestId('import-notes')).toBeVisible();
 	await page.getByTestId('open-chain-table').click();
-	await expect(page.getByRole('dialog')).toContainText('Chains');
+	await expect(page.getByTestId('chain-table')).toContainText('13 chains · 17 nodes');
 	await page.screenshot({ path: test.info().outputPath('summary.png'), animations: 'disabled' });
 });

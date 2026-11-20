@@ -119,6 +119,20 @@ def test_retry_walks_over_ui_and_side_question_markers():
     assert retry_drops([user, failed, *markers]) == {failed.entry_id}
 
 
+def test_graph_context_marker_reaches_the_model_before_the_learner_message():
+    context = MarkerEntry(
+        marker_type="graph-context", content="[Session context] picks"
+    )
+    messages = to_llm_messages([context, UserEntry(text="Teach me")])
+    texts = [
+        part.content
+        for message in messages
+        for part in message.parts
+        if isinstance(part, UserPromptPart)
+    ]
+    assert texts == ["[Session context] picks", "Teach me"]
+
+
 def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):
     async def run():
         entries = [

@@ -22,6 +22,8 @@ export type BinaryStatus = components['schemas']['BinaryStatus'];
 export type DownloadProgress = components['schemas']['DownloadProgress'];
 export type SignInStatus = components['schemas']['SignInStatus'];
 export type GraphSnapshot = components['schemas']['GraphSnapshot'];
+export type GraphNode = components['schemas']['GraphNode'];
+export type GraphChain = components['schemas']['GraphChain'];
 export type GraphRenderSettings = components['schemas']['GraphRenderSettings'];
 export type RegionTuning = components['schemas']['RegionTuning'];
 export type PhysicsTuning = components['schemas']['PhysicsTuning'];
@@ -29,6 +31,14 @@ export type GraphCostSummary = components['schemas']['GraphCostSummary'];
 export type CostTotals = components['schemas']['CostTotals'];
 export type RunningExtraction = components['schemas']['RunningExtraction'];
 export type ImportResult = components['schemas']['ImportResult'];
+export type SourceDirectory = components['schemas']['SourceDirectory'];
+export type SourceEntry = components['schemas']['SourceEntry'];
+export type SourceFolder = components['schemas']['SourceFolder'];
+export type SourceOrganization = components['schemas']['SourceOrganization'];
+export type SourcePlacement = components['schemas']['SourcePlacement'];
+export type SessionCoverage = components['schemas']['SessionCoverage'];
+export type GraphContext = components['schemas']['GraphContext'];
+export type DeleteMode = 'preserve-graph' | 'delete-nodes';
 let token: string | undefined;
 let connection: Promise<string> | undefined;
 
@@ -94,10 +104,14 @@ export async function listSessions(signal?: AbortSignal): Promise<SessionItem[]>
 }
 export async function createSession(
 	title: string,
-	model?: ModelPick | null
+	model?: ModelPick | null,
+	graph_context?: GraphContext
 ): Promise<components['schemas']['Created']> {
 	return (
-		await request('/api/sessions', { method: 'POST', body: JSON.stringify({ title, model }) })
+		await request('/api/sessions', {
+			method: 'POST',
+			body: JSON.stringify({ title, model, graph_context })
+		})
 	).json();
 }
 const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
@@ -112,8 +126,8 @@ export async function renameSession(
 		await request(sessionPath(id), { method: 'PATCH', body: JSON.stringify({ title }) })
 	).json();
 }
-export async function deleteSession(id: string): Promise<void> {
-	await request(sessionPath(id), { method: 'DELETE' });
+export async function deleteSession(id: string, mode: DeleteMode): Promise<void> {
+	await request(`${sessionPath(id)}?mode=${mode}`, { method: 'DELETE' });
 }
 export async function postInput(id: string, input: TurnInput, signal?: AbortSignal): Promise<void> {
 	await request(`${sessionPath(id)}/input`, {
@@ -368,4 +382,44 @@ export async function importNotes(file: File, path: string): Promise<ImportResul
 	form.append('paths', path);
 	return (await (await request('/api/graph/import', { method: 'POST', body: form })).json())
 		.results[0];
+}
+export type OrganizationAction =
+	| { action: 'create-folder'; name: string; parent_id: string | null }
+	| { action: 'rename-folder'; id: string; name: string }
+	| { action: 'rename-source'; id: string; name: string }
+	| { action: 'move'; kind: 'source' | 'folder'; id: string; parent_id: string | null }
+	| { action: 'delete-folder'; id: string };
+export async function getSourceDirectory(signal?: AbortSignal): Promise<SourceDirectory> {
+	return (await request('/api/graph/sources', { signal })).json();
+}
+export async function organizeSources(action: OrganizationAction): Promise<SourceDirectory> {
+	return (
+		await request('/api/graph/sources', { method: 'POST', body: JSON.stringify(action) })
+	).json();
+}
+export async function deleteSources(body: {
+	source_ids: string[];
+	folder_ids: string[];
+	delete_sessions: boolean;
+}): Promise<SourceDirectory> {
+	return (
+		await request('/api/graph/sources', { method: 'DELETE', body: JSON.stringify(body) })
+	).json();
+}
+export async function deleteGraphNode(id: string): Promise<void> {
+	await request(`/api/graph/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+/** Starts a manual extraction; a 409 means one is already running and counts as started. */
+export async function extractCoverage(sessionId: string): Promise<void> {
+	try {
+		await request('/api/graph/coverage/extract', {
+			method: 'POST',
+			body: JSON.stringify({ session_id: sessionId })
+		});
+	} catch (cause) {
+		if (!(cause instanceof ApiError && cause.status === 409)) throw cause;
+	}
+}
+export async function abortExtraction(source: string): Promise<void> {
+	await request(`/api/graph/extractions/${encodeURIComponent(source)}/abort`, { method: 'POST' });
 }

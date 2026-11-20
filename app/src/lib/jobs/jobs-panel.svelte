@@ -1,6 +1,6 @@
 <script lang="ts">
-	import { FileText, Pencil, Search, Square, SquareMousePointer } from '@lucide/svelte';
-	import { abortJob, ApiError } from '#lib/api/client.js';
+	import { FileText, Pencil, Search, Square, SquareMousePointer, Waypoints } from '@lucide/svelte';
+	import { abortExtraction, abortJob, ApiError } from '#lib/api/client.js';
 	import type { JobsFeed } from './feed.svelte.js';
 	import {
 		elapsedSeconds,
@@ -15,6 +15,19 @@
 	const icons = { research: Search, demo: SquareMousePointer, visual: Pencil, pdf: FileText };
 	let openJob = $state<string>();
 	let abortStates = $state<Record<string, 'pending' | 'failed'>>({});
+	let extractionAborts = $state<Record<string, 'pending' | 'failed'>>({});
+
+	async function endExtraction(runId: string, source: string) {
+		extractionAborts[runId] = 'pending';
+		try {
+			await abortExtraction(source);
+			delete extractionAborts[runId];
+		} catch {
+			extractionAborts[runId] = 'failed';
+			return;
+		}
+		await feed.refreshExtractions();
+	}
 
 	async function end(id: string) {
 		abortStates[id] = 'pending';
@@ -41,6 +54,40 @@
 			</span>{/if}
 	</div>
 	<div class="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto px-3 pb-3">
+		{#each feed.extractions as run (run.id)}
+			{@const abort = extractionAborts[run.id]}
+			<div
+				data-testid="extraction-row"
+				class="relative rounded-lg px-2 py-1.5 text-xs transition-colors hover:bg-accent"
+			>
+				<div class="flex w-full items-center gap-2 pr-7">
+					<Waypoints class="size-3.5 shrink-0 text-muted-foreground" />
+					<span class="min-w-0 flex-1">
+						<span class="block truncate font-medium text-card-foreground">{run.title}</span>
+						<span class="block truncate text-muted-foreground" data-testid="extraction-phase">
+							Extraction — {run.phase}
+						</span>
+					</span>
+					<span
+						class="shrink-0 text-muted-foreground tabular-nums"
+						data-testid="extraction-elapsed"
+					>
+						{formatElapsed(Math.max(0, Math.round((feed.now - run.started_at) / 1000)))}
+					</span>
+				</div>
+				<button
+					type="button"
+					data-testid="extraction-end"
+					disabled={abort === 'pending'}
+					title={abort === 'failed' ? 'Abort failed — try again' : 'End this extraction'}
+					aria-label="End extraction in {run.title}"
+					class="absolute top-1/2 right-1 -translate-y-1/2 rounded-md p-1 text-muted-foreground/70 transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+					onclick={() => void endExtraction(run.id, run.session_id)}
+				>
+					<Square class="size-3" />
+				</button>
+			</div>
+		{/each}
 		{#each feed.running as job (job.id)}
 			{@const Icon = icons[job.kind as JobKind]}
 			{@const label = workerLabel[job.kind as JobKind]}

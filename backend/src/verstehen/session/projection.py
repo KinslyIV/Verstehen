@@ -227,6 +227,7 @@ def to_llm_messages(
                 "subagent-steer",
                 "subagent-abort",
                 "side-question",
+                "graph-context",
             )
         ):
             messages.append(user_message(entry))

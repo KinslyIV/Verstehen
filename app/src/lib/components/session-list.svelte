@@ -4,24 +4,15 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { LoaderCircle } from '@lucide/svelte';
-	import {
-		ApiError,
-		deleteSession,
-		listSessions,
-		streamNotifications,
-		type SessionItem
-	} from '#lib/api/client.js';
+	import { listSessions, streamNotifications, type SessionItem } from '#lib/api/client.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
-	import * as Dialog from '#lib/components/ui/dialog/index.js';
-	import { Button } from '#lib/components/ui/button/index.js';
+	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
+	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
 	import RenameSession from './rename-session.svelte';
 	import { timeAgo } from '#lib/session/time-ago.js';
 	let sessions = $state<SessionItem[]>([]);
 	let error = $state<string | null>(null);
 	let deleting = $state<SessionItem | null>(null);
-	let deletingBusy = $state(false);
-	let deleteError = $state<string | null>(null);
-	let deleteRetryable = $state(false);
 	let renaming = $state<string | null>(null);
 	let now = $state(new Date());
 	let requestNumber = 0;
@@ -68,10 +59,7 @@
 							return;
 						}
 						void refresh(lifetime.signal);
-						if (
-							!deletedIds.includes(event.session_id) &&
-							!(deletingBusy && deleting?.id === event.session_id)
-						)
+						if (!deletedIds.includes(event.session_id) && deleting?.id !== event.session_id)
 							window.dispatchEvent(
 								new CustomEvent('verstehen:sessions-changed', { detail: event.session_id })
 							);
@@ -95,23 +83,11 @@
 			clearInterval(timer);
 		};
 	});
-	async function remove() {
-		if (!deleting || deletingBusy) return;
-		deletingBusy = true;
-		deleteError = null;
-		try {
-			const id = deleting.id;
-			await deleteSession(id);
-			deletedIds.push(id);
-			sessions = sessions.filter((session) => session.id !== id);
-			deleting = null;
-			if (page.params.id === id) await goto(resolve('/(lesson)/session/new'));
-		} catch (cause) {
-			deleteError = (cause as Error).message;
-			deleteRetryable = cause instanceof ApiError && cause.status === 409;
-		} finally {
-			deletingBusy = false;
-		}
+	async function removed(id: string) {
+		deletedIds.push(id);
+		sessions = sessions.filter((session) => session.id !== id);
+		deleting = null;
+		if (page.params.id === id) await goto(resolve('/(lesson)/session/new'));
 	}
 </script>
 
@@ -170,47 +146,19 @@
 				variant="destructive"
 				onclick={() => {
 					deleting = session;
-					deleteError = null;
-					deleteRetryable = false;
 				}}
 			>
 				Delete
 			</ContextMenu.Item>
+			<ContextMenu.Separator />
+			<CoverageMenuBlock sessionId={session.id} />
 		</ContextMenu.Content>
 	</ContextMenu.Root>
 {/each}
-<Dialog.Root
-	open={deleting !== null}
-	onOpenChange={(open) => {
-		if (!open && !deletingBusy) deleting = null;
-	}}
->
-	<Dialog.Content showCloseButton={false}>
-		<Dialog.Header>
-			<Dialog.Title class="text-sm text-destructive">
-				Delete session?
-			</Dialog.Title><Dialog.Description>{deleting?.title}</Dialog.Description>
-		</Dialog.Header>
-		{#if deleteError}<div
-				role="alert"
-				data-testid="delete-failure"
-				class="flex items-center gap-3 text-sm text-destructive"
-			>
-				<span>{deleteError}</span>{#if deleteRetryable}<Button
-						variant="outline"
-						size="sm"
-						disabled={deletingBusy}
-						onclick={() => void remove()}
-					>
-						Try again
-					</Button>{/if}
-			</div>{/if}
-		<Dialog.Footer>
-			<Button variant="ghost" disabled={deletingBusy} onclick={() => (deleting = null)}>
-				Cancel
-			</Button><Button variant="destructive" disabled={deletingBusy} onclick={() => void remove()}>
-				{deletingBusy ? 'Deleting…' : 'Delete'}
-			</Button>
-		</Dialog.Footer>
-	</Dialog.Content>
-</Dialog.Root>
+{#if deleting}
+	<DeleteSessionDialog
+		session={deleting}
+		onclose={() => (deleting = null)}
+		ondeleted={(id) => void removed(id)}
+	/>
+{/if}

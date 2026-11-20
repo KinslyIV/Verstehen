@@ -73,6 +73,7 @@ export class SessionController {
 	private saved: Entry[] = [];
 	private live: Entry[] = [];
 	private lifetime = new AbortController();
+	private coverageTimer: ReturnType<typeof setTimeout> | undefined;
 	private consuming = false;
 	constructor(
 		readonly id: string,
@@ -409,7 +410,21 @@ export class SessionController {
 			if (!(error instanceof ApiError) || error.status !== 409) this.fail(error);
 		}
 	}
+	/** Refetches only the coverage when an extraction or graph change may have moved it. */
+	scheduleCoverage(): void {
+		clearTimeout(this.coverageTimer);
+		this.coverageTimer = setTimeout(async () => {
+			try {
+				const { coverage } = await getSession(this.id, this.lifetime.signal);
+				if (this.record) this.record.coverage = coverage;
+			} catch {
+				/* The next refresh carries the coverage. */
+			}
+		}, 250);
+	}
+
 	dispose(): void {
+		clearTimeout(this.coverageTimer);
 		this.jobs.dispose();
 		this.side.dispose();
 		this.lifetime.abort();

@@ -6,6 +6,7 @@
 
 	import SettingsTools from './settings-tools.svelte';
 	import SettingsModels from './settings-models.svelte';
+	import SettingsGraph from './settings-graph.svelte';
 	import SettingsLesson from './settings-lesson.svelte';
 	import SettingsAccounts from './settings-accounts.svelte';
 	let section = $state('Appearance');
@@ -25,7 +26,7 @@
 	<div class="mx-auto flex max-w-5xl gap-12 px-6 py-12">
 		<nav aria-label="Settings sections" class="flex w-44 shrink-0 flex-col gap-1">
 			<h1 class="mb-6 px-3 text-lg font-semibold tracking-tight">Settings</h1>
-			{#each ['Appearance', 'Models', 'Accounts', 'Lesson', 'Tools'] as item (item)}
+			{#each ['Appearance', 'Models', 'Accounts', 'Lesson', 'Graph', 'Tools'] as item (item)}
 				<Button
 					variant={section === item ? 'secondary' : 'ghost'}
 					class="justify-start"
@@ -55,6 +56,8 @@
 				<SettingsModels />
 			{:else if section === 'Accounts'}
 				<SettingsAccounts />
+			{:else if section === 'Graph'}
+				<SettingsGraph />
 			{:else if section === 'Tools'}
 				<SettingsTools />
 			{:else}

@@ -10,7 +10,8 @@
 		sourceIds,
 		titles,
 		fileSources,
-		anchor
+		anchor,
+		ondelete
 	}: {
 		name: string;
 		statement: string;
@@ -18,6 +19,7 @@
 		titles: Record<string, string>;
 		fileSources: Record<string, string>;
 		anchor: { x: number; y: number };
+		ondelete: () => void;
 	} = $props();
 	let card = $state<HTMLDivElement>();
 
@@ -75,4 +77,12 @@
 	{:else}
 		<div class="mt-3 text-xs text-muted-foreground">No sessions recorded.</div>
 	{/if}
+	<button
+		type="button"
+		data-testid="card-delete"
+		class="mt-3 rounded-md px-2 py-1.5 text-xs text-destructive transition-colors hover:bg-destructive/10"
+		onclick={ondelete}
+	>
+		Delete
+	</button>
 </div>

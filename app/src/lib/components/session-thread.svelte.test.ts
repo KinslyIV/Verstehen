@@ -8,6 +8,8 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getModels: async () => ({ accounts: [], slots: {} }),
 	getJobs: vi.fn(),
+	getExtractionStatus: async () => [],
+	getSettings: async () => ({}),
 	getSideChats: async () => ({ threads: [], answering: {} }),
 	getSession: vi.fn(),
 	postInput: vi.fn(),

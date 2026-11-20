@@ -10,6 +10,7 @@ import {
 	type GraphSnapshot,
 	type RunningExtraction
 } from '#lib/api/client.js';
+import { picks } from './picks.svelte.js';
 import { hasUnplacedNodes, settleSnapshotLayout } from './layout-settle.js';
 import type { Position } from './layout.js';
 import {
@@ -90,6 +91,7 @@ export class GraphController {
 			const snapshot = await getGraph(this.lifetime.signal);
 			if (request !== this.graphRequest) return;
 			this.titles = snapshot.sessions;
+			picks.prune(snapshot.propositions);
 			if (this.rendering === false || !hasUnplacedNodes(snapshot)) {
 				this.graph = { snapshot, positions: snapshot.positions };
 				return;

@@ -178,3 +178,9 @@ export async function scriptExtractors(request: APIRequestContext) {
 	});
 	expect(saved.ok()).toBe(true);
 }
+
+/** Session ids by title, from the session list. */
+export async function sessionIds(request: APIRequestContext): Promise<Record<string, string>> {
+	const { sessions } = await (await request.get('/api/sessions')).json();
+	return Object.fromEntries(sessions.map((s: { id: string; title: string }) => [s.title, s.id]));
+}

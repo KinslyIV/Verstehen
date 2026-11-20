@@ -19,6 +19,7 @@
 		visible,
 		clusterLabels,
 		onselect,
+		oncontext,
 		onclear
 	}: {
 		graph: LaidOutGraph;
@@ -26,6 +27,8 @@
 		visible: ReadonlySet<string> | null;
 		clusterLabels: Record<string, string | null>;
 		onselect: (nodeId: string, anchor: Pt) => void;
+		/** Right-click: the node under the pointer, or null over empty stage. */
+		oncontext: (nodeId: string | null, anchor: Pt) => void;
 		/** The stage was clicked or the camera moved: anything anchored to a node is stale. */
 		onclear: () => void;
 	} = $props();
@@ -58,6 +61,7 @@
 			{
 				onSelect: (id, anchor) => onselect(id, anchor),
 				onStageClick: () => onclear(),
+				onContext: (id, anchor) => oncontext(id, anchor),
 				onCameraMove: (camera) => {
 					onclear();
 					latest = { k: camera.k, x: camera.x, y: camera.y };

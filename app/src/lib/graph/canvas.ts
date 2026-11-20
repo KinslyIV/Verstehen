@@ -61,6 +61,8 @@ export interface CanvasData {
 export interface RendererCallbacks {
 	onSelect: (nodeId: string, screenPos: Pt) => void;
 	onStageClick: () => void;
+	/** Right-click: the node under the pointer, or null over empty stage. */
+	onContext: (nodeId: string | null, screenPos: Pt) => void;
 	onCameraMove: (transform: { k: number; x: number; y: number }) => void;
 	/** The live sim settled after a drag: commit the new rest state. */
 	onCommit: (positions: Record<string, Position>) => void;
@@ -454,6 +456,7 @@ export class GraphCanvasRenderer {
 		canvas.addEventListener('pointerdown', this.onPointerDown);
 		canvas.addEventListener('pointerup', this.onPointerUp);
 		canvas.addEventListener('pointerleave', this.onPointerLeave);
+		canvas.addEventListener('contextmenu', this.onContextMenu);
 
 		if (
 			initialCamera &&
@@ -612,6 +615,7 @@ export class GraphCanvasRenderer {
 		this.canvas.removeEventListener('pointerdown', this.onPointerDown);
 		this.canvas.removeEventListener('pointerup', this.onPointerUp);
 		this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
+		this.canvas.removeEventListener('contextmenu', this.onContextMenu);
 		this.canvas.style.cursor = '';
 	}
 
@@ -710,6 +714,12 @@ export class GraphCanvasRenderer {
 		const node = this.pickAt(pos.x, pos.y);
 		if (node) this.callbacks.onSelect(node.id, pos);
 		else this.callbacks.onStageClick();
+	};
+
+	private onContextMenu = (event: MouseEvent) => {
+		event.preventDefault();
+		const pos = this.eventPos(event);
+		this.callbacks.onContext(this.pickAt(pos.x, pos.y)?.id ?? null, pos);
 	};
 
 	private onPointerLeave = () => {
