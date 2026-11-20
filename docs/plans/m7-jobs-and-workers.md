@@ -126,12 +126,9 @@ delivery; T4 wires them into the runner.
   `steer_text` and `abort_text` **verbatim** (`:372-405`, `:446-457`), `job_failure_text`
   (`:432`), `is_web_source_url`, `parse_sources` (`runner.ts:560-588`), `activity_line`.
 - **Search** (`jobs/workers/search.py`, LH `src/server/search.ts`, `src/core/search.ts`): Tavily
-  and Brave clients (httpx, LH's endpoints, headers, limits, 30 s timeouts, error texts); key
-  lookup env first, then `credentials.json` (decision 3); `choose_search(setting, provider kind,
-  keys)` returns native, Tavily, Brave, or none with decision 4's fallbacks.
-- **Credentials file:** the ChatGPT `CredentialsStore` file handling moves to
-  `providers/credentials.py`, shared by ChatGPT and a `search_keys` section; one lock, the same
-  atomic 0600 write. ChatGPT behavior is unchanged.
+  and Brave clients (httpx, LH's endpoints, headers, limits, 30 s timeouts, error texts), each
+  given its key; `choose_search(setting, provider kind, keys)` returns native, Tavily, Brave, or
+  none with decision 4's fallbacks. Key storage is T2's; T4 passes the keys in.
 - **Web tools** (`jobs/workers/web.py`, LH `src/agent/tools/web.ts`, `safe-fetch.ts`,
   `pdf-read.ts`): `web_search`, `web_fetch` (LH's private-address guard, 5 MB cap, 40,000-character
   truncation, HTML to text), `web_fetch_pdf` (25 MB), and `pdf_info` / `pdf_extract` / `pdf_search`
@@ -163,7 +160,7 @@ delivery; T4 wires them into the runner.
   - each steer, abort, and failure text matches LH's;
   - sources come from cited links first, fall back to fetched http(s) URLs, at most 10;
   - each setting and model picks the right search, including every decision 4 fallback;
-  - an env key wins over the file; no search gives LH's text;
+  - no search gives LH's text;
   - with native search the researcher has no `web_search` and gets the prompt variant;
   - `web_fetch` refuses private addresses and truncates long pages;
   - the PDF reader cites pages and counts only read pages in `pages_read`;
@@ -172,7 +169,6 @@ delivery; T4 wires them into the runner.
   - the demo builder's verification gate rejects a demo with console errors (Playwright's
     Chromium on Pixal);
   - no browser gives decision 13's text;
-  - search keys are saved 0600 beside ChatGPT credentials without changing them.
 
 #### T2. Settings → Tools (`m7-t2-tools-settings`, backend + UI)
 
@@ -187,6 +183,10 @@ conflict is one line. The switches and the concurrency value take effect in T4.
   (decision 12): start, progress, failure, cancel on shutdown, `PLAYWRIGHT_BROWSERS_PATH` set to
   `<data dir>/browsers`. Routes `GET /api/demo-browser`, `POST /api/demo-browser/download`,
   `GET /api/demo-browser/download`, modeled on the Claude Code download routes.
+- **Credentials file:** the ChatGPT `CredentialsStore` file handling moves to
+  `providers/credentials.py`, shared by ChatGPT and a `search_keys` section; one lock, the same
+  atomic 0600 write. ChatGPT behavior is unchanged. `search_keys()` returns each engine's key,
+  env first (decision 3).
 - **Search key routes:** `GET /api/search-keys` (per engine: present, masked, source
   env/file/none, and the engine research would use now), `PUT` and `DELETE
   /api/search-keys/{engine}`. Env-sourced keys are read-only.
@@ -199,7 +199,8 @@ conflict is one line. The switches and the concurrency value take effect in T4.
 - Regenerate API types.
 - **Tests:** settings defaults and sanitizing; PATH order and the setting override; the downloaded
   copy ranks last; download success, failure, and progress (fake driver); masked keys never
-  return the value; env keys can't be cleared. Vitest: the concurrency field's empty, invalid, and
+  return the value; env keys win and can't be cleared; search keys are saved 0600 beside
+  ChatGPT credentials without changing them. Vitest: the concurrency field's empty, invalid, and
   commit cases; the download button's states.
 
 #### T3. Learner images (`m7-t3-images`, backend + UI)
