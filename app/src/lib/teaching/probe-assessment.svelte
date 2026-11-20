@@ -11,11 +11,9 @@
 	const note = $derived(
 		details?.ok === false && typeof details.error === 'string'
 			? `The prober retried: ${details.error}`
-			: result?.is_error
-				? 'The assessment was malformed — the prober retried with a corrected one.'
-				: !assessment
-					? 'Writing the assessment…'
-					: undefined
+			: !assessment
+				? 'Writing the assessment…'
+				: undefined
 	);
 </script>
 

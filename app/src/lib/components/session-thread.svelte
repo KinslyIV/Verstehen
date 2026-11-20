@@ -182,10 +182,12 @@
 										{:else if item.kind === 'probe'}
 											<ProbeAssessment args={item.args} result={item.result} />
 										{:else}
-											<div class="rounded-lg border p-3 text-sm text-destructive">
-												<p class="font-medium">Could not send message</p>
-												<p class="mt-1 whitespace-pre-wrap">{item.text}</p>
-											</div>
+											<p
+												data-testid="tool-retry"
+												class="py-1 text-center text-xs text-muted-foreground"
+											>
+												Retrying…
+											</p>
 										{/if}
 									{/each}
 									{#each malformed as call (call.key)}

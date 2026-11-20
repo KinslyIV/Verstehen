@@ -265,7 +265,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. **M4:** merged into `main`; try a real lesson with questions on the laptop.
 3. **M5 teaching flow:** the plan ([M5 plan](plans/m5-teaching-flow.md), branch `m5-plan`) is
-   approved. T1 backend review is complete. Review the T2 implementation on `m5-t2-ui`.
+   approved. T1 backend review is complete. Review the T2 implementation on `m5-t2-ui-r2`.
 
 ## Open questions
 
@@ -316,11 +316,17 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   The frozen sidecar self-check now exercises PNG handling with Pillow and timed regex matching.
   `make app` passed in 306 seconds with the frozen self-check and produced
   `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
-- **T2 — teaching UI.** The thread shows the probe assessment, phase label and dividers, frozen
-  plan snapshots, and streamed Claude prose. The Plan tab opens for a new plan and shows live
+- **T2 — teaching UI (`m5-t2-ui-r2`).** The thread shows the probe assessment, phase label and
+  dividers, frozen plan snapshots, and streamed Claude prose. The Plan tab opens for a new plan and shows live
   position with zoom, pan, and fit. Predictions and checks use LearnHarness's reveal and
   reading-thinking behavior. Reopening an idle session resumes an owed handoff. Settings → Lesson
-  edits file access and reports malformed policies. Full `make check` passed with 421 backend
+  edits file access and reports malformed policies. Round 1 `make check` passed with 421 backend
   and 124 Vitest tests, and full `make verify` passed all 53 cases. The screenshots for all seven
   new flows, including both handoff themes, were inspected in `app/verify-output/`.
-  The branch is ready for orchestrator review.
+  Round 2 streams tool errors and shows LearnHarness's quiet Retrying… line while suppressing
+  aborts. The saved malformed-question recovery and probe refusal card retain their own UI.
+  On `d883717` plus the round 2 fixes, `make check` passed with 421 backend and 129 Vitest tests.
+  Full `make verify` passed 52 of 53 cases. Dark handoff missed the brief writing state and passed
+  on the unchanged guarded rerun (`make verify-run FLOW='teaching-handoff --workers=1 --output=verify-output/review-rerun'`,
+  3 cases). Inspected the screenshots for `send-to-user`, `question-malformed-retry`, and the
+  dark handoff rerun in `app/verify-output/`. Traces are alongside them. Ready for orchestrator review.

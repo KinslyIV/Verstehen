@@ -163,11 +163,12 @@ def test_invalid_probe_returns_lh_problem_to_model_in_same_turn(tmp_path: Path):
                 if event.type == "message_start" and event.message
             ]
             ends = [
-                event.message.entry_id
+                (event.message.entry_id, event.results)
                 for event in run.log
                 if event.type == "message_end" and event.message
             ]
-            assert starts == ends == [entries[1].entry_id, entries[3].entry_id]
+            assert starts == [entries[1].entry_id, entries[3].entry_id]
+            assert ends == [(starts[0], [result]), (starts[1], None)]
 
     asyncio.run(scenario())
 

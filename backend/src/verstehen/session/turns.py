@@ -433,7 +433,8 @@ class TurnService:
                 results=[
                     result
                     for result in ordered
-                    if result.tool_name in ("probe_done", "plan_init", "send_to_user")
+                    if result.is_error
+                    or result.tool_name in ("probe_done", "plan_init", "send_to_user")
                 ]
                 or None,
             )

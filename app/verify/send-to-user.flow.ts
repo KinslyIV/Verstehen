@@ -13,8 +13,9 @@ test('send-to-user', async ({ page, request }) => {
 	await expect(
 		page.getByText('A secant slope is the average rate of change between two points.')
 	).toBeVisible();
-	await expect(page.getByText('Could not send message')).toBeVisible();
-	await expect(page.getByText('Input should be a valid string')).toBeVisible();
+	await expect(page.getByTestId('tool-retry')).toHaveText('Retrying…');
+	await expect(page.getByText('Could not send message')).toHaveCount(0);
+	await expect(page.getByText('Input should be a valid string')).toHaveCount(0);
 	await expect(page.getByText('We can now compare two secants.')).toBeVisible();
 	await expect(page.getByText('Message received for display.')).toHaveCount(0);
 });

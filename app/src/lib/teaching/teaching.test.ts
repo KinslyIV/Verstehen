@@ -138,19 +138,30 @@ test('send_to_user_reads_complete_and_partial_arguments_with_json_escapes', () =
 	expect(sendToUserText({ message: '   ' }, false)).toBeUndefined();
 });
 
-test('failed_send_to_user_shows_the_tool_error_in_place_of_its_prose', () => {
-	const entry = call('send_to_user', { message: 'Preview' }, 'send');
-	const error = {
-		...result,
-		tool_name: 'send_to_user',
-		tool_call_id: 'send',
-		text: 'Invalid',
-		is_error: true
-	};
-	expect(responseProse(entry, new Map([['send', error]]), false)).toEqual([
-		{ kind: 'send-error', text: 'Invalid' }
+test.each(['send_to_user', 'probe', 'probe_done', 'plan_init', 'read'])(
+	'%s errors show a retry item and aborts stay silent',
+	(tool) => {
+		const entry = call(tool, { message: 'Preview' });
+		const error = {
+			...result,
+			tool_name: tool,
+			tool_call_id: tool,
+			text: 'Invalid',
+			is_error: true
+		};
+		const results = new Map([[tool, error]]);
+		expect(responseProse(entry, results, false)).toEqual([{ kind: 'tool-retry' }]);
+		expect(responseProse({ ...entry, stop_reason: 'aborted' }, results, false)).toEqual([]);
+		results.set(tool, { ...error, text: 'Operation aborted' });
+		expect(responseProse(entry, results, false)).toEqual([]);
+	}
+);
+
+test('probe_done_refusal_keeps_its_assessment_card', () => {
+	const refusal = { ...result, details: { ok: false, error: 'A question is still open.' } };
+	expect(responseProse(call('probe_done', {}), new Map([['probe_done', refusal]]), false)).toEqual([
+		{ kind: 'probe', args: {}, result: refusal }
 	]);
-	expect(responseProse({ ...entry, stop_reason: 'aborted' }, undefined, false)).toEqual([]);
 });
 
 test('file_access_composes_the_switch_and_folder_list_independently', () => {
