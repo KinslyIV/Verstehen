@@ -6,11 +6,36 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
 	import * as Resizable from '#lib/components/ui/resizable/index.js';
+	import { Tabs } from 'bits-ui';
+	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
+	import { derivePlanStatuses } from '#lib/teaching/plan.js';
+	import { setPlanPanel } from '#lib/teaching/plan-panel.js';
+	import type { SessionController } from '#lib/session/controller.svelte.js';
 	import { SIDEBAR_COOKIE_NAME } from '#lib/components/ui/sidebar/constants.js';
 
 	let { children }: { children: Snippet } = $props();
 	let sidebarOpen = $state(!document.cookie.split('; ').includes(`${SIDEBAR_COOKIE_NAME}=false`));
 	let panelOpen = $state(localStorage.getItem('verstehen-right-panel-open') === 'true');
+
+	let activeTab = $state('plan');
+	let watched = $state.raw<SessionController>();
+	const plan = $derived(watched?.plan);
+	const statuses = $derived(
+		plan && watched ? derivePlanStatuses(plan, watched.entries) : undefined
+	);
+
+	setPlanPanel({
+		watch(controller) {
+			watched = controller;
+			return () => {
+				if (watched === controller) watched = undefined;
+			};
+		},
+		open() {
+			activeTab = 'plan';
+			panelOpen = true;
+		}
+	});
 
 	function togglePanel() {
 		panelOpen = !panelOpen;
@@ -54,26 +79,40 @@
 		</header>
 
 		<div class="min-h-0 flex-1">
-			{#if panelOpen}
-				<Resizable.PaneGroup direction="horizontal" autoSaveId="verstehen-lesson" class="h-full">
-					<Resizable.Pane id="lesson" order={1} defaultSize={75} minSize={60}>
-						{@render children()}
-					</Resizable.Pane>
+			<Resizable.PaneGroup direction="horizontal" autoSaveId="verstehen-lesson" class="h-full">
+				<Resizable.Pane id="lesson" order={1} defaultSize={75} minSize={60}>
+					{@render children()}
+				</Resizable.Pane>
+				{#if panelOpen}
 					<Resizable.Handle aria-label="Resize right panel" />
 					<Resizable.Pane id="right-panel" order={2} defaultSize={25} minSize={20} maxSize={40}>
-						<aside class="h-full overflow-auto bg-sidebar/30" aria-label="Plan and activity">
-							{#each ['Plan', 'Activity'] as heading (heading)}
-								<section class="border-b p-5">
-									<h2 class="text-sm font-medium">{heading}</h2>
-									<p class="mt-3 text-xs text-muted-foreground">Nothing yet</p>
-								</section>
-							{/each}
+						<aside class="h-full bg-sidebar/30" aria-label="Plan and activity">
+							<Tabs.Root bind:value={activeTab} class="flex h-full flex-col">
+								<Tabs.List aria-label="Right panel" class="flex shrink-0 gap-1 border-b px-3 pt-2">
+									{#each ['Plan', 'Activity'] as label (label)}
+										<Tabs.Trigger
+											value={label.toLowerCase()}
+											class="border-b-2 border-transparent px-3 py-2 text-sm text-muted-foreground data-[state=active]:border-primary data-[state=active]:text-foreground"
+										>
+											{label}
+										</Tabs.Trigger>
+									{/each}
+								</Tabs.List>
+								<Tabs.Content value="plan" class="flex min-h-0 flex-1 flex-col">
+									{#if plan}
+										{#key plan}<PlanDiagram {plan} {statuses} />{/key}
+									{:else}
+										<p class="p-5 text-xs text-muted-foreground">Nothing yet</p>
+									{/if}
+								</Tabs.Content>
+								<Tabs.Content value="activity" class="min-h-0 flex-1">
+									<p class="p-5 text-xs text-muted-foreground">Nothing yet</p>
+								</Tabs.Content>
+							</Tabs.Root>
 						</aside>
 					</Resizable.Pane>
-				</Resizable.PaneGroup>
-			{:else}
-				{@render children()}
-			{/if}
+				{/if}
+			</Resizable.PaneGroup>
 		</div>
 	</main>
 </Sidebar.Provider>

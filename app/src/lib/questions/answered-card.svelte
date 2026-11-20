@@ -16,6 +16,17 @@
 	let whyOpen = $state(false);
 </script>
 
+{#if answer.reading_thinking}
+	<details
+		open
+		data-testid="reading-thinking-block"
+		class="mb-3 border-l pl-3 text-sm text-muted-foreground"
+	>
+		<summary class="cursor-pointer text-xs font-medium">YOUR THINKING</summary>
+		<p class="mt-2 whitespace-pre-wrap">{answer.reading_thinking}</p>
+	</details>
+{/if}
+
 {#if answer.dismissed}
 	<div
 		class="rounded-xl border bg-card p-4 text-sm text-muted-foreground"

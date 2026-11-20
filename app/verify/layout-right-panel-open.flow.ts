@@ -10,9 +10,14 @@ test('layout-right-panel-open', async ({ page }) => {
 		'true'
 	);
 	const panel = page.getByRole('complementary', { name: 'Plan and activity' });
-	await expect(panel.getByRole('heading', { name: 'Plan', exact: true })).toBeVisible();
-	await expect(panel.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
-	await expect(panel.getByText('Nothing yet')).toHaveCount(2);
+	await expect(panel.getByRole('tab', { name: 'Plan', exact: true })).toHaveAttribute(
+		'aria-selected',
+		'true'
+	);
+	await expect(panel.getByRole('tabpanel', { name: 'Plan' })).toHaveText('Nothing yet');
+	await panel.getByRole('tab', { name: 'Activity' }).click();
+	await expect(panel.getByRole('tabpanel', { name: 'Activity' })).toHaveText('Nothing yet');
+	await panel.getByRole('tab', { name: 'Plan' }).click();
 	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
 });

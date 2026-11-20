@@ -123,6 +123,8 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
   and persists the response without an acknowledgment. An answer is written adjacent to the
   response. A new run passes the rebuilt `ModelResponse` and trailing `ModelRequest` with
   `ToolReturnPart` entries as history. The model reads the compact answer JSON from those parts.
+- **Lesson plan.** Read the tree from the newest successful `plan_init` result. Plan snapshots
+  are UI-only markers.
 - **Append-only.** Entries are never updated or deleted. Compaction adds a marker. Each entry has a
   deterministic id where LH has one (`steer_<jobId>`, `exchange_<threadId>_update_<n>`, …), with a
   unique constraint, so a repeated write is harmless.
@@ -133,7 +135,7 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 
 | Table | Holds | LH equivalent |
 |---|---|---|
-| `sessions` | id, title, kind, created/updated, per-session model settings, plan tree (JSON) | `ChatRecord` fields |
+| `sessions` | id, title, kind, created/updated, per-session model settings | `ChatRecord` fields |
 | `entries` | session id, sequence number, entry id, kind, payload (JSON), created at | `ChatRecord.messages` |
 | `usage` | one row per billed model call, keyed by request id | `turns`, `extractions`, `JobRecord.usage` |
 | `side_threads`, `side_exchanges` | side chat threads and their exchanges | `ChatRecord.sideChats` |

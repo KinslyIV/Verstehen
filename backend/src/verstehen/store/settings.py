@@ -42,7 +42,12 @@ class BackgroundSettings(BaseModel):
     claude_code: bool = True
 
 
-FILE_ACCESS_ERROR = "File-access configuration cannot be read reliably. Learner-file access is blocked. Repair File access in Settings → Agent → Tools."
+FILE_ACCESS_UNREADABLE = (
+    "File-access configuration cannot be read reliably. Learner-file access is blocked."
+)
+FILE_ACCESS_ERROR = (
+    FILE_ACCESS_UNREADABLE + " Repair File access in Settings → Agent → Tools."
+)
 
 
 class FileAccessSettings(BaseModel):
@@ -119,6 +124,10 @@ class SettingsStore:
         self.database = database
 
     async def read(self) -> Settings:
+        settings, _ = await self.read_with_file_access_status()
+        return settings
+
+    async def read_with_file_access_status(self) -> tuple[Settings, str | None]:
         async with self.database.read() as connection:
             async with connection.execute("SELECT key, value FROM settings") as cursor:
                 rows = {key: value for key, value in await cursor.fetchall()}
@@ -127,11 +136,13 @@ class SettingsStore:
             for key, value in rows.items()
             if key in Settings.model_fields and key != "file_access"
         }
+        error = None
         try:
             policy = decode_file_access(rows.get("file_access"))
         except ValidationError:
             policy = FileAccessSettings(restricted=True)
-        return Settings.model_validate({**values, "file_access": policy})
+            error = FILE_ACCESS_UNREADABLE
+        return Settings.model_validate({**values, "file_access": policy}), error
 
     async def read_file_access(self) -> FileAccessSettings:
         try:

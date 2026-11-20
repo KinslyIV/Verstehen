@@ -1,0 +1,16 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "plan_init",
+				"arguments": {
+					"mermaid": "graph TD\nslope[Compare slopes] --> secant[Read a secant]\nslope --> limit[Bring the points together]\nlimit --> tangent[Read the tangent]\nsecant --> tangent\ntangent --> derivative[Name the derivative]"
+				}
+			}
+		]
+	},
+	{
+		"text": "We will compare ordinary slopes first, then use a limit to read the slope at a single point.",
+		"delay_ms": 300
+	}
+]

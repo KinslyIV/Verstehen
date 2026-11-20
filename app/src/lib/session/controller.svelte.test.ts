@@ -170,3 +170,122 @@ test('a_turn_merges_all_responses_and_keeps_their_saved_results_in_order', async
 	expect(controller.entries).toEqual([first, invalid, last]);
 	expect(controller.pendingQuestion?.toolCallId).toBe('replacement');
 });
+
+const probeDone: api.Entry[] = [
+	{
+		kind: 'assistant',
+		entry_id: 'assess',
+		stop_reason: 'stop',
+		parts: [{ type: 'tool_call', tool_call_id: 'probe', tool_name: 'probe_done', arguments: {} }]
+	},
+	{
+		kind: 'tool_result',
+		entry_id: 'ack',
+		tool_call_id: 'probe',
+		tool_name: 'probe_done',
+		is_error: false,
+		text: 'Recorded',
+		details: { ok: true }
+	}
+];
+
+test('mount_sends_a_saved_owed_handoff_once_before_continue', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(probeDone));
+	await controller.load();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'handoff' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('sync_sends_an_owed_handoff_when_the_turn_and_question_clear', async () => {
+	await controller.load();
+	vi.mocked(api.getSession).mockResolvedValueOnce({ ...record(probeDone), turn_error: 'Failed' });
+	await controller.synchronize();
+	vi.mocked(api.getSession).mockResolvedValueOnce(record([...probeDone, questionBatch('open')]));
+	await controller.synchronize();
+	expect(api.postInput).not.toHaveBeenCalled();
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([
+			...probeDone,
+			questionBatch('open'),
+			{ ...questionResult('open'), details: { dismissed: true } }
+		])
+	);
+	await controller.synchronize();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'handoff' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('sync_recovers_an_owed_handoff_after_a_transient_input_error', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(probeDone));
+	vi.mocked(api.postInput).mockRejectedValueOnce(new Error('Connection interrupted'));
+	await controller.load();
+	expect(controller.error).toBe('Connection interrupted');
+	await controller.synchronize();
+	expect(controller.error).toBeNull();
+	expect(vi.mocked(api.postInput).mock.calls.map(([, input]) => input)).toEqual([
+		{ type: 'handoff' },
+		{ type: 'handoff' }
+	]);
+});
+
+test('mount_attaches_to_a_running_turn_then_follows_the_server_started_handoff', async () => {
+	const marker = {
+		kind: 'marker',
+		entry_id: 'handoff',
+		marker_type: 'probe-handoff',
+		content: 'Plan',
+		display: true
+	} as const;
+	vi.mocked(api.getSession)
+		.mockResolvedValueOnce(record(probeDone, true))
+		.mockResolvedValueOnce(record([...probeDone, marker], true))
+		.mockResolvedValueOnce(record([...probeDone, marker]));
+	await controller.load();
+	await expect.poll(() => controller.busy).toBe(false);
+	expect(api.streamTurn).toHaveBeenCalledTimes(2);
+	expect(api.postInput).not.toHaveBeenCalled();
+});
+
+test('saved_plan_is_baseline_and_each_new_successful_plan_opens_only_once', async () => {
+	const onPlan = vi.fn();
+	controller.onNewPlan = onPlan;
+	const planResult = (id: string, title: string): api.ToolResult => ({
+		kind: 'tool_result',
+		entry_id: id,
+		tool_call_id: 'plan',
+		tool_name: 'plan_init',
+		is_error: false,
+		text: 'Plan',
+		details: { ok: true, tree: { nodes: [{ id: 'slope', title }], edges: [], version: 1 } }
+	});
+	const first = planResult('first', 'First');
+	controller.adoptRecord(record([first]));
+	expect(onPlan).not.toHaveBeenCalled();
+	expect(controller.plan?.nodes[0]?.title).toBe('First');
+
+	const next = planResult('second', 'Revised');
+	vi.mocked(api.getSession).mockResolvedValue(record([first, next]));
+	vi.mocked(api.streamTurn).mockImplementation(async (_, receive) => {
+		receive({
+			type: 'message_end',
+			message: {
+				kind: 'assistant',
+				entry_id: 'rewrite',
+				stop_reason: 'stop',
+				parts: []
+			},
+			results: [next]
+		});
+		expect(controller.plan?.nodes[0]?.title).toBe('Revised');
+		expect(onPlan).toHaveBeenCalledOnce();
+		return true;
+	});
+	await controller.attach();
+	expect(onPlan).toHaveBeenCalledOnce();
+});

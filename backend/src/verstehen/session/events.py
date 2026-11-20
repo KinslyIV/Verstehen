@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from verstehen.store.entries import AssistantEntry
+from verstehen.store.entries import AssistantEntry, ToolResultEntry
 
 
 class TurnEvent(BaseModel):
@@ -12,6 +12,7 @@ class TurnEvent(BaseModel):
         "message_start", "message_update", "message_end", "error", "turn-settled"
     ]
     message: AssistantEntry | None = None
+    results: list[ToolResultEntry] | None = None
     error_text: str | None = None
 
 

@@ -420,16 +420,25 @@ class TurnService:
         reply: AssistantEntry,
         results: list[ToolResultEntry],
     ) -> None:
-        run.publish(TurnEvent(type="message_end", message=reply.model_copy(deep=True)))
-        entries.append(reply)
         call_order = {
             part.tool_call_id: index
             for index, part in enumerate(reply.parts)
             if isinstance(part, ToolCallPart)
         }
-        entries.extend(
-            sorted(results, key=lambda result: call_order[result.tool_call_id])
+        ordered = sorted(results, key=lambda result: call_order[result.tool_call_id])
+        run.publish(
+            TurnEvent(
+                type="message_end",
+                message=reply.model_copy(deep=True),
+                results=[
+                    result
+                    for result in ordered
+                    if result.tool_name in ("probe_done", "plan_init", "send_to_user")
+                ]
+                or None,
+            )
         )
+        entries.extend([reply, *ordered])
 
     def notify_changed(self, session_id: str) -> None:
         self.notifications.publish(

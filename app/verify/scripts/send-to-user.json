@@ -1,0 +1,27 @@
+[
+	{
+		"title": "Derivatives and slope",
+		"delay_ms": 450,
+		"tool_calls": [
+			{
+				"name": "send_to_user",
+				"arguments": {
+					"message": "A **secant slope** is the average rate of change between two points."
+				}
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "send_to_user",
+				"arguments": {
+					"message": 17
+				}
+			}
+		]
+	},
+	{
+		"text": "We can now compare two secants."
+	}
+]

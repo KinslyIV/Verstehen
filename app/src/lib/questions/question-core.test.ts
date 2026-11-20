@@ -206,3 +206,22 @@ test('presentation_recovers_model_text_without_reordering_or_regrading_saved_ans
 	expect(projected.correct_indices).toEqual(answer.correct_indices);
 	expect(answer.options?.[0]?.label).toBe('Two');
 });
+
+test('check_answers_keep_reading_thinking_separate_from_answer_thinking', () => {
+	const question = parseQuestionInput('quiz', {
+		...probeArguments,
+		nodeId: 'slope',
+		type: 'check'
+	})!;
+	expect(
+		buildAnswer(question, {
+			values: ['two'],
+			readingThinking: ' The explanation compares slopes. ',
+			thinking: ' I chose the steeper one. '
+		})
+	).toMatchObject({
+		reading_thinking: 'The explanation compares slopes.',
+		thinking: 'I chose the steeper one.'
+	});
+	expect(buildAnswer(question, { readingThinking: '  ' }).reading_thinking).toBeUndefined();
+});

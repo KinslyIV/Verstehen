@@ -4,6 +4,8 @@ import type { components } from './schema';
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
 export type Entry = SessionDetail['entries'][number];
+export type ToolResult = components['schemas']['ToolResultEntry'];
+export type FileAccess = components['schemas']['FileAccessSettings'];
 export type ToolCallPart = components['schemas']['ToolCallPart'];
 export type QuestionAnswer = components['schemas']['QuestionAnswer'];
 export type TurnInput = components['schemas']['TurnInput'];
@@ -13,6 +15,7 @@ export type ModelPick = components['schemas']['ModelPick'];
 export type ModelCatalog = components['schemas']['ModelCatalog'];
 export type CatalogModel = components['schemas']['CatalogModel'];
 export type Settings = components['schemas']['Settings'];
+export type SettingsStatus = components['schemas']['SettingsStatus'];
 export type ModelSlots = components['schemas']['ModelSlots'];
 export type Account = components['schemas']['Account'];
 export type BinaryStatus = components['schemas']['BinaryStatus'];
@@ -180,11 +183,13 @@ export async function streamNotifications(
 export async function getModels(): Promise<ModelCatalog> {
 	return (await request('/api/models')).json();
 }
-export async function getSettings(): Promise<Settings> {
+export async function getSettings(): Promise<SettingsStatus> {
 	return (await request('/api/settings')).json();
 }
-export async function saveSettings(settings: Settings): Promise<Settings> {
-	return (await request('/api/settings', { method: 'PUT', body: JSON.stringify(settings) })).json();
+export async function saveSettings(settings: SettingsStatus): Promise<Settings> {
+	const body = { ...settings };
+	delete body.file_access_error;
+	return (await request('/api/settings', { method: 'PUT', body: JSON.stringify(body) })).json();
 }
 export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
 	return (

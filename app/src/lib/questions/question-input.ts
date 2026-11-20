@@ -76,7 +76,10 @@ export function parseQuestionInput(
 		details,
 		options,
 		mode: options.length ? (multi ? 'multi-select' : 'single-select') : 'text',
-		questionType: kind === 'quiz' && (role === 'predict' || role === 'check') ? role : undefined
+		questionType:
+			(tool === 'quiz' || tool === 'explain') && (role === 'predict' || role === 'check')
+				? role
+				: undefined
 	};
 	if (kind === 'ask') return data;
 	if (kind === 'explain') {
@@ -102,4 +105,8 @@ export function questionNeedsReveal(tool: QuestionTool, input: unknown, phase: s
 	if (phase !== 'teach' || (tool !== 'quiz' && tool !== 'explain')) return false;
 	const role = asObject(parseJson(input))?.type;
 	return typeof role !== 'string' || stripModelValueDebris(role) !== 'predict';
+}
+
+export function revealArrival(wasQuestion: boolean) {
+	return { expanded: wasQuestion, revealed: wasQuestion };
 }

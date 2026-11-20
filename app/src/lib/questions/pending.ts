@@ -68,7 +68,7 @@ export function needsContinuation(entries: Entry[]): boolean {
 		const entry = entries[end]!;
 		if (
 			entry.kind !== 'marker' ||
-			!['side-question', 'side-question-told'].includes(entry.marker_type)
+			!['side-question', 'side-question-told', 'plan-block'].includes(entry.marker_type)
 		)
 			break;
 		end--;
@@ -81,6 +81,7 @@ export function needsContinuation(entries: Entry[]): boolean {
 	const resolved = new Set<string>();
 	for (let i = end; i >= 0; i--) {
 		const entry = entries[i]!;
+		if (entry.kind === 'marker' && entry.marker_type === 'plan-block') continue;
 		if (entry.kind === 'tool_result') {
 			resolved.add(entry.tool_call_id);
 			continue;

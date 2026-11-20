@@ -12,6 +12,15 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
+	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
+	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
+	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
+	import { planSnapshot } from '#lib/teaching/plan.js';
+	import { getPlanPanel } from '#lib/teaching/plan-panel.js';
+	import { responseResults } from '#lib/teaching/delivery.js';
+	import { responseProse } from '#lib/teaching/response-prose.js';
+	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
 	import ModelControls from './model-controls.svelte';
@@ -20,6 +29,11 @@
 	import RenameSession from './rename-session.svelte';
 	let { id }: { id: string } = $props();
 	const controller = new SessionController(untrack(() => id));
+	const panel = getPlanPanel();
+	controller.onNewPlan = panel?.open;
+	const phases = $derived(phaseTimeline(controller.entries));
+	const phase = $derived(phases.timeline.at(-1) ?? 'probe');
+	const results = $derived(responseResults(controller.entries));
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
 	const pending = $derived(controller.pendingQuestion);
 	let viewport = $state<HTMLDivElement | null>(null);
@@ -76,6 +90,7 @@
 	}
 
 	onMount(() => {
+		const unwatchPlan = panel?.watch(controller);
 		void (async () => {
 			await controller.load();
 			const opening = readOpening(id);
@@ -97,6 +112,7 @@
 		window.addEventListener('verstehen:sessions-changed', sync);
 		return () => {
 			window.removeEventListener('verstehen:sessions-changed', sync);
+			unwatchPlan?.();
 			controller.dispose();
 		};
 	});
@@ -105,7 +121,9 @@
 <svelte:window onkeydown={escape} />
 
 <section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
-	{#if controller.record}<div class="mx-auto flex w-full max-w-3xl shrink-0 px-6 py-3">
+	{#if controller.record}<div
+			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3"
+		>
 			<RenameSession
 				{id}
 				title={controller.record.title}
@@ -113,8 +131,17 @@
 					if (controller.record) controller.record.title = title;
 				}}
 			/>
+			<span
+				data-testid="phase-chip"
+				data-phase={phase}
+				class="shrink-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+			>
+				{phaseLabel[phase]}
+			</span>
 		</div>{/if}
-	<Scroller.Provider autoScroll={controller.questionCalls.length > 0 || cards.size > 0}>
+	<Scroller.Provider
+		autoScroll={controller.questionCalls.length > 0 || cards.size > 0 || phase !== 'probe'}
+	>
 		<Scroller.Root>
 			<Scroller.Viewport
 				bind:ref={viewport}
@@ -123,8 +150,12 @@
 				aria-label="Conversation"
 			>
 				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6">
-					{#each controller.entries as entry (entry.entry_id)}
+					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
+						{@const block = planSnapshot(entry)}
+						{#if index === phases.teachAt}<Scroller.Item>
+								<PhaseDivider phase="teach" />
+							</Scroller.Item>{/if}
 						{#if entry.kind === 'user'}
 							<Scroller.Item><LearnerMessage content={entry.text} /></Scroller.Item>
 						{:else if entry.kind === 'assistant'}
@@ -132,25 +163,31 @@
 								.filter((part) => part.type === 'thinking')
 								.map((part) => part.thinking)
 								.join('\n\n')}
-							{@const text = entry.parts
-								.filter((part) => part.type === 'text')
-								.map((part) => part.text)
-								.join('')}
+							{@const streaming = entry.entry_id === controller.streamingEntryId}
+							{@const prose = responseProse(entry, results.get(entry.entry_id!), streaming)}
 							{@const malformed = controller.busy
 								? []
 								: controller.questionCalls.filter(
 										(call) => call.messageId === entry.entry_id && !call.question
 									)}
-							{#if thinking || text || malformed.length}
+							{#if thinking || prose.length || malformed.length}
 								<Scroller.Item>
-									{#if thinking}<Reasoning
-											text={thinking}
-											streaming={entry.entry_id === controller.streamingEntryId}
-										/>{/if}
-									{#if text}<AssistantMessage
-											content={text}
-											streaming={entry.entry_id === controller.streamingEntryId}
-										/>{/if}
+									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
+									{#each prose as item, i (i)}
+										{#if item.kind === 'text'}
+											<AssistantMessage
+												content={item.text}
+												streaming={streaming && i === prose.length - 1}
+											/>
+										{:else if item.kind === 'probe'}
+											<ProbeAssessment args={item.args} result={item.result} />
+										{:else}
+											<div class="rounded-lg border p-3 text-sm text-destructive">
+												<p class="font-medium">Could not send message</p>
+												<p class="mt-1 whitespace-pre-wrap">{item.text}</p>
+											</div>
+										{/if}
+									{/each}
 									{#each malformed as call (call.key)}
 										<MalformedQuestion
 											blocked={controller.questionCalls.some(
@@ -161,6 +198,20 @@
 									{/each}
 								</Scroller.Item>
 							{/if}
+						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
+							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
+						{:else if block && entry.kind === 'marker' && entry.display}
+							<Scroller.Item>
+								<button
+									type="button"
+									aria-label="Open the full plan"
+									data-testid="plan-block"
+									class="block w-full rounded-lg p-1 focus-visible:outline-ring"
+									onclick={() => panel?.open()}
+								>
+									<PlanDiagram plan={block} />
+								</button>
+							</Scroller.Item>
 						{:else if card}
 							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
 						{/if}
@@ -213,6 +264,13 @@
 			<QuestionDock
 				question={pending.question}
 				initialDraft={controller.getQuestionDraft(pending.key)}
+				teach={phase === 'teach'}
+				requiresReveal={questionNeedsReveal(
+					pending.question.tool,
+					{ type: pending.question.questionType },
+					phase
+				)}
+				wasQuestion={controller.questionArrival.wasQuestion}
 				{expanded}
 				busy={controller.busy}
 				modelMenuOpen={controller.modelMenuOpen}

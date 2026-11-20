@@ -29,8 +29,8 @@ class ProviderService:
         self.accounts_service = accounts_service
         self.resolver_service = resolver_service
 
-    async def settings(self) -> Settings:
-        return await self.settings_store.read()
+    async def settings(self) -> tuple[Settings, str | None]:
+        return await self.settings_store.read_with_file_access_status()
 
     async def save_settings(self, settings: Settings) -> Settings:
         previous = await self.settings_store.read()

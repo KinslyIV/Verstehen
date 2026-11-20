@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 
 import pytest
+from fastapi import FastAPI
 from PIL import Image
 from pydantic_ai.messages import BinaryContent, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
@@ -11,7 +12,11 @@ from backend.tests.test_sessions_api import client_for
 from backend.tests.test_teaching_flow import call
 from backend.tests.test_turns import completed, scripted, start, turn_service_context
 from verstehen.session.projection import to_llm_messages
-from verstehen.store.settings import FILE_ACCESS_ERROR, FileAccessSettings
+from verstehen.store.settings import (
+    FILE_ACCESS_ERROR,
+    FILE_ACCESS_UNREADABLE,
+    FileAccessSettings,
+)
 
 
 @pytest.fixture
@@ -277,3 +282,20 @@ def test_file_access_route_normalizes_folders_and_returns_learnharness_errors(
             client.get("/api/settings").json()["file_access"]
             == saved.json()["file_access"]
         )
+
+
+def test_settings_exposes_the_malformed_file_policy_for_repair(tmp_path: Path):
+    with client_for(tmp_path, [{"text": "ready"}]) as client:
+        assert client.portal is not None
+        assert isinstance(client.app, FastAPI)
+        client.portal.call(
+            client.app.state.provider_service.settings_store.set,
+            "file_access",
+            {"restricted": "corrupt"},
+        )
+        settings = client.get("/api/settings").json()
+        assert settings.pop("file_access_error") == FILE_ACCESS_UNREADABLE
+        assert settings["file_access"] == {"restricted": True, "folders": []}
+        settings["file_access"]["folders"] = ["~/Notes"]
+        assert client.put("/api/settings", json=settings).status_code == 200
+        assert "file_access_error" not in client.get("/api/settings").json()

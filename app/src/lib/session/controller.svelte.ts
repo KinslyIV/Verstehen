@@ -1,4 +1,4 @@
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import {
 	abortSession,
 	dismissQuestion,
@@ -20,6 +20,8 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { phaseTimeline } from '#lib/teaching/phases.js';
+import { planFromResult, type Plan } from '#lib/teaching/plan.js';
 import { dismissedAnswer, type QuestionDraft } from '#lib/questions/question-core.js';
 
 /** Own one mounted session thread's reactive state, send/attach recovery, and saved/live entry merge.
@@ -39,6 +41,11 @@ export class SessionController {
 	private submittingQuestion = $state<string>();
 	private questionDrafts = new SvelteMap<string, QuestionDraft>();
 	private automaticContinuationBlocked = false;
+	onNewPlan?: () => void;
+	private seenPlanResults = new SvelteSet<string>();
+	private displayedPlanId?: string;
+	plan = $state.raw<Plan>();
+	questionArrival = $state({ key: undefined as string | undefined, wasQuestion: false });
 	questionCalls = $derived(questionCallsOf(this.record?.entries ?? []));
 	pendingQuestion = $derived.by(() => {
 		const pending = pendingQuestionOf(this.record?.entries ?? []);
@@ -55,18 +62,44 @@ export class SessionController {
 	) {}
 
 	adoptRecord(record: SessionDetail): void {
-		const ids = record.entries.map((entry) => entry.entry_id);
-		if (this.saved.some((entry) => !ids.includes(entry.entry_id))) return;
+		const ids = new SvelteSet(record.entries.map((entry) => entry.entry_id));
+		if (this.saved.some((entry) => !ids.has(entry.entry_id))) return;
+		const watched = this.record !== undefined;
 		this.record = record;
 		this.saved = record.entries;
-		this.live = this.live.filter((entry) => !ids.includes(entry.entry_id));
+		this.live = this.live.filter(
+			(entry) => !ids.has(entry.entry_id) && (record.turn_in_flight || entry.kind !== 'tool_result')
+		);
 		this.entries = [...this.saved, ...this.live];
+		this.updatePlan(watched);
+		const key = pendingQuestionOf(record.entries)?.key;
+		if (key !== this.questionArrival.key) {
+			this.questionArrival = { key, wasQuestion: this.questionArrival.key !== undefined };
+		}
 		if (this.questionDrafts.size) {
 			const pendingKeys = questionCallsOf(record.entries).map(({ key }) => key);
 			for (const key of this.questionDrafts.keys()) {
 				if (!pendingKeys.includes(key)) this.questionDrafts.delete(key);
 			}
 		}
+	}
+
+	private updatePlan(watched: boolean): void {
+		for (let i = this.entries.length - 1; i >= 0; i--) {
+			const entry = this.entries[i]!;
+			const id = entry.entry_id;
+			if (!id) continue;
+			if (id === this.displayedPlanId) return;
+			const plan = planFromResult(entry);
+			if (!plan) continue;
+			this.displayedPlanId = id;
+			this.plan = plan;
+			if (watched && !this.seenPlanResults.has(id)) this.onNewPlan?.();
+			this.seenPlanResults.add(id);
+			return;
+		}
+		this.displayedPlanId = undefined;
+		this.plan = undefined;
 	}
 
 	async refresh(): Promise<SessionDetail> {
@@ -89,7 +122,7 @@ export class SessionController {
 			if (this.busy) return;
 			this.error = record.turn_error ?? this.savedFailure(record);
 			if (record.turn_in_flight) void this.attach();
-			else await this.continueIfOwed();
+			else await this.sendAutomaticInput();
 		} catch (error) {
 			this.fail(error);
 		}
@@ -106,19 +139,23 @@ export class SessionController {
 		} finally {
 			this.loading = false;
 		}
-		await this.continueIfOwed();
+		await this.sendAutomaticInput();
 	}
 
-	private async continueIfOwed(): Promise<void> {
+	private async sendAutomaticInput(): Promise<void> {
 		if (
-			!this.busy &&
-			!this.error &&
-			!this.automaticContinuationBlocked &&
-			!this.lifetime.signal.aborted &&
-			needsContinuation(this.saved)
-		) {
+			this.busy ||
+			this.error ||
+			this.record?.turn_in_flight ||
+			this.setupOpen ||
+			this.notice ||
+			this.lifetime.signal.aborted ||
+			questionCallsOf(this.saved).length > 0
+		)
+			return;
+		if (phaseTimeline(this.saved).owed) await this.submit({ type: 'handoff' });
+		else if (!this.automaticContinuationBlocked && needsContinuation(this.saved))
 			await this.submit({ type: 'continue' });
-		}
 	}
 
 	private fail(error: unknown): void {
@@ -135,7 +172,12 @@ export class SessionController {
 		if (this.saved.some((entry) => entry.entry_id === message.entry_id)) return;
 		const index = this.live.findIndex((entry) => entry.entry_id === message.entry_id);
 		this.live = index < 0 ? [...this.live, message] : this.live.with(index, message);
+		const results = (event.results ?? []).filter(
+			(result) => !this.entries.some((entry) => entry.entry_id === result.entry_id)
+		);
+		this.live.push(...results);
 		this.entries = [...this.saved, ...this.live];
+		if (results.length) this.updatePlan(true);
 	}
 
 	async attach(): Promise<void> {
@@ -143,7 +185,7 @@ export class SessionController {
 		this.consuming = true;
 		this.busy = true;
 		try {
-			for (let attempt = 0; attempt < 2; attempt++) {
+			for (let attempt = 0; attempt < 2;) {
 				this.live = [];
 				this.streamingEntryId = undefined;
 				this.entries = [...this.saved];
@@ -154,11 +196,12 @@ export class SessionController {
 					if (this.lifetime.signal.aborted || attempt === 1) throw error;
 				}
 				const record = await this.refresh();
-				if (done || !record.turn_in_flight) {
+				if (!record.turn_in_flight) {
 					this.error = record.turn_error ?? this.savedFailure(record);
-					this.busy = record.turn_in_flight;
+					this.busy = false;
 					return;
 				}
+				attempt = done ? 0 : attempt + 1;
 			}
 			throw new Error('The connection dropped before the turn completed.');
 		} catch (error) {
@@ -237,7 +280,8 @@ export class SessionController {
 	}
 
 	private async submit(input: TurnInput): Promise<void> {
-		if (input.type !== 'continue') this.automaticContinuationBlocked = false;
+		if (input.type !== 'continue' && input.type !== 'handoff')
+			this.automaticContinuationBlocked = false;
 		const text = this.draft;
 		if (input.type === 'text') this.draft = '';
 		this.error = null;
@@ -251,6 +295,12 @@ export class SessionController {
 					await postInput(this.id, input, this.lifetime.signal);
 					break;
 				} catch (error) {
+					if (input.type === 'handoff' && error instanceof ApiError && error.status === 409) break;
+					if (input.type === 'handoff' && error instanceof ApiError && error.status === 400) {
+						const latest = await this.refresh();
+						if (!phaseTimeline(latest.entries).owed || questionCallsOf(latest.entries).length)
+							break;
+					}
 					if (!(error instanceof ApiError) || error.status !== 409 || Date.now() >= deadline)
 						throw error;
 					do {

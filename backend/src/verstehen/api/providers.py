@@ -19,9 +19,19 @@ router = APIRouter(
 )
 
 
-@router.get("/api/settings", response_model=Settings)
-async def get_settings(provider_service: ProviderServiceDependency) -> Settings:
-    return await provider_service.settings()
+class SettingsStatus(Settings):
+    file_access_error: str | None = None
+
+
+@router.get(
+    "/api/settings", response_model=SettingsStatus, response_model_exclude_unset=True
+)
+async def get_settings(provider_service: ProviderServiceDependency) -> SettingsStatus:
+    settings, file_access_error = await provider_service.settings()
+    status = SettingsStatus(**settings.model_dump())
+    if file_access_error:
+        status.file_access_error = file_access_error
+    return status
 
 
 @router.put("/api/settings", response_model=Settings)

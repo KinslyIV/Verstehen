@@ -1,0 +1,44 @@
+[
+	{
+		"title": "Derivatives and slope",
+		"delay_ms": 240,
+		"text": "Let’s locate where slope stops feeling familiar.",
+		"tool_calls": [
+			{
+				"name": "probe_done",
+				"arguments": {
+					"assessment": {
+						"strands": [
+							{
+								"strand": "Slope",
+								"assessment": "You read the slope of a straight line and can compare two slopes."
+							},
+							{
+								"strand": "Limits",
+								"assessment": "The transition from average to instantaneous rate needs practice."
+							}
+						],
+						"summary": "Build the derivative from rates you can already compare."
+					}
+				}
+			}
+		]
+	},
+	{
+		"text": "That gives us a good starting point."
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "plan_init",
+				"arguments": {
+					"mermaid": "graph TD\nslope[Compare slopes] --> secant[Read a secant]\nslope --> limit[Bring the points together]\nlimit --> tangent[Read the tangent]\nsecant --> tangent\ntangent --> derivative[Name the derivative]"
+				}
+			}
+		]
+	},
+	{
+		"text": "We will compare ordinary slopes first, then use a limit to read the slope at a single point.",
+		"delay_ms": 300
+	}
+]

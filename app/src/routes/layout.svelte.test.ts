@@ -56,7 +56,7 @@ test('right_panel_starts_closed', async () => {
 test('right_panel_open_state_and_width_are_remembered', async () => {
 	let screen = await render(Lesson);
 	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
-	await expect.element(screen.getByRole('heading', { name: 'Plan' })).toBeVisible();
+	await expect.element(screen.getByRole('tab', { name: 'Plan' })).toBeVisible();
 	const panel = () => document.querySelector<HTMLElement>('[data-pane-id="right-panel"]')!;
 	await expect.poll(() => panel()?.getBoundingClientRect().width).toBeGreaterThan(0);
 	const initialWidth = panel().getBoundingClientRect().width;

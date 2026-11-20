@@ -37,4 +37,5 @@ is updated in the same commit.
 | Tauri command | [`sidecar_connection`](../app/src-tauri/src/lib.rs), invoked only in `src/lib/api/client.ts`. |
 | Model selection UI | [`model-menu.svelte`](../app/src/lib/components/model-menu.svelte) is the controlled account/model/level view shared by composer, Settings, and setup; [`model-controls.svelte`](../app/src/lib/components/model-controls.svelte) owns popover, shortcut, session/global/default writes. Pure selection rules live in `models/picks.ts`. |
 | Account settings UI | [`settings-accounts.svelte`](../app/src/lib/components/settings-accounts.svelte) owns account actions and process-status polling; reused in Settings and setup's nested Settings dialog. Polling timers are disposed on unmount. |
+| Live teaching tool display | [`response-prose.ts`](../app/src/lib/teaching/response-prose.ts) pairs assistant parts with the ordered results on response completion. The controller adopts the saved record over the live entries. |
 | Model-authored question content | [`tool-content.svelte`](../app/src/lib/questions/tool-content.svelte): recover source escapes at presentation and render with the shared Markdown pipeline. |

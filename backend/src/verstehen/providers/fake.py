@@ -129,15 +129,27 @@ def fake_model(script_path: Path) -> FunctionModel:
         if reply.error is not None:
             raise RuntimeError(reply.error)
         for index, call in enumerate(reply.tool_calls or []):
-            yield {
-                index: DeltaToolCall(
-                    name=call.name,
-                    json_args=call.arguments
-                    if isinstance(call.arguments, str)
-                    else json.dumps(call.arguments),
-                    tool_call_id=call.id or f"call-{number}-{index}",
-                )
-            }
+            arguments = (
+                call.arguments
+                if isinstance(call.arguments, str)
+                else json.dumps(call.arguments)
+            )
+            size = (
+                max(1, len(arguments) // 3)
+                if reply.delay_ms
+                else max(len(arguments), 1)
+            )
+            for start in range(0, max(1, len(arguments)), size):
+                await asyncio.sleep(reply.delay_ms / 1000)
+                yield {
+                    index: DeltaToolCall(
+                        name=call.name if start == 0 else None,
+                        json_args=arguments[start : start + size],
+                        tool_call_id=(
+                            call.id or f"call-{number}-{index}" if start == 0 else None
+                        ),
+                    )
+                }
 
     class ScriptedModel(FunctionModel):
         @asynccontextmanager

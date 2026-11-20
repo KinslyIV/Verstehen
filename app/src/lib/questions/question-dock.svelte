@@ -1,12 +1,13 @@
 <script lang="ts">
 	import { untrack, type Snippet } from 'svelte';
-	import { ArrowDown, Check, Square } from '@lucide/svelte';
+	import { ArrowDown, Check, Play, Square } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import Nodes from '#lib/markdown/nodes.svelte';
 	import { cn } from '#lib/utils.js';
 	import { hasOpenOverlay, isTypingSurface, questionShortcut } from './keyboard.js';
+	import { revealArrival } from './question-input.js';
 	import { questionPreview } from './question-preview.js';
 	import {
 		buildAnswer,
@@ -27,7 +28,10 @@
 	let {
 		question,
 		initialDraft,
-		expanded,
+		expanded: followsBottom,
+		teach = false,
+		requiresReveal = false,
+		wasQuestion = false,
 		busy,
 		modelMenuOpen,
 		onexpand,
@@ -38,6 +42,9 @@
 		question: Question;
 		initialDraft?: QuestionDraft;
 		expanded: boolean;
+		teach?: boolean;
+		requiresReveal?: boolean;
+		wasQuestion?: boolean;
 		busy: boolean;
 		modelMenuOpen: boolean;
 		onexpand: () => void;
@@ -46,6 +53,9 @@
 		models?: Snippet;
 	} = $props();
 	let draft = $state(untrack(() => initialDraft ?? emptyDraft()));
+	let revealed = $state(untrack(() => revealArrival(wasQuestion).revealed));
+	const revealPending = $derived(requiresReveal && !revealed);
+	const expanded = $derived(!revealPending && followsBottom);
 	let row = $state<number | null>(null);
 	let root = $state<HTMLDivElement | null>(null);
 	let otherInput = $state<HTMLInputElement | null>(null);
@@ -74,6 +84,7 @@
 				other: draft.selection.otherSelected ? draft.other : undefined,
 				text: isText ? draft.text : undefined,
 				thinking: isText ? undefined : draft.thinking,
+				readingThinking: requiresReveal ? draft.readingThinking : undefined,
 				confidence: question.kind === 'quiz' ? CONFIDENCE_STOPS[draft.confidenceIndex] : undefined
 			}),
 			{
@@ -81,6 +92,28 @@
 				selection: { ...draft.selection, selected: new Set(draft.selection.selected) }
 			}
 		);
+	}
+
+	function openQuestion() {
+		revealed = true;
+		onexpand();
+	}
+
+	function readingKey(event: KeyboardEvent & { currentTarget: HTMLTextAreaElement }) {
+		if (event.isComposing || modelMenuOpen || hasOpenOverlay()) return;
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			return;
+		}
+		if (event.key !== 'Enter') return;
+		if (!expanded && (!event.shiftKey || event.ctrlKey || event.metaKey)) {
+			event.preventDefault();
+			openQuestion();
+		} else if (event.ctrlKey || event.metaKey) {
+			event.preventDefault();
+			event.currentTarget.blur();
+		}
 	}
 
 	function act(index: number) {
@@ -118,7 +151,7 @@
 				!target?.closest('button, a')
 			) {
 				event.preventDefault();
-				onexpand();
+				openQuestion();
 			}
 			return;
 		}
@@ -222,11 +255,45 @@
 {/snippet}
 
 <div class="mx-auto w-full max-w-3xl shrink-0 px-6 pt-2 pb-6" bind:this={root}>
-	{#if !expanded}
+	{#if requiresReveal}
+		<InputGroup.Root class="mb-2 bg-card" data-testid="reading-thinking-field">
+			<InputGroup.Addon align="block-start" class="text-xs font-medium uppercase">
+				Thinking while reading
+			</InputGroup.Addon>
+			<InputGroup.Textarea
+				bind:value={draft.readingThinking}
+				aria-label="Thinking while reading"
+				placeholder="Whatever comes to mind as you read."
+				class="max-h-40 min-h-8 px-3 pt-0"
+				onkeydown={readingKey}
+			/>
+		</InputGroup.Root>
+	{/if}
+	{#if revealPending}
+		<Button
+			variant="outline"
+			data-testid="teach-check-reveal"
+			class="h-auto w-full justify-start gap-3 rounded-xl bg-card px-4 py-3"
+			onclick={openQuestion}
+		>
+			<span
+				class="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary"
+			>
+				<Play class="size-3.5" />
+			</span>
+			<span class="min-w-0 flex-1 text-left">
+				<span class="block">Check your understanding</span>
+				<span class="block truncate text-xs text-muted-foreground"><Nodes nodes={preview} /></span>
+			</span>
+			<span class="flex shrink-0 items-center gap-1.5 text-xs">
+				Open <ArrowDown class="size-3" />
+			</span>
+		</Button>
+	{:else if !expanded}
 		<Button
 			variant="outline"
 			class="w-full justify-start gap-3 rounded-xl bg-card"
-			onclick={onexpand}
+			onclick={openQuestion}
 		>
 			<span class="text-xs font-medium text-muted-foreground">{label}</span>
 			<span class="min-w-0 flex-1 truncate text-left [&_.katex]:align-middle">
@@ -363,7 +430,7 @@
 						bind:value={draft.thinking}
 						aria-label="Your thinking"
 						placeholder="Why this answer? Whatever comes to mind."
-						class="max-h-40 min-h-10 px-3"
+						class={cn('max-h-40 px-3', teach ? 'min-h-[4.5rem]' : 'min-h-10')}
 						onkeydown={fieldKey}
 					/>
 				{/if}

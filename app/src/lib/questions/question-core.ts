@@ -50,6 +50,7 @@ export interface DockSelection {
 export interface QuestionDraft {
 	selection: DockSelection;
 	thinking: string;
+	readingThinking?: string;
 	other: string;
 	text: string;
 	confidenceIndex: number;
@@ -59,6 +60,7 @@ export function emptyDraft(): QuestionDraft {
 	return {
 		selection: { selected: new Set(), otherSelected: false, dontKnow: false },
 		thinking: '',
+		readingThinking: '',
 		other: '',
 		text: '',
 		confidenceIndex: DEFAULT_CONFIDENCE_INDEX
@@ -167,6 +169,7 @@ interface AnswerRequest {
 	other?: string;
 	text?: string;
 	thinking?: string;
+	readingThinking?: string;
 	confidence?: number;
 }
 
@@ -190,6 +193,7 @@ export function buildAnswer(question: Question, request: AnswerRequest): Questio
 		other: request.other?.trim() || undefined,
 		text: request.text?.trim() || undefined,
 		thinking: request.thinking?.trim() || undefined,
+		reading_thinking: request.readingThinking?.trim() || undefined,
 		answered_at: new Date().toISOString()
 	};
 	if (question.kind === 'quiz') {

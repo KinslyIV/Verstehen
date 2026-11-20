@@ -758,6 +758,19 @@ export interface components {
 			quizzing?: 'choice' | 'free';
 			file_access?: components['schemas']['FileAccessSettings'];
 		};
+		/** SettingsStatus */
+		SettingsStatus: {
+			models?: components['schemas']['ModelSlots'];
+			background?: components['schemas']['BackgroundSettings'];
+			/**
+			 * Quizzing
+			 * @enum {string}
+			 */
+			quizzing?: 'choice' | 'free';
+			file_access?: components['schemas']['FileAccessSettings'];
+			/** File Access Error */
+			file_access_error?: string | null;
+		};
 		/** SignInStarted */
 		SignInStarted: {
 			/** Id */
@@ -854,6 +867,8 @@ export interface components {
 			 */
 			type: 'message_start' | 'message_update' | 'message_end' | 'error' | 'turn-settled';
 			message?: components['schemas']['AssistantEntry'] | null;
+			/** Results */
+			results?: components['schemas']['ToolResultEntry'][] | null;
 			/** Error Text */
 			error_text?: string | null;
 		};
@@ -1508,7 +1523,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['Settings'];
+					'application/json': components['schemas']['SettingsStatus'];
 				};
 			};
 			/** @description Bad Request */
