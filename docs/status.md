@@ -295,6 +295,13 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    `question-probe-answer.flow.ts-question-probe-answer-dark`,
    `question-probe-answer.flow-8f6d9-tion-probe-answer-dock-dark`, and
    `m6-t1-rerun/teaching-handoff.flow.ts-teaching-handoff-dark`. Each retains `trace.zip`.
+   **T1 review (orchestrator):** the gate now measures saved entries only and the summary is
+   hoisted only when the kept entry is after the first (both plan errors against LH, recorded
+   for user review). An owed handoff starts before the settle kick, closing the duplicate-handoff
+   400. `make check` passed (453 backend tests; frontend 129 after one rerun of the known
+   load-sensitive layout test). `make verify FLOW='teaching-handoff plan-rewrite --workers=1
+   --output=verify-output/m6-t1-review'` passed 4 cases; inspected the dark handoff and
+   plan-rewrite screenshots there. Next: T2.
 
 ## Open questions
 

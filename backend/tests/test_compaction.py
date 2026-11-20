@@ -288,7 +288,7 @@ def test_projection_sends_latest_summary_first_keeps_the_tail_and_skips_all_mark
         "kept",
         "later",
     ]
-    assert projected_user_texts([kept, latest]) == [latest.content, "kept"]
+    assert projected_user_texts([kept, latest]) == ["kept", latest.content]
 
 
 def test_missing_kept_id_renders_full_history_and_all_summary_text():
@@ -586,8 +586,8 @@ def test_settle_kicks_background_summary_and_next_turn_waits(
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("tokens", [32_000, 35_000])
-def test_cold_session_compacts_before_turn_and_counts_its_incoming_append(
+@pytest.mark.parametrize("tokens", [32_001, 35_000])
+def test_cold_session_over_the_limit_compacts_before_its_turn(
     tmp_path: Path, tokens: int
 ):
     async def scenario():
@@ -632,7 +632,7 @@ def test_cold_session_compacts_before_turn_and_counts_its_incoming_append(
             compacted = active_compaction(saved)
             assert compacted is not None and compacted.content.endswith("Checkpoint")
             assert isinstance(compacted.details, dict)
-            assert compacted.details["tokens_before"] == tokens + 2
+            assert compacted.details["tokens_before"] == tokens
             response = saved[-1]
             assert isinstance(response, AssistantEntry)
             assert response.parts == [SavedText(text="Turn reply")]

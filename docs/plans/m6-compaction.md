@@ -44,7 +44,7 @@ and `make verify` pass with the fake model; the feature map and status are updat
 ## Flagged
 
 - **LH's `kind` argument** to `buildCompactionPrompt` is unused by its template
-  (`src/core/compaction.ts:752-785`). We don't port it.
+  (`src/core/compaction.ts:396-429`). We don't port it.
 - **Not yet reachable:** LH's serializer and cut also handle images, side-question markers,
   practice markers, and citations. Their M7–M10 features don't exist here yet. The port covers
   the entry kinds we have; each later milestone extends the same functions.
@@ -79,15 +79,15 @@ T1 (backend), then T2 (UI) on T1, both in this branch's worktree, run one after 
     history (summary + kept tail) plus the system-prompt estimate (characters / 4).
   - `effective_limit(setting, context_limit)`: the setting (default 150,000), capped at
     `context_limit − 16,384` (minimum 1) when the model's limit is known.
-  - `compaction_cut_index`: the port of LH's cut walk (`:586-616`). It never crosses the active
+  - `compaction_cut_index`: the port of LH's cut walk (`:230-260`). It never crosses the active
     compaction's kept entry; UI-only markers and compaction markers are not cut points.
-  - `active_compaction` and `kept_index` (`:655-679`); a missing kept id renders everything.
+  - `active_compaction` and `kept_index` (`:299-323`); a missing kept id renders everything.
   - `serialize_for_summary`: `[LEARNER]`, `[TUTOR]` (text and `(tool call name: args)`, no
     thinking), `[RESULT for name (error)]` truncated at 2,000 characters with `…[truncated]`,
     `[SYSTEM NOTE]` for markers with model text; plan blocks skipped.
   - `plan_tree_text`: LH's lines `- [status] title (id) — summary` and edges, from
     `current_plan` and `derive_plan_statuses`.
-  - `compaction_prompt` and `SUMMARIZER_SYSTEM_PROMPT`, **verbatim** from LH (`:752-785`,
+  - `compaction_prompt` and `SUMMARIZER_SYSTEM_PROMPT`, **verbatim** from LH (`:396-429`,
     `src/server/compaction.ts:56-57`).
   - The marker: `marker_type="compaction"`, content `COMPACTED_HISTORY_HEADER` + blank line +
     summary (header verbatim, `src/core/contracts/chat.ts:273-274`), `details`:
@@ -114,15 +114,17 @@ T1 (backend), then T2 (UI) on T1, both in this branch's worktree, run one after 
     Failures are logged and leave the log untouched.
   - `ensure_compacted` (the turn-start gate): waits for an in-flight compaction; then, if allowed
     (no turn running, `ProviderPolicy.admit("background", account)`) and the projected context
-    **including this input's appends** is over the limit, runs one and waits for it (LH
-    `projectMessages`, `src/server/chat-handler.ts:386-430`).
+    of the saved entries is over the limit, runs one and waits for it. LH adds the incoming
+    input only together with side-chat updates (`projectMessages`,
+    `src/server/chat-handler.ts:386-430`); that comes with M8.
   - `kick` (the settle kick): after a turn settles, when allowed and over the limit, starts
     `compact` in the background (`:344-356`).
   - `compaction-changed` notifications with `running: true/false` around the summary call.
 - **Turn wiring** (`session/turns.py`): a `compaction_gate` stage between `model_gate` and
   `claim_and_write_ahead` for every turn input. `claim_and_write_ahead` refuses with 409 "A turn
-  is already running for this session" while a compaction runs (LH `:503-504`). `settle` kicks
-  compaction after `finish`, before the owed handoff starts; the handoff then passes the gate.
+  is already running for this session" while a compaction runs (LH `:503-504`). `settle` starts
+  an owed handoff first, whose gate compacts if needed, then kicks compaction (a no-op while
+  the handoff runs).
   Dismissal is never gated (decision 1).
 - **Usage on entries** (decision 2): `AssistantEntry.usage`, filled in `update_response`.
 - **Settings:** `compaction_limit: int | None`, floor applied on write; the limit is read fresh
@@ -154,6 +156,7 @@ T1 (backend), then T2 (UI) on T1, both in this branch's worktree, run one after 
   - Retry is refused after a compaction with LH's text; a failure after a compaction can retry;
   - the settle kick runs in the background and the next turn waits for it;
   - a cold session over the limit compacts before its turn;
+  - with a missing or first-entry kept id, the full history renders;
   - input is refused with 409 while a compaction runs; dismissal is not;
   - compaction doesn't start when background use is not allowed for the provider;
   - summary usage is recorded with role `compaction`.

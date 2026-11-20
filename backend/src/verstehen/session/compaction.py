@@ -108,7 +108,7 @@ def kept_index(entries: Sequence[Entry], marker: MarkerEntry | None) -> int:
 def compacted_history(entries: Sequence[Entry]) -> Sequence[Entry]:
     marker = active_compaction(entries)
     index = kept_index(entries, marker)
-    if marker is None or index < 0:
+    if marker is None or index <= 0:
         return entries
     return [
         marker,

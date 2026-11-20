@@ -1,6 +1,5 @@
 import asyncio
 import logging
-from collections.abc import Callable
 from pathlib import Path
 from typing import Literal
 
@@ -33,7 +32,6 @@ from verstehen.teaching.prompts import compose_instructions
 logger = logging.getLogger(__name__)
 
 TurnRole = Literal["teacher", "prober"]
-ProjectEntries = Callable[[list[Entry]], list[Entry]]
 
 
 class CompactionService:
@@ -68,7 +66,6 @@ class CompactionService:
         session_id: str,
         role: TurnRole,
         resolved: ResolvedModel,
-        project_entries: ProjectEntries,
     ) -> None:
         runtime = self.runtimes.get(session_id)
         if running := runtime.compaction:
@@ -76,9 +73,7 @@ class CompactionService:
         async with runtime.lock:
             task = runtime.compaction
             if task is None:
-                task = await self.start_if_needed(
-                    session_id, runtime, role, resolved, project_entries
-                )
+                task = await self.start_if_needed(session_id, runtime, role, resolved)
         if task is not None:
             await asyncio.shield(task)
 
@@ -94,19 +89,17 @@ class CompactionService:
         runtime: SessionRuntime,
         role: TurnRole,
         resolved: ResolvedModel | None = None,
-        project_entries: ProjectEntries | None = None,
     ) -> asyncio.Task[None] | None:
         """Check admission and reserve the summary while holding the session lock."""
         if self.runtimes.closing or runtime.deleted or runtime.run is not None:
             return None
         try:
             entries = await self.entries_store.list(session_id)
-            projected = entries if project_entries is None else project_entries(entries)
             settings = await self.settings_store.read()
             instructions = await compose_instructions(
                 self.settings_store, self.data_dir, role
             )
-            tokens = projected_context_tokens(projected, instructions)
+            tokens = projected_context_tokens(entries, instructions)
             if resolved is None:
                 session = await self.sessions_store.get(session_id)
                 if session is None:
