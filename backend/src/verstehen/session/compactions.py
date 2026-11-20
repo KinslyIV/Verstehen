@@ -23,6 +23,7 @@ from verstehen.session.compaction import (
     serialize_for_summary,
 )
 from verstehen.session.events import Notification, Notifications
+from verstehen.session.model_identity import ModelIdentity
 from verstehen.session.runtime import RuntimeRegistry, SessionRuntime
 from verstehen.store.entries import EntriesStore, Entry
 from verstehen.store.sessions import SessionsStore
@@ -99,19 +100,20 @@ class CompactionService:
             instructions = await compose_instructions(
                 self.settings_store, self.data_dir, role
             )
-            tokens = projected_context_tokens(entries, instructions)
             if resolved is None:
                 session = await self.sessions_store.get(session_id)
                 if session is None:
                     return None
                 resolved = await self.resolver_service.resolve(role, session)
+            model = ModelIdentity.of(resolved.model)
+            tokens = projected_context_tokens(entries, instructions, model)
             if tokens <= effective_limit(
                 settings.compaction_limit, resolved.context_limit
             ):
                 return None
             if not await self.provider_policy.admit("background", resolved.account):
                 return None
-            cut = compaction_cut_index(entries)
+            cut = compaction_cut_index(entries, model)
             previous = active_compaction(entries)
             start = kept_index(entries, previous)
             if start >= 0 and cut <= start:

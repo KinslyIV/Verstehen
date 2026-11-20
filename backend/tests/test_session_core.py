@@ -7,6 +7,7 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart as ModelTextPart
 from pydantic_ai.messages import ThinkingPart as ModelThinkingPart
 
+from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.titles import title_from_prompt
 from verstehen.store.database import open_database
@@ -61,7 +62,9 @@ def test_projection_preserves_text_thinking_order_and_signatures():
         provider="test",
         model="test-model",
     )
-    messages = to_llm_messages([user, assistant])
+    messages = to_llm_messages(
+        [user, assistant], model=ModelIdentity("test", "test-model")
+    )
     assert messages == [
         ModelRequest(parts=[UserPromptPart("Why?", timestamp=user.created_at)]),
         ModelResponse(
@@ -268,8 +271,9 @@ def test_projection_drops_empty_unsigned_thinking():
             TextPart(text="Answer"),
         ],
         provider="test",
+        model="m",
     )
-    assert to_llm_messages([assistant]) == [
+    assert to_llm_messages([assistant], model=ModelIdentity("test", "m")) == [
         ModelResponse(
             parts=[
                 ModelThinkingPart("", signature="sig", provider_name="test"),
@@ -281,7 +285,62 @@ def test_projection_drops_empty_unsigned_thinking():
             ],
             timestamp=assistant.created_at,
             provider_name="test",
+            model_name="m",
         )
+    ]
+
+
+def thinking_entry(provider: str, model: str, part: ThinkingPart) -> AssistantEntry:
+    return AssistantEntry(
+        parts=[part, TextPart(text="Answer")], provider=provider, model=model
+    )
+
+
+def projected_thinking(entry: AssistantEntry, current: ModelIdentity):
+    (response,) = to_llm_messages([entry], model=current)
+    assert isinstance(response, ModelResponse)
+    return [part for part in response.parts if isinstance(part, ModelThinkingPart)]
+
+
+def test_projection_keeps_same_model_thinking_with_id_signature_and_provider():
+    entry = thinking_entry(
+        "test", "m", ThinkingPart(thinking="why", id="rs_1", signature="sig")
+    )
+    assert projected_thinking(entry, ModelIdentity("test", "m")) == [
+        ModelThinkingPart("why", id="rs_1", signature="sig", provider_name="test")
+    ]
+
+
+def test_projection_drops_all_thinking_from_a_different_model():
+    entry = thinking_entry("test", "m", ThinkingPart(thinking="why", signature="sig"))
+    assert projected_thinking(entry, ModelIdentity("test", "other")) == []
+
+
+def test_projection_drops_all_thinking_from_a_different_provider():
+    entry = thinking_entry("test", "m", ThinkingPart(thinking="why", signature="sig"))
+    assert projected_thinking(entry, ModelIdentity("elsewhere", "m")) == []
+
+
+def test_projection_without_a_current_model_drops_thinking():
+    entry = thinking_entry("test", "m", ThinkingPart(thinking="why", signature="sig"))
+    (response,) = to_llm_messages([entry])
+    assert [part.part_kind for part in response.parts] == ["text"]
+
+
+def test_projection_drops_chatgpt_thinking_without_an_id():
+    current = ModelIdentity(CHATGPT_PROVIDER, "gpt-5")
+    entry = thinking_entry(
+        CHATGPT_PROVIDER, "gpt-5", ThinkingPart(thinking="why", signature="ENC")
+    )
+    assert projected_thinking(entry, current) == []
+
+
+def test_projection_keeps_same_model_claude_thinking_without_an_id():
+    entry = thinking_entry(
+        "anthropic", "haiku", ThinkingPart(thinking="why", signature="sig")
+    )
+    assert projected_thinking(entry, ModelIdentity("anthropic", "haiku")) == [
+        ModelThinkingPart("why", signature="sig", provider_name="anthropic")
     ]
 
 

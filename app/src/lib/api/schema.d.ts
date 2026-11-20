@@ -850,6 +850,8 @@ export interface components {
 			type: 'thinking';
 			/** Thinking */
 			thinking: string;
+			/** Id */
+			id?: string | null;
 			/** Signature */
 			signature?: string | null;
 			/**

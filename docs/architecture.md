@@ -107,7 +107,7 @@ Entry kinds follow LearnHarness's `LhMessage` (`src/core/native-messages.ts`):
 | Kind | Contents | Model sees |
 |---|---|---|
 | `user` | text, images | as a user message |
-| `assistant` | text, thinking (with signatures), tool calls; provider, model, stop reason | as a model response |
+| `assistant` | text, thinking (with the reasoning item id and signatures), tool calls; provider, requested model id, stop reason | as a model response |
 | `tool_result` | the result of one tool call, including a learner's answer | as a tool return |
 | `marker` | one of LH's marker types: `graph-context`, `probe-handoff`, `subagent-steer`, `subagent-abort`, `plan-block`, `practice-thinking`, `practice-next`, `problem-dismissed`, `compaction`, `side-question`, `side-question-told` | its canonical user text; `plan-block` is UI only |
 

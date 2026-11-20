@@ -13,6 +13,7 @@ from verstehen.providers.resolve import ResolutionError, ResolvedModel, Resolver
 from verstehen.providers.usage import UsageModel, response_usage
 from verstehen.session.compactions import CompactionService
 from verstehen.session.events import Notification, Notifications, TurnEvent
+from verstehen.session.model_identity import ModelIdentity
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry, SessionRuntime, TurnRun
@@ -374,8 +375,13 @@ class TurnService:
         try:
             if run.aborted:
                 raise asyncio.CancelledError
+            assert state.resolved is not None
+            model = ModelIdentity.of(state.resolved.model)
             history = to_llm_messages(
-                state.entries, retry=state.input.type == "retry", data_dir=self.data_dir
+                state.entries,
+                model=model,
+                retry=state.input.type == "retry",
+                data_dir=self.data_dir,
             )
             async with state.agent.iter(message_history=history) as agent_run:
                 async for node in agent_run:
@@ -388,17 +394,17 @@ class TurnService:
                         async with node.stream(agent_run.ctx) as stream:
                             async for event in stream:
                                 log_provider_event(self.provider_events, event)
-                                update_response(reply, stream.response)
+                                update_response(reply, stream.response, model)
                                 run.publish(
                                     TurnEvent(
                                         type="message_update",
                                         message=reply.model_copy(deep=True),
                                     )
                                 )
-                            update_response(reply, stream.response)
+                            update_response(reply, stream.response, model)
                     elif Agent.is_call_tools_node(node):
                         assert reply is not None
-                        update_response(reply, node.model_response)
+                        update_response(reply, node.model_response, model)
                         async with node.stream(agent_run.ctx) as events:
                             async for event in events:
                                 if isinstance(event, FunctionToolResultEvent):
@@ -519,13 +525,19 @@ class TurnService:
         )
 
 
-def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
+def update_response(
+    reply: AssistantEntry, response: ModelResponse, model: ModelIdentity
+) -> None:
     parts: list[TextPart | ThinkingPart | ToolCallPart] = []
     for part in response.parts:
         if part.part_kind == "text":
             parts.append(TextPart(text=part.content))
         elif part.part_kind == "thinking":
-            parts.append(ThinkingPart(thinking=part.content, signature=part.signature))
+            parts.append(
+                ThinkingPart(
+                    thinking=part.content, id=part.id, signature=part.signature
+                )
+            )
         elif part.part_kind == "tool-call":
             parts.append(
                 ToolCallPart(
@@ -536,7 +548,7 @@ def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
             )
     reply.parts = parts
     reply.provider = response.provider_name
-    reply.model = response.model_name
+    reply.model = model.model
     reply.usage = response_usage(response)
     if response.finish_reason == "length":
         reply.stop_reason = "length"

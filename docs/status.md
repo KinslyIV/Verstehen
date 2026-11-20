@@ -4,6 +4,13 @@
 
 ## Where we are
 
+- **Reasoning resend (branch `reasoning-resend`, awaiting review):** saved thinking keeps the reasoning
+  item id and `model` is the requested id. The projection resends thinking only to the same
+  provider and model; ChatGPT thinking without an id is dropped. The M6 output-token floor now
+  applies to same-model ChatGPT replies with signed thinking. The fake model's streamed thinking
+  cannot carry an id (`DeltaThinkingPart` has no id field), so the end-to-end proof is
+  `test_chatgpt_reasoning_is_saved_and_resent_as_a_reasoning_item`. See [plan](plans/reasoning-resend.md).
+
 **M1–M4 are merged into `main`.** The M3 laptop check found that Accounts
 could open before the desktop frontend had a sidecar connection. The startup fix makes early
 requests wait for the connection, clears failed lookups for retry, and displays Accounts errors.
@@ -332,11 +339,6 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
   block approach is retained; no further profiling or renderer redesign in T4.
 
-- **ChatGPT encrypted reasoning is not resent (fix after M6):** turns save the thinking text and
-  signature but not the reasoning item id (`session/turns.py:503`), and the projection rebuilds
-  thinking without it (`session/projection.py:82`). Pydantic AI then sends only the visible
-  summary text, while LH resends the encrypted reasoning to the same model. Plan it as its own
-  fix after M6.
 - Later providers remain in [architecture](architecture.md#open-questions).
 
 - **Load-sensitive frontend tests:** `right_panel_open_state_and_width_are_remembered` (M1 layout)

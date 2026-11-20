@@ -45,6 +45,7 @@ from verstehen.session.compaction import (
     serialize_for_summary,
 )
 from verstehen.session.events import Notification
+from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.session.projection import (
     failed_response_at_end,
     retry_drops,
@@ -145,6 +146,59 @@ def test_entries_without_usage_estimate_content_at_four_characters_per_token():
     entries = [assistant, UserEntry(text="🙂x"), UserEntry(text="12345")]
     assert estimate_entry_tokens(assistant) == 5
     assert estimate_context_tokens(entries) == (8, None)
+
+
+CURRENT = ModelIdentity(CHATGPT_PROVIDER, "gpt-5")
+
+
+def chatgpt_reply(**changes: object) -> AssistantEntry:
+    entry = AssistantEntry(
+        parts=[SavedText(text="abcd"), ThinkingPart(thinking="", signature="ENC")],
+        provider=CHATGPT_PROVIDER,
+        model="gpt-5",
+        usage=EntryUsage(output_tokens=100),
+    )
+    return entry.model_copy(update=changes)
+
+
+def test_same_model_chatgpt_reply_with_signed_thinking_is_floored_at_output_tokens():
+    assert estimate_entry_tokens(chatgpt_reply(), CURRENT) == 100
+    assert estimate_entry_tokens(chatgpt_reply()) == 1
+    kept = chatgpt_reply()
+    compacted = marker(kept, kept)
+    entries = [kept, compacted]
+    expected = estimate_entry_tokens(compacted) + 100
+    assert projected_context_tokens(entries, "", CURRENT) == expected
+    assert projected_context_tokens(entries, "") == expected - 99
+
+
+def test_output_floor_applies_when_cutting_history():
+    entries = [UserEntry(text="1234"), chatgpt_reply(), UserEntry(text="tail")]
+    assert compaction_cut_index(entries, CURRENT, keep_recent_tokens=100) == 1
+    assert compaction_cut_index(entries, None, keep_recent_tokens=100) == 0
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"provider": "anthropic"},
+        {"provider": "other-provider"},
+        {"model": "gpt-6"},
+        {"parts": [SavedText(text="abcd"), ThinkingPart(thinking="", signature=None)]},
+        {"parts": [SavedText(text="abcd")]},
+        {"stop_reason": "error"},
+        {"stop_reason": "aborted"},
+        {"usage": EntryUsage(output_tokens=0)},
+        {"usage": None},
+    ],
+)
+def test_output_floor_needs_every_condition(changes: dict[str, object]):
+    entry = chatgpt_reply(**changes)
+    if changes.get("provider") == "anthropic":
+        current = ModelIdentity("anthropic", "gpt-5")
+        assert estimate_entry_tokens(entry, current) < 100
+    else:
+        assert estimate_entry_tokens(entry, CURRENT) < 100
 
 
 @pytest.mark.parametrize(

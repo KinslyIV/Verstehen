@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.messages import ModelResponse
 from pydantic_ai.profiles.openai import OpenAIModelProfile, OpenAIReasoningEffort
 from pydantic_ai.providers.openai_chatgpt import (
     OpenAIChatGPTCredentials,
@@ -29,6 +30,11 @@ from verstehen.providers.chatgpt.credentials import (
     CredentialsStore,
 )
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService, SignInBusy
+from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
+from verstehen.session.projection import to_llm_messages
+from verstehen.session.turns import update_response
+from verstehen.store.entries import AssistantEntry, UserEntry
+from verstehen.store.entries import ThinkingPart as SavedThinking
 from verstehen.store.settings import ModelPick
 
 
@@ -643,3 +649,124 @@ def test_authenticated_reply_uses_chatgpt_responses_dialect(
             await adapter.close()
 
     asyncio.run(scenario())
+
+
+def stream_content(events: list[dict]) -> str:
+    return "".join(
+        "data: " + json.dumps({**event, "sequence_number": index}) + "\n\n"
+        for index, event in enumerate(events)
+    )
+
+
+def reasoning_reply_events() -> list[dict]:
+    reasoning = {
+        "type": "reasoning",
+        "id": "rs_1",
+        "summary": [{"type": "summary_text", "text": "Thinking it through"}],
+        "encrypted_content": "ENC",
+    }
+    message = {
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": "Hello", "annotations": []}],
+    }
+    response_body = {
+        "id": "resp_1",
+        "object": "response",
+        "model": "gpt-5-2025-08-07",
+        "created_at": 1,
+        "status": "completed",
+        "output": [reasoning, message],
+        "usage": {"input_tokens": 3, "output_tokens": 9, "total_tokens": 12},
+    }
+    return [
+        {
+            "type": "response.created",
+            "response": {
+                **response_body,
+                "status": "in_progress",
+                "output": [],
+                "usage": None,
+            },
+        },
+        {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {**reasoning, "summary": [], "encrypted_content": None},
+        },
+        {
+            "type": "response.reasoning_summary_text.delta",
+            "item_id": "rs_1",
+            "output_index": 0,
+            "summary_index": 0,
+            "delta": "Thinking it through",
+        },
+        {"type": "response.output_item.done", "output_index": 0, "item": reasoning},
+        {
+            "type": "response.output_item.added",
+            "output_index": 1,
+            "item": {**message, "content": [], "status": "in_progress"},
+        },
+        {
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 1,
+            "content_index": 0,
+            "delta": "Hello",
+            "logprobs": [],
+        },
+        {"type": "response.output_item.done", "output_index": 1, "item": message},
+        {"type": "response.completed", "response": response_body},
+    ]
+
+
+def test_chatgpt_reasoning_is_saved_and_resent_as_a_reasoning_item(tmp_path: Path):
+    bodies: list[dict] = []
+
+    def respond(request: httpx2.Request):
+        bodies.append(json.loads(request.content))
+        return httpx2.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=stream_content(reasoning_reply_events()),
+        )
+
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter = ChatGPTAccountAdapter(
+            store, lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(respond))
+        )
+        try:
+            account = (await adapter.accounts())[0]
+            model = await adapter.build_model(
+                account, ModelPick(account=account.id, model="gpt-5")
+            )
+            identity = ModelIdentity.of(model)
+            first = UserEntry(text="Hello")
+            reply = AssistantEntry(parts=[])
+            async with Agent(model).run_stream("Hello") as result:
+                await result.get_output()
+            response = result.all_messages()[-1]
+            assert isinstance(response, ModelResponse)
+            update_response(reply, response, identity)
+            assert reply.provider == CHATGPT_PROVIDER and reply.model == "gpt-5"
+            assert reply.parts[0] == SavedThinking(
+                thinking="Thinking it through", id="rs_1", signature="ENC"
+            )
+            history = to_llm_messages(
+                [first, reply, UserEntry(text="Again")], model=identity
+            )
+            await Agent(model).run("Again", message_history=history)
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+    body = bodies[1]
+    assert body["store"] is False and "reasoning.encrypted_content" in body["include"]
+    resent = [item for item in body["input"] if item.get("type") == "reasoning"]
+    assert [(item["id"], item["encrypted_content"]) for item in resent] == [
+        ("rs_1", "ENC")
+    ]

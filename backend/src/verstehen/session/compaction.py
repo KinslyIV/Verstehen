@@ -2,6 +2,7 @@ import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
 
+from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.store.entries import AssistantEntry, Entry, MarkerEntry, ToolCallPart
 from verstehen.teaching.plan.history import current_plan
 from verstehen.teaching.plan.tree import derive_plan_statuses
@@ -26,7 +27,20 @@ def argument_text(part: ToolCallPart) -> str:
     return json.dumps(arguments, ensure_ascii=False, separators=(",", ":"))
 
 
-def estimate_entry_tokens(entry: Entry) -> int:
+def has_output_floor(entry: AssistantEntry, model: ModelIdentity | None) -> bool:
+    """Whether reported output tokens bound the estimate: same-model ChatGPT replies with signed thinking."""
+    return (
+        model is not None
+        and entry.provider == CHATGPT_PROVIDER
+        and (entry.provider, entry.model) == (model.provider, model.model)
+        and entry.stop_reason not in ("aborted", "error")
+        and entry.usage is not None
+        and entry.usage.output_tokens > 0
+        and any(part.type == "thinking" and part.signature for part in entry.parts)
+    )
+
+
+def estimate_entry_tokens(entry: Entry, model: ModelIdentity | None = None) -> int:
     chars = 0
     if isinstance(entry, AssistantEntry):
         for part in entry.parts:
@@ -38,7 +52,11 @@ def estimate_entry_tokens(entry: Entry) -> int:
                 chars += text_chars(part.tool_name) + text_chars(argument_text(part))
     else:
         chars = text_chars(entry.content if entry.kind == "marker" else entry.text)
-    return (chars + 3) // 4
+    tokens = (chars + 3) // 4
+    if isinstance(entry, AssistantEntry) and has_output_floor(entry, model):
+        assert entry.usage is not None
+        return max(tokens, entry.usage.output_tokens)
+    return tokens
 
 
 def last_usage_index(entries: Sequence[Entry]) -> int | None:
@@ -56,14 +74,16 @@ def last_usage_index(entries: Sequence[Entry]) -> int | None:
     return None
 
 
-def estimate_context_tokens(entries: Sequence[Entry]) -> tuple[int, int | None]:
+def estimate_context_tokens(
+    entries: Sequence[Entry], model: ModelIdentity | None = None
+) -> tuple[int, int | None]:
     index = last_usage_index(entries)
     if index is None:
-        return sum(map(estimate_entry_tokens, entries)), None
+        return sum(estimate_entry_tokens(entry, model) for entry in entries), None
     anchor = entries[index]
     assert isinstance(anchor, AssistantEntry) and anchor.usage is not None
     return anchor.usage.context_tokens + sum(
-        map(estimate_entry_tokens, entries[index + 1 :])
+        estimate_entry_tokens(entry, model) for entry in entries[index + 1 :]
     ), index
 
 
@@ -120,21 +140,25 @@ def compacted_history(entries: Sequence[Entry]) -> Sequence[Entry]:
     ]
 
 
-def projected_context_tokens(entries: Sequence[Entry], system_prompt: str) -> int:
-    tokens, anchor = estimate_context_tokens(entries)
+def projected_context_tokens(
+    entries: Sequence[Entry], system_prompt: str, model: ModelIdentity | None = None
+) -> int:
+    tokens, anchor = estimate_context_tokens(entries, model)
     if anchor is not None:
         return tokens
     projected = (
         entry for entry in compacted_history(entries) if has_model_content(entry)
     )
     return (
-        sum(map(estimate_entry_tokens, projected))
+        sum(estimate_entry_tokens(entry, model) for entry in projected)
         + (text_chars(system_prompt) + 3) // 4
     )
 
 
 def compaction_cut_index(
-    entries: Sequence[Entry], keep_recent_tokens: int = KEEP_RECENT_TOKENS
+    entries: Sequence[Entry],
+    model: ModelIdentity | None = None,
+    keep_recent_tokens: int = KEEP_RECENT_TOKENS,
 ) -> int:
     start = max(0, kept_index(entries, active_compaction(entries)))
     visible = [
@@ -149,7 +173,7 @@ def compaction_cut_index(
     cut = points[0]
     accumulated = 0
     for index, entry in reversed(visible):
-        tokens = estimate_entry_tokens(entry)
+        tokens = estimate_entry_tokens(entry, model)
         if not tokens:
             continue
         accumulated += tokens
