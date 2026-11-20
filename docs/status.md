@@ -278,14 +278,6 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 3. **M5 teaching flow:** implemented and reviewed ([M5 plan](plans/m5-teaching-flow.md)). Merge
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
-5. **M7 background jobs and workers:** planned on `m7-plan`
-   ([M7 plan](plans/m7-jobs-and-workers.md), approved 2026-11-20). Group 1
-   (T1 workers, T2 Settings → Tools, T3 learner images) starts off `main`; group 2 (T4 jobs,
-   delivery, wakes; T5 jobs UI) starts after M6 merges, rebased on `main`.
-   Group 1 is implemented and reviewed: `m7-t1-workers` (`e14681b`), `m7-t2-tools-settings`
-   (`1e782e7`), `m7-t3-images` (`f25a7ee`); each passed full `make check`, and T2/T3 their verify
-   flows. Full `make verify` and `make verify-live` run when they are merged.
-
 4. **M6 compaction:** T1 backend and T2 UI done on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
    The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
    the append-only transcript and commit with their usage. Settings, session state, and notifications
@@ -327,6 +319,13 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    light moment line, and the settings card. `make verify-live` passed at `666e8fe`
    (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png` inspected).
    M6 is ready for the user to review and merge `m6-plan`.
+
+5. **M7 background jobs and workers:** ([M7 plan](plans/m7-jobs-and-workers.md), approved
+   2026-11-20). Group 1 (T1 workers, T2 Settings → Tools, T3 learner images) is implemented and
+   reviewed. Group 2 (T4 jobs, delivery, wakes; T5 jobs UI) runs on `m7-jobs`, built from `main`
+   with M6 plus the plan and group 1 commits cherry-picked, so merging `m7-jobs` alone brings in
+   all of M7; the `m7-plan`, `m7-t1-workers`, `m7-t2-tools-settings`, and `m7-t3-images` branches
+   are superseded by it.
 
 ## Open questions
 
@@ -420,8 +419,6 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   fallback notices, and download states. `make check` passed (457 backend, 148 Vitest tests) and
   `make verify FLOW=settings-tools` passed all 8 cases.
   Next: orchestrator review; T4 applies the switches/concurrency and wires keys/browser into jobs.
-## M7 progress
-
 - **T3 — learner images (`m7-t3-images`).** Added bounded learner-image loading and Pillow
   normalization in a thread, reusing M5's file-access policy and image store. The teacher's
   always-on `show_image` tool saves display-only details and returns LH's text confirmation.
