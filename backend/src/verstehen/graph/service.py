@@ -8,6 +8,8 @@ from verstehen.graph.deletion import (
     delete_node_traces,
     delete_sources_traces,
 )
+from verstehen.graph.errors import GraphRefused
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.organization import (
     SourceDirectory,
     apply_organization_action,
@@ -28,13 +30,6 @@ from verstehen.store.settings import SettingsStore
 from verstehen.store.usage import UsageStore
 
 
-class GraphRefused(Exception):
-    def __init__(self, error: str, status: int = 400, code: str | None = None):
-        super().__init__(error)
-        self.status = status
-        self.code = code
-
-
 class NodeDeleted(BaseModel):
     stats: NodeDeletionStats
     revision: int
@@ -45,8 +40,8 @@ class PositionsSaved(BaseModel):
 
 
 class GraphService:
-    """Coordinate graph reads and writes, with injected lifecycle guards and notifications.
-    The app injects extraction guards; session deletion remains session-owned.
+    """Coordinate graph reads and writes with the app-wide extraction service.
+    Session deletion remains session-owned through injected callbacks.
     """
 
     def __init__(
@@ -55,6 +50,7 @@ class GraphService:
         sessions_store: SessionsStore,
         settings_store: SettingsStore,
         usage_store: UsageStore,
+        extraction_service: ExtractionService,
         delete_session: Callable[[str], Awaitable[None]],
         check_session: Callable[[str], Awaitable[None]],
     ):
@@ -64,7 +60,7 @@ class GraphService:
         self.usage_store = usage_store
         self.delete_session = delete_session
         self.check_session = check_session
-        self.extraction_running: Callable[[], bool] = lambda: False
+        self.extraction_service = extraction_service
 
     async def snapshot(self) -> GraphSnapshot:
         return graph_snapshot(
@@ -77,7 +73,7 @@ class GraphService:
         return source_directory(ledger, await self.sessions_store.list())
 
     def check_deletion(self, message: str) -> None:
-        if self.extraction_running():
+        if self.extraction_service.running():
             raise GraphRefused(message, 409, "extraction_running")
 
     async def delete_node(self, id: str) -> NodeDeleted:

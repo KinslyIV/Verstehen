@@ -14,6 +14,8 @@ from verstehen.graph.coverage import (
     batch_runs,
     coverage_of,
 )
+from verstehen.graph.deletion import DeleteMode, delete_sources_traces
+from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extractor import (
     extractor_instructions,
     findings_tool,
@@ -24,7 +26,6 @@ from verstehen.graph.merge import EmissionStats, MergeSource, merge_findings
 from verstehen.graph.model import get_graph
 from verstehen.graph.organization import register_import
 from verstehen.graph.prompts import AUDITOR_INSTRUCTIONS
-from verstehen.graph.service import GraphRefused
 from verstehen.providers.policy import ProviderPolicy, RequestPurpose
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.providers.usage import UsageModel
@@ -457,6 +458,11 @@ class ExtractionService:
         self.abort(source)
         done, _ = await asyncio.wait([task], timeout=timeout)
         return bool(done)
+
+    async def delete_session_traces(self, session_id: str, mode: DeleteMode) -> None:
+        async with self.graph_store.transaction() as ledger:
+            delete_sources_traces(ledger, {session_id}, mode)
+            ledger.organization.placements.pop(session_id, None)
 
     async def begin_deletion(self, source: str) -> bool:
         self.deleting.add(source)

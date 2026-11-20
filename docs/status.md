@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T2 extraction backend).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T2 review fixes).
 
 ## M9 progress
 
@@ -29,15 +29,9 @@ tests (2 live tests deselected), 197 frontend tests across 28 files, and all sta
 The 37 new offline cases cover extraction, API integration, PDF conversion, settings, and lifecycle
 behavior. API types are regenerated. No real-model calls or packaging changes were made.
 
-Browser evidence: `make verify FLOW='session-rename-delete session-new-and-stream'` passed all
-3 cases. The full rebuilt fake-model suite, then guarded `--workers=2` run, passed 76/85 cases;
-startup timeouts and UI timing/visibility assertions required unchanged isolated reruns. The
-nine selected flows (`job-recovery-reload plan-diagram plan-rewrite question-ask question-dismiss
-question-malformed-retry teach-predict-check teaching-handoff-reload teaching-handoff`) ran
-serially in `verify-output/t2-rerun`: 9/10 cases passed (the handoff flow also repeats its light
-case). A final isolated `question-ask` passed in `verify-output/t2-question-final`. Every one of
-the 85 cases has a passing result across these runs, with no weakened assertions or UI edits.
-The same question flow also passed against a read-only archive of the T1 backend for comparison.
+T2 review fix 1: `ExtractionService` is now constructor-injected into `SessionService`, `TurnService`, and `GraphService`; the post-construction `| None` callables and guards are gone. Tests build the services the same way, and the prober tool-set assertions include the graph tools. `make check` passed: 761 backend tests (2 live deselected), 197 frontend tests.
+
+T2 review fix 2: the full fake-model `make verify` after fix 1 passed 83/85. The two failures were `question-probe-answer-light` (a viewport-ratio assertion) and `teach-predict-check` (a console error from a duplicate `handoff` input, 400 "No probe handoff is owed"). Both pass in an isolated rerun (`make verify-run`, 5/5 cases). Neither touches graph code, so they look like parallel-load timing flakes; the earlier 9/85 run is not reproduced.
 
 Inspected `screenshot.png` and retained `trace.zip` under `app/verify-output/` for
 `session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,

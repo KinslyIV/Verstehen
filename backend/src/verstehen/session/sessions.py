@@ -1,13 +1,14 @@
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable
+from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
-from verstehen.graph.context import GraphContext
+from verstehen.graph.context import GraphContext, graph_context_message
 from verstehen.graph.coverage import SessionCoverage
 from verstehen.graph.deletion import DeleteMode
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import failed_response_at_end
@@ -18,6 +19,7 @@ from verstehen.sidechat.segments import SideSegments, side_segments
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
+from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionsStore
 from verstehen.store.settings import ModelPick
@@ -57,6 +59,8 @@ class SessionService:
         jobs_store: JobsStore,
         artifact_views_store: ArtifactViewsStore,
         data_dir: Path,
+        extraction_service: ExtractionService,
+        graph_store: GraphStore,
         side_chat_service: SideChatService | None = None,
     ):
         self.sessions_store = sessions_store
@@ -68,15 +72,8 @@ class SessionService:
         self.artifact_views_store = artifact_views_store
         self.data_dir = data_dir
         self.side_chat_service = side_chat_service
-        self.graph_context: Callable[[GraphContext], Awaitable[MarkerEntry]] | None = (
-            None
-        )
-        self.graph_coverage: Callable[[str], Awaitable[SessionCoverage]] | None = None
-        self.begin_graph_deletion: Callable[[str], Awaitable[bool]] | None = None
-        self.end_graph_deletion: Callable[[str], None] | None = None
-        self.delete_graph_traces: (
-            Callable[[str, DeleteMode], Awaitable[None]] | None
-        ) = None
+        self.extraction_service = extraction_service
+        self.graph_store = graph_store
 
     async def list(self) -> List[ListedSession]:
         listed = []
@@ -105,13 +102,10 @@ class SessionService:
         session = await self.sessions_store.create(
             title_from_prompt(title or "Untitled session"), pick
         )
-        if (
-            graph_context is not None
-            and graph_context.propositions
-            and self.graph_context
-        ):
+        if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
-                session.id, [await self.graph_context(graph_context)]
+                session.id,
+                [await graph_context_message(graph_context, self.graph_store)],
             )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
@@ -134,7 +128,7 @@ class SessionService:
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
-                await self.graph_coverage(session_id) if self.graph_coverage else None,
+                await self.extraction_service.coverage(session_id),
             )
 
     async def set_artifact_view(
@@ -228,10 +222,7 @@ class SessionService:
                     },
                 )
             try:
-                if (
-                    self.begin_graph_deletion is not None
-                    and not await self.begin_graph_deletion(session_id)
-                ):
+                if not await self.extraction_service.begin_deletion(session_id):
                     return Refused(
                         503,
                         {
@@ -239,8 +230,7 @@ class SessionService:
                             "code": "extraction_winding_down",
                         },
                     )
-                if self.delete_graph_traces is not None:
-                    await self.delete_graph_traces(session_id, mode)
+                await self.extraction_service.delete_session_traces(session_id, mode)
                 if self.side_chat_service is not None:
                     self.side_chat_service.stop_all(session_id)
                 orphaned = await self.sessions_store.unreferenced_image_hashes(
@@ -251,8 +241,7 @@ class SessionService:
                 runtime.delivery.clear()
                 await asyncio.to_thread(remove_images, self.data_dir, orphaned)
             finally:
-                if self.end_graph_deletion is not None:
-                    self.end_graph_deletion(session_id)
+                self.extraction_service.end_deletion(session_id)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )

@@ -10,6 +10,7 @@ from starlette.responses import JSONResponse
 
 from verstehen.api.sessions import ApiError
 from verstehen.graph.costs import GraphCostSummary
+from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extraction_service import NotesImportError, RunningExtraction
 from verstehen.graph.merge import EmissionStats
 from verstehen.graph.notes import (
@@ -21,7 +22,6 @@ from verstehen.graph.notes import (
 from verstehen.graph.organization import SourceDirectory
 from verstehen.graph.render_settings import GraphRenderSettings
 from verstehen.graph.service import (
-    GraphRefused,
     GraphService,
     NodeDeleted,
     PositionsSaved,

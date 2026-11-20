@@ -172,6 +172,8 @@ def test_probe_ack_switches_to_teacher_and_handoff_marker_is_saved_before_infere
                     "grep",
                     "research",
                     "pdf",
+                    "list_sessions",
+                    "list_propositions",
                 }
                 yield {
                     0: DeltaToolCall(

@@ -723,7 +723,11 @@ def test_deletion_routes_refuse_while_extraction_is_registered(tmp_path: Path):
         async def seed():
             async with app.state.graph_service.graph_store.transaction() as ledger:
                 ledger.nodes = [node("n_a")]
-            app.state.graph_service.extraction_running = lambda: True
+
+            async def waiting():
+                await asyncio.Event().wait()
+
+            app.state.extraction_service.launch("s1", waiting)
 
         assert client.portal is not None
         client.portal.call(seed)
@@ -814,6 +818,7 @@ def test_notes_source_deletion_removes_usage_and_placement_in_the_graph_transact
 
 def test_source_deletion_rechecks_extraction_after_acquiring_the_graph_transaction(
     tmp_path: Path,
+    monkeypatch,
 ):
     app = create_app(Settings(tmp_path))
     with TestClient(app, headers={"host": "localhost"}) as client:
@@ -822,7 +827,9 @@ def test_source_deletion_rechecks_extraction_after_acquiring_the_graph_transacti
             async with app.state.graph_service.graph_store.transaction() as ledger:
                 ledger.nodes = [node("n_a")]
             checks = iter([False, True])
-            app.state.graph_service.extraction_running = lambda: next(checks)
+            monkeypatch.setattr(
+                app.state.extraction_service, "running", lambda: next(checks)
+            )
 
         assert client.portal is not None
         client.portal.call(seed)

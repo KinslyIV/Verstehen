@@ -6,9 +6,10 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
-from pydantic_ai import Agent, Tool
+from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.jobs.runner import JobRunner
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
@@ -50,6 +51,7 @@ from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
+from verstehen.teaching.graph_tools import prober_graph_tools
 from verstehen.teaching.handoff import HANDOFF_TEXT
 from verstehen.teaching.images import show_image_tool
 from verstehen.teaching.job_tools import ACKNOWLEDGEMENTS, JobDispatcher, job_tools
@@ -164,6 +166,7 @@ class TurnService:
         jobs_store: JobsStore,
         job_runner: JobRunner,
         side_threads: Callable[[str], Awaitable[list[SideThread]]],
+        extraction_service: ExtractionService,
         provider_events: bool = False,
     ):
         self.sessions_store = sessions_store
@@ -180,8 +183,7 @@ class TurnService:
         self.jobs_store = jobs_store
         self.job_runner = job_runner
         self.side_threads = side_threads
-        self.trigger_extraction: Callable[[str], Awaitable[None]] | None = None
-        self.graph_tools: Callable[[], tuple[Tool[None], ...]] | None = None
+        self.extraction_service = extraction_service
         self.delivery_service = DeliveryService(
             sessions_store,
             entries_store,
@@ -470,10 +472,11 @@ class TurnService:
                 extra_tools=(
                     *files,
                     *(
-                        self.graph_tools()
-                        if self.graph_tools
-                        and settings.graph.enabled
-                        and settings.agent.graph_tools
+                        prober_graph_tools(
+                            self.extraction_service.readers.sessions,
+                            self.extraction_service.readers.propositions,
+                        )
+                        if settings.graph.enabled and settings.agent.graph_tools
                         else ()
                     ),
                     *job_tools(dispatcher, settings.tools, prober=True),
@@ -706,8 +709,8 @@ class TurnService:
             await self.start(state.session_id, TurnInput(type="handoff"))
         await self.compaction_service.kick(state.session_id, state.role)
         await self.pump_deliveries(state.session_id)
-        if self.trigger_extraction is not None and not self.runtimes.closing:
-            await self.trigger_extraction(state.session_id)
+        if not self.runtimes.closing:
+            await self.extraction_service.trigger(state.session_id)
 
     async def pump_deliveries(self, session_id: str) -> None:
         try:

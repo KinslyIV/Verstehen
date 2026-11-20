@@ -18,6 +18,7 @@ from pydantic_ai.models.wrapper import WrapperModel
 
 from backend.tests.test_questions import ANSWER
 from backend.tests.test_teaching_flow import probe_assessment
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.jobs.contracts import ResearchResult, abort_text, steer_text
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import AdmittedModel, WorkerAdmission
@@ -46,6 +47,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobDelivery, JobPatch, JobRecord, JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
@@ -204,6 +206,18 @@ async def stack(
         async def side_threads(session_id: str) -> list[SideThread]:
             return [thread.model_copy(deep=True) for thread in threads or []]
 
+        graph_store = GraphStore(database)
+        extraction_service = ExtractionService(
+            graph_store,
+            sessions_store,
+            EntriesStore(database),
+            settings_store,
+            resolver,
+            policy,
+            usage_store,
+            runner.admission.request,
+            lambda: None,
+        )
         turn = TurnService(
             sessions_store,
             entries_store,
@@ -218,6 +232,7 @@ async def stack(
             jobs_store,
             runner,
             side_threads,
+            extraction_service,
         )
         sessions = SessionService(
             sessions_store,
@@ -228,6 +243,8 @@ async def stack(
             jobs_store,
             ArtifactViewsStore(database),
             tmp_path,
+            extraction_service,
+            graph_store,
         )
         session = await sessions_store.create("Test")
         if seed:
@@ -246,6 +263,7 @@ async def stack(
                 tmp_path,
             )
         finally:
+            await extraction_service.close()
             await runner.close()
             await runtimes.close()
             await title_service.close()

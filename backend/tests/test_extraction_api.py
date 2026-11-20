@@ -34,7 +34,7 @@ def test_session_delete_applies_trace_mode_and_removes_coverage(tmp_path: Path, 
         assert len(nodes) == (1 if mode == "preserve-graph" else 0)
 
 
-def test_delete_refuses_turn_job_and_extraction_wind_down(tmp_path: Path):
+def test_delete_refuses_turn_job_and_extraction_wind_down(tmp_path: Path, monkeypatch):
     app = create_app(Settings(tmp_path))
     with TestClient(app, headers={"host": "localhost"}) as client:
         session = client.post("/api/sessions", json={}).json()["id"]
@@ -60,7 +60,7 @@ def test_delete_refuses_turn_job_and_extraction_wind_down(tmp_path: Path):
         async def winding(id):
             return False
 
-        app.state.session_service.begin_graph_deletion = winding
+        monkeypatch.setattr(app.state.extraction_service, "wind_down", winding)
         response = client.delete(f"/api/sessions/{other}")
         assert (
             response.status_code == 503
