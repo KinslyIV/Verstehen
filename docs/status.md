@@ -417,3 +417,15 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   fallback notices, and download states. `make check` passed (457 backend, 148 Vitest tests) and
   `make verify FLOW=settings-tools` passed all 8 cases.
   Next: orchestrator review; T4 applies the switches/concurrency and wires keys/browser into jobs.
+## M7 progress
+
+- **T3 — learner images (`m7-t3-images`).** Added bounded learner-image loading and Pillow
+  normalization in a thread, reusing M5's file-access policy and image store. The teacher's
+  always-on `show_image` tool saves display-only details and returns LH's text confirmation.
+  The authenticated image route feeds the thread card through a disposable object URL; the
+  card shows the caption and source path and survives reload. Desktop CSP allows blob images.
+  Source/header limits include GIF and WebP frames, and the fake-model `show-image` flow uses
+  its own temporary source image. `make check` passed (448 backend and 133 Vitest tests) and `make verify FLOW='show-image'`
+  passed; inspected `app/verify-output/show-image.flow.ts-show-image/screenshot.png`.
+  Next: orchestrator review; jobs, workers, annotation cards, and delete cleanup remain other tasks.
+  No new open questions.

@@ -257,3 +257,13 @@ export async function setSearchKey(
 		})
 	).json();
 }
+
+export async function getImage(
+	sha256: string,
+	extension: 'png' | 'jpeg',
+	signal?: AbortSignal
+): Promise<Blob> {
+	return (
+		await request(`/api/images/${encodeURIComponent(sha256)}.${extension}`, { signal })
+	).blob();
+}

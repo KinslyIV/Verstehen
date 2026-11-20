@@ -34,6 +34,7 @@ from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.handoff import HANDOFF_TEXT
+from verstehen.teaching.images import show_image_tool
 from verstehen.teaching.phases import handoff_owed, has_probe_done
 from verstehen.teaching.plan.history import current_plan, plan_blocks_for
 from verstehen.teaching.plan.tool import plan_tool
@@ -329,7 +330,11 @@ class TurnService:
                 state.resolved.settings,
                 quizzing=quizzing,
                 plan_nodes=node_ids,
-                extra_tools=(*files, plan_tool(remember_plan)),
+                extra_tools=(
+                    *files,
+                    plan_tool(remember_plan),
+                    show_image_tool(self.settings_store, self.data_dir),
+                ),
                 deliver_prose=deliver,
             )
         return Continue(state)

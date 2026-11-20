@@ -16,6 +16,7 @@
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
+	import ImageCard from '#lib/teaching/image-card.svelte';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
@@ -200,6 +201,8 @@
 												content={item.text}
 												streaming={streaming && i === prose.length - 1}
 											/>
+										{:else if item.kind === 'image'}
+											<ImageCard result={item.result} />
 										{:else if item.kind === 'probe'}
 											<ProbeAssessment args={item.args} result={item.result} />
 										{:else}

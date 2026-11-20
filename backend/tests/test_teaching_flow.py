@@ -192,6 +192,7 @@ def test_probe_ack_switches_to_teacher_and_handoff_marker_is_saved_before_infere
                     "quiz",
                     "ask_user_question",
                     "plan_init",
+                    "show_image",
                     "read",
                     "ls",
                     "find",

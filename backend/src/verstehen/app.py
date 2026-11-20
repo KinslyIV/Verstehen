@@ -10,6 +10,7 @@ from verstehen.api.access import request_refusal
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.health import router
+from verstehen.api.images import router as images_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.api.tools import router as tools_router
@@ -48,6 +49,7 @@ def create_app(settings: Settings) -> FastAPI:
         async with open_database(settings.data_dir / "verstehen.db") as database:
             await migrate(database)
             app.state.database = database
+            app.state.data_dir = settings.data_dir
             runtimes = RuntimeRegistry()
             sessions_store = SessionsStore(database)
             entries_store = EntriesStore(database)
@@ -153,6 +155,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(tools_router)
     app.include_router(router)
     app.include_router(sessions_router)
+    app.include_router(images_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

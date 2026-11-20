@@ -213,6 +213,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/images/{sha256}.{ext}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Image */
+		get: operations['get_image_api_images__sha256___ext__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/settings': {
 		parameters: {
 			query?: never;
@@ -1848,6 +1865,36 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_image_api_images__sha256___ext__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				sha256: string;
+				ext: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};
