@@ -1,5 +1,5 @@
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal
 
@@ -10,7 +10,8 @@ from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolRet
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
-from verstehen.providers.usage import UsageModel
+from verstehen.providers.usage import UsageModel, response_usage
+from verstehen.session.compactions import CompactionService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.results import Refused
@@ -122,6 +123,17 @@ class TurnService:
         self.provider_events = provider_events
         self.runtimes = runtimes
         self.notifications = notifications
+        self.compaction_service = CompactionService(
+            sessions_store,
+            entries_store,
+            settings_store,
+            data_dir,
+            resolver_service,
+            provider_policy,
+            runtimes,
+            notifications,
+            provider_events,
+        )
 
     @staticmethod
     def input_appends(state: TurnState) -> list[Entry]:
@@ -187,6 +199,10 @@ class TurnService:
                     409, {"error": "A turn is already running for this session"}
                 )
             if self.should_save_without_turn(state, appends):
+                if state.runtime.compaction is not None:
+                    return Refused(
+                        409, {"error": "A turn is already running for this session"}
+                    )
                 return await self.save_without_turn(state, appends)
         return Continue(state)
 
@@ -206,6 +222,24 @@ class TurnService:
                     "code": "background_not_allowed",
                 },
             )
+        return Continue(state)
+
+    async def compaction_gate(self, state: TurnState) -> Refused | Continue:
+        assert state.resolved is not None
+
+        def project_entries(entries: list[Entry]) -> list[Entry]:
+            try:
+                appends = self.input_appends(replace(state, entries=entries))
+                if state.input.type == "retry":
+                    drops = retry_drops(entries)
+                    return [entry for entry in entries if entry.entry_id not in drops]
+            except ValueError:
+                return entries
+            return [*entries, *appends]
+
+        await self.compaction_service.ensure_compacted(
+            state.session_id, state.role, state.resolved, project_entries
+        )
         return Continue(state)
 
     async def claim(self, state: TurnState) -> Refused | Continue:
@@ -232,7 +266,7 @@ class TurnService:
         async with state.runtime.lock:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
-            if state.runtime.run is not None:
+            if state.runtime.run is not None or state.runtime.compaction is not None:
                 return Refused(
                     409, {"error": "A turn is already running for this session"}
                 )
@@ -321,6 +355,7 @@ class TurnService:
         for stage in (
             self.validate,
             self.model_gate,
+            self.compaction_gate,
             self.claim_and_write_ahead,
             self.build_agent,
             self.run_background,
@@ -480,6 +515,7 @@ class TurnService:
         await self.entries_store.append(state.session_id, [*entries, *markers])
         self.notify_changed(state.session_id)
         await self.finish(state)
+        await self.compaction_service.kick(state.session_id, state.role)
         if not self.runtimes.closing and handoff_owed([*state.entries, *entries]):
             await self.start(state.session_id, TurnInput(type="handoff"))
 
@@ -512,6 +548,7 @@ def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
     reply.parts = parts
     reply.provider = response.provider_name
     reply.model = response.model_name
+    reply.usage = response_usage(response)
     if response.finish_reason == "length":
         reply.stop_reason = "length"
 

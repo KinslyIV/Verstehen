@@ -81,18 +81,19 @@ class TurnRun:
 
 
 class SessionRuntime:
-    """Hold one session's in-memory turn claim, failure, and deletion state.
-    Callers hold the lock for turn claims, question writes, snapshots, and deletion.
+    """Hold one session's turn claim, compaction task, failure, and deletion state.
+    Callers hold the lock for claims, question writes, snapshots, and deletion.
     """
 
     def __init__(self):
         self.lock = asyncio.Lock()
         self.run: TurnRun | None = None
+        self.compaction: asyncio.Task[None] | None = None
         self.failure: str | None = None
         self.deleted = False
 
     def claim_turn(self) -> TurnRun | None:
-        if self.run is not None or self.deleted:
+        if self.run is not None or self.compaction is not None or self.deleted:
             return None
         self.failure = None
         self.run = TurnRun()
@@ -112,7 +113,7 @@ class SessionRuntime:
 
 class RuntimeRegistry:
     """Retain per-session runtimes for the sidecar's lifetime.
-    Shutdown aborts and awaits their active turn tasks.
+    Shutdown cancels compactions, aborts turns, and awaits their tasks.
     """
 
     def __init__(self):
@@ -126,6 +127,9 @@ class RuntimeRegistry:
         self.closing = True
         tasks = []
         for runtime in self.runtimes.values():
+            if runtime.compaction is not None:
+                runtime.compaction.cancel()
+                tasks.append(runtime.compaction)
             if runtime.run and runtime.run.task:
                 runtime.run.abort()
                 tasks.append(runtime.run.task)

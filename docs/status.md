@@ -279,9 +279,22 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
 
-4. **M6 compaction:** plan approved on `m6-plan` ([M6 plan](plans/m6-compaction.md)); T1
-   (backend) is next, then T2 (UI). The append-only marker question is decided (marker appended at the end, see
-   decisions).
+4. **M6 compaction:** T1 backend implemented on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
+   The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
+   the append-only transcript and commit with their usage. Settings, session state, and notifications
+   are available through the generated API. Next is T1 review, followed by T2 dividers, busy states,
+   settings UI, and compaction browser flows. The fallback for a missing kept entry is recorded in
+   [decisions](decisions.md) for review. On base `774acd1` plus T1, `make check-backend`
+   passed during implementation. The final `make check` passed 453 backend and 129 frontend
+   tests, including 31 new offline cases.
+   The existing Chromium suite passed all 53 flows across runs. The guarded
+   `make verify-run FLOW='--workers=2'` passed 52 and hit the 30-second timeout in
+   `teaching-handoff-dark`. The unchanged
+   `make verify-run FLOW='-g teaching-handoff-dark --workers=1 --output=verify-output/m6-t1-rerun'`
+   passed. Inspected screenshots in `app/verify-output/` for `plan-rewrite.flow.ts-plan-rewrite`,
+   `question-probe-answer.flow.ts-question-probe-answer-dark`,
+   `question-probe-answer.flow-8f6d9-tion-probe-answer-dock-dark`, and
+   `m6-t1-rerun/teaching-handoff.flow.ts-teaching-handoff-dark`. Each retains `trace.zip`.
 
 ## Open questions
 

@@ -2,7 +2,6 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from functools import partial
 from pathlib import Path
 from typing import Any, Literal, Self
 
@@ -25,9 +24,11 @@ from pydantic_ai.models.function import (
     FunctionModel,
 )
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.usage import RequestUsage
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
+from verstehen.store.entries import EntryUsage
 from verstehen.store.settings import ModelPick
 
 
@@ -48,6 +49,7 @@ class ScriptReply(BaseModel):
     delay_ms: int = 0
     stop_reason: Literal["length"] | None = None
     tool_calls: list[ScriptToolCall] | None = None
+    usage: EntryUsage | None = None
 
     @model_validator(mode="after")
     def require_content(self) -> Self:
@@ -65,6 +67,19 @@ class ScriptReply(BaseModel):
 
 class ReplyScript(RootModel[list[ScriptReply]]):
     pass
+
+
+def request_usage(usage: EntryUsage) -> RequestUsage:
+    counts = RequestUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+        output_reasoning_tokens=usage.reasoning_tokens,
+    )
+    if not counts.has_values():
+        counts.unmeasured_requests = 1
+    return counts
 
 
 def load_script(path: Path) -> list[ScriptReply]:
@@ -87,8 +102,9 @@ def fake_model(script_path: Path) -> FunctionModel:
             )
         return replies[request_number - 1]
 
-    def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
+    async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         reply = next_reply()
+        await asyncio.sleep(reply.delay_ms / 1000)
         if reply.error is not None:
             raise RuntimeError(reply.error)
         parts: list[TextPart | ThinkingPart | ToolCallPart] = []
@@ -106,7 +122,10 @@ def fake_model(script_path: Path) -> FunctionModel:
                     call.id or f"call-{request_number}-{index}",
                 )
             )
-        return ModelResponse(parts=parts, finish_reason=reply.stop_reason)
+        response = ModelResponse(parts=parts, finish_reason=reply.stop_reason)
+        if reply.usage is not None:
+            response.usage = request_usage(reply.usage)
+        return response
 
     async def stream(
         reply: ScriptReply, number: int, messages: list[ModelMessage], info: AgentInfo
@@ -161,13 +180,25 @@ def fake_model(script_path: Path) -> FunctionModel:
             run_context: RunContext[Any] | None = None,
         ) -> AsyncIterator[StreamedResponse]:
             reply = next_reply()
+            number = request_number
+            response: StreamedResponse
+
+            async def scripted_stream(messages: list[ModelMessage], info: AgentInfo):
+                async for part in stream(reply, number, messages, info):
+                    yield part
+                if reply.usage is not None:
+                    response._add_usage(
+                        request_usage(reply.usage), reported=True, cumulative=True
+                    )
+
             model = FunctionModel(
-                stream_function=partial(stream, reply, request_number),
+                stream_function=scripted_stream,
                 model_name=self.model_name,
             )
             async with model.request_stream(
                 messages, model_settings, model_request_parameters, run_context
-            ) as response:
+            ) as result:
+                response = result
                 response.finish_reason = reply.stop_reason
                 yield response
 

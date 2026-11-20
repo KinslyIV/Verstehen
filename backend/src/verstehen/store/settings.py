@@ -10,6 +10,7 @@ from pydantic import (
     JsonValue,
     TypeAdapter,
     ValidationError,
+    field_validator,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
@@ -20,6 +21,7 @@ JSON = TypeAdapter(JsonValue)
 ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
 SlotName = Literal["strong", "cheap", "vision"]
 Quizzing = Literal["choice", "free"]
+COMPACTION_LIMIT_FLOOR = 32_000
 
 
 class ModelPick(BaseModel):
@@ -105,6 +107,12 @@ class Settings(BaseModel):
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
     quizzing: Quizzing = Field(default_factory=lambda: "choice")
     file_access: FileAccessSettings = Field(default_factory=FileAccessSettings)
+    compaction_limit: int | None = Field(default=None, strict=True)
+
+    @field_validator("compaction_limit")
+    @classmethod
+    def floor_compaction_limit(cls, value: int | None) -> int | None:
+        return None if value is None else max(value, COMPACTION_LIMIT_FLOOR)
 
 
 def decode_file_access(encoded: str | None) -> FileAccessSettings:
@@ -158,6 +166,13 @@ class SettingsStore:
     async def write(self, settings: Settings) -> None:
         async with self.database.transaction() as connection:
             for key, value in settings.model_dump(mode="json").items():
+                if value is None:
+                    await connection.execute(
+                        "DELETE FROM settings WHERE key = ?", (key,)
+                    )
+                    continue
+                if key == "compaction_limit":
+                    value = Settings.floor_compaction_limit(settings.compaction_limit)
                 await connection.execute(
                     "INSERT INTO settings (key, value) VALUES (?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET value = excluded.value",

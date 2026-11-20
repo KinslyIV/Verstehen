@@ -5,6 +5,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from verstehen.store.database import Database
+from verstehen.store.usage import UsageRecord, insert_usage
 
 
 class TextPart(BaseModel):
@@ -44,6 +45,23 @@ class UserEntry(EntryBase):
     text: str
 
 
+class EntryUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    reasoning_tokens: int = 0
+
+    @property
+    def context_tokens(self) -> int:
+        return (
+            self.input_tokens
+            + self.output_tokens
+            + self.cache_read_tokens
+            + self.cache_write_tokens
+        )
+
+
 class AssistantEntry(EntryBase):
     kind: Literal["assistant"] = "assistant"
     parts: List[
@@ -53,6 +71,7 @@ class AssistantEntry(EntryBase):
     error_text: str | None = None
     provider: str | None = None
     model: str | None = None
+    usage: EntryUsage | None = None
 
 
 class ToolResultEntry(EntryBase):
@@ -98,6 +117,14 @@ class EntriesStore:
         self.database = database
 
     async def append(self, session_id: str, entries: List[Entry]) -> None:
+        await self._append(session_id, entries)
+
+    async def append_compaction(self, marker: MarkerEntry, usage: UsageRecord) -> None:
+        await self._append(usage.session_id, [marker], usage)
+
+    async def _append(
+        self, session_id: str, entries: List[Entry], usage: UsageRecord | None = None
+    ) -> None:
         validated = [ENTRY.validate_python(entry) for entry in entries]
         async with self.database.transaction() as connection:
             inserted = False
@@ -123,6 +150,8 @@ class EntriesStore:
                     "UPDATE sessions SET updated_at = ? WHERE id = ?",
                     (datetime.now(UTC).isoformat(), session_id),
                 )
+                if usage is not None:
+                    await insert_usage(connection, usage)
 
     async def list(self, session_id: str) -> List[Entry]:
         async with self.database.read() as connection:

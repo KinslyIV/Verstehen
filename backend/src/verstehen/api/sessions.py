@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, StreamingResponse
 
 from verstehen.api.deps import get_session_service, get_turn_service
@@ -63,6 +63,7 @@ class SessionItem(BaseModel):
     kind: Literal["teach"]
     updated_at: datetime
     busy: bool
+    compacting: bool = Field(default_factory=lambda: False)
 
 
 class SessionList(BaseModel):
@@ -73,6 +74,7 @@ class SessionDetail(Session):
     entries: list[Entry]
     turn_in_flight: bool
     turn_error: str | None
+    compacting: bool = Field(default_factory=lambda: False)
 
 
 class Created(BaseModel):
@@ -96,7 +98,10 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     result = await session_service.list()
     return SessionList(
         sessions=[
-            SessionItem(**item.session.model_dump(), busy=item.busy) for item in result
+            SessionItem(
+                **item.session.model_dump(), busy=item.busy, compacting=item.compacting
+            )
+            for item in result
         ]
     )
 
@@ -123,6 +128,7 @@ async def get_session(session_id: str, session_service: SessionServiceDependency
         entries=result.entries,
         turn_in_flight=result.turn_in_flight,
         turn_error=result.turn_error,
+        compacting=result.compacting,
     )
 
 
@@ -265,5 +271,7 @@ async def notification_frames(
             if event is None:
                 yield ": ping\n\n"
             else:
-                payload = json.dumps({"session_id": event.session_id})
+                payload = json.dumps(
+                    event.model_dump(exclude={"type"}, exclude_none=True)
+                )
                 yield f"event: {event.type}\ndata: {payload}\n\n"

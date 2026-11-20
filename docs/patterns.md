@@ -20,6 +20,7 @@ is updated in the same commit.
 | Turn stage | [`session/turns.py`](../backend/src/verstehen/session/turns.py) (`TurnService.model_gate`, `Refused` / `Continue`) |
 | Service/store naming | `SessionService` / `TurnService`; `session_service` / `turn_service`; `sessions_store` / `entries_store` / `settings_store` (see [`app.py`](../backend/src/verstehen/app.py)) |
 | Session runtime and replay | [`session/runtime.py`](../backend/src/verstehen/session/runtime.py) (`SessionRuntime`, `TurnRun`) |
+| Session compaction | [`CompactionService`](../backend/src/verstehen/session/compactions.py) reserves one runtime task under the session lock. [`compaction.py`](../backend/src/verstehen/session/compaction.py) owns cut and summary logic. [`EntriesStore.append_compaction`](../backend/src/verstehen/store/entries.py) saves the checkpoint and usage together. |
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
 | API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `SessionService` in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
@@ -28,7 +29,7 @@ is updated in the same commit.
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
 | Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
-| Fake-model script | [`model-title.json`](../app/verify/scripts/model-title.json) (streamed replies; optional first-reply `title` feeds `fake-title` independently) |
+| Fake-model script | [`model-title.json`](../app/verify/scripts/model-title.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
 | API client function | [`getSession`](../app/src/lib/api/client.ts) (generated types stay behind the client; JSON and SSE use token headers) |
 | Assistant markdown | [`assistant-message.svelte`](../app/src/lib/markdown/assistant-message.svelte): Streamdown top-level blocks with stable child props; each block uses the unified pipeline, sanitized HAST nodes, and app-owned controls inside official Message. |
 | Renderer browser evidence | [`markdown.svelte.test.ts`](../app/src/routes/markdown.svelte.test.ts): complete and streaming fixtures, dark/light screenshots in `app/markdown-output/`; T4 adds real-thread verification. |

@@ -47,6 +47,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
             "file_access": {"restricted": False, "folders": []},
+            "compaction_limit": None,
         }
         assert client.get("/api/models").json() == {
             "accounts": [
@@ -124,7 +125,24 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
             "file_access": {"restricted": False, "folders": []},
+            "compaction_limit": None,
         }
+
+
+def test_settings_api_floors_clears_and_validates_the_compaction_limit(tmp_path: Path):
+    with configured_client(tmp_path) as client:
+        settings = client.get("/api/settings").json()
+        invalid = client.put(
+            "/api/settings", json={**settings, "compaction_limit": "50000"}
+        )
+        assert invalid.status_code == 400
+        assert client.get("/api/settings").json()["compaction_limit"] is None
+        saved = client.put("/api/settings", json={**settings, "compaction_limit": 5})
+        assert saved.status_code == 200 and saved.json()["compaction_limit"] == 32_000
+        assert client.get("/api/settings").json()["compaction_limit"] == 32_000
+        reset = client.put("/api/settings", json={**settings, "compaction_limit": None})
+        assert reset.status_code == 200 and reset.json()["compaction_limit"] is None
+        assert client.get("/api/settings").json()["compaction_limit"] is None
 
 
 def test_session_model_pick_and_patch_do_not_change_default_and_default_route_does(

@@ -71,7 +71,8 @@ def tail_ignoring_display_markers(entries: Sequence[Entry]) -> Sequence[Entry]:
     while (
         end
         and isinstance(entry := entries[end - 1], MarkerEntry)
-        and entry.marker_type in ("side-question", "side-question-told", "plan-block")
+        and entry.marker_type
+        in ("side-question", "side-question-told", "plan-block", "compaction")
     ):
         end -= 1
     return entries[:end]
@@ -99,7 +100,7 @@ def needs_continuation(entries: Sequence[Entry]) -> bool:
         return False
     resolved: set[str] = set()
     for entry in reversed(tail):
-        if entry.kind == "marker" and entry.marker_type == "plan-block":
+        if entry.kind == "marker" and entry.marker_type in ("plan-block", "compaction"):
             continue
         if entry.kind == "tool_result":
             resolved.add(entry.tool_call_id)

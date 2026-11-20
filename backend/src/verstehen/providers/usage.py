@@ -11,7 +11,36 @@ from pydantic_ai.settings import ModelSettings
 
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.resolve import ModelRole, ResolvedModel
+from verstehen.store.entries import EntryUsage
 from verstehen.store.usage import UsageRecord, UsageStore
+
+
+def response_usage(response: ModelResponse) -> EntryUsage:
+    usage = response.usage
+    return EntryUsage(
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_read_tokens=usage.cache_read_tokens,
+        cache_write_tokens=usage.cache_write_tokens,
+        reasoning_tokens=usage.output_reasoning_tokens,
+    )
+
+
+def usage_record(
+    request_id: str,
+    session_id: str,
+    role: str,
+    resolved: ResolvedModel,
+    response: ModelResponse,
+) -> UsageRecord:
+    return UsageRecord(
+        request_id=request_id,
+        session_id=session_id,
+        role=role,
+        account=resolved.account.id,
+        model=resolved.pick.model,
+        **response_usage(response).model_dump(),
+    )
 
 
 class UsageModel(WrapperModel):
@@ -35,19 +64,9 @@ class UsageModel(WrapperModel):
         self.provider_events = provider_events
 
     async def record(self, request_id: str, response: ModelResponse) -> None:
-        usage = response.usage
         await self.usage_store.append(
-            UsageRecord(
-                request_id=request_id,
-                session_id=self.session_id,
-                role=self.role,
-                account=self.resolved.account.id,
-                model=self.resolved.pick.model,
-                input_tokens=usage.input_tokens,
-                output_tokens=usage.output_tokens,
-                cache_read_tokens=usage.cache_read_tokens,
-                cache_write_tokens=usage.cache_write_tokens,
-                reasoning_tokens=usage.output_reasoning_tokens,
+            usage_record(
+                request_id, self.session_id, self.role, self.resolved, response
             )
         )
         log_provider_event(self.provider_events, response)

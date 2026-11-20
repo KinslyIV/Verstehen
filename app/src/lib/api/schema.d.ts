@@ -365,6 +365,7 @@ export interface components {
 			provider?: string | null;
 			/** Model */
 			model?: string | null;
+			usage?: components['schemas']['EntryUsage'] | null;
 		};
 		/** BackgroundSettings */
 		BackgroundSettings: {
@@ -459,6 +460,34 @@ export interface components {
 			total_bytes?: number | null;
 			/** Error */
 			error?: string | null;
+		};
+		/** EntryUsage */
+		EntryUsage: {
+			/**
+			 * Input Tokens
+			 * @default 0
+			 */
+			input_tokens: number;
+			/**
+			 * Output Tokens
+			 * @default 0
+			 */
+			output_tokens: number;
+			/**
+			 * Cache Read Tokens
+			 * @default 0
+			 */
+			cache_read_tokens: number;
+			/**
+			 * Cache Write Tokens
+			 * @default 0
+			 */
+			cache_write_tokens: number;
+			/**
+			 * Reasoning Tokens
+			 * @default 0
+			 */
+			reasoning_tokens: number;
 		};
 		/** FileAccessSettings */
 		FileAccessSettings: {
@@ -583,9 +612,11 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'turn-started' | 'turn-settled' | 'chats-changed';
+			type: 'turn-started' | 'turn-settled' | 'chats-changed' | 'compaction-changed';
 			/** Session Id */
 			session_id: string;
+			/** Running */
+			running?: boolean | null;
 		};
 		/** Ok */
 		Ok: {
@@ -713,6 +744,8 @@ export interface components {
 			turn_in_flight: boolean;
 			/** Turn Error */
 			turn_error: string | null;
+			/** Compacting */
+			compacting?: boolean;
 		};
 		/** SessionInput */
 		SessionInput: {
@@ -741,6 +774,8 @@ export interface components {
 			updated_at: string;
 			/** Busy */
 			busy: boolean;
+			/** Compacting */
+			compacting?: boolean;
 		};
 		/** SessionList */
 		SessionList: {
@@ -757,6 +792,8 @@ export interface components {
 			 */
 			quizzing?: 'choice' | 'free';
 			file_access?: components['schemas']['FileAccessSettings'];
+			/** Compaction Limit */
+			compaction_limit?: number | null;
 		};
 		/** SettingsStatus */
 		SettingsStatus: {
@@ -768,6 +805,8 @@ export interface components {
 			 */
 			quizzing?: 'choice' | 'free';
 			file_access?: components['schemas']['FileAccessSettings'];
+			/** Compaction Limit */
+			compaction_limit?: number | null;
 			/** File Access Error */
 			file_access_error?: string | null;
 		};

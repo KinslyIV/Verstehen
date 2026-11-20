@@ -13,6 +13,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
+from verstehen.session.compaction import compacted_history, has_model_content
 from verstehen.store.entries import (
     AssistantEntry,
     Entry,
@@ -28,7 +29,9 @@ INTERRUPTED_TEXT = "The question was interrupted — the learner never answered;
 def failed_response_at_end(entries: Sequence[Entry]) -> AssistantEntry | None:
     for entry in reversed(entries):
         if entry.kind == "tool_result" or (
-            entry.kind == "marker" and entry.marker_type == "plan-block"
+            entry.kind == "marker"
+            and entry.marker_type
+            in {"plan-block", "compaction", "side-question", "side-question-told"}
         ):
             continue
         if entry.kind == "assistant" and entry.stop_reason == "error":
@@ -63,6 +66,15 @@ def retry_drops(entries: Sequence[Entry]) -> set[str]:
         ids.update(item.entry_id for item in entries[index : batch_end + 1])
         index -= 1
     if not ids:
+        if (failure := failed_response_at_end(entries)) is not None:
+            error = (
+                failure.error_text
+                if failure.error_text is not None
+                else "An error occurred."
+            )
+            raise ValueError(
+                f"{error}\n\nThis response cannot be retried after compaction. Send a new message to continue."
+            )
         raise ValueError("retry input requires a failed turn to retry")
     if index < 0 or isinstance(entries[index], AssistantEntry):
         raise ValueError("retry input leaves no input to continue from")
@@ -136,6 +148,11 @@ def tool_returns(
     return returned
 
 
+def user_message(entry: UserEntry | MarkerEntry) -> ModelRequest:
+    text = entry.text if isinstance(entry, UserEntry) else entry.content
+    return ModelRequest(parts=[UserPromptPart(text, timestamp=entry.created_at)])
+
+
 def to_llm_messages(
     entries: Sequence[Entry], *, retry: bool = False, data_dir: Path | None = None
 ) -> list[ModelMessage]:
@@ -143,44 +160,38 @@ def to_llm_messages(
     drops = retry_drops(entries) if retry else set()
     messages: list[ModelMessage] = []
     pending = (
-        entry
-        for entry in entries
-        if entry.kind != "marker" or entry.marker_type != "plan-block"
+        entry for entry in compacted_history(entries) if has_model_content(entry)
     )
     entry = next(pending, None)
     while entry is not None:
         if isinstance(entry, AssistantEntry):
             assistant = entry
             results: list[ToolResultEntry] = []
+            summaries: list[MarkerEntry] = []
             entry = next(pending, None)
-            while isinstance(entry, ToolResultEntry):
-                results.append(entry)
+            while isinstance(entry, ToolResultEntry) or (
+                isinstance(entry, MarkerEntry) and entry.marker_type == "compaction"
+            ):
+                if isinstance(entry, ToolResultEntry):
+                    results.append(entry)
+                else:
+                    summaries.append(entry)
                 entry = next(pending, None)
-            if assistant.entry_id in drops or assistant.stop_reason in {
+            if assistant.entry_id not in drops and assistant.stop_reason not in {
                 "error",
                 "aborted",
             }:
-                continue
-            response = assistant_response(assistant)
-            messages.append(response)
-            if returned := tool_returns(response, results, data_dir):
-                messages.append(ModelRequest(parts=returned))
+                response = assistant_response(assistant)
+                messages.append(response)
+                if returned := tool_returns(response, results, data_dir):
+                    messages.append(ModelRequest(parts=returned))
+            messages.extend(map(user_message, summaries))
             continue
         if isinstance(entry, UserEntry) or (
-            isinstance(entry, MarkerEntry) and entry.marker_type == "probe-handoff"
+            isinstance(entry, MarkerEntry)
+            and entry.marker_type in ("probe-handoff", "compaction")
         ):
-            messages.append(
-                ModelRequest(
-                    parts=[
-                        UserPromptPart(
-                            entry.text
-                            if isinstance(entry, UserEntry)
-                            else entry.content,
-                            timestamp=entry.created_at,
-                        )
-                    ]
-                )
-            )
+            messages.append(user_message(entry))
         elif not isinstance(entry, ToolResultEntry):
             raise ValueError(f"{entry.kind} projection is not implemented")
         entry = next(pending, None)

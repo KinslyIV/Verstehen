@@ -17,8 +17,9 @@ class TurnEvent(BaseModel):
 
 
 class Notification(BaseModel):
-    type: Literal["turn-started", "turn-settled", "chats-changed"]
+    type: Literal["turn-started", "turn-settled", "chats-changed", "compaction-changed"]
     session_id: str
+    running: bool | None = None
 
 
 class Notifications:

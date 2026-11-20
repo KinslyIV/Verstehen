@@ -18,6 +18,7 @@ from verstehen.store.settings import ModelPick
 class ListedSession:
     session: Session
     busy: bool
+    compacting: bool
 
 
 @dataclass
@@ -26,6 +27,7 @@ class SessionSnapshot:
     entries: list[Entry]
     turn_in_flight: bool
     turn_error: str | None
+    compacting: bool
 
 
 class SessionService:
@@ -48,10 +50,15 @@ class SessionService:
         self.resolver_service = resolver_service
 
     async def list(self) -> List[ListedSession]:
-        return [
-            ListedSession(session, self.runtimes.get(session.id).run is not None)
-            for session in await self.sessions_store.list()
-        ]
+        listed = []
+        for session in await self.sessions_store.list():
+            runtime = self.runtimes.get(session.id)
+            listed.append(
+                ListedSession(
+                    session, runtime.run is not None, runtime.compaction is not None
+                )
+            )
+        return listed
 
     async def create(
         self, title: str | None, pick: ModelPick | None = None
@@ -84,6 +91,7 @@ class SessionService:
                 entries,
                 runtime.run is not None,
                 runtime.failure or (failed.error_text if failed else None),
+                runtime.compaction is not None,
             )
 
     async def rename(self, session_id: str, title: str | None) -> str | Refused:
