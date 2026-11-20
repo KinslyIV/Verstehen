@@ -1,7 +1,7 @@
 # Feature map
 
 Every feature the learner can use, how to reach it, and how to verify it. Each new or changed feature
-updates its entry in the same commit. `make verify` runs the flows named here.
+updates its entry in the same commit. `make verify` runs the fake-model flows named here.
 
 During editing, batch affected flow names with `make verify FLOW='flow-a flow-b'`, or use
 `make verify-run FLOW='flow-a flow-b'` when the frontend build guard passes. Run the full suite
@@ -12,6 +12,12 @@ Record the command, revision or dirty state, flows, and screenshot/trace evidenc
 reuse passing results only while relevant source, configuration, dependencies, and environment
 are unchanged and no new issue appears; rerun after meaningful edits, failure, or a new concern.
 See the [verify skill](../.agents/skills/verify/SKILL.md) for build guard limits.
+
+Run `make verify-live` before every merge and after shared UI or runtime changes. The
+`lesson-first-turn` flow uses the logged-in Claude Code subscription with Haiku at low thinking.
+It opens a lesson, answers the question in the dock, and checks that the reaction streams and
+settles. Claude Code must be on PATH. Look for the screenshot and trace in
+`app/verify-live-output/`.
 
 | Feature | How to reach it | Verify flow | Tests |
 |---|---|---|---|

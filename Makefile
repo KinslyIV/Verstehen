@@ -1,4 +1,4 @@
-.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run api-types app app-image
+.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image
 
 setup:
 	uv sync --project backend --locked
@@ -48,6 +48,12 @@ verify:
 verify-run:
 	uv run --project backend python tools/verify_build.py check
 	cd app && npx playwright test $(FLOW)
+
+verify-live:
+	@command -v claude >/dev/null 2>&1 || { echo "make verify-live requires Claude Code (claude) on PATH." >&2; exit 1; }
+	@claude auth status >/dev/null 2>&1 || { echo "make verify-live requires a logged-in Claude Code. Run claude auth login." >&2; exit 1; }
+	uv run --project backend python tools/verify_build.py build
+	cd app && npx playwright test --config=playwright.live.config.ts
 
 app:
 	bash packaging/build.sh

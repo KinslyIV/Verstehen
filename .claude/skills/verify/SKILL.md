@@ -11,14 +11,17 @@ Run from the repository root after `make setup`:
 - `make verify-run FLOW='layout-lesson-dark settings-appearance-light'` reruns selected flows without rebuilding, only if the build guard passes. Omit `FLOW` to rerun all flows.
 - Screenshots and always-on traces land in `app/verify-output/<flow>/` (Playwright may append a project or retry suffix).
 - Open a trace with `cd app && npx playwright show-trace verify-output/<flow>/trace.zip`.
+- `make verify-live` builds the SPA and runs `app/verify-live/lesson-first-turn.flow.ts` with the installed, logged-in Claude Code. It configures Haiku at low thinking via the settings API and uses the Claude subscription.
+- Live artifacts are in `app/verify-live-output/<flow>/` with the same screenshot and trace settings.
 
-Use affected flows while editing UI work. Run full `make verify` before merging UI work and after
-shared UI or runtime changes. Run the affected `make check-backend` / `make check-frontend` while
+Use affected fake-model flows while editing UI work. Run full `make verify` and `make verify-live`
+before every merge and after shared UI or runtime changes. Run the affected
+`make check-backend` / `make check-frontend` while
 editing and full `make check` before every commit. Desktop packaging needs `make app` when
 packaging changes; unrelated changes do not require it.
 
-The rerun guard requires a successful `make verify` build, unchanged frontend `src/` and `static/`
-paths/content, package and installed npm lockfiles, Node version, and frontend configuration
+The rerun guard requires a successful build from `make verify` or `make verify-live`, unchanged
+frontend `src/` and `static/` paths/content, package and installed npm lockfiles, Node version, and frontend configuration
 (`vite.config.*`, `svelte.config.*`, `tsconfig*.json`, `postcss.config.*`, `tailwind.config.*`,
 `.node-version`, `.nvmrc`). It hashes `PUBLIC_*`, `VITE_*`, and `NODE_ENV` values without storing
 their values, and verifies all build output. Failed builds invalidate the stamp; inputs changed
@@ -43,6 +46,8 @@ Static layout flows reuse `verify/scripts/health.json` without making model call
 The shared fixture gives every flow its own sidecar, preview, and temporary data directory,
 saves a full-page `screenshot.png` of the final page (flows take no screenshots themselves),
 and fails on console errors, uncaught page errors, and failed requests.
+The live flow uses that fixture with `test.use({ script: 'none' })`. Assert streamed turn states
+and learner controls because provider wording varies.
 
 Look at the screenshots yourself and attach the ones you checked to your report.
 Keep logic permutations in cheap offline tests and representative real flows in this suite.

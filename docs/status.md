@@ -23,6 +23,17 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   the shared verify skill. Nineteen isolated Chromium cases cover layout/settings, streaming
   lessons, markdown, thinking, reload, Stop/Retry, session management, no-model refusal, and long replies, with
   screenshots and traces.
+- **Real-provider browser verification:** `make verify-live` uses the installed, logged-in Claude
+  Code with Haiku at low thinking. It opens a lesson, answers the question in the dock, and
+  verifies that the reaction streams and settles. It shares the preview and isolated sidecar
+  fixture with the fake-model suite and keeps evidence in `app/verify-live-output/`. Run it
+  alongside full `make verify` before merging or after a shared UI or runtime change.
+  On `41a0bbb` plus the implementation, the live flow passed in 22.0 s (47.8 s including the
+  build). Inspected `screenshot.png` and `trace.zip` in
+  `app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/`.
+  Full `make verify FLOW='--workers=1'` passed all 53 fake-model flows. Inspected the dark probe
+  answer screenshot and trace in `app/verify-output/question-probe-answer.flow.ts-question-probe-answer-dark/`.
+  `make check` passed with 422 backend and 129 frontend tests. Next is orchestrator review.
 - **Validation iteration:** `make check-backend` and `make check-frontend` expose the existing full
   stages for focused editing; `make check` still runs all stages before every commit. Guarded
   `make verify-run FLOW='flow-a flow-b'` reuses unchanged SPA builds; `make verify` always builds.
