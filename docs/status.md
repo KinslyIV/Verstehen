@@ -320,12 +320,19 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png` inspected).
    M6 is ready for the user to review and merge `m6-plan`.
 
-5. **M7 background jobs and workers:** ([M7 plan](plans/m7-jobs-and-workers.md), approved
-   2026-11-20). Group 1 (T1 workers, T2 Settings → Tools, T3 learner images) is implemented and
-   reviewed. Group 2 (T4 jobs, delivery, wakes; T5 jobs UI) runs on `m7-jobs`, built from `main`
-   with M6 plus the plan and group 1 commits cherry-picked, so merging `m7-jobs` alone brings in
-   all of M7; the `m7-plan`, `m7-t1-workers`, `m7-t2-tools-settings`, and `m7-t3-images` branches
-   are superseded by it.
+5. **M7 background jobs and workers:** done on `m7-jobs` ([M7 plan](plans/m7-jobs-and-workers.md)):
+   group 1 (T1 workers, T2 Settings → Tools, T3 learner images) and group 2 (T4 jobs, delivery,
+   wakes `d06d1c9`; T5 jobs UI `8b314a9`), all reviewed. `m7-jobs` is built from `main` with M6
+   plus the plan and group 1 commits cherry-picked, so merging `m7-jobs` alone brings in all of
+   M7; `m7-plan`, `m7-t1-workers`, `m7-t2-tools-settings`, and `m7-t3-images` are superseded.
+   **Orchestrator review:** T4 tool texts checked verbatim against LH; live injection verified
+   against Pydantic AI (sent and kept once, saved after the prior tool results). T5's busy
+   Send/Stop button matches LH's code (decision row corrected). Known small gaps: an account
+   sign-in does not wake a session by itself (the next event does), and a failed photo annotation
+   can leave its image file. `make verify-live` passed at `8b314a9`
+   (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png`
+   inspected). Ready for the user to review the decisions and merge `m7-jobs`; then try a
+   real lesson with research and a demo on the laptop.
 
 ## Open questions
 
