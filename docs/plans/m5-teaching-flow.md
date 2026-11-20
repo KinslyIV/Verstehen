@@ -104,8 +104,8 @@ Each task has its own branch and T3 worktree.
   - `derive_plan_statuses` (LH `src/core/contracts/plan.ts:45-90`): current, visited, upcoming,
     from tagged question calls only; unknown node ids are ignored;
   - plan blocks (LH `src/core/plan-blocks.ts`): after a successful `plan_init`, the turn's
-    settlement saves one `plan-block` marker per call (idempotent by `planCallId`) with the
-    frozen snapshot. The projection drops it.
+    settlement saves one `plan-block` marker per turn, for the turn's last successful call
+    (idempotent by `planCallId`), with the frozen snapshot. The projection drops it.
 - **The teacher** (`teaching/teacher.py`, LH `createTeacherTools`, `src/agent/tools.ts:440-470`):
   the teacher composition with the armed teach `quiz` or `explain` (M4's builders) with the
   `nodeId` lookup from `current_plan`, `ask_user_question`, `plan_init`, and the file tools. The
@@ -137,7 +137,7 @@ Each task has its own branch and T3 worktree.
   - a second `plan_init` replaces the plan;
   - the teach quiz `nodeId` is checked against the current plan;
   - plan statuses come from calls, ignore removed ids, and have no "done";
-  - one plan-block marker per successful `plan_init`, never sent to the model;
+  - one plan-block marker per turn, for its last successful `plan_init`, never sent to the model;
   - `send_to_user` is armed only for Claude models; the narration guard blocks at most twice;
   - file tools refuse protected locations and, when restricted, paths outside the folders;
   - a malformed `file_access` setting fails closed with LH's error text.

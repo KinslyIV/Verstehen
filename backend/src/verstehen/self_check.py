@@ -32,6 +32,29 @@ def check_pdfium() -> str:
     return "one-page PDF created and opened"
 
 
+def check_pillow() -> str:
+    from PIL import Image
+
+    pixel = (35, 70, 105)
+    buffer = io.BytesIO()
+    with Image.new("RGB", (1, 1), pixel) as image:
+        image.save(buffer, format="PNG")
+    buffer.seek(0)
+    with Image.open(buffer, formats=["PNG"]) as decoded:
+        if decoded.size != (1, 1) or decoded.getpixel((0, 0)) != pixel:
+            raise RuntimeError("PNG did not preserve the original pixel")
+    return "one-pixel PNG encoded and decoded"
+
+
+def check_regex() -> str:
+    import regex
+
+    expression = regex.compile(r"\p{Letter}+")
+    if expression.fullmatch("Verstehen", timeout=1.0) is None:
+        raise RuntimeError("Regex did not match the expected text")
+    return "pattern compiled and matched with a timeout"
+
+
 def command_version(command: list[str]) -> str:
     return subprocess.run(
         command, check=True, capture_output=True, text=True, timeout=20
@@ -61,6 +84,8 @@ def run_self_check() -> bool:
     checks: list[tuple[str, Callable[[], str]]] = [
         ("resvg", check_resvg),
         ("pypdfium2", check_pdfium),
+        ("pillow", check_pillow),
+        ("regex", check_regex),
         ("playwright", check_playwright),
         ("claude-agent-sdk", check_claude),
     ]

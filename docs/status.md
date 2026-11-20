@@ -265,7 +265,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. **M4:** merged into `main`; try a real lesson with questions on the laptop.
 3. **M5 teaching flow:** the plan ([M5 plan](plans/m5-teaching-flow.md), branch `m5-plan`) is
-   approved. T1 (backend) is on `m5-t1-teaching-flow` for review. T2 (UI) builds on T1.
+   approved. T1 (backend) is on `m5-t1-backend` for review. T2 (UI) builds on T1.
 
 ## Open questions
 
@@ -312,5 +312,9 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   teacher's planning turn. Saved entries determine phase, owed handoff, the current plan, and
   node position. Teacher tools validate against the current plan. Session records and generated
   API types support recovered handoffs, plan blocks, Claude prose delivery, and learner-file access.
+  Round 2 saves one plan block per turn for its last successful, unmarked `plan_init` call.
+  The frozen sidecar self-check now exercises PNG handling with Pillow and timed regex matching.
+  `make app` passed in 306 seconds with the frozen self-check and produced
+  `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
 - **T2 — teaching UI.** Pending. Assessment cards, dividers, the plan diagram and tab, teach question
   reveal, delivered prose, handoff recovery on open, and the file access editor are scoped there.

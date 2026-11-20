@@ -399,7 +399,7 @@ def test_tree_validation_error_matches_learnharness(nodes, edges, problem):
     assert str(error.value) == problem
 
 
-def test_plan_tool_keeps_tree_in_details_and_rewrite_replaces_current_plan(
+def test_same_turn_plan_rewrite_saves_one_block_for_last_successful_call(
     tmp_path: Path,
 ):
     async def scenario():
@@ -410,6 +410,7 @@ def test_plan_tool_keeps_tree_in_details_and_rewrite_replaces_current_plan(
                     "tool_calls": [
                         call("plan_init", {"mermaid": PLAN}),
                         call("plan_init", {"mermaid": REWRITE}),
+                        call("plan_init", {"mermaid": "invalid"}),
                     ]
                 },
                 {"text": "Here is the map."},
@@ -449,16 +450,92 @@ def test_plan_tool_keeps_tree_in_details_and_rewrite_replaces_current_plan(
                 for entry in entries
                 if entry.kind == "marker" and entry.marker_type == "plan-block"
             ]
-            assert len(blocks) == 2
-            for block, result in zip(blocks, results, strict=True):
-                assert isinstance(block.details, dict)
-                assert block.details["planCallId"] == result.tool_call_id
-            assert plan_blocks_for(entries, results) == []
+            assert len(results) == 3
+            assert isinstance(results[-1].details, dict)
+            assert results[-1].details["ok"] is False
+            (block,) = blocks
+            assert isinstance(block.details, dict)
+            assert block.details["planCallId"] == results[1].tool_call_id
+            snapshot = block.details["block"]
+            assert isinstance(snapshot, dict)
+            assert snapshot["nodes"] == [
+                {"id": "ellipse", "title": "Ellipses", "status": "upcoming"},
+                {"id": "period", "title": "Orbital period", "status": "upcoming"},
+            ]
             assert to_llm_messages(entries) == to_llm_messages(
                 [entry for entry in entries if entry not in blocks]
             )
 
     asyncio.run(scenario())
+
+
+def test_later_turn_plan_rewrite_saves_its_own_block(tmp_path: Path):
+    async def scenario():
+        model = scripted(
+            tmp_path,
+            [
+                {"tool_calls": [call("plan_init", {"mermaid": PLAN}, "first-plan")]},
+                {"text": "First plan."},
+                {"tool_calls": [call("plan_init", {"mermaid": REWRITE}, "rewrite")]},
+                {"text": "Revised plan."},
+            ],
+        )
+        async with turn_service_context(tmp_path, model) as (service, session_id):
+            await service.entries_store.append(session_id, probe_assessment())
+            await completed(await start(service, session_id))
+            await completed(await start(service, session_id))
+            entries = await service.entries_store.list(session_id)
+            blocks = [
+                entry.details
+                for entry in entries
+                if entry.kind == "marker" and entry.marker_type == "plan-block"
+            ]
+            first, rewrite = blocks
+            assert isinstance(first, dict) and isinstance(rewrite, dict)
+            assert first["planCallId"] == "first-plan"
+            assert rewrite["planCallId"] == "rewrite"
+            first_snapshot = first["block"]
+            assert isinstance(first_snapshot, dict)
+            assert first_snapshot["nodes"] == [
+                {"id": "orbit", "title": "Orbits", "status": "upcoming"},
+                {"id": "ellipse", "title": "Ellipses", "status": "upcoming"},
+            ]
+
+    asyncio.run(scenario())
+
+
+def test_plan_blocks_skip_emitted_calls_and_snapshot_current_tree_and_full_transcript():
+    first, rewrite = [
+        ToolResultEntry(
+            tool_call_id=call_id,
+            tool_name="plan_init",
+            text="",
+            details={
+                "ok": True,
+                "tree": create_tree(*parse_mermaid_plan(mermaid)).model_dump(
+                    mode="json", by_alias=True
+                ),
+            },
+        )
+        for call_id, mermaid in [("first-plan", PLAN), ("rewrite", REWRITE)]
+    ]
+    previous: list[Entry] = [
+        tagged("ellipse"),
+        MarkerEntry(
+            marker_type="plan-block", content="", details={"planCallId": "rewrite"}
+        ),
+    ]
+    assert plan_blocks_for(previous, [rewrite]) == []
+    (block,) = plan_blocks_for(previous, [first, rewrite, tagged("period")])
+    assert isinstance(block.details, dict)
+    assert block.details["planCallId"] == "first-plan"
+    snapshot = block.details["block"]
+    assert isinstance(snapshot, dict)
+    assert snapshot["current"] == "period"
+    assert snapshot["nodes"] == [
+        {"id": "ellipse", "title": "Ellipses", "status": "visited"},
+        {"id": "period", "title": "Orbital period", "status": "current"},
+    ]
 
 
 def test_teach_quiz_checks_node_against_plan_rewritten_in_same_turn(tmp_path: Path):

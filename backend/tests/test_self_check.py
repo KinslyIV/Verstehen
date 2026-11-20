@@ -27,6 +27,8 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
     assert {check["name"] for check in checks} == {
         "resvg",
         "pypdfium2",
+        "pillow",
+        "regex",
         "playwright",
         "claude-agent-sdk",
     }
@@ -41,7 +43,13 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
         raise RuntimeError("render failed")
 
     monkeypatch.setattr(self_check, "check_resvg", fail)
-    for name in ("check_pdfium", "check_playwright", "check_claude"):
+    for name in (
+        "check_pdfium",
+        "check_pillow",
+        "check_regex",
+        "check_playwright",
+        "check_claude",
+    ):
         monkeypatch.setattr(self_check, name, lambda: "checked")
     assert not self_check.run_self_check()
     checks = json.loads(capsys.readouterr().out)
