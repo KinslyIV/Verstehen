@@ -263,7 +263,8 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 
 1. **M3:** install a package with the startup fix on the laptop, then check sign-in, the model
    menu, and a real lesson. The opt-in live tests can confirm both providers.
-2. M4 question tools, M5 teaching flow.
+2. **M4:** merge `m4-plan`, then try a real lesson with questions on the laptop.
+3. M5 teaching flow (prober → teacher handoff, plan tools, teach quiz/explain wiring, reveal).
 
 ## Open questions
 
@@ -299,5 +300,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   mount or sync. Settings → Lesson saves Quizzing.
 - **T2 review round 2:** Restored the keyboard hint in both dock modes, kept the model menu
   beside Submit, and restored Space activation for focused buttons outside the answer rows.
-- **Next:** Review T2 against the approved M4 plan, then integrate M4. Teach-phase reveal and
-  reading thinking are scheduled for M5.
+- **M4 review:** complete; the orchestrator accepted T1, T2, and round 2. Final runs on round 2:
+  `make check` (378 backend, 112 Vitest tests) and full `make verify` (45 cases) pass. Branch
+  `m4-plan` holds all of M4 and awaits the user's merge. Teach-phase reveal and reading thinking
+  are scheduled for M5.
