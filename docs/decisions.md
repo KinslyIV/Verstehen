@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **Orchestrator decision, for user review (M9):** GPT-6.1 Sol hit the ChatGPT usage limit (until 2026-11-26) during the T2 review fixes; those fixes and the remaining M9 tasks run on Claude **Sonnet 5.5, medium effort** (the standing stopgap). | Keep M9 moving. |
 | 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Extraction has its own `graph/extraction_service.py`, leaving T1's `GraphService` in `graph/service.py`. Request admission is injected from the existing app-wide worker gate; graph notifications and session lifecycle functions are injected by `app.py`. | Keeps the enforced package order and one admission pool without mixing graph editing with model-run ownership. |
 | 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Graph settings use `graph.enabled`, `graph.rendering`, `graph.extraction_chunk_tokens`, and `agent.graph_tools`; API run identities use `session_id`, including notes sources, and all route payloads use snake_case. Model tool schemas retain LH's `messageId`, `linkTo`, and candidate payload keys verbatim. | Continues the port's typed settings and T1 API convention; preserves the model-facing contract. |
 | 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Session DELETE defaults an omitted mode to `preserve-graph`; explicit invalid modes return LH's `bad_mode` refusal. | The existing session UI sends no mode until T4. This preserves its contract while exposing both approved modes now; LH requires an explicit mode. |
