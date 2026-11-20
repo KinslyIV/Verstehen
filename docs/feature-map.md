@@ -94,3 +94,20 @@ checks pass.
 Claude Code opt-in live check (not run by `make check`):
 `uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py`.
 Uses a temporary data directory and the installed CLI; sends one short Haiku reply and reports its version.
+
+
+## Standalone background workers (M7 T1)
+
+The standalone backend entry points are `run_researcher`, `run_pdf_reader`, `run_visual_maker`,
+and `run_demo_builder` in `jobs/workers/`. They take an injected model and activity/usage callbacks;
+requests and tasks can be cancelled. Jobs, delivery, and learner-facing registration come in T4.
+The researcher accepts plain search keys and an injectable HTTP client/resolver; the PDF reader
+requires a learner-file policy; annotation accepts a preloaded learner image and snapshot reference;
+the demo builder requires an explicit browser executable and never delivers unverified HTML.
+
+Verify offline with `backend/tests/test_workers.py`: LH golden contracts/prompts/tool declarations,
+all search fallbacks and mocked clients, bounded public-only fetches and scoped PDF downloads,
+PDF page accounting, render/inspect/revise SVGs, retained annotation placeholders, role-aware fake
+scripts, and demo gates/isolation using Playwright Chromium. No UI entry point exists yet.
+`verstehen --self-check` also renders a PDF page and tests an offline headless page when a browser
+is found; it reports an optional skip when none exists.

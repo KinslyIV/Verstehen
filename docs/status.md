@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 planning).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T1 standalone workers).
 
 ## Where we are
 
@@ -395,3 +395,17 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   (421 backend and 129 Vitest tests), and full `make verify` passed all 53 cases. Inspected the
   final `screenshot.png` in `app/verify-output/teaching-handoff.flow.ts-teaching-handoff-{dark,light}/`.
   Each case retains its trace. Next is orchestrator review.
+
+
+## M7 progress
+
+- **T1 standalone workers:** contracts and LH delivery texts; Tavily/Brave clients and native-search
+  selection; bounded public-only web/PDF fetching; PDF reading, SVG rendering/annotation, and
+  mandatory headless demo verification. Each worker takes an injected Pydantic AI model, callbacks,
+  and cancellation; shared helpers own isolated requests and threaded PDF/render work.
+  Fake replies accept a task-local role. Self-check renders a PDF page and runs an offline browser
+  page when available. Offline golden fixtures cover LH prompts, tool declarations, and steer texts.
+- **T1 validation:** full `make check` passed (512 backend and 129 Vitest tests, no verify flows: no learner-visible change).
+- **Next:** orchestrator review of `m7-t1-workers`, including the T1 implementation decisions in
+  `decisions.md`; T2/T4 supply runtime browser discovery, image snapshots, jobs, and delivery.
+  T1 adds no session code, settings, routes, or UI. No new product-design questions are open.

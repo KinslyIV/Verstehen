@@ -1,3 +1,4 @@
+import asyncio
 import importlib
 import importlib.metadata
 import io
@@ -29,7 +30,13 @@ def check_pdfium() -> str:
     with pdfium.PdfDocument(buffer.getvalue()) as document:
         if len(document) != 1:
             raise RuntimeError("PDF page count is not 1")
-    return "one-page PDF created and opened"
+        page = document[0]
+        try:
+            bitmap = page.render(scale=1)
+            bitmap.close()
+        finally:
+            page.close()
+    return "one-page PDF created, opened, and rendered"
 
 
 def check_pillow() -> str:
@@ -83,6 +90,42 @@ def check_playwright() -> str:
     )
 
 
+def check_headless() -> str:
+    from playwright.sync_api import sync_playwright
+
+    from verstehen.jobs.workers.headless import run_demo
+
+    executable = next(
+        (
+            found
+            for name in (
+                "chromium",
+                "chromium-browser",
+                "google-chrome-stable",
+                "google-chrome",
+            )
+            if (found := shutil.which(name))
+        ),
+        None,
+    )
+    if executable is None:
+        with sync_playwright() as playwright:
+            installed = Path(playwright.chromium.executable_path)
+        executable = str(installed) if installed.is_file() else None
+    if executable is None:
+        return "no browser found; optional headless check skipped"
+    result = asyncio.run(
+        run_demo(
+            "<!doctype html><title>Self-check</title><p>offline</p>",
+            executable,
+            "document.querySelector('p').textContent",
+        )
+    )
+    if not result.ok or result.probe_result != "offline":
+        raise RuntimeError(f"Offline headless page failed: {result.model_dump_json()}")
+    return "offline headless page loaded and probed"
+
+
 def check_claude() -> str:
     """Prove the SDK is included and report the installed `claude`, which is optional."""
     importlib.import_module("claude_agent_sdk")
@@ -101,6 +144,7 @@ def run_self_check() -> bool:
         ("regex", check_regex),
         ("prompts", check_prompts),
         ("playwright", check_playwright),
+        ("headless", check_headless),
         ("claude-agent-sdk", check_claude),
     ]
     results = []
