@@ -279,7 +279,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
 
-4. **M6 compaction:** T1 backend implemented on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
+4. **M6 compaction:** T1 backend and T2 UI done on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
    The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
    the append-only transcript and commit with their usage. Settings, session state, and notifications
    are available through the generated API. Next is T1 review, followed by T2 dividers, busy states,
@@ -302,7 +302,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    load-sensitive layout test). `make verify FLOW='teaching-handoff plan-rewrite --workers=1
    --output=verify-output/m6-t1-review'` passed 4 cases; inspected the dark handoff and
    plan-rewrite screenshots there.
-   **T2 (UI, implemented, awaiting review):** moment line and cut divider (`session/compaction.ts`),
+   **T2 (UI, reviewed):** moment line and cut divider (`session/compaction.ts`),
    "Compacting context…" in the thread and sidebar, dock hint and disabled Submit, composer Send
    disabled, controller guards for send, answer, continue, handoff, Retry and Retry question
    (dismissal allowed), tail readers skip compaction markers (Retry stops at one), and Settings →
@@ -315,7 +315,11 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    `compacting-thread.png`, `compacted.png`, `moment.png`), `compaction-gate-reload.flow.ts-compaction-gate-reload/`
    (`compacting.png`, `compacted.png`, `moment.png`), `compaction-failed.flow.ts-compaction-failed/screenshot.png`,
    and `settings-compaction-limit.flow.ts-settings-compaction-limit/default.png`. Each retains `trace.zip`.
-   `make verify-live` is left to the orchestrator. Next: T2 review.
+   **T2 review (orchestrator):** accepted without changes; dividers, chip text, spinner label,
+   and submission guards match LH. Inspected the dark settle dock and compacted screenshots, the
+   light moment line, and the settings card. `make verify-live` passed at `666e8fe`
+   (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png` inspected).
+   M6 is ready for the user to review and merge `m6-plan`.
 
 ## Open questions
 
