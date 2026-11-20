@@ -265,7 +265,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    menu, and a real lesson. The opt-in live tests can confirm both providers.
 2. **M4:** merged into `main`; try a real lesson with questions on the laptop.
 3. **M5 teaching flow:** the plan ([M5 plan](plans/m5-teaching-flow.md), branch `m5-plan`) is
-   approved. T1 backend review is complete. Review the T2 implementation on `m5-t2-ui-r2`.
+   approved. T1 backend review is complete. Review the T2 implementation on `m5-t2-ui-r3`.
 
 ## Open questions
 
@@ -316,7 +316,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   The frozen sidecar self-check now exercises PNG handling with Pillow and timed regex matching.
   `make app` passed in 306 seconds with the frozen self-check and produced
   `dist/verstehen-0.1.0-1-x86_64.pkg.tar.zst`.
-- **T2 — teaching UI (`m5-t2-ui-r2`).** The thread shows the probe assessment, phase label and
+- **T2 — teaching UI (`m5-t2-ui-r3`).** The thread shows the probe assessment, phase label and
   dividers, frozen plan snapshots, and streamed Claude prose. The Plan tab opens for a new plan and shows live
   position with zoom, pan, and fit. Predictions and checks use LearnHarness's reveal and
   reading-thinking behavior. Reopening an idle session resumes an owed handoff. Settings → Lesson
@@ -329,4 +329,10 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   Full `make verify` passed 52 of 53 cases. Dark handoff missed the brief writing state and passed
   on the unchanged guarded rerun (`make verify-run FLOW='teaching-handoff --workers=1 --output=verify-output/review-rerun'`,
   3 cases). Inspected the screenshots for `send-to-user`, `question-malformed-retry`, and the
-  dark handoff rerun in `app/verify-output/`. Traces are alongside them. Ready for orchestrator review.
+  dark handoff rerun in `app/verify-output/`. Traces are alongside them.
+  Round 3 gives the handoff, Claude prose, and malformed-question retry fixtures longer streaming
+  windows for transient assertions. On `4962186` plus these changes, the targeted `make verify`
+  build and five consecutive guarded reruns each passed nine cases. `make check` passed
+  (421 backend and 129 Vitest tests), and full `make verify` passed all 53 cases. Inspected the
+  final `screenshot.png` in `app/verify-output/teaching-handoff.flow.ts-teaching-handoff-{dark,light}/`.
+  Each case retains its trace. Next is orchestrator review.

@@ -31,7 +31,8 @@ test('question-malformed-retry', async ({ page, request, appendEntries }) => {
 	await expect(retries).toHaveText(['Retrying…', 'Retrying…']);
 	await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
 	await expect(page.getByTestId('question-dock')).toContainText(
-		'Replacement: What is the slope of a horizontal line?'
+		'Replacement: What is the slope of a horizontal line?',
+		{ timeout: 10_000 }
 	);
 	await expect(page.getByRole('button', { name: 'Retry question' })).toHaveCount(0);
 	await expect(retries).toHaveCount(2);

@@ -9,7 +9,9 @@ for (const theme of ['dark', 'light']) {
 		await page.addInitScript((mode) => localStorage.setItem('mode-watcher-mode', mode), theme);
 		await startLesson(page);
 		const assessment = page.getByTestId('probe-done-card');
-		await expect(assessment.getByText('Writing the assessment…')).toBeVisible();
+		await expect(assessment.getByText('Writing the assessment…')).toBeVisible({
+			timeout: 12_000
+		});
 		await expect(page.getByTestId('phase-chip')).toHaveText('Probing');
 		await expect(assessment.getByText('2 strands')).toBeVisible();
 		await expect(assessment.getByText('Slope', { exact: true })).toBeHidden();
