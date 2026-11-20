@@ -4,6 +4,14 @@
 
 ## M9 progress
 
+**M9 is complete on `m9-plan`, ready to merge** (orchestrator review of T1–T4 done).
+Final evidence at `3df6a24` plus the review commit: `make check` (762 backend, 329 frontend tests);
+`make verify` 94/96, the two failures (`job-recovery-reload`, `question-probe-answer-dark`) both
+passed 3/3 in a guarded rerun (known load flakes from M8); `make verify-live` passed. Screenshots
+checked: graph-canvas, graph-search-settings, graph-import, graph-rendering-off, graph-chains-table,
+graph-picks, graph-coverage, graph-delete. Open: the frontend sometimes sends the probe handoff
+twice under load (400 "No probe handoff is owed", `teach-predict-check`); fix outside M9.
+
 T1 backend is implemented on `m9-plan`: transactional graph ledgers and migration `0006`,
 read-time identity/alias and chain merging, derived edges/implications, birth-session clusters,
 source lookup and session readers, deterministic merge/simplification with atomic coverage or
