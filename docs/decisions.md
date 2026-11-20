@@ -4,6 +4,8 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **User decision:** The full test includes a real provider. `make verify-live` runs a browser flow on the app with real Claude Code and `haiku` (the server's logged-in `claude`): start a lesson, the reply ends in a question in the dock, answer it, and the reaction turn streams. Assertions check states, not exact text. It is required with full `make verify` before every merge and after shared UI or runtime changes, not while editing. It is the one standing exception to "real models only when the user asks". | The M5 laptop run failed on its first lesson (prompts missing from the package) although every fake-model check passed. |
+| 2026-11-20 | **Fix:** The PyInstaller spec bundles `teaching/prompts/**/*.md`, and `verstehen --self-check` fails when a prompt directory is missing. | The package shipped without prompts since M2; the packaged first turn failed with "No such file or directory … prompts/prober". |
 | 2026-11-20 | **User decision:** The M5 plan is approved ([plan](plans/m5-teaching-flow.md)). | Plan → implement. |
 | 2026-11-20 | **User decision (M5 planning):** M5 builds on `main` (all of M4): T1 backend, then T2 UI on T1. The implementer is **GPT-6.2 Sol** (`gpt-6.2-sol`), medium, default tier. | M4 is merged; same shape as M4. |
 | 2026-11-20 | **User decision (M5 planning):** The probe handoff is started by the session: after a successful `probe_done` it saves LH's `probe-handoff` marker and starts the teacher's planning turn once no turn runs and no question is pending (LH's wake conditions). No jobs table; M7 does not change it. | The "explicit phase transition" of 2026-11-18, without waiting for M7. |

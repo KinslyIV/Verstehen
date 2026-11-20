@@ -30,8 +30,8 @@ service tier. The parent model settings are unchanged.
   affected UI flows with `make verify FLOW='flow-a flow-b'`. `make verify-run FLOW='flow-a flow-b'`
   reuses an unchanged frontend build with a stale-build guard; see the
   [verify skill](../.agents/skills/verify/SKILL.md). Full `make check` remains required before each
-  commit. For UI work, full `make verify` is required before merge; also run it after shared UI
-  or runtime changes. Unrelated documentation or offline tooling work does not require UI flows.
+  commit. Full `make verify` and `make verify-live` (real Claude Code, `haiku`) are required
+  before every merge; also run them after shared UI or runtime changes. Unrelated documentation or offline tooling work does not require UI flows.
 - Keep cheap logic permutations in offline tests and use representative real UI flows for
   integration. This keeps iteration focused as coverage grows; the full suite still checks the
   integrated app. Each flow retains its own sidecar, preview, temporary data, assertions,
@@ -43,7 +43,7 @@ service tier. The parent model settings are unchanged.
   [decisions](decisions.md) marked **"orchestrator decision, for user review"**, and into the final
   report.
 - **Nothing with outside effects happens during a run.** No pushing, no merging, no real-model calls
-  (the user's subscriptions), no touching the user's real data, no credentials. Anything that would
+  (the user's subscriptions) except `make verify-live`, no touching the user's real data, no credentials. Anything that would
   need one of these is skipped and reported.
 
 ## 3. Review (orchestrator and implementer, until clean)

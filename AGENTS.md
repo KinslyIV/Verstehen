@@ -129,6 +129,7 @@ Every change comes with a way to prove it works, and you run it before you say i
 | `make test` | only the tests |
 | `make verify` | the app with the fake model in headless Chromium: scripted flows that save screenshots and traces |
 | `make verify-run FLOW='flow-a flow-b'` | rerun selected flows against an unchanged verified frontend build; refuses missing or stale builds |
+| `make verify-live` | the app with real Claude Code (`haiku`) in headless Chromium: a first lesson turn ending in a question, answered, and the reaction |
 | `make fmt` | fix formatting |
 | `make app` | build the desktop app as an Arch package, inside an `archlinux` container |
 | `make app-image` | refresh the prepared Arch build image with the newest packages |
@@ -140,8 +141,8 @@ Every change comes with a way to prove it works, and you run it before you say i
   run flows, not ad-hoc scripts.
 - **While editing**, use the affected backend/frontend checks and batch affected UI flows in one
   invocation: `make verify FLOW='flow-a flow-b'`, or guarded `make verify-run` after an unchanged
-  build. Run full `make check` before every commit. For UI work, run full `make verify` before
-  merge; also run it after shared UI or runtime changes. Run `make app` for packaging changes;
+  build. Run full `make check` before every commit. Before every merge, and after shared UI or
+  runtime changes, run full `make verify` and `make verify-live`. Run `make app` for packaging changes;
   unrelated changes do not require a desktop build or UI flows.
 - **Review can reuse passing results** only when relevant source, configuration, dependencies, and
   environment are unchanged and no new issue has appeared. Record the command, revision or dirty
@@ -152,7 +153,8 @@ Every change comes with a way to prove it works, and you run it before you say i
   app grows; do not drop assertions, screenshots, traces, or per-flow isolation to save time.
 - **[`docs/feature-map.md`](docs/feature-map.md)** lists every feature, how to reach it, and how to
   verify it. A new or changed feature updates its entry.
-- **Real models use the user's subscriptions.** Run them only when the user asks.
+- **Real models use the user's subscriptions.** The only standing exception is `make verify-live`
+  (Claude Code, `haiku`). Run any other real-model call only when the user asks.
 
 ## Data and secrets
 
