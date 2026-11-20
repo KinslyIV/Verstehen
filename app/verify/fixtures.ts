@@ -230,8 +230,8 @@ export const test = base.extend<{
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&
-						/\/api\/(events|sessions(?:\/[^/]+(?:\/stream|\/side-chats(?:\/[^/]+\/stream)?)?)?)$/.test(
-							request.url()
+						/\/api\/(events|jobs|sessions(?:\/[^/]+(?:\/stream|\/side-chats(?:\/[^/]+\/stream)?)?)?)$/.test(
+							new URL(request.url()).pathname
 						)
 					) &&
 					errors.push(

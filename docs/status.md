@@ -485,19 +485,23 @@ Each case also retains `trace.zip`; the separate evidence rerun preserves the fu
 
 ## M8 progress
 
-- **Plan approved** ([plan](plans/m8-side-chat.md)). M7 merged first, so T1–T3 run in order on
-  `m8-plan`.
-- **T1 side chat backend: done.** Segments (server-side `side_segments`), the redacted lesson
-  document, model turns, the tool-less helper, `side_threads`/`side_exchanges`,
-  `SideChatService` (ask, retry, request ids, stop, reattach, size check, usage), routes with SSE,
-  and `side-chats-changed`. The pure compaction module moved to `teaching/compaction.py`.
-  Evidence: `make check` (669 backend, 184 frontend tests) and `make verify` 76/77; the one
-  failure, `job-recovery-reload` (aborted `/api/jobs` polls during reload), passed 3/3 on rerun.
-- **T2 side chat UI: implemented** (review pending). Side chat tab, segment buttons, selection Ask,
-  Ctrl+J, stop/retry/reattach, drafts, `working`; flows `side-chat-*`.
-- **T3 delivery to the teacher: implemented** (review pending). `sidechat/delivery.py` (ledger,
-  updates, budget), kind `side_question` in the context-update step, turn-start write-ahead,
-  compaction gate cargo, retry across its own compaction; flow `side-chat-delivery`.
-- **Next:** review of T3, then `make verify-live` and the milestone report.
-- **Flagged:** `job-recovery-reload` (M7) is flaky: an aborted jobs poll during reload counts as a
-  browser error.
+**M8 is complete on `m8-plan`, ready to merge.**
+
+- **T1 side chat backend:** segments (server-side `side_segments`), the redacted lesson
+  document, the tool-less helper, `side_threads`/`side_exchanges`, `SideChatService` (ask, retry,
+  request ids, stop, reattach, size check, usage), SSE routes, `side-chats-changed`. The pure
+  compaction module moved to `teaching/compaction.py`.
+- **T2 side chat UI:** the Side chat tab, segment-boundary buttons, selection Ask with quotes,
+  Ctrl+J, drafts per thread, Go to current step, stop/retry/reattach, the dock's `working`.
+- **T3 delivery:** hidden `side-question` markers through the context-update step (`side_question`
+  kind) at turn start and before later model requests, withheld while a question is pending; LH's
+  budget error; Retry past its own compaction; marker serialization and projection.
+- **Evidence (final, HEAD of `m8-plan`):** `make check` (688 backend, 197 frontend tests);
+  `make verify` 84/85, the one failure `job-recovery-reload` (aborted `/api/jobs` poll on
+  reload) fixed in the fixture and then 3/3; `make verify-live` passed. Screenshots checked:
+  side-chat-ask, -selection, -stop-retry, -current-step, -delivery.
+- **Implementers:** T1 GPT-6.1 Sol (finished by the orchestrator after the usage limit), T2 and T3
+  Claude Sonnet 5.5 medium (stopgap).
+- **Flagged:** `teach-predict-check` failed once with an unexplained console 400 (passed 3/3 on
+  rerun); `side-chat-reload` and `question-ask` each failed once in T3's run and then passed.
+- **Next:** M9 knowledge graph.
