@@ -26,9 +26,9 @@ from verstehen.providers.chatgpt.adapter import (
 )
 from verstehen.providers.chatgpt.credentials import (
     AccountCredentialSource,
-    CredentialsStore,
 )
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService, SignInBusy
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.store.settings import ModelPick
 
 

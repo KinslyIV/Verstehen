@@ -46,6 +46,10 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
+            "tools": {"research": True, "demo": True, "visual": True, "pdf": True},
+            "worker_request_concurrency": None,
+            "demo_browser": None,
+            "search_engine": "native",
             "file_access": {"restricted": False, "folders": []},
             "compaction_limit": None,
         }
@@ -124,6 +128,10 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
+            "tools": {"research": True, "demo": True, "visual": True, "pdf": True},
+            "worker_request_concurrency": None,
+            "demo_browser": None,
+            "search_engine": "native",
             "file_access": {"restricted": False, "folders": []},
             "compaction_limit": None,
         }

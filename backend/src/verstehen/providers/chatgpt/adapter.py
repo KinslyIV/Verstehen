@@ -24,8 +24,8 @@ from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.providers.chatgpt.credentials import (
     AccountCredentialSource,
-    CredentialsStore,
 )
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.store.settings import ModelPick
 
 SIGN_IN_REASON = "ChatGPT authorization expired. Sign in again."

@@ -11,7 +11,7 @@
 		removeChatGPTAccount,
 		getClaudeCode,
 		claudeCodeDownload,
-		openSignIn,
+		openExternal,
 		type Account,
 		type BinaryStatus,
 		type DownloadProgress,
@@ -88,7 +88,7 @@
 			const started = await startChatGPTSignIn(account);
 			pending = started.id;
 			signInUrl = started.url;
-			await openSignIn(started.url);
+			await openExternal(started.url);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -202,7 +202,7 @@
 				Waiting for browser sign-in… <Button
 					variant="link"
 					size="sm"
-					onclick={() => signInUrl && void openSignIn(signInUrl)}
+					onclick={() => signInUrl && void openExternal(signInUrl)}
 				>
 					Open sign-in page
 				</Button>

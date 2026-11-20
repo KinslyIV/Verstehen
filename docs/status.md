@@ -409,3 +409,11 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 - **Next:** orchestrator review of `m7-t1-workers`, including the T1 implementation decisions in
   `decisions.md`; T2/T4 supply runtime browser discovery, image snapshots, jobs, and delivery.
   T1 adds no session code, settings, routes, or UI. No new product-design questions are open.
+- **T2 — Settings → Tools (`m7-t2-tools-settings`).** Stores the four background-tool switches,
+  worker request concurrency, search engine, and demo browser path. Search keys share the private
+  atomic credentials file with ChatGPT; environment keys win and are read-only. Browser discovery
+  follows setting → PATH → downloaded, with a bundled-driver Chromium download and shutdown
+  cancellation. The Tools cards and `settings-tools` dark/light flow cover editing, masked keys,
+  fallback notices, and download states. `make check` passed (457 backend, 148 Vitest tests) and
+  `make verify FLOW=settings-tools` passed all 8 cases.
+  Next: orchestrator review; T4 applies the switches/concurrency and wires keys/browser into jobs.

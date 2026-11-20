@@ -524,3 +524,16 @@ Probe, plan, teach, as in LH.
 - Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
+
+
+## M7 T2 implementation decisions (2026-11-20)
+
+- **Orchestrator decision, for user review:** an unusable configured browser path (missing or not
+  executable) falls through to PATH, then the downloaded browser, matching discovery's executable
+  checks. The path remains saved and editable.
+- **Orchestrator decision, for user review:** environment keys of four characters or fewer show
+  only bullets. LH's suffix mask would expose an entire short environment value; the approved
+  requirement that responses never return a key takes precedence.
+- **Orchestrator decision, for user review:** browser download progress exposes the bundled
+  driver's latest output line (bounded to 500 characters) and its percentage when available,
+  rather than inventing byte counts the driver does not report.

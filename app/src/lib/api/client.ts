@@ -228,7 +228,32 @@ export async function claudeCodeDownload(start = false): Promise<DownloadProgres
 		await request('/api/accounts/claude-code/download', { method: start ? 'POST' : 'GET' })
 	).json();
 }
-export async function openSignIn(url: string): Promise<void> {
+export async function openExternal(url: string): Promise<void> {
 	if (isTauri()) await invoke('plugin:shell|open', { path: url });
 	else window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+export type DemoBrowser = components['schemas']['DemoBrowser'];
+export type BrowserDownloadProgress = components['schemas']['BrowserDownloadProgress'];
+export type SearchKeysStatus = components['schemas']['SearchKeysStatus'];
+export type SearchEngine = 'tavily' | 'brave';
+export async function getDemoBrowser(): Promise<DemoBrowser> {
+	return (await request('/api/demo-browser')).json();
+}
+export async function browserDownload(start = false): Promise<BrowserDownloadProgress> {
+	return (await request('/api/demo-browser/download', { method: start ? 'POST' : 'GET' })).json();
+}
+export async function getSearchKeys(): Promise<SearchKeysStatus> {
+	return (await request('/api/search-keys')).json();
+}
+export async function setSearchKey(
+	engine: SearchEngine,
+	value: string | null
+): Promise<SearchKeysStatus> {
+	return (
+		await request(`/api/search-keys/${engine}`, {
+			method: value === null ? 'DELETE' : 'PUT',
+			...(value === null ? {} : { body: JSON.stringify({ value }) })
+		})
+	).json();
 }

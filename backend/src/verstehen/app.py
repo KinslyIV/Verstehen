@@ -12,16 +12,19 @@ from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.health import router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
+from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
+from verstehen.jobs.workers.browser import BrowserDownloadService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
-from verstehen.providers.chatgpt.credentials import CredentialsStore
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
 from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter
 from verstehen.providers.claude_code.download import DownloadService
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.providers.fake import FakeAccountAdapter
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
+from verstehen.providers.search_keys import SearchKeysService
 from verstehen.providers.service import ProviderService
 from verstehen.session.events import Notifications
 from verstehen.session.runtime import RuntimeRegistry
@@ -54,7 +57,10 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.data_dir, settings.provider_events
             )
             claude_code_download_service = DownloadService(settings.data_dir)
-            chatgpt_adapter = ChatGPTAccountAdapter(CredentialsStore(settings.data_dir))
+            credentials_store = CredentialsStore(settings.data_dir)
+            chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
+            browser_download_service = BrowserDownloadService(settings.data_dir)
+            app.state.browser_download_service = browser_download_service
             chatgpt_sign_in_service = ChatGPTSignInService(chatgpt_adapter)
             app.state.claude_code_adapter = claude_code_adapter
             app.state.claude_code_download_service = claude_code_download_service
@@ -66,6 +72,9 @@ def create_app(settings: Settings) -> FastAPI:
             )
             accounts_service = AccountsService(adapters)
             resolver_service = ResolverService(settings_store, accounts_service)
+            app.state.search_keys_service = SearchKeysService(
+                credentials_store, settings_store, accounts_service
+            )
             provider_policy = ProviderPolicy(settings_store)
             usage_store = UsageStore(database)
             title_service = TitleService(
@@ -98,6 +107,7 @@ def create_app(settings: Settings) -> FastAPI:
             try:
                 yield
             finally:
+                await browser_download_service.close()
                 await runtimes.close()
                 await title_service.close()
                 await claude_code_download_service.close()
@@ -140,6 +150,7 @@ def create_app(settings: Settings) -> FastAPI:
             allow_headers=["x-verstehen-token", "content-type"],
         )
 
+    app.include_router(tools_router)
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(providers_router)

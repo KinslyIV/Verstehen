@@ -7,8 +7,8 @@ import pytest
 from pydantic_ai import Agent
 
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
-from verstehen.providers.chatgpt.credentials import CredentialsStore
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.store.settings import ModelPick
 
 

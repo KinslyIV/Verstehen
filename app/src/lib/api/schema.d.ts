@@ -4,6 +4,76 @@
  */
 
 export interface paths {
+	'/api/search-keys': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Search Keys */
+		get: operations['get_search_keys_api_search_keys_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/search-keys/{engine}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Search Key */
+		put: operations['put_search_key_api_search_keys__engine__put'];
+		post?: never;
+		/** Delete Search Key */
+		delete: operations['delete_search_key_api_search_keys__engine__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/demo-browser': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Demo Browser */
+		get: operations['get_demo_browser_api_demo_browser_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/demo-browser/download': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Browser Download */
+		get: operations['get_browser_download_api_demo_browser_download_get'];
+		put?: never;
+		/** Start Browser Download */
+		post: operations['start_browser_download_api_demo_browser_download_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/health': {
 		parameters: {
 			query?: never;
@@ -404,6 +474,21 @@ export interface components {
 			/** Reason */
 			reason?: string | null;
 		};
+		/** BrowserDownloadProgress */
+		BrowserDownloadProgress: {
+			/**
+			 * State
+			 * @default idle
+			 * @enum {string}
+			 */
+			state: 'idle' | 'downloading' | 'complete' | 'failed';
+			/** Message */
+			message?: string | null;
+			/** Percent */
+			percent?: number | null;
+			/** Error */
+			error?: string | null;
+		};
 		/** CatalogModel */
 		CatalogModel: {
 			/** Id */
@@ -431,6 +516,13 @@ export interface components {
 		Created: {
 			/** Id */
 			id: string;
+		};
+		/** DemoBrowser */
+		DemoBrowser: {
+			/** Path */
+			path?: string | null;
+			/** Source */
+			source?: ('setting' | 'path' | 'downloaded') | null;
 		};
 		/** DismissInput */
 		DismissInput: {
@@ -705,6 +797,30 @@ export interface components {
 			/** Title */
 			title: string;
 		};
+		/** SearchKeyBody */
+		SearchKeyBody: {
+			/** Value */
+			value: string;
+		};
+		/** SearchKeyStatus */
+		SearchKeyStatus: {
+			/** Present */
+			present: boolean;
+			/** Masked */
+			masked?: string | null;
+			/**
+			 * Source
+			 * @enum {string}
+			 */
+			source: 'env' | 'file' | 'none';
+		};
+		/** SearchKeysStatus */
+		SearchKeysStatus: {
+			tavily: components['schemas']['SearchKeyStatus'];
+			brave: components['schemas']['SearchKeyStatus'];
+			/** Effective Engine */
+			effective_engine?: ('native' | 'tavily' | 'brave') | null;
+		};
 		/** SessionDetail */
 		SessionDetail: {
 			/** Id */
@@ -786,6 +902,16 @@ export interface components {
 		Settings: {
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
+			tools?: components['schemas']['ToolSettings'];
+			/** Worker Request Concurrency */
+			worker_request_concurrency?: number | null;
+			/** Demo Browser */
+			demo_browser?: string | null;
+			/**
+			 * Search Engine
+			 * @enum {string}
+			 */
+			search_engine?: 'native' | 'tavily' | 'brave';
 			/**
 			 * Quizzing
 			 * @enum {string}
@@ -799,6 +925,16 @@ export interface components {
 		SettingsStatus: {
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
+			tools?: components['schemas']['ToolSettings'];
+			/** Worker Request Concurrency */
+			worker_request_concurrency?: number | null;
+			/** Demo Browser */
+			demo_browser?: string | null;
+			/**
+			 * Search Engine
+			 * @enum {string}
+			 */
+			search_engine?: 'native' | 'tavily' | 'brave';
 			/**
 			 * Quizzing
 			 * @enum {string}
@@ -898,6 +1034,29 @@ export interface components {
 			is_error: boolean;
 			details?: components['schemas']['JsonValue'];
 		};
+		/** ToolSettings */
+		ToolSettings: {
+			/**
+			 * Research
+			 * @default true
+			 */
+			research: boolean;
+			/**
+			 * Demo
+			 * @default true
+			 */
+			demo: boolean;
+			/**
+			 * Visual
+			 * @default true
+			 */
+			visual: boolean;
+			/**
+			 * Pdf
+			 * @default true
+			 */
+			pdf: boolean;
+		};
 		/** TurnEvent */
 		TurnEvent: {
 			/**
@@ -978,6 +1137,152 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+	get_search_keys_api_search_keys_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SearchKeysStatus'];
+				};
+			};
+		};
+	};
+	put_search_key_api_search_keys__engine__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				engine: 'tavily' | 'brave';
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['SearchKeyBody'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SearchKeysStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	delete_search_key_api_search_keys__engine__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				engine: 'tavily' | 'brave';
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SearchKeysStatus'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_demo_browser_api_demo_browser_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DemoBrowser'];
+				};
+			};
+		};
+	};
+	get_browser_download_api_demo_browser_download_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BrowserDownloadProgress'];
+				};
+			};
+		};
+	};
+	start_browser_download_api_demo_browser_download_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BrowserDownloadProgress'];
+				};
+			};
+		};
+	};
 	health_api_health_get: {
 		parameters: {
 			query?: never;
