@@ -62,6 +62,45 @@ test('other_escape_keeps_the_selection_and_enter_submits_the_custom_answer', asy
 	expect(answers[0]).toMatchObject({ other: 'Five', answers: [] });
 });
 
+test.each([
+	['Your thinking', parseQuestionInput('probe', probeArguments)!],
+	['Your answer', parseQuestionInput('ask_user_question', { question: 'Which number?' })!]
+] as const)('shows the keyboard hint beside %s', async (field, question) => {
+	const screen = await render(QuestionDock, {
+		question,
+		expanded: true,
+		busy: false,
+		modelMenuOpen: false,
+		onexpand: () => {},
+		onstop: () => {},
+		onsubmit: () => {}
+	});
+	await expect.element(screen.getByRole('textbox', { name: field })).toBeVisible();
+	const hint = screen.getByText('↵ submits · ⇧↵ newline', { exact: true });
+	await expect.element(hint).toBeVisible();
+	await expect.element(hint).toHaveAttribute('aria-hidden', 'true');
+});
+
+test('space_activates_the_submit_button_after_walking_the_rows', async () => {
+	const answers: QuestionAnswer[] = [];
+	const screen = await render(QuestionDock, {
+		question: parseQuestionInput('probe', probeArguments)!,
+		expanded: true,
+		busy: false,
+		modelMenuOpen: false,
+		onexpand: () => {},
+		onstop: () => {},
+		onsubmit: (answer) => answers.push(answer)
+	});
+	await userEvent.keyboard('{ArrowDown} ');
+	const submit = screen.getByRole('button', { name: 'Submit answer' });
+	await expect.element(submit).toBeEnabled();
+	submit.element().focus();
+	await userEvent.keyboard(' ');
+	expect(answers).toHaveLength(1);
+	expect(answers[0]).toMatchObject({ correct: true });
+});
+
 test('escape_prioritizes_an_open_overlay_then_the_pending_question_then_the_turn', () => {
 	expect(escAbortTarget({ overlay: true, pending: true, busy: true })).toBeNull();
 	expect(escAbortTarget({ overlay: false, pending: true, busy: true })).toBe('question');

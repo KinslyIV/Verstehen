@@ -367,18 +367,23 @@
 						onkeydown={fieldKey}
 					/>
 				{/if}
-				<InputGroup.Addon align="block-end" class="justify-end">
-					{@render models?.()}
-					{#if busy}<Button
-							type="button"
-							size="icon-sm"
-							variant="ghost"
-							aria-label="Stop"
-							onclick={onstop}
-						>
-							<Square class="size-4" />
-						</Button>{/if}
-					<Button type="submit" size="sm" disabled={!canSubmit || busy}>Submit answer</Button>
+				<InputGroup.Addon align="block-end" class="flex-wrap">
+					<span aria-hidden="true" class="text-xs font-normal text-muted-foreground">
+						↵ submits · ⇧↵ newline
+					</span>
+					<div class="ml-auto flex items-center gap-2">
+						{@render models?.()}
+						{#if busy}<Button
+								type="button"
+								size="icon-sm"
+								variant="ghost"
+								aria-label="Stop"
+								onclick={onstop}
+							>
+								<Square class="size-4" />
+							</Button>{/if}
+						<Button type="submit" size="sm" disabled={!canSubmit || busy}>Submit answer</Button>
+					</div>
 				</InputGroup.Addon>
 			</InputGroup.Root>
 		</form>

@@ -297,5 +297,7 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   The thread shows answered and skipped cards, malformed recovery, and the Esc confirm dialogs.
   The controller preserves multiple responses per turn and resumes unfinished reactions on
   mount or sync. Settings → Lesson saves Quizzing.
+- **T2 review round 2:** Restored the keyboard hint in both dock modes, kept the model menu
+  beside Submit, and restored Space activation for focused buttons outside the answer rows.
 - **Next:** Review T2 against the approved M4 plan, then integrate M4. Teach-phase reveal and
   reading thinking are scheduled for M5.

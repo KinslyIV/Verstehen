@@ -4,6 +4,17 @@ import { selectOption, startLesson } from './questions';
 test.use({ script: 'verify/scripts/question-probe-answer.json' });
 
 for (const theme of ['dark', 'light']) {
+	test(`question-probe-answer-dock-${theme}`, async ({ page }) => {
+		await page.addInitScript((theme) => localStorage.setItem('mode-watcher-mode', theme), theme);
+		await startLesson(page);
+		const dock = page.getByTestId('question-dock');
+		await expect(dock.getByText('↵ submits · ⇧↵ newline', { exact: true })).toBeVisible();
+		await expect(dock.getByRole('button', { name: 'Choose model' })).toBeVisible();
+		await expect(dock.getByRole('button', { name: 'Submit answer' })).toBeDisabled();
+		await selectOption(page, 'Zero');
+		await expect(dock.getByRole('button', { name: 'Submit answer' })).toBeEnabled();
+	});
+
 	test(`question-probe-answer-${theme}`, async ({ page }) => {
 		await page.addInitScript((theme) => localStorage.setItem('mode-watcher-mode', theme), theme);
 		await startLesson(page);

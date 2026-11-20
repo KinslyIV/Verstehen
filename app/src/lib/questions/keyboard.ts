@@ -18,12 +18,14 @@ export function questionShortcut(
 	const target = event.target as HTMLElement | null;
 	const typing = isTypingSurface(target);
 	const modded = event.ctrlKey || event.metaKey;
+	const activationControl = target?.closest('a, button:not([data-question-row])');
 	if (
 		event.key === 'Enter' &&
 		canSubmit &&
 		(!event.shiftKey || modded) &&
 		(!typing || modded) &&
-		!target?.closest('[role="dialog"], a, button:not([data-question-row])')
+		!activationControl &&
+		!target?.closest('[role="dialog"]')
 	) {
 		return { type: 'submit' } as const;
 	}
@@ -41,7 +43,7 @@ export function questionShortcut(
 		case 'ArrowUp':
 			return { type: 'walk', index: Math.max((index ?? rows) - 1, 0) } as const;
 		case ' ':
-			if (index !== null) return { type: 'pick', index } as const;
+			if (index !== null && !activationControl) return { type: 'pick', index } as const;
 			return;
 		case 'ArrowLeft':
 		case 'ArrowRight':
