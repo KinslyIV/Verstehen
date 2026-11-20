@@ -298,6 +298,58 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sessions/{session_id}/side-chats': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Side Chats */
+		get: operations['list_side_chats_api_sessions__session_id__side_chats_get'];
+		put?: never;
+		/** Ask Side Chat */
+		post: operations['ask_side_chat_api_sessions__session_id__side_chats_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sessions/{session_id}/side-chats/{thread_id}/stream': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Stream Side Chat */
+		get: operations['stream_side_chat_api_sessions__session_id__side_chats__thread_id__stream_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sessions/{session_id}/side-chats/{thread_id}/stop': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Stop Side Chat */
+		post: operations['stop_side_chat_api_sessions__session_id__side_chats__thread_id__stop_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/settings': {
 		parameters: {
 			query?: never;
@@ -924,7 +976,12 @@ export interface components {
 			 * @enum {string}
 			 */
 			type:
-				'turn-started' | 'turn-settled' | 'chats-changed' | 'compaction-changed' | 'jobs-changed';
+				| 'turn-started'
+				| 'turn-settled'
+				| 'chats-changed'
+				| 'compaction-changed'
+				| 'jobs-changed'
+				| 'side-chats-changed';
 			/** Session Id */
 			session_id: string;
 			/** Running */
@@ -1069,6 +1126,7 @@ export interface components {
 			model_id?: string | null;
 			/** Thinking Level */
 			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+			side_segments: components['schemas']['SideSegments'];
 			/** Entries */
 			entries: (
 				| components['schemas']['UserEntry']
@@ -1169,6 +1227,99 @@ export interface components {
 			compaction_limit?: number | null;
 			/** File Access Error */
 			file_access_error?: string | null;
+		};
+		/** SideAnchor */
+		SideAnchor: {
+			/** Entry Id */
+			entry_id: string;
+			/**
+			 * Block Text
+			 * @default
+			 */
+			block_text: string;
+		};
+		/** SideChatList */
+		SideChatList: {
+			/** Threads */
+			threads: components['schemas']['SideThread'][];
+			/** Answering */
+			answering: {
+				[key: string]: string;
+			};
+		};
+		/** SideExchange */
+		SideExchange: {
+			/** Id */
+			id?: string;
+			/**
+			 * Role
+			 * @enum {string}
+			 */
+			role: 'user' | 'assistant';
+			/** Text */
+			text: string;
+			/** Quotes */
+			quotes?: string[];
+			/** Model */
+			model?: string | null;
+			/** Request Id */
+			request_id?: string | null;
+			/**
+			 * Stopped
+			 * @default false
+			 */
+			stopped: boolean;
+			/** Error */
+			error?: string | null;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at?: string;
+			/**
+			 * Pending
+			 * @default false
+			 */
+			pending: boolean;
+		};
+		/** SideSegments */
+		SideSegments: {
+			/** By Entry */
+			by_entry: {
+				[key: string]: string;
+			};
+			/** Entry Points */
+			entry_points: {
+				[key: string]: string;
+			};
+			/** Current */
+			current: string | null;
+		};
+		/** SideStreamEvent */
+		SideStreamEvent: {
+			/**
+			 * Type
+			 * @enum {string}
+			 */
+			type: 'thread' | 'text' | 'done' | 'error';
+			thread?: components['schemas']['SideThread'] | null;
+			/** Text */
+			text?: string | null;
+			/** Error */
+			error?: string | null;
+		};
+		/** SideThread */
+		SideThread: {
+			/** Id */
+			id: string;
+			anchor: components['schemas']['SideAnchor'];
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at?: string;
+			/** Messages */
+			messages?: components['schemas']['SideExchange'][];
 		};
 		/** SignInStarted */
 		SignInStarted: {
@@ -2315,6 +2466,265 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['JobNotRunning'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	list_side_chats_api_sessions__session_id__side_chats_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SideChatList'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	ask_side_chat_api_sessions__session_id__side_chats_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': {
+					/** Thread Id */
+					thread_id?: string | null;
+					anchor?: {
+						/** Entry Id */
+						entry_id: string;
+						/**
+						 * Block Text
+						 * @default
+						 */
+						block_text?: string;
+					} | null;
+					/**
+					 * Text
+					 * @default
+					 */
+					text?: string;
+					/** Quotes */
+					quotes?: string[];
+					/**
+					 * Retry
+					 * @default false
+					 */
+					retry?: boolean;
+					/** Request Id */
+					request_id?: string | null;
+					/** Working */
+					working?: string | null;
+				};
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SideThread'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json':
+						| components['schemas']['ModelsNotConfigured']
+						| components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	stream_side_chat_api_sessions__session_id__side_chats__thread_id__stream_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				thread_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'text/event-stream': components['schemas']['SideStreamEvent'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	stop_side_chat_api_sessions__session_id__side_chats__thread_id__stop_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+				thread_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
 				};
 			};
 			/** @description Validation Error */

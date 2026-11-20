@@ -13,6 +13,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	streamTurn: vi.fn()
 }));
 const record = (entries: api.Entry[] = [], busy = false): api.SessionDetail => ({
+	side_segments: { by_entry: {}, entry_points: {}, current: null },
 	id: 'one',
 	title: 'Lesson',
 	kind: 'teach',

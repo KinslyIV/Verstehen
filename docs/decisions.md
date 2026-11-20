@@ -4,6 +4,13 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1 review):** The GPT-6.1 Sol implementer hit the ChatGPT usage limit after its checks passed but before committing; the orchestrator finished the review, reran `make check` and `make verify`, and committed. Review change: prompt-override reading is one shared `fragment_text` / `join_fragments` in `teaching/prompts.py`, used by both the teacher and the side helper (it was duplicated). | One way to do each thing. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, thread-scoped exchange ids):** Use PRIMARY KEY(thread_id, id) and UNIQUE(thread_id, seq) for side exchanges. LearnHarness sets question ids from requestId and deduplicates within a thread; reusing one on another segment must retain both questions. Usage remains keyed by each generated answer id. | See the decision text. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, valid Unicode clipping):** Keep LearnHarness's UTF-16 limits and counts. When clipping would split a surrogate pair, the shared clip helper drops the incomplete character before adding the quote ellipsis (or without an ellipsis for the anchor). Python/Pydantic reject the lone surrogate LH's slice can produce; this keeps persisted and streamed text valid Unicode. | See the decision text. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, side answer context reserve):** Use the known context limit minus COMPACTION_RESERVE_TOKENS (16,384), clamped at 1; skip the size check when unknown. LH uses min(reserve, maxTokens), but our model catalog has no maximum output token field. This follows M6's existing reserve without extending the catalog. | See the decision text. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, backend side chat shapes):** Use snake_case API fields. SideAnchor contains `entry_id` and server-filled `block_text`; client text is ignored and part/block coordinates are omitted. Session detail's `side_segments` contains `by_entry`, `entry_points`, and `current`. Each boundary is the last visible assistant entry in its segment (prose or a displayable question), including boundaries within one run. Threads contain `id`, `anchor`, `created_at`, and `messages`; exchange fields use the same snake_case convention. LearnHarness's `c_` prefix marks client optimistic ids (`components/session-core.ts:90`). Our server projection sees saved entries only; no equivalent or prefix filter is needed. | See the decision text. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, shared compaction functions):** Move the pure `session/compaction.py` module unchanged to `teaching/compaction.py`, updating all imports and documentation without a compatibility shim. Side chat reuses its cut lookup, UTF-16 counting, and reserve constant. Duplicating those functions would violate the single pattern rule; importing them from session would violate package order. | See the decision text. |
+| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, side chat dependency direction):** SideChatService stays in `sidechat/service.py`, with injected `before_ask(session_id)` (compaction wait), `announce(session_id)`, and the session lock. Its refusal type lives in `sidechat/`; API routes map it to HTTP. SessionService receives SideChatService and stops its live answers when deleting a session. This keeps dependencies within the declared layers. | See the decision text. |
 | 2026-11-20 | **User decision:** The M8 plan is approved ([plan](plans/m8-side-chat.md)), including the orchestrator's proposals (server-side segments, the unported pieces, `sideQuestion` usage rows). M7 has merged, so T1–T3 run in order on `m8-plan`. | Plan → implement. |
 | 2026-11-20 | **User decision (M8 planning):** M8 runs in two groups. Group 1 (segments, redacted lesson document, helper call, thread storage, routes, UI) starts off `main` now; group 2 (delivery through the context-update step, budget, admission, marker handling) starts after M7 T4 merges ([plan](plans/m8-side-chat.md)). | Delivery needs M7's context-update step; the rest doesn't. |
 | 2026-11-20 | **User decision (M8 planning, behavior change from LH):** The side chat is a "Side chat" tab in the right panel. With no thread open it shows the current segment's thread, and Close returns there. LH's floating, draggable, resizable window and pin-to-dock mode are not ported, and there is no thread list. | Fits our right-panel layout. |
@@ -557,26 +564,3 @@ Probe, plan, teach, as in LH.
 - **Orchestrator decision, for user review:** browser download progress exposes the bundled
   driver's latest output line (bounded to 500 characters) and its percentage when available,
   rather than inventing byte counts the driver does not report.
-
-### Orchestrator decision, for user review (M8 T1): side chat dependency direction
-
-SideChatService stays in `sidechat/service.py`, with injected `before_ask(session_id)`
-(compaction wait), `announce(session_id)`, and the session lock. Its refusal type lives in
-`sidechat/`; API routes map it to HTTP. SessionService receives SideChatService and stops
-its live answers when deleting a session. This keeps dependencies within the declared layers.
-
-### Orchestrator decision, for user review (M8 T1): shared compaction functions
-
-Move the pure `session/compaction.py` module unchanged to `teaching/compaction.py`, updating
-all imports and documentation without a compatibility shim. Side chat reuses its cut lookup,
-UTF-16 counting, and reserve constant. Duplicating those functions would violate the single
-pattern rule; importing them from session would violate package order.
-
-### Orchestrator decision, for user review (M8 T1): backend side chat shapes
-
-Use snake_case API fields. SideAnchor contains `entry_id` and server-filled `block_text`;
-client text is ignored and part/block coordinates are omitted. Session detail's `side_segments`
-contains `by_entry`, `entry_points`, and `current`. Each boundary is the last visible assistant
-entry in its segment (prose or a displayable question), including boundaries within one run.
-Threads contain `id`, `anchor`, `created_at`, and `messages`; exchange fields use the same
-snake_case convention. Sources with LearnHarness's `c_` prefix are excluded from entry points.

@@ -482,3 +482,17 @@ Each case also retains `trace.zip`; the separate evidence rerun preserves the fu
 | Composer steering | `composer-steer.flow.ts-composer-steer/{queued.png,screenshot.png}` | Quiet queued text above the composer, then a landed learner message in the same run with no retry line. |
 | Delete with jobs | `delete-jobs-running.flow.ts-delete-jobs-running/{jobs-running.png,screenshot.png}` | Exact running-jobs refusal and Try again; successful retry returns to an empty session list. |
 | Figure and photo | `m7-t5-evidence/job-visual-annotate.flow.ts-job-visual-annotate/{figure.png,screenshot.png}` | Inverted standalone figure with its switch; annotated photo retains natural colors and hides inversion. |
+
+## M8 progress
+
+- **Plan approved** ([plan](plans/m8-side-chat.md)). M7 merged first, so T1–T3 run in order on
+  `m8-plan`.
+- **T1 side chat backend: done.** Segments (server-side `side_segments`), the redacted lesson
+  document, model turns, the tool-less helper, `side_threads`/`side_exchanges`,
+  `SideChatService` (ask, retry, request ids, stop, reattach, size check, usage), routes with SSE,
+  and `side-chats-changed`. The pure compaction module moved to `teaching/compaction.py`.
+  Evidence: `make check` (669 backend, 184 frontend tests) and `make verify` 76/77; the one
+  failure, `job-recovery-reload` (aborted `/api/jobs` polls during reload), passed 3/3 on rerun.
+- **Next:** T2 side chat UI, then T3 delivery to the teacher.
+- **Flagged:** `job-recovery-reload` (M7) is flaky: an aborted jobs poll during reload counts as a
+  browser error.

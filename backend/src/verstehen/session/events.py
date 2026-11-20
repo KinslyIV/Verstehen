@@ -34,6 +34,7 @@ class Notification(BaseModel):
         "chats-changed",
         "compaction-changed",
         "jobs-changed",
+        "side-chats-changed",
     ]
     session_id: str
     running: bool | None = None

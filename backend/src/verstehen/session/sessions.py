@@ -11,6 +11,8 @@ from verstehen.session.projection import failed_response_at_end
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.titles import title_from_prompt
+from verstehen.sidechat.segments import SideSegments, side_segments
+from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
 from verstehen.store.jobs import JobsStore
@@ -33,6 +35,7 @@ class SessionSnapshot:
     turn_error: str | None
     compacting: bool
     artifact_views: dict[str, bool]
+    side_segments: SideSegments
 
 
 class SessionService:
@@ -50,6 +53,7 @@ class SessionService:
         jobs_store: JobsStore,
         artifact_views_store: ArtifactViewsStore,
         data_dir: Path,
+        side_chat_service: SideChatService | None = None,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
@@ -59,6 +63,7 @@ class SessionService:
         self.jobs_store = jobs_store
         self.artifact_views_store = artifact_views_store
         self.data_dir = data_dir
+        self.side_chat_service = side_chat_service
 
     async def list(self) -> List[ListedSession]:
         listed = []
@@ -104,6 +109,7 @@ class SessionService:
                 runtime.failure or (failed.error_text if failed else None),
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
+                side_segments(entries),
             )
 
     async def set_artifact_view(
@@ -194,6 +200,8 @@ class SessionService:
                         "job_ids": [job.id for job in running],
                     },
                 )
+            if self.side_chat_service is not None:
+                self.side_chat_service.stop_all(session_id)
             orphaned = await self.sessions_store.unreferenced_image_hashes(session_id)
             await self.sessions_store.delete(session_id)
             runtime.mark_deleted()

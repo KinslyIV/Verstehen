@@ -136,3 +136,17 @@ Verify offline with `backend/tests/test_jobs.py`; the T5 flows below cover the U
 | Composer steering | While a turn runs, type and press Enter or Send; queued text sits above the composer until it lands in the same run. | `composer-steer` | Composer/controller tests: Enter/Send/Stop, steer versus send, raced 409 fallback, context-update landing. |
 | Job recovery | Reopen/reload a session after a restart: fetch jobs to deliver pending results and rerun interrupted work. | `job-recovery-reload` (actual sidecar restart with seeded pending delivery and an orphaned worker) | `test_jobs.py`: recovery sweep and delivery idempotence. |
 | Delete with running jobs | Session context menu → Delete; running work gives the server error and Try again. | `delete-jobs-running` | `test_jobs.py`: refusal and cleanup. |
+
+## Side chat backend (M8 T1)
+
+Session detail exposes `side_segments` (`by_entry`, `entry_points`, `current`).
+`GET/POST /api/sessions/{id}/side-chats` lists or starts durable segment conversations;
+`GET …/{thread}/stream` replays and streams helper text through SSE; `POST …/{thread}/stop`
+keeps partial text. `side-chats-changed` announces starts and settlements. The helper receives
+visible lesson content with open-question keys hidden and uses the session's foreground model.
+The UI arrives in T2; delivery to the teacher arrives in T3.
+
+Verify offline with `backend/tests/test_side_chat.py` and `test_side_chat_api.py`: segment
+boundaries, shuffled open quizzes, answered questions, compaction redaction, model turns and
+input limits, durable threads, request deduplication, stop/retry/reload, context limits, tool-less
+helpers, usage admission, prompt overrides, role-isolated scripts, and session deletion.

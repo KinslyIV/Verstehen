@@ -13,6 +13,7 @@ from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
 from verstehen.session.sessions import SessionService
 from verstehen.session.turns import TurnInput, TurnService
+from verstehen.sidechat.segments import SideSegments
 from verstehen.store.entries import Entry
 from verstehen.store.sessions import Session
 from verstehen.store.settings import ModelPick, SlotName
@@ -76,6 +77,7 @@ class SessionList(BaseModel):
 
 
 class SessionDetail(Session):
+    side_segments: SideSegments
     entries: list[Entry]
     turn_in_flight: bool
     turn_error: str | None
@@ -141,6 +143,7 @@ async def get_session(session_id: str, session_service: SessionServiceDependency
     return SessionDetail(
         **result.session.model_dump(),
         entries=result.entries,
+        side_segments=result.side_segments,
         turn_in_flight=result.turn_in_flight,
         turn_error=result.turn_error,
         compacting=result.compacting,

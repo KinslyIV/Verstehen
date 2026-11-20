@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -14,6 +15,7 @@ from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
+from verstehen.api.side_chats import router as side_chats_router
 from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
 from verstehen.jobs.runner import JobRunner
@@ -36,6 +38,7 @@ from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.sessions import SessionService
 from verstehen.session.titles import TitleService
 from verstehen.session.turns import TurnService
+from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore
@@ -43,6 +46,7 @@ from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
+from verstehen.store.side_chats import SideChatsStore
 from verstehen.store.usage import UsageStore
 
 
@@ -119,6 +123,30 @@ def create_app(settings: Settings) -> FastAPI:
                 jobs_changed,
                 settings.provider_events,
             )
+
+            async def before_side_ask(session_id: str) -> None:
+                if task := runtimes.get(session_id).compaction:
+                    await asyncio.shield(task)
+
+            def side_chats_changed(session_id: str) -> None:
+                notifications.publish(
+                    Notification(type="side-chats-changed", session_id=session_id)
+                )
+
+            side_chat_service = SideChatService(
+                sessions_store,
+                entries_store,
+                SideChatsStore(database),
+                settings_store,
+                resolver_service,
+                provider_policy,
+                settings.data_dir,
+                before_side_ask,
+                side_chats_changed,
+                lambda session_id: runtimes.get(session_id).lock,
+                settings.provider_events,
+            )
+            app.state.side_chat_service = side_chat_service
             app.state.session_service = SessionService(
                 sessions_store,
                 entries_store,
@@ -128,6 +156,7 @@ def create_app(settings: Settings) -> FastAPI:
                 jobs_store,
                 ArtifactViewsStore(database),
                 settings.data_dir,
+                side_chat_service,
             )
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
@@ -156,6 +185,7 @@ def create_app(settings: Settings) -> FastAPI:
                 yield
             finally:
                 await turn_service.delivery_service.close()
+                await side_chat_service.close()
                 await job_runner.close()
                 await browser_download_service.close()
                 await runtimes.close()
@@ -205,6 +235,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(sessions_router)
     app.include_router(images_router)
     app.include_router(jobs_router)
+    app.include_router(side_chats_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

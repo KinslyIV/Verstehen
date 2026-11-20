@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -49,6 +50,7 @@ test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', 
 });
 test('failed_saved_reply_offers_retry_after_reload', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -71,6 +73,7 @@ test('failed_saved_reply_offers_retry_after_reload', async () => {
 
 test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -107,6 +110,7 @@ test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 
 test('compacting_session_shows_the_indicator_and_disables_send_and_submit', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -124,6 +128,7 @@ test('compacting_session_shows_the_indicator_and_disables_send_and_submit', asyn
 
 test('saved_compaction_draws_the_moment_line_and_the_cut_divider', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -171,6 +176,7 @@ test('dispatch_card_follows_the_session_feed_by_tool_call_id', async () => {
 	};
 	vi.mocked(api.getJobs).mockResolvedValue({ jobs: [unrelated, matching], turn_in_flight: false });
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Research',
 		kind: 'teach',
