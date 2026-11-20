@@ -279,6 +279,10 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
 
+4. **M6 compaction:** plan approved on `m6-plan` ([M6 plan](plans/m6-compaction.md)); T1
+   (backend) is next, then T2 (UI). The append-only marker question is decided (marker appended at the end, see
+   decisions).
+
 ## Open questions
 
 - **Known streaming performance limit (T4):** one huge paragraph re-parses as one block, as in LH.
@@ -290,10 +294,11 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   only three or four large text chunks, with 100 ms delay and backend coalescing. The approved
   block approach is retained; no further profiling or renderer redesign in T4.
 
-- **M6 compaction vs. the append-only log:** at `cb25c8e`, LH inserts the compaction marker where
-  the summarized chat ended, before messages appended during summarization, and keeps learner edits
-  made meanwhile (`src/server/compaction.ts:250-264`). Decide how the entry log reproduces this when
-  planning M6.
+- **ChatGPT encrypted reasoning is not resent (fix after M6):** turns save the thinking text and
+  signature but not the reasoning item id (`session/turns.py:503`), and the projection rebuilds
+  thinking without it (`session/projection.py:82`). Pydantic AI then sends only the visible
+  summary text, while LH resends the encrypted reasoning to the same model. Plan it as its own
+  fix after M6.
 - Later providers remain in [architecture](architecture.md#open-questions).
 
 - **Load-sensitive frontend tests:** `right_panel_open_state_and_width_are_remembered` (M1 layout)

@@ -4,6 +4,13 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **User decision (M6):** M6 builds on `main` on branch `m6-plan`: T1 backend, then T2 UI on T1. The implementer is **GPT-6.2 Sol** (`gpt-6.2-sol`), medium, default tier. | Same shape as M5. |
+| 2026-11-20 | **User decision:** The M6 plan is approved ([plan](plans/m6-compaction.md)). | Plan → implement. |
+| 2026-11-20 | **User decision (M6 planning, behavior change from LH):** The compaction marker is appended at the end of the entry log, with `details.last_summarized_entry_id` naming where the summarized transcript ended; the UI draws "Context compacted" after that entry. Code that reads the end of a session (pending question, dismissal pause, continuation, handoff, failure banner) skips compaction markers. Retry still stops at one, as in LH. | LH rewrites its record to insert the marker before entries appended during the summary (`src/server/compaction.ts:258-264`); our log is append-only. The model sees the same summary and kept tail either way. |
+| 2026-11-20 | **User decision (M6 planning):** `AssistantEntry` carries an optional `usage` (input, output, cache read, cache write, reasoning tokens) from the same `ModelResponse`. The `usage` table stays the cost record. Entries without usage use the 4-characters-per-token estimate. | LH's estimate anchors on the last reply's provider-reported usage, which LH stores on the message. |
+| 2026-11-20 | **User decision (M6 planning, behavior change from LH):** No "include reasoning" compaction setting. If ChatGPT encrypted reasoning is ever resent, the estimate always counts such a reply at least at its saved output tokens. | Verstehen does not resend encrypted reasoning today (`session/turns.py:503` drops the reasoning item id), so the switch would correct nothing. The missing resend is a separate fix after M6. |
+| 2026-11-20 | **User decision (M6 planning):** No context meter in M6. LH's stats bar (context, cost, per-turn usage) is added to M11. | Compaction works without it; the bar is a larger feature of its own. |
+| 2026-11-20 | **User decision (M6 planning):** Settings → Lesson gets a third card, "Compaction limit" (hint "Summarize older history when the lesson's context passes this many tokens"): a number field committing on blur or Enter; empty means 150,000, values below 32,000 are raised to 32,000, invalid input is not saved. `Settings.compaction_limit: int \| None`; the backend applies the same floor. | LH's threshold row and sanitizer (`components/settings/agent-section.tsx:1001-1026`, `src/core/settings.ts:842-850`). |
 | 2026-11-20 | **User decision:** The full test includes a real provider. `make verify-live` runs a browser flow on the app with real Claude Code and `haiku` (the server's logged-in `claude`): start a lesson, the reply ends in a question in the dock, answer it, and the reaction turn streams. Assertions check states, not exact text. It is required with full `make verify` before every merge and after shared UI or runtime changes, not while editing. It is the one standing exception to "real models only when the user asks". | The M5 laptop run failed on its first lesson (prompts missing from the package) although every fake-model check passed. |
 | 2026-11-20 | **Orchestrator decision, for user review (verify-live):** Use a separate Playwright config and artifact directory. Set Main, Cheap, and Vision to Claude Code Haiku at low thinking in the live flow's temporary settings. Use the CLI auth status exit code for the login preflight. | New Session requires all three slots. Its normal first turn can also generate a title through Cheap. The two verification commands retain their own evidence. |
 | 2026-11-20 | **Fix:** The PyInstaller spec bundles `teaching/prompts/**/*.md`, and `verstehen --self-check` fails when a prompt directory is missing. | The package shipped without prompts since M2; the packaged first turn failed with "No such file or directory … prompts/prober". |
@@ -456,7 +463,7 @@ Probe, plan, teach, as in LH.
 ### M6. Compaction
 
 - LH's compaction between runs: threshold, cut, the four-section summary prompt, the marker, and
-  the projection. The limit is a user setting.
+  the projection. The limit is a user setting ([plan](plans/m6-compaction.md)).
 
 ### M7. Background jobs and workers
 
@@ -489,6 +496,8 @@ Probe, plan, teach, as in LH.
 
 ### M11. Smaller features and later providers
 
+- LH's stats bar below the composer: context in use against the model's limit, session cost,
+  and per-turn usage (moved from M6, 2026-11-20).
 - Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
   a prompt-override UI if needed.
 - Later providers: API keys, the custom endpoint, Copilot, and Grok.
