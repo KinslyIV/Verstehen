@@ -1,7 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { get } from 'node:http';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -95,7 +95,7 @@ from verstehen.store.entries import ENTRY, EntriesStore
 
 async def main():
     async with open_database(Path(sys.argv[1]) / "verstehen.db") as database:
-        entries = [ENTRY.validate_python(entry) for entry in json.loads(sys.argv[3])]
+        entries = [ENTRY.validate_python(entry) for entry in json.loads(Path(sys.argv[3]).read_text())]
         await EntriesStore(database).append(sys.argv[2], entries)
 
 asyncio.run(main())
@@ -121,9 +121,11 @@ export const test = base.extend<{
 	},
 	appendEntries: async ({ dataDirectory }, use) => {
 		await use(async (sessionId, entries) => {
+			const file = resolve(dataDirectory, 'append-entries.json');
+			await writeFile(file, JSON.stringify(entries));
 			await runFile(
 				resolve(appDirectory, '../backend/.venv/bin/python'),
-				['-c', appendEntries, dataDirectory, sessionId, JSON.stringify(entries)],
+				['-c', appendEntries, dataDirectory, sessionId, file],
 				{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
 			);
 		});

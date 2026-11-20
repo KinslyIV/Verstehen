@@ -4,6 +4,7 @@ import * as api from '#lib/api/client.js';
 import { questionBatch, questionResult } from '#lib/questions/question-fixtures.js';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
+	dismissQuestion: vi.fn(),
 	getSession: vi.fn(),
 	postInput: vi.fn(),
 	streamTurn: vi.fn()
@@ -19,6 +20,7 @@ const record = (entries: api.Entry[] = [], busy = false): api.SessionDetail => (
 let controller: SessionController;
 beforeEach(() => {
 	vi.mocked(api.getSession).mockReset().mockResolvedValue(record());
+	vi.mocked(api.dismissQuestion).mockReset().mockResolvedValue(false);
 	vi.mocked(api.postInput).mockReset().mockResolvedValue();
 	vi.mocked(api.streamTurn).mockReset().mockResolvedValue(true);
 	controller = new SessionController('one', 1, 20);
@@ -288,4 +290,94 @@ test('saved_plan_is_baseline_and_each_new_successful_plan_opens_only_once', asyn
 	});
 	await controller.attach();
 	expect(onPlan).toHaveBeenCalledOnce();
+});
+
+const compacting = (entries: api.Entry[]): api.SessionDetail => ({
+	...record(entries),
+	compacting: true
+});
+
+test('submissions_wait_while_the_session_compacts', async () => {
+	const entries = [questionBatch('one')];
+	vi.mocked(api.getSession).mockResolvedValue(compacting(entries));
+	await controller.load();
+	controller.draft = 'Hello';
+	await controller.send();
+	await controller.send('retry');
+	await controller.answerQuestion(
+		controller.pendingQuestion!,
+		{ kind: 'quiz' } as never,
+		{} as never
+	);
+	await controller.retryQuestion({ toolCallId: 'one', messageId: 'a', contentIndex: 0, key: 'k' });
+	expect(controller.compacting).toBe(true);
+	expect(api.postInput).not.toHaveBeenCalled();
+	expect(controller.draft).toBe('Hello');
+});
+
+test('a_saved_answer_continues_only_after_compaction_ends', async () => {
+	const entries = [questionBatch('one'), questionResult('one')];
+	vi.mocked(api.getSession).mockResolvedValue(compacting(entries));
+	await controller.load();
+	expect(api.postInput).not.toHaveBeenCalled();
+	vi.mocked(api.getSession).mockResolvedValue(record(entries));
+	await controller.synchronize();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'continue' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('dismissal_stays_available_while_the_session_compacts', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(compacting([questionBatch('one')]));
+	await controller.load();
+	await controller.dismissPending(controller.pendingQuestion!);
+	expect(api.dismissQuestion).toHaveBeenCalledOnce();
+});
+
+test('a_pending_question_and_continuation_ignore_a_compaction_marker_at_the_end', async () => {
+	const marker: api.Entry = {
+		kind: 'marker',
+		entry_id: 'c',
+		marker_type: 'compaction',
+		content: 'Summary',
+		display: true
+	};
+	vi.mocked(api.getSession).mockResolvedValue(record([questionBatch('one'), marker]));
+	await controller.load();
+	expect(controller.pendingQuestion?.toolCallId).toBe('one');
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([questionBatch('one'), questionResult('one'), marker])
+	);
+	await controller.synchronize();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'continue' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('a_failure_behind_a_compaction_marker_shows_but_cannot_retry', async () => {
+	const failed: api.Entry = {
+		kind: 'assistant',
+		entry_id: 'a',
+		parts: [],
+		stop_reason: 'error',
+		error_text: 'Provider failed'
+	};
+	const marker: api.Entry = {
+		kind: 'marker',
+		entry_id: 'c',
+		marker_type: 'compaction',
+		content: 'Summary',
+		display: true
+	};
+	vi.mocked(api.getSession).mockResolvedValue(record([failed, marker]));
+	await controller.load();
+	expect(controller.error).toBe('Provider failed');
+	expect(controller.retryBlocked).toBe(true);
+	vi.mocked(api.getSession).mockResolvedValue(record([marker, failed]));
+	await controller.synchronize();
+	expect(controller.retryBlocked).toBe(false);
 });

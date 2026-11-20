@@ -1,0 +1,19 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Which example should we use next?",
+					"options": [
+						{ "label": "A bike", "description": "Speed on a ride" },
+						{ "label": "A clock", "description": "A moving hand" }
+					]
+				}
+			}
+		],
+		"usage": { "input_tokens": 40000, "output_tokens": 100 }
+	},
+	{ "text": "The learner compared slopes and rates of change.", "delay_ms": 3000 },
+	{ "text": "Let’s use that example.", "delay_ms": 100 }
+]

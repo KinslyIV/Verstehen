@@ -301,7 +301,21 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    400. `make check` passed (453 backend tests; frontend 129 after one rerun of the known
    load-sensitive layout test). `make verify FLOW='teaching-handoff plan-rewrite --workers=1
    --output=verify-output/m6-t1-review'` passed 4 cases; inspected the dark handoff and
-   plan-rewrite screenshots there. Next: T2.
+   plan-rewrite screenshots there.
+   **T2 (UI, implemented, awaiting review):** moment line and cut divider (`session/compaction.ts`),
+   "Compacting context…" in the thread and sidebar, dock hint and disabled Submit, composer Send
+   disabled, controller guards for send, answer, continue, handoff, Retry and Retry question
+   (dismissal allowed), tail readers skip compaction markers (Retry stops at one), and Settings →
+   Lesson → Compaction limit. Decisions are in [decisions](decisions.md) for review. The verify
+   fixture's `appendEntries` now writes a temp file (long history exceeded the argument limit).
+   `make check` passed (453 backend, 144 frontend tests; 15 new Vitest cases). `make verify
+   FLOW='--workers=1'` passed all 58 flows (five new: `compaction-settle` dark/light,
+   `compaction-gate-reload`, `compaction-failed`, `settings-compaction-limit`). Inspected in
+   `app/verify-output/`: `compaction-settle.flow.ts-compaction-settle-{dark,light}/` (`compacting-dock.png`,
+   `compacting-thread.png`, `compacted.png`, `moment.png`), `compaction-gate-reload.flow.ts-compaction-gate-reload/`
+   (`compacting.png`, `compacted.png`, `moment.png`), `compaction-failed.flow.ts-compaction-failed/screenshot.png`,
+   and `settings-compaction-limit.flow.ts-settings-compaction-limit/default.png`. Each retains `trace.zip`.
+   `make verify-live` is left to the orchestrator. Next: T2 review.
 
 ## Open questions
 

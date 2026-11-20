@@ -115,11 +115,15 @@
 						<span class="block truncate text-sm">{session.title}</span><span
 							class="block text-xs text-muted-foreground"
 						>
-							{session.busy ? 'Working…' : timeAgo(session.updated_at, now)}
+							{session.compacting
+								? 'Compacting context'
+								: session.busy
+									? 'Working…'
+									: timeAgo(session.updated_at, now)}
 						</span>
 					</div>
-					{#if session.busy}<LoaderCircle
-							aria-label="Working"
+					{#if session.busy || session.compacting}<LoaderCircle
+							aria-label={session.compacting ? 'Compacting context' : 'Working'}
 							class="size-3 animate-spin text-muted-foreground"
 						/>{/if}
 				</a>

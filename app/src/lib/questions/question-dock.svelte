@@ -33,6 +33,7 @@
 		requiresReveal = false,
 		wasQuestion = false,
 		busy,
+		compacting = false,
 		modelMenuOpen,
 		onexpand,
 		onsubmit,
@@ -46,6 +47,7 @@
 		requiresReveal?: boolean;
 		wasQuestion?: boolean;
 		busy: boolean;
+		compacting?: boolean;
 		modelMenuOpen: boolean;
 		onexpand: () => void;
 		onsubmit: (answer: QuestionAnswer, draft: QuestionDraft) => void;
@@ -76,7 +78,7 @@
 		'flex w-full items-start gap-3 rounded-lg border px-3 py-2 text-left text-sm outline-none transition-colors hover:bg-accent/50 focus-visible:ring-1 focus-visible:ring-ring';
 
 	function submit() {
-		if (!canSubmit || busy) return;
+		if (!canSubmit || busy || compacting) return;
 		onsubmit(
 			buildAnswer(question, {
 				dontKnow: draft.selection.dontKnow,
@@ -436,7 +438,7 @@
 				{/if}
 				<InputGroup.Addon align="block-end" class="flex-wrap">
 					<span aria-hidden="true" class="text-xs font-normal text-muted-foreground">
-						↵ submits · ⇧↵ newline
+						{compacting ? 'compacting session…' : '↵ submits · ⇧↵ newline'}
 					</span>
 					<div class="ml-auto flex items-center gap-2">
 						{@render models?.()}
@@ -449,7 +451,9 @@
 							>
 								<Square class="size-4" />
 							</Button>{/if}
-						<Button type="submit" size="sm" disabled={!canSubmit || busy}>Submit answer</Button>
+						<Button type="submit" size="sm" disabled={!canSubmit || busy || compacting}>
+							Submit answer
+						</Button>
 					</div>
 				</InputGroup.Addon>
 			</InputGroup.Root>

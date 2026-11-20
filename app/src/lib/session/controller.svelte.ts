@@ -20,6 +20,7 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { failedResponseAtEnd } from './compaction.js';
 import { phaseTimeline } from '#lib/teaching/phases.js';
 import { planFromResult, type Plan } from '#lib/teaching/plan.js';
 import { dismissedAnswer, type QuestionDraft } from '#lib/questions/question-core.js';
@@ -51,6 +52,11 @@ export class SessionController {
 		const pending = pendingQuestionOf(this.record?.entries ?? []);
 		return pending?.key === this.submittingQuestion ? undefined : pending;
 	});
+	compacting = $derived(this.record?.compacting ?? false);
+	/** A failed reply behind a compaction cannot be retried (LearnHarness `failedTail`). */
+	retryBlocked = $derived(
+		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
+	);
 	private saved: Entry[] = [];
 	private live: Entry[] = [];
 	private lifetime = new AbortController();
@@ -109,10 +115,7 @@ export class SessionController {
 	}
 
 	private savedFailure(record: SessionDetail): string | null {
-		const last = record.entries.at(-1);
-		return last?.kind === 'assistant' && last.stop_reason === 'error'
-			? (last.error_text ?? 'An error occurred.')
-			: null;
+		return failedResponseAtEnd(record.entries)?.errorText ?? null;
 	}
 
 	async synchronize(): Promise<void> {
@@ -145,6 +148,7 @@ export class SessionController {
 	private async sendAutomaticInput(): Promise<void> {
 		if (
 			this.busy ||
+			this.compacting ||
 			this.error ||
 			this.record?.turn_in_flight ||
 			this.setupOpen ||
@@ -214,7 +218,8 @@ export class SessionController {
 	}
 
 	async send(type: 'text' | 'retry' = 'text'): Promise<void> {
-		if (this.busy || this.loading || (type === 'text' && !this.draft.trim())) return;
+		if (this.busy || this.loading || this.compacting || (type === 'text' && !this.draft.trim()))
+			return;
 		await this.submit(type === 'text' ? { type, text: this.draft } : { type });
 	}
 
@@ -227,7 +232,7 @@ export class SessionController {
 		answer: QuestionAnswer,
 		draft: QuestionDraft
 	): Promise<void> {
-		if (this.busy || pending.key !== this.pendingQuestion?.key) return;
+		if (this.busy || this.compacting || pending.key !== this.pendingQuestion?.key) return;
 		this.questionDrafts.set(pending.key, draft);
 		this.submittingQuestion = pending.key;
 		try {
@@ -238,7 +243,7 @@ export class SessionController {
 	}
 
 	async retryQuestion(occurrence: QuestionOccurrence): Promise<void> {
-		if (this.busy) return;
+		if (this.busy || this.compacting) return;
 		await this.submit({
 			type: 'retry-question',
 			tool_call_id: occurrence.toolCallId,

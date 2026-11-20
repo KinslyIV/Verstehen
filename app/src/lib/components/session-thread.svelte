@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
+	import { LoaderCircle } from '@lucide/svelte';
 	import * as Scroller from '#lib/components/ui/message-scroller/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
@@ -12,6 +13,7 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
@@ -36,6 +38,7 @@
 	const results = $derived(responseResults(controller.entries));
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
 	const pending = $derived(controller.pendingQuestion);
+	const dividers = $derived(compactionDividers(controller.entries));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion>();
@@ -153,6 +156,24 @@
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
+						{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
+								<div
+									role="separator"
+									aria-label="History compacted"
+									data-testid="compaction-cut-divider"
+									class="flex items-center gap-3"
+								>
+									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+									></span>
+									<span
+										class="rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+									>
+										{cutDividerText(dividers.cutBefore.tokensBefore)}
+									</span>
+									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+									></span>
+								</div>
+							</Scroller.Item>{/if}
 						{#if index === phases.teachAt}<Scroller.Item>
 								<PhaseDivider phase="teach" />
 							</Scroller.Item>{/if}
@@ -194,7 +215,7 @@
 										<MalformedQuestion
 											blocked={controller.questionCalls.some(
 												({ question }) => question !== undefined
-											)}
+											) || controller.compacting}
 											onretry={() => void controller.retryQuestion(call)}
 										/>
 									{/each}
@@ -217,8 +238,24 @@
 						{:else if card}
 							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
 						{/if}
+						{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
+							<Scroller.Item>
+								<p
+									data-testid="compaction-moment"
+									class="py-1 text-center text-xs text-muted-foreground/70"
+								>
+									Context compacted
+								</p>
+							</Scroller.Item>
+						{/each}
 					{/each}
-					{#if controller.busy && controller.entries.at(-1)?.kind !== 'assistant'}<p
+					{#if controller.compacting}<p
+							data-testid="compacting-indicator"
+							class="flex shimmer items-center gap-2 text-sm text-muted-foreground"
+						>
+							<LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
+							Compacting context…
+						</p>{:else if controller.busy && controller.entries.at(-1)?.kind !== 'assistant'}<p
 							class="shimmer text-sm text-muted-foreground"
 						>
 							Thinking...
@@ -232,10 +269,10 @@
 			role="alert"
 			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive"
 		>
-			<span>{controller.error}</span>{#if !pending}<Button
+			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
 					variant="outline"
 					size="sm"
-					disabled={controller.busy}
+					disabled={controller.busy || controller.compacting}
 					onclick={() => void controller.send('retry')}
 				>
 					Retry
@@ -275,6 +312,7 @@
 				wasQuestion={controller.questionArrival.wasQuestion}
 				{expanded}
 				busy={controller.busy}
+				compacting={controller.compacting}
 				modelMenuOpen={controller.modelMenuOpen}
 				onexpand={() => void expand()}
 				onsubmit={(answer, draft) => {
@@ -288,6 +326,7 @@
 		<Composer
 			bind:draft={controller.draft}
 			busy={controller.busy}
+			compacting={controller.compacting}
 			disabled={controller.loading}
 			onsend={() => void controller.send()}
 			onstop={() => void controller.stop()}

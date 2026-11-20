@@ -5,6 +5,7 @@
 	let {
 		draft = $bindable(''),
 		busy = false,
+		compacting = false,
 		disabled = false,
 		onsend,
 		onstop,
@@ -12,6 +13,7 @@
 	}: {
 		draft?: string;
 		busy?: boolean;
+		compacting?: boolean;
 		disabled?: boolean;
 		onsend: () => void;
 		onstop?: () => void;
@@ -29,7 +31,7 @@
 			onkeydown={(event) => {
 				if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 					event.preventDefault();
-					if (!busy && !disabled) onsend();
+					if (!busy && !disabled && !compacting) onsend();
 				}
 			}}
 		/>
@@ -42,7 +44,7 @@
 					aria-label="Send"
 					variant="default"
 					size="icon-sm"
-					disabled={disabled || !draft.trim()}
+					disabled={disabled || compacting || !draft.trim()}
 					onclick={onsend}
 				>
 					<ArrowUp class="size-4" />

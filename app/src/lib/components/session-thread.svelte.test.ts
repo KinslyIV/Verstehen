@@ -102,3 +102,50 @@ test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 		expect.any(AbortSignal)
 	);
 });
+
+test('compacting_session_shows_the_indicator_and_disables_send_and_submit', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		compacting: true,
+		entries: [questionBatch('one')]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByTestId('compacting-indicator')).toBeVisible();
+	await expect.element(screen.getByText('compacting session…')).toBeVisible();
+	await screen.getByRole('radio', { name: 'Two' }).click();
+	await expect.element(screen.getByRole('button', { name: 'Submit answer' })).toBeDisabled();
+});
+
+test('saved_compaction_draws_the_moment_line_and_the_cut_divider', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{ kind: 'user', entry_id: 'u1', text: 'first' },
+			{ kind: 'user', entry_id: 'u2', text: 'second' },
+			{
+				kind: 'marker',
+				entry_id: 'm',
+				marker_type: 'compaction',
+				content: 'SECRET SUMMARY',
+				display: true,
+				details: { first_kept_entry_id: 'u2', last_summarized_entry_id: 'u1', tokens_before: 33000 }
+			}
+		]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect
+		.element(screen.getByTestId('compaction-moment'))
+		.toHaveTextContent('Context compacted');
+	await expect
+		.element(screen.getByTestId('compaction-cut-divider'))
+		.toHaveTextContent('History compacted · 33k tok');
+	await expect.element(screen.getByText('SECRET SUMMARY')).not.toBeInTheDocument();
+});
