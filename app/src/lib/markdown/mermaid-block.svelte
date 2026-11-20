@@ -36,13 +36,24 @@
 
 <svelte:window
 	onkeydown={(event) => {
-		if (event.key === 'Escape') expanded = false;
+		if (
+			event.key === 'Escape' &&
+			!event.defaultPrevented &&
+			expanded &&
+			!document.querySelector(
+				'[data-slot="dialog-content"], [data-popover-content][data-state="open"]'
+			)
+		) {
+			event.preventDefault();
+			expanded = false;
+		}
 	}}
 />
 
 <div
 	class="my-4 rounded-lg border border-border bg-background p-3"
 	class:expanded
+	data-mermaid-focus={expanded ? '' : undefined}
 	data-testid="md-mermaid"
 >
 	{#if svg === null && error === null}<div

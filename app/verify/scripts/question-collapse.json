@@ -1,0 +1,30 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "probe",
+				"arguments": {
+					"question": "What is the slope of a horizontal line?",
+					"details": "Think about how its height changes.",
+					"options": [
+						{
+							"label": "Zero",
+							"value": "zero"
+						},
+						{
+							"label": "One",
+							"value": "one"
+						},
+						{
+							"label": "It depends on the height",
+							"value": "height"
+						}
+					],
+					"correctAnswer": "zero",
+					"explanation": "The height is constant, so the slope is zero."
+				}
+			}
+		],
+		"text": "## Example 1\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 2\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 3\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 4\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 5\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 6\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 7\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 8\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 9\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 10\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 11\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 12\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 13\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 14\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 15\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged.\n\n## Example 16\n\nCompare the rise and the run between two points on the same horizontal line. Changing the starting point leaves the ratio unchanged."
+	}
+]

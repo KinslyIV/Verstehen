@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-19.
+> Updated at the end of every piece of work. Last update: 2026-11-20.
 
 ## Where we are
 
@@ -292,5 +292,10 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   Tool calls and results persist in model-response order. Answers, sibling saves, dismissal,
   continuation, and malformed-question recovery are available through the session API.
   Teach quiz/explain builders validate plan nodes through an injected lookup.
-- **Next:** T2 builds the question dock, answered cards, keyboard and Esc behavior, the Quizzing
-  control, and the M4 browser verification flows on this contract.
+- **T2 — question UI.** The dock replaces the composer for probes, recalls, and asks. It supports
+  keyboard navigation, confidence, draft restoration, sibling progression, and scroll collapse.
+  The thread shows answered and skipped cards, malformed recovery, and the Esc confirm dialogs.
+  The controller preserves multiple responses per turn and resumes unfinished reactions on
+  mount or sync. Settings → Lesson saves Quizzing.
+- **Next:** Review T2 against the approved M4 plan, then integrate M4. Teach-phase reveal and
+  reading thinking are scheduled for M5.

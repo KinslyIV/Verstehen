@@ -1,14 +1,26 @@
+import { SvelteMap } from 'svelte/reactivity';
 import {
 	abortSession,
+	dismissQuestion,
 	ApiError,
 	getSession,
 	postInput,
 	streamTurn,
 	type Entry,
+	type QuestionAnswer,
 	type SessionDetail,
 	type TurnEvent,
 	type TurnInput
 } from '#lib/api/client.js';
+
+import {
+	needsContinuation,
+	pendingQuestionOf,
+	questionCallsOf,
+	type PendingQuestion,
+	type QuestionOccurrence
+} from '#lib/questions/pending.js';
+import { dismissedAnswer, type QuestionDraft } from '#lib/questions/question-core.js';
 
 /** Own one mounted session thread's reactive state, send/attach recovery, and saved/live entry merge.
  * Disposal cancels this controller's reads and streams; the backend owns the running turn.
@@ -23,6 +35,15 @@ export class SessionController {
 	notice = $state<string | null>(null);
 	setupOpen = $state(false);
 	modelMenuOpen = $state(false);
+	streamingEntryId = $state<string>();
+	private submittingQuestion = $state<string>();
+	private questionDrafts = new SvelteMap<string, QuestionDraft>();
+	private automaticContinuationBlocked = false;
+	questionCalls = $derived(questionCallsOf(this.record?.entries ?? []));
+	pendingQuestion = $derived.by(() => {
+		const pending = pendingQuestionOf(this.record?.entries ?? []);
+		return pending?.key === this.submittingQuestion ? undefined : pending;
+	});
 	private saved: Entry[] = [];
 	private live: Entry[] = [];
 	private lifetime = new AbortController();
@@ -40,6 +61,12 @@ export class SessionController {
 		this.saved = record.entries;
 		this.live = this.live.filter((entry) => !ids.includes(entry.entry_id));
 		this.entries = [...this.saved, ...this.live];
+		if (this.questionDrafts.size) {
+			const pendingKeys = questionCallsOf(record.entries).map(({ key }) => key);
+			for (const key of this.questionDrafts.keys()) {
+				if (!pendingKeys.includes(key)) this.questionDrafts.delete(key);
+			}
+		}
 	}
 
 	async refresh(): Promise<SessionDetail> {
@@ -62,6 +89,7 @@ export class SessionController {
 			if (this.busy) return;
 			this.error = record.turn_error ?? this.savedFailure(record);
 			if (record.turn_in_flight) void this.attach();
+			else await this.continueIfOwed();
 		} catch (error) {
 			this.fail(error);
 		}
@@ -78,17 +106,32 @@ export class SessionController {
 		} finally {
 			this.loading = false;
 		}
+		await this.continueIfOwed();
+	}
+
+	private async continueIfOwed(): Promise<void> {
+		if (
+			!this.busy &&
+			!this.error &&
+			!this.automaticContinuationBlocked &&
+			!this.lifetime.signal.aborted &&
+			needsContinuation(this.saved)
+		) {
+			await this.submit({ type: 'continue' });
+		}
 	}
 
 	private fail(error: unknown): void {
-		if (!this.lifetime.signal.aborted)
-			this.error = error instanceof Error ? error.message : String(error);
+		if (this.lifetime.signal.aborted) return;
+		this.automaticContinuationBlocked = true;
+		this.error = error instanceof Error ? error.message : String(error);
 	}
 
 	private apply(event: TurnEvent): void {
 		if (event.type === 'error') this.error = event.error_text ?? 'An error occurred.';
 		if (!event.message) return;
 		const message = event.message;
+		this.streamingEntryId = event.type === 'message_end' ? undefined : message.entry_id;
 		if (this.saved.some((entry) => entry.entry_id === message.entry_id)) return;
 		const index = this.live.findIndex((entry) => entry.entry_id === message.entry_id);
 		this.live = index < 0 ? [...this.live, message] : this.live.with(index, message);
@@ -102,6 +145,7 @@ export class SessionController {
 		try {
 			for (let attempt = 0; attempt < 2; attempt++) {
 				this.live = [];
+				this.streamingEntryId = undefined;
 				this.entries = [...this.saved];
 				let done = false;
 				try {
@@ -121,15 +165,81 @@ export class SessionController {
 			this.fail(error);
 			this.busy = false;
 		} finally {
+			this.streamingEntryId = undefined;
 			this.consuming = false;
 		}
 	}
 
 	async send(type: 'text' | 'retry' = 'text'): Promise<void> {
 		if (this.busy || this.loading || (type === 'text' && !this.draft.trim())) return;
+		await this.submit(type === 'text' ? { type, text: this.draft } : { type });
+	}
+
+	getQuestionDraft(key: string): QuestionDraft | undefined {
+		return this.questionDrafts.get(key);
+	}
+
+	async answerQuestion(
+		pending: PendingQuestion,
+		answer: QuestionAnswer,
+		draft: QuestionDraft
+	): Promise<void> {
+		if (this.busy || pending.key !== this.pendingQuestion?.key) return;
+		this.questionDrafts.set(pending.key, draft);
+		this.submittingQuestion = pending.key;
+		try {
+			await this.submit({ type: 'answer', tool_call_id: pending.toolCallId, answer });
+		} finally {
+			this.submittingQuestion = undefined;
+		}
+	}
+
+	async retryQuestion(occurrence: QuestionOccurrence): Promise<void> {
+		if (this.busy) return;
+		await this.submit({
+			type: 'retry-question',
+			tool_call_id: occurrence.toolCallId,
+			message_id: occurrence.messageId,
+			content_index: occurrence.contentIndex
+		});
+	}
+
+	async dismissPending(pending: PendingQuestion): Promise<void> {
+		if (pending.key !== this.pendingQuestion?.key) return;
+		this.submittingQuestion = pending.key;
+		const wasBusy = this.busy;
+		this.busy = true;
+		this.error = null;
+		try {
+			const parked = await dismissQuestion(
+				this.id,
+				{
+					tool_call_id: pending.toolCallId,
+					answer: dismissedAnswer(pending.question.kind, pending.question.question)
+				},
+				this.lifetime.signal
+			);
+			if (parked) {
+				try {
+					await abortSession(this.id);
+				} catch (error) {
+					if (!(error instanceof ApiError) || error.status !== 409) throw error;
+				}
+			}
+			const record = await this.refresh();
+			if (record.turn_in_flight) await this.attach();
+		} catch (error) {
+			this.fail(error);
+		} finally {
+			this.submittingQuestion = undefined;
+			if (!this.consuming && (!wasBusy || !this.record?.turn_in_flight)) this.busy = false;
+		}
+	}
+
+	private async submit(input: TurnInput): Promise<void> {
+		if (input.type !== 'continue') this.automaticContinuationBlocked = false;
 		const text = this.draft;
-		const input: TurnInput = type === 'text' ? { type, text } : { type };
-		if (type === 'text') this.draft = '';
+		if (input.type === 'text') this.draft = '';
 		this.error = null;
 		this.notice = null;
 		this.busy = true;
@@ -155,10 +265,15 @@ export class SessionController {
 			} catch {
 				/* Canonical entries prevent a second opening send. */
 			}
-			await this.refresh();
-			await this.attach();
+			const record = await this.refresh();
+			if (record.turn_in_flight) await this.attach();
+			else {
+				this.error = record.turn_error ?? this.savedFailure(record);
+				this.busy = false;
+			}
 		} catch (error) {
-			if (!accepted && type === 'text') this.draft = text;
+			if (!accepted && input.type === 'text') this.draft = text;
+			this.automaticContinuationBlocked = true;
 			if (error instanceof ApiError && error.code === 'models_not_configured')
 				this.setupOpen = true;
 			else if (error instanceof ApiError && error.code === 'model_unavailable') {
@@ -175,10 +290,11 @@ export class SessionController {
 	}
 
 	async stop(): Promise<void> {
+		if (!this.busy) return;
 		try {
 			await abortSession(this.id);
 		} catch (error) {
-			this.fail(error);
+			if (!(error instanceof ApiError) || error.status !== 409) this.fail(error);
 		}
 	}
 	dispose(): void {

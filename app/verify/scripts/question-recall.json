@@ -1,0 +1,16 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "recall",
+				"arguments": {
+					"question": "What does a derivative measure?",
+					"correctAnswer": "It measures the instantaneous rate of change of a function."
+				}
+			}
+		]
+	},
+	{
+		"text": "Your explanation captures the idea."
+	}
+]

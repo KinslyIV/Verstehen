@@ -1,0 +1,35 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Which example should we use?",
+					"options": [
+						{
+							"label": "A bike",
+							"description": "Speed on a ride"
+						},
+						{
+							"label": "A clock",
+							"description": "A moving hand"
+						}
+					]
+				}
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "What would you like to calculate?"
+				}
+			}
+		]
+	},
+	{
+		"text": "Let’s work through that example."
+	}
+]

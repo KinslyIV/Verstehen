@@ -5,6 +5,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 
 	import SettingsModels from './settings-models.svelte';
+	import SettingsLesson from './settings-lesson.svelte';
 	import SettingsAccounts from './settings-accounts.svelte';
 	let section = $state('Appearance');
 	const themes = [
@@ -23,7 +24,7 @@
 	<div class="mx-auto flex max-w-5xl gap-12 px-6 py-12">
 		<nav aria-label="Settings sections" class="flex w-44 shrink-0 flex-col gap-1">
 			<h1 class="mb-6 px-3 text-lg font-semibold tracking-tight">Settings</h1>
-			{#each ['Appearance', 'Models', 'Accounts'] as item (item)}
+			{#each ['Appearance', 'Models', 'Accounts', 'Lesson'] as item (item)}
 				<Button
 					variant={section === item ? 'secondary' : 'ghost'}
 					class="justify-start"
@@ -51,8 +52,10 @@
 				</div>
 			{:else if section === 'Models'}
 				<SettingsModels />
-			{:else}
+			{:else if section === 'Accounts'}
 				<SettingsAccounts />
+			{:else}
+				<SettingsLesson />
 			{/if}
 		</main>
 	</div>

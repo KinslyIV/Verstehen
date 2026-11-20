@@ -4,6 +4,7 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **Orchestrator decision, for user review:** T2 derives question actions from the saved response and result batch. The live stream displays every assistant response while the record catches up. | T1 emits assistant response boundaries before the adjacent tool results are available to the browser. Using those boundaries as pending-question authority could briefly offer a tool call the model has already rejected or superseded. |
 | 2026-11-19 | **Orchestrator decision, for user review (M4 T1 review):** A `continue` input when no continuation is owed (`needs_continuation` false) saves nothing, starts no turn, and returns OK. LH always runs a turn on `continue`; its client only sends it when owed. | Most cautious: a stale or duplicate continuation (two windows reloading) cannot start an unowed turn. |
 | 2026-11-19 | **Orchestrator decision, for user review:** M4 structural question-argument errors keep LearnHarness's error envelopes and received arguments, with Python JSON and Pydantic diagnostics inside. The question authoring problems, truncation error, and recovery text use LearnHarness's exact wording. | The port validates with Pydantic and preserves raw argument text for repair. |
 | 2026-11-19 | **User decision (M4 run):** M4's implementer subagent is **GPT-6.2 Sol** (`gpt-6.2-sol`), reasoning effort `medium`, default tier. | User instruction when starting M4. |

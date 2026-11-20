@@ -1,0 +1,38 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "probe",
+				"arguments": {
+					"question": "What is the slope of a horizontal line?",
+					"details": "Think about how its height changes.",
+					"options": [
+						{
+							"label": "Zero",
+							"value": "zero"
+						},
+						{
+							"label": "One",
+							"value": "one"
+						},
+						{
+							"label": "It depends on the height",
+							"value": "height"
+						}
+					],
+					"correctAnswer": "zero",
+					"explanation": "The height is constant, so the slope is zero."
+				}
+			},
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Which graph would you like to see next?"
+				}
+			}
+		]
+	},
+	{
+		"text": "Thanks for answering both questions."
+	}
+]

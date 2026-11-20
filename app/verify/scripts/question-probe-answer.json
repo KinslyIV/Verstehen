@@ -1,0 +1,43 @@
+[
+	{
+		"text": "Let’s start with the slope of a straight line.",
+		"title": "Derivatives and slope",
+		"tool_calls": [
+			{
+				"name": "probe",
+				"arguments": "{\"question\":"
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "probe",
+				"arguments": {
+					"question": "What is the slope of a horizontal line?",
+					"details": "Think about how its height changes.",
+					"options": [
+						{
+							"label": "Zero",
+							"value": "zero"
+						},
+						{
+							"label": "One",
+							"value": "one"
+						},
+						{
+							"label": "It depends on the height",
+							"value": "height"
+						}
+					],
+					"correctAnswer": "zero",
+					"explanation": "The height is constant, so the slope is zero."
+				}
+			}
+		]
+	},
+	{
+		"text": "Exactly. A horizontal line never rises or falls. This is the derivative of a constant.",
+		"delay_ms": 400
+	}
+]

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SessionController } from './controller.svelte';
 import * as api from '#lib/api/client.js';
+import { questionBatch, questionResult } from '#lib/questions/question-fixtures.js';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getSession: vi.fn(),
@@ -127,4 +128,45 @@ test('unusable_model_opens_menu_with_reason_and_keeps_the_draft', async () => {
 	expect(controller.notice).toBe('Sign in again.');
 	expect(controller.error).toBeNull();
 	expect(controller.entries).toEqual([]);
+});
+
+test('mount_continues_an_answer_saved_without_its_reaction_once', async () => {
+	const entries = [questionBatch('one'), questionResult('one')];
+	vi.mocked(api.getSession).mockResolvedValue(record(entries));
+	await controller.load();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'continue' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('sync_does_not_automatically_retry_a_failed_continuation', async () => {
+	const entries = [questionBatch('one'), questionResult('one')];
+	vi.mocked(api.getSession).mockResolvedValue(record(entries));
+	vi.mocked(api.postInput).mockRejectedValue(new Error('Network unavailable'));
+	await controller.load();
+	await controller.synchronize();
+	expect(api.postInput).toHaveBeenCalledOnce();
+});
+
+test('a_turn_merges_all_responses_and_keeps_their_saved_results_in_order', async () => {
+	const first = questionBatch('invalid');
+	const last = { ...questionBatch('replacement'), entry_id: 'replacement-message' };
+	const invalid = { ...questionResult('invalid'), is_error: true };
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockImplementation(async (_, receive) => {
+		receive({ type: 'message_start', message: { ...first, parts: [] } });
+		receive({ type: 'message_end', message: first });
+		receive({ type: 'message_start', message: { ...last, parts: [] } });
+		expect(controller.entries).toHaveLength(2);
+		expect(controller.streamingEntryId).toBe(last.entry_id);
+		receive({ type: 'message_end', message: last });
+		vi.mocked(api.getSession).mockResolvedValue(record([first, invalid, last]));
+		return true;
+	});
+	await controller.load();
+	await expect.poll(() => controller.busy).toBe(false);
+	expect(controller.entries).toEqual([first, invalid, last]);
+	expect(controller.pendingQuestion?.toolCallId).toBe('replacement');
 });

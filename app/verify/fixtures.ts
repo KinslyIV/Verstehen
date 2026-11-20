@@ -1,5 +1,5 @@
 import { test as base, expect } from '@playwright/test';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { get } from 'node:http';
@@ -7,8 +7,11 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
+import { promisify } from 'node:util';
+import type { Entry } from '../src/lib/api/client';
 import { fileURLToPath } from 'node:url';
 
+const runFile = promisify(execFile);
 const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 async function freePort(): Promise<number> {
@@ -82,21 +85,55 @@ async function ready(url: string, child: ChildProcess): Promise<void> {
 	throw new Error(`Vite preview was not ready at ${url}`);
 }
 
+const appendEntries = `
+import asyncio
+import json
+import sys
+from pathlib import Path
+from verstehen.store.database import open_database
+from verstehen.store.entries import ENTRY, EntriesStore
+
+async def main():
+    async with open_database(Path(sys.argv[1]) / "verstehen.db") as database:
+        entries = [ENTRY.validate_python(entry) for entry in json.loads(sys.argv[3])]
+        await EntriesStore(database).append(sys.argv[2], entries)
+
+asyncio.run(main())
+`;
+
 export const test = base.extend<{
 	script: string;
+	dataDirectory: string;
+	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	expectedStatuses: number[];
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
-	baseURL: async ({ script, playwright }, use) => {
+	dataDirectory: async ({ script }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
+		try {
+			await use(directory);
+		} finally {
+			await rm(directory, { recursive: true, force: true });
+		}
+	},
+	appendEntries: async ({ dataDirectory }, use) => {
+		await use(async (sessionId, entries) => {
+			await runFile(
+				resolve(appDirectory, '../backend/.venv/bin/python'),
+				['-c', appendEntries, dataDirectory, sessionId, JSON.stringify(entries)],
+				{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
+			);
+		});
+	},
+	baseURL: async ({ script, playwright, dataDirectory }, use) => {
 		const env = Object.fromEntries(
 			Object.entries(process.env).filter(([key]) => !key.startsWith('VERSTEHEN_'))
 		);
 		Object.assign(env, {
-			VERSTEHEN_DATA_DIR: directory,
+			VERSTEHEN_DATA_DIR: dataDirectory,
 			VERSTEHEN_PORT: '0',
 			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
@@ -141,11 +178,7 @@ export const test = base.extend<{
 			}
 			await use(url);
 		} finally {
-			try {
-				await Promise.all(children.map(stop));
-			} finally {
-				await rm(directory, { recursive: true, force: true });
-			}
+			await Promise.all(children.map(stop));
 		}
 	},
 	browserErrors: [

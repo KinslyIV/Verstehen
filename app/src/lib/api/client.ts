@@ -4,6 +4,8 @@ import type { components } from './schema';
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
 export type Entry = SessionDetail['entries'][number];
+export type ToolCallPart = components['schemas']['ToolCallPart'];
+export type QuestionAnswer = components['schemas']['QuestionAnswer'];
 export type TurnInput = components['schemas']['TurnInput'];
 export type TurnEvent = components['schemas']['TurnEvent'];
 export type Notification = components['schemas']['Notification'];
@@ -106,6 +108,18 @@ export async function postInput(id: string, input: TurnInput, signal?: AbortSign
 		body: JSON.stringify(input),
 		signal
 	});
+}
+export async function dismissQuestion(
+	id: string,
+	input: components['schemas']['DismissInput'],
+	signal: AbortSignal
+): Promise<boolean> {
+	const response = await request(`${sessionPath(id)}/dismiss`, {
+		method: 'POST',
+		body: JSON.stringify(input),
+		signal
+	});
+	return response.status === 202;
 }
 export async function abortSession(id: string): Promise<void> {
 	await request(`${sessionPath(id)}/abort`, { method: 'POST' });
