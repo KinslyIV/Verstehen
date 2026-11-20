@@ -4,6 +4,11 @@
 
 | Date | Decision | Reason |
 |---|---|---|
+| 2026-11-20 | **User decision (M9 planning):** The graph canvas is a TypeScript port of LH's own Canvas 2D renderer (`components/graph-canvas.ts`, d3-zoom camera) and its d3-force layout (`src/core/layout.ts`). It replaces "Svelte Flow, d3-force, dagre" in the roadmap and architecture. | LH imports no `@xyflow`; Svelte Flow is a DOM node editor without hulls, label fading, or canvas picking. |
+| 2026-11-20 | **User decision (M9 planning):** The knowledge graph has its own page, `/graph`, opened from a **Knowledge graph** sidebar entry. `/` and `/session/new` keep the plain new-session screen. | Layout change from LH, whose home is the graph. |
+| 2026-11-20 | **User decision (M9 planning):** Session-start picks work on both screens with one shared selection: the new-session screen always shows LH's "Pick nodes" / "N nodes selected" chip with Clear, opening the chains table in pick mode; the graph page shows **Start session** once something is picked. Sending adds LH's `graph-context` marker. | LH shows the chip in teaching mode only when something is picked; the graph has its own page here. |
+| 2026-11-20 | **User decision (M9 planning):** M9 ports all of LH's graph surface: node and source deletion (and the session dialog's "Also remove its graph traces"), source organization, the full render settings panel, the cost pill, and the graph settings (extraction, rendering, chunk tokens, prober graph tools). | Scope. |
+| 2026-11-20 | **User decision (M9 planning):** The graph page settles the layout. The server only stores positions; when the snapshot has nodes without a position, the page runs the TypeScript port of LH's settle and saves it with `PUT /api/graph/positions`. | LH settles on the server after each merge; our server is Python and d3-force is JavaScript. Same deterministic layout, one physics implementation; new nodes are placed when the graph is next opened. |
 | 2026-11-20 | **Orchestrator decision, for user review (M8 review):** The verify fixture ignores an aborted GET to `/api/jobs` (matching the path without its query) like the other aborted polls during reload. | `job-recovery-reload` failed intermittently on a jobs poll the reload itself cancelled. |
 | 2026-11-20 | **Orchestrator decision, for user review (M8 T3):** T3 ran on Claude **Sonnet 5.5, medium effort** (GPT-6.1 Sol still at the usage limit). (1) `side_question` is a `ContextKind`, but its updates are computed from `SideChatService.snapshot` at each model request, never queued. (2) A `steers` turn (wake) whose side updates don't fit is refused with 400 for every provider, not only subscriptions as in LH; for other inputs the markers stay out and the first model request fails with LH's budget error. (3) Turn-start markers are saved with the write-ahead input, as M7 saves its markers. A first request that then fails at dispatch still leaves them saved; a Retry replays them, so the teacher still receives them. Mid-run markers are saved only when admitted. (4) If a budget failure happens after job markers or steers were taken in the same hook, those are released back to pending, not saved. (5) `side_budget_retry_drops` lives in `session/projection.py` (sidechat cannot import session); `to_llm_messages` takes `drops=` instead of `retry=`. | Closest fit to LH within M7's write-ahead model and the import rules. |
 | 2026-11-20 | **Orchestrator decision, for user review (M8 T2 review):** `side-chat-stop-retry` now waits for the retried answer to finish (full text, Send back) before its final screenshot; it previously captured mid-stream. | The screenshot showed Stop still active. |
@@ -543,7 +548,7 @@ Probe, plan, teach, as in LH.
 
 - Propositions, chains, coverage, sources, and checkpoints. Extractor, then auditor (BM25
   candidates), then a deterministic merge in one transaction. Notes imports.
-- **UI:** the graph view (Svelte Flow, d3-force, dagre).
+- **UI:** the graph view (a port of LH's Canvas 2D renderer with d3-zoom and d3-force; decided 2026-11-20).
 
 ### M10. Practice sessions
 

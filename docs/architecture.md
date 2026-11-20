@@ -332,8 +332,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 - **PDF:** pypdfium2. **SVG to PNG:** resvg via `resvg-py` (MIT, the same engine as LH, no native
   library to bundle). It replaced CairoSVG (decided).
-- **UI:** the Svelte versions of LH's React libraries (Svelte Flow for the graph view), plus d3-force,
-  dagre, KaTeX, and Mermaid directly.
+- **UI:** the Svelte versions of LH's React libraries, plus d3-force, d3-zoom, dagre, KaTeX, and
+  Mermaid directly. The graph view ports LH's own Canvas 2D renderer (decided 2026-11-20).
 - **Images** work through the vendored `ClaudeCodeModel` in user messages and tool results
   ([check](decisions.md#image-and-context-window-check-2026-11-18)).
 - **Logging:** a log file in the data dir, plus a debug switch that records raw provider events.
