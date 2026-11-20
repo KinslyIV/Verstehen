@@ -20,7 +20,6 @@ from verstehen.sidechat.helper import (
 )
 from verstehen.sidechat.inputs import SideAskInput, clip
 from verstehen.sidechat.lesson import side_chat_lesson_document
-from verstehen.sidechat.prose import teacher_prose
 from verstehen.sidechat.segments import side_segment_id
 from verstehen.sidechat.turns import SideModelTurn, side_chat_model_turns
 from verstehen.store.entries import EntriesStore
@@ -33,6 +32,7 @@ from verstehen.store.side_chats import (
     SideThread,
 )
 from verstehen.teaching.compaction import COMPACTION_RESERVE_TOKENS, text_chars
+from verstehen.teaching.prose import teacher_prose
 
 logger = logging.getLogger(__name__)
 SIZE_ERROR = "This side conversation and lesson exceed the selected model's context window. Select a model with a larger context window."

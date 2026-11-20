@@ -2,8 +2,8 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 
-from verstehen.sidechat.prose import teacher_prose
 from verstehen.store.entries import Entry, ToolCallPart
+from verstehen.teaching.prose import teacher_prose
 from verstehen.teaching.questions.validation import (
     QUESTION_SCHEMAS,
     is_displayable_question,

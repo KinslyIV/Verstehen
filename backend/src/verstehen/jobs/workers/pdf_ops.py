@@ -2,15 +2,13 @@ import io
 import re
 from contextlib import closing, contextmanager
 from pathlib import Path
-from threading import Lock
 from typing import Any
 
 import pypdfium2 as pdfium
 import regex
 
 from verstehen.teaching.files.access import regular_file
-
-PDFIUM_LOCK = Lock()
+from verstehen.teaching.pdfium import PDFIUM_LOCK
 
 
 @contextmanager

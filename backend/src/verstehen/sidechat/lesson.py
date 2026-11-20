@@ -1,8 +1,8 @@
 from collections.abc import Sequence
 
-from verstehen.sidechat.prose import teacher_prose
 from verstehen.store.entries import Entry, ToolCallPart, ToolResultEntry
 from verstehen.teaching.compaction import active_compaction, kept_index
+from verstehen.teaching.prose import teacher_prose
 from verstehen.teaching.questions.inputs import QuestionAnswer
 from verstehen.teaching.questions.pending import question_calls_of
 from verstehen.teaching.questions.validation import QUESTION_SCHEMAS

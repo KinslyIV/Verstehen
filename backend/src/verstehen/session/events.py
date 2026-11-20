@@ -36,6 +36,7 @@ class Notification(BaseModel):
         "jobs-changed",
         "side-chats-changed",
         "graph-changed",
+        "extractions-changed",
     ]
     session_id: str = ""
     revision: int | None = None

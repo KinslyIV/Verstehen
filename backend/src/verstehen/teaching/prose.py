@@ -4,7 +4,7 @@ from verstehen.store.entries import AssistantEntry, Entry, TextPart, ToolCallPar
 from verstehen.teaching.questions.validation import parse_json
 
 
-def teacher_prose(entry: AssistantEntry, entries: Sequence[Entry]) -> list[str]:
+def failed_output_call_ids(entries: Sequence[Entry]) -> set[str]:
     failed = {
         item.tool_call_id
         for item in entries
@@ -19,6 +19,14 @@ def teacher_prose(entry: AssistantEntry, entries: Sequence[Entry]) -> list[str]:
         for part in item.parts
         if isinstance(part, ToolCallPart) and part.tool_name == "send_to_user"
     )
+    return failed
+
+
+def teacher_prose(
+    entry: AssistantEntry, entries: Sequence[Entry], failed: set[str] | None = None
+) -> list[str]:
+    if failed is None:
+        failed = failed_output_call_ids(entries)
     texts = []
     for part in entry.parts:
         if isinstance(part, TextPart) and part.text.strip():

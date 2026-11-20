@@ -187,3 +187,21 @@ tests in `backend/tests/test_graph.py`; UI flows arrive with their UI tasks.
 | Resting graph positions           | `PUT /api/graph/positions` with an id-to-position map                                                            | Unknown ids/nonfinite values dropped, derived implication ids retained, coordinates clamped, no server settle  |
 | Graph render settings             | `GET/PUT /api/graph/render-settings`                                                                             | Default/legacy size reset, ladder snapping and physics sanitization, persistence tests                         |
 | Graph pipeline costs              | `GET /api/graph/costs`                                                                                           | Stage/source token totals, subscription labels, explicit unpriced calls, notes usage and session cascade tests |
+
+
+### M9 T2 extraction and teaching backend
+
+These routes and hooks work before the T3/T4 UI. Verification is offline in
+`backend/tests/test_extraction.py` and `backend/tests/test_extraction_api.py`.
+
+| Feature | Reach it | Verification |
+|---|---|---|
+| Session coverage | `GET /api/sessions/{id}` → `coverage` | Teacher prose and delivered output only, fingerprints, changed-message reopening, whole-message batching |
+| Automatic extraction | Turn settlement with `graph.enabled`, enough uncovered tokens, and background consent | Budget boundary, disabled/practice skips, consent gate, serial source batches and digest continuation |
+| Extract now | `POST /api/graph/coverage/extract` with `session_id` | Model readiness, running conflict, alias links, coverage/usage persistence, failed batch remains uncovered |
+| Running extraction and End | `GET /api/graph/status`; `POST /api/graph/extractions/{source}/abort`; `extractions-changed` SSE | FIFO audit exclusion, waiter cancellation, immediate abort cleanup, source registry drains |
+| Notes import | Multipart `POST /api/graph/import`: `files`, optional matching relative `paths` | Binary/type/body/file limits, unsafe paths, PDF headings/page cap, deterministic source identity, re-import, busy and aborted outcomes |
+| Session graph context | `POST /api/sessions` with `graph_context.propositions` | First-entry marker, verbatim text, current-graph chains, picks retain supplied wording |
+| Session trace deletion | `DELETE /api/sessions/{id}?mode=preserve-graph` or `delete-nodes` | Both trace modes; turn/job 409 and extraction wind-down 503; cancellation; existing `session-rename-delete` flow |
+| Prober graph tools | `list_sessions` and `list_propositions` when extraction and prober graph tools are enabled | Effective gate permutations; read-only graph session/proposition views |
+| Graph settings | `GET/PUT /api/settings`: `graph`, `agent.graph_tools` | Defaults, finite positive integer/floor sanitization, invalid chunk fallback, tool gating |

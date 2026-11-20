@@ -1,10 +1,13 @@
 import asyncio
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import aclosing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
+from verstehen.graph.context import GraphContext
+from verstehen.graph.coverage import SessionCoverage
+from verstehen.graph.deletion import DeleteMode
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import failed_response_at_end
@@ -36,6 +39,7 @@ class SessionSnapshot:
     compacting: bool
     artifact_views: dict[str, bool]
     side_segments: SideSegments
+    coverage: SessionCoverage | None = None
 
 
 class SessionService:
@@ -64,6 +68,15 @@ class SessionService:
         self.artifact_views_store = artifact_views_store
         self.data_dir = data_dir
         self.side_chat_service = side_chat_service
+        self.graph_context: Callable[[GraphContext], Awaitable[MarkerEntry]] | None = (
+            None
+        )
+        self.graph_coverage: Callable[[str], Awaitable[SessionCoverage]] | None = None
+        self.begin_graph_deletion: Callable[[str], Awaitable[bool]] | None = None
+        self.end_graph_deletion: Callable[[str], None] | None = None
+        self.delete_graph_traces: (
+            Callable[[str, DeleteMode], Awaitable[None]] | None
+        ) = None
 
     async def list(self) -> List[ListedSession]:
         listed = []
@@ -77,7 +90,10 @@ class SessionService:
         return listed
 
     async def create(
-        self, title: str | None, pick: ModelPick | None = None
+        self,
+        title: str | None,
+        pick: ModelPick | None = None,
+        graph_context: GraphContext | None = None,
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -89,6 +105,14 @@ class SessionService:
         session = await self.sessions_store.create(
             title_from_prompt(title or "Untitled session"), pick
         )
+        if (
+            graph_context is not None
+            and graph_context.propositions
+            and self.graph_context
+        ):
+            await self.entries_store.append(
+                session.id, [await self.graph_context(graph_context)]
+            )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
         )
@@ -110,6 +134,7 @@ class SessionService:
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
+                await self.graph_coverage(session_id) if self.graph_coverage else None,
             )
 
     async def set_artifact_view(
@@ -178,7 +203,9 @@ class SessionService:
         )
         return session.title
 
-    async def delete(self, session_id: str) -> None | Refused:
+    async def delete(
+        self, session_id: str, mode: DeleteMode = "preserve-graph"
+    ) -> None | Refused:
         runtime = self.runtimes.get(session_id)
         async with runtime.lock:
             if await self.sessions_store.get(session_id) is None:
@@ -200,13 +227,32 @@ class SessionService:
                         "job_ids": [job.id for job in running],
                     },
                 )
-            if self.side_chat_service is not None:
-                self.side_chat_service.stop_all(session_id)
-            orphaned = await self.sessions_store.unreferenced_image_hashes(session_id)
-            await self.sessions_store.delete(session_id)
-            runtime.mark_deleted()
-            runtime.delivery.clear()
-            await asyncio.to_thread(remove_images, self.data_dir, orphaned)
+            try:
+                if (
+                    self.begin_graph_deletion is not None
+                    and not await self.begin_graph_deletion(session_id)
+                ):
+                    return Refused(
+                        503,
+                        {
+                            "error": "The session's extraction is still winding down — try again in a moment",
+                            "code": "extraction_winding_down",
+                        },
+                    )
+                if self.delete_graph_traces is not None:
+                    await self.delete_graph_traces(session_id, mode)
+                if self.side_chat_service is not None:
+                    self.side_chat_service.stop_all(session_id)
+                orphaned = await self.sessions_store.unreferenced_image_hashes(
+                    session_id
+                )
+                await self.sessions_store.delete(session_id)
+                runtime.mark_deleted()
+                runtime.delivery.clear()
+                await asyncio.to_thread(remove_images, self.data_dir, orphaned)
+            finally:
+                if self.end_graph_deletion is not None:
+                    self.end_graph_deletion(session_id)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )

@@ -9,6 +9,8 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, StreamingResponse
 
 from verstehen.api.deps import get_session_service, get_turn_service
+from verstehen.graph.context import GraphContext
+from verstehen.graph.coverage import SessionCoverage
 from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
 from verstehen.session.sessions import SessionService
@@ -61,6 +63,7 @@ class TitleInput(BaseModel):
 
 class SessionInput(TitleInput):
     model: ModelPick | None = None
+    graph_context: GraphContext | None = None
 
 
 class SessionItem(BaseModel):
@@ -77,6 +80,7 @@ class SessionList(BaseModel):
 
 
 class SessionDetail(Session):
+    coverage: SessionCoverage | None = None
     side_segments: SideSegments
     entries: list[Entry]
     turn_in_flight: bool
@@ -129,7 +133,7 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     responses={503: {"model": ModelUnavailable}},
 )
 async def create_session(body: SessionInput, session_service: SessionServiceDependency):
-    session = await session_service.create(body.title, body.model)
+    session = await session_service.create(body.title, body.model, body.graph_context)
     if isinstance(session, Refused):
         return JSONResponse(session.reason, status_code=session.status)
     return Created(id=session.id)
@@ -144,6 +148,7 @@ async def get_session(session_id: str, session_service: SessionServiceDependency
         **result.session.model_dump(),
         entries=result.entries,
         side_segments=result.side_segments,
+        coverage=result.coverage,
         turn_in_flight=result.turn_in_flight,
         turn_error=result.turn_error,
         compacting=result.compacting,
@@ -170,10 +175,22 @@ async def rename_session(
 @router.delete(
     "/api/sessions/{session_id}",
     response_model=Ok,
-    responses={409: {"model": TurnInFlight | JobsRunning}},
+    responses={409: {"model": TurnInFlight | JobsRunning}, 503: {"model": ApiError}},
 )
-async def delete_session(session_id: str, session_service: SessionServiceDependency):
-    result = await session_service.delete(session_id)
+async def delete_session(
+    session_id: str,
+    session_service: SessionServiceDependency,
+    mode: str = "preserve-graph",
+):
+    if mode not in ("preserve-graph", "delete-nodes"):
+        return JSONResponse(
+            {
+                "error": 'mode is required and must be "preserve-graph" or "delete-nodes"',
+                "code": "bad_mode",
+            },
+            status_code=400,
+        )
+    result = await session_service.delete(session_id, mode)
     if isinstance(result, Refused):
         return JSONResponse(result.reason, status_code=result.status)
     return Ok()

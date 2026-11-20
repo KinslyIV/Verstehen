@@ -109,6 +109,74 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/graph/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Extraction Status */
+		get: operations['extraction_status_api_graph_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/coverage/extract': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Extract Coverage */
+		post: operations['extract_coverage_api_graph_coverage_extract_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/extractions/{source}/abort': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Abort Extraction */
+		post: operations['abort_extraction_api_graph_extractions__source__abort_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/import': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Import Notes */
+		post: operations['import_notes_api_graph_import_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/search-keys': {
 		parameters: {
 			query?: never;
@@ -640,6 +708,14 @@ export interface components {
 			/** Models */
 			models: components['schemas']['CatalogModel'][];
 		};
+		/** AgentSettings */
+		AgentSettings: {
+			/**
+			 * Graph Tools
+			 * @default true
+			 */
+			graph_tools: boolean;
+		};
 		/** ApiError */
 		ApiError: {
 			/** Error */
@@ -840,6 +916,24 @@ export interface components {
 			/** Error */
 			error?: string | null;
 		};
+		/** EmissionStats */
+		EmissionStats: {
+			/**
+			 * Nodes
+			 * @default 0
+			 */
+			nodes: number;
+			/**
+			 * Chains
+			 * @default 0
+			 */
+			chains: number;
+			/**
+			 * Dropped Chains
+			 * @default 0
+			 */
+			dropped_chains: number;
+		};
 		/** EntryUsage */
 		EntryUsage: {
 			/**
@@ -868,6 +962,31 @@ export interface components {
 			 */
 			reasoning_tokens: number;
 		};
+		/** ExtractionAborted */
+		ExtractionAborted: {
+			/** Aborted */
+			aborted: boolean;
+		};
+		/** ExtractionPart */
+		ExtractionPart: {
+			/** I */
+			i: number;
+			/** N */
+			n: number;
+		};
+		/** ExtractionStarted */
+		ExtractionStarted: {
+			/**
+			 * Started
+			 * @default true
+			 */
+			started: boolean;
+		};
+		/** ExtractionStatus */
+		ExtractionStatus: {
+			/** Runs */
+			runs: components['schemas']['RunningExtraction'][];
+		};
 		/** FileAccessSettings */
 		FileAccessSettings: {
 			/**
@@ -890,6 +1009,22 @@ export interface components {
 			created_at?: string;
 			/** Provenance */
 			provenance?: components['schemas']['ProvenancePoint'][];
+		};
+		/** GraphContext */
+		GraphContext: {
+			/** Propositions */
+			propositions: components['schemas']['GraphContextPick'][];
+			/** Chains */
+			chains?: string[];
+		};
+		/** GraphContextPick */
+		GraphContextPick: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Statement */
+			statement: string;
 		};
 		/** GraphCostSummary */
 		GraphCostSummary: {
@@ -982,6 +1117,24 @@ export interface components {
 			regions?: components['schemas']['RegionTuning'];
 			physics?: components['schemas']['PhysicsTuning'];
 		};
+		/** GraphSettings */
+		GraphSettings: {
+			/**
+			 * Enabled
+			 * @default true
+			 */
+			enabled: boolean;
+			/**
+			 * Rendering
+			 * @default true
+			 */
+			rendering: boolean;
+			/**
+			 * Extraction Chunk Tokens
+			 * @default 4096
+			 */
+			extraction_chunk_tokens: number;
+		};
 		/** GraphSnapshot */
 		GraphSnapshot: {
 			/** Nodes */
@@ -1030,6 +1183,36 @@ export interface components {
 			premises: string[];
 			/** Conclusion */
 			conclusion: string;
+		};
+		/** ImportResponse */
+		ImportResponse: {
+			/** Results */
+			results: components['schemas']['ImportResult'][];
+		};
+		/** ImportResult */
+		ImportResult: {
+			/** Request Index */
+			request_index: number;
+			/** File Path */
+			file_path: string;
+			/**
+			 * Outcome
+			 * @enum {string}
+			 */
+			outcome: 'completed' | 'failed' | 'partial' | 'aborted' | 'busy';
+			/** Ok */
+			ok: boolean;
+			stats?: components['schemas']['EmissionStats'] | null;
+			/** Error */
+			error?: string | null;
+			/** Code */
+			code?: string | null;
+			/** Missing */
+			missing?: string[] | null;
+			/** Reason */
+			reason?: string | null;
+			/** Notice */
+			notice?: string | null;
 		};
 		/** JobDelivery */
 		JobDelivery: {
@@ -1286,7 +1469,8 @@ export interface components {
 				| 'compaction-changed'
 				| 'jobs-changed'
 				| 'side-chats-changed'
-				| 'graph-changed';
+				| 'graph-changed'
+				| 'extractions-changed';
 			/**
 			 * Session Id
 			 * @default
@@ -1490,6 +1674,33 @@ export interface components {
 			/** Title */
 			title: string;
 		};
+		/** RunningExtraction */
+		RunningExtraction: {
+			/** Id */
+			id: string;
+			/** Session Id */
+			session_id: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'chat' | 'notes';
+			/** Title */
+			title: string;
+			part?: components['schemas']['ExtractionPart'] | null;
+			/**
+			 * Phase
+			 * @default extracting
+			 * @enum {string}
+			 */
+			phase: 'extracting' | 'waiting' | 'auditing' | 'merging';
+			/** Started At */
+			started_at: number;
+			/** Usage */
+			usage?: {
+				[key: string]: components['schemas']['StageUsage'];
+			};
+		};
 		/** SearchKeyBody */
 		SearchKeyBody: {
 			/** Value */
@@ -1513,6 +1724,23 @@ export interface components {
 			brave: components['schemas']['SearchKeyStatus'];
 			/** Effective Engine */
 			effective_engine?: ('native' | 'tavily' | 'brave') | null;
+		};
+		/** SessionCoverage */
+		SessionCoverage: {
+			/** Total Messages */
+			total_messages: number;
+			/** Covered Count */
+			covered_count: number;
+			/** Uncovered Count */
+			uncovered_count: number;
+			/** Covered Tokens */
+			covered_tokens: number;
+			/** Uncovered Tokens */
+			uncovered_tokens: number;
+			/** Running */
+			running: boolean;
+			/** Last Folded At */
+			last_folded_at: string | null;
 		};
 		/** SessionDetail */
 		SessionDetail: {
@@ -1542,6 +1770,7 @@ export interface components {
 			model_id?: string | null;
 			/** Thinking Level */
 			thinking_level?: ('minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max') | null;
+			coverage?: components['schemas']['SessionCoverage'] | null;
 			side_segments: components['schemas']['SideSegments'];
 			/** Entries */
 			entries: (
@@ -1569,6 +1798,7 @@ export interface components {
 			 */
 			title: string | null;
 			model?: components['schemas']['ModelPick'] | null;
+			graph_context?: components['schemas']['GraphContext'] | null;
 		};
 		/** SessionItem */
 		SessionItem: {
@@ -1598,6 +1828,8 @@ export interface components {
 		};
 		/** Settings */
 		Settings: {
+			graph?: components['schemas']['GraphSettings'];
+			agent?: components['schemas']['AgentSettings'];
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
 			tools?: components['schemas']['ToolSettings'];
@@ -1621,6 +1853,8 @@ export interface components {
 		};
 		/** SettingsStatus */
 		SettingsStatus: {
+			graph?: components['schemas']['GraphSettings'];
+			agent?: components['schemas']['AgentSettings'];
 			models?: components['schemas']['ModelSlots'];
 			background?: components['schemas']['BackgroundSettings'];
 			tools?: components['schemas']['ToolSettings'];
@@ -1831,6 +2065,15 @@ export interface components {
 			folder_id?: string | null;
 			/** Name */
 			name?: string | null;
+		};
+		/** StageUsage */
+		StageUsage: {
+			/** Model */
+			model: string;
+			/** Account */
+			account: string;
+			/** Steps */
+			steps?: components['schemas']['EntryUsage'][];
 		};
 		/** SteerInput */
 		SteerInput: {
@@ -2452,6 +2695,236 @@ export interface operations {
 			};
 		};
 	};
+	extraction_status_api_graph_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ExtractionStatus'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	extract_coverage_api_graph_coverage_extract_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': {
+					session_id: string;
+				};
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ExtractionStarted'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	abort_extraction_api_graph_extractions__source__abort_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				source: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ExtractionAborted'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	import_notes_api_graph_import_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'multipart/form-data': {
+					files: string[];
+					paths?: string[];
+				};
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ImportResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Content Too Large */
+			413: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	get_search_keys_api_search_keys_get: {
 		parameters: {
 			query?: never;
@@ -2769,7 +3242,9 @@ export interface operations {
 	};
 	delete_session_api_sessions__session_id__delete: {
 		parameters: {
-			query?: never;
+			query?: {
+				mode?: string;
+			};
 			header?: never;
 			path: {
 				session_id: string;
@@ -2822,6 +3297,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
 				};
 			};
 		};

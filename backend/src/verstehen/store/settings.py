@@ -1,3 +1,4 @@
+import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -112,8 +113,42 @@ class ToolSettings(BaseModel):
     pdf: bool = True
 
 
+class GraphSettings(BaseModel):
+    enabled: bool = True
+    rendering: bool = True
+    extraction_chunk_tokens: int = 4096
+
+    @field_validator("enabled", "rendering", mode="before")
+    @classmethod
+    def sanitize_boolean(cls, value: object) -> bool:
+        return value if isinstance(value, bool) else True
+
+    @field_validator("extraction_chunk_tokens", mode="before")
+    @classmethod
+    def sanitize_chunk_tokens(cls, value: object) -> int:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            and value > 0
+        ):
+            return max(500, math.floor(value))
+        return 4096
+
+
+class AgentSettings(BaseModel):
+    graph_tools: bool = True
+
+    @field_validator("graph_tools", mode="before")
+    @classmethod
+    def sanitize_graph_tools(cls, value: object) -> bool:
+        return value if isinstance(value, bool) else True
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    graph: GraphSettings = Field(default_factory=GraphSettings)
+    agent: AgentSettings = Field(default_factory=AgentSettings)
     models: ModelSlots = Field(default_factory=ModelSlots)
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
     tools: ToolSettings = Field(default_factory=ToolSettings)

@@ -19,6 +19,9 @@ from verstehen.api.sessions import router as sessions_router
 from verstehen.api.side_chats import router as side_chats_router
 from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
+from verstehen.graph.context import graph_context_message
+from verstehen.graph.deletion import DeleteMode, delete_sources_traces
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.service import GraphRefused, GraphService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
@@ -51,6 +54,7 @@ from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
 from verstehen.store.usage import UsageStore
+from verstehen.teaching.graph_tools import prober_graph_tools
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -190,8 +194,9 @@ def create_app(settings: Settings) -> FastAPI:
                     Notification(type="graph-changed", revision=revision)
                 )
 
+            graph_store = GraphStore(database, graph_changed)
             app.state.graph_service = GraphService(
-                GraphStore(database, graph_changed),
+                graph_store,
                 sessions_store,
                 settings_store,
                 usage_store,
@@ -214,6 +219,43 @@ def create_app(settings: Settings) -> FastAPI:
                 side_chat_service.snapshot,
                 settings.provider_events,
             )
+
+            def extractions_changed() -> None:
+                notifications.publish(Notification(type="extractions-changed"))
+
+            extraction_service = ExtractionService(
+                graph_store,
+                sessions_store,
+                entries_store,
+                settings_store,
+                resolver_service,
+                provider_policy,
+                usage_store,
+                job_runner.admission.request,
+                extractions_changed,
+                settings.provider_events,
+            )
+            app.state.extraction_service = extraction_service
+            app.state.graph_service.extraction_running = extraction_service.running
+            turn_service.trigger_extraction = extraction_service.trigger
+            turn_service.graph_tools = lambda: prober_graph_tools(
+                extraction_service.readers.sessions,
+                extraction_service.readers.propositions,
+            )
+            session_service = app.state.session_service
+            session_service.graph_context = lambda context: graph_context_message(
+                context, graph_store
+            )
+            session_service.graph_coverage = extraction_service.coverage
+            session_service.begin_graph_deletion = extraction_service.begin_deletion
+            session_service.end_graph_deletion = extraction_service.end_deletion
+
+            async def delete_graph_traces(session_id: str, mode: DeleteMode) -> None:
+                async with graph_store.transaction() as ledger:
+                    delete_sources_traces(ledger, {session_id}, mode)
+                    ledger.organization.placements.pop(session_id, None)
+
+            session_service.delete_graph_traces = delete_graph_traces
             app.state.job_service = JobService(
                 sessions_store,
                 jobs_store,
@@ -226,6 +268,7 @@ def create_app(settings: Settings) -> FastAPI:
                 yield
             finally:
                 await turn_service.delivery_service.close()
+                await extraction_service.close()
                 await side_chat_service.close()
                 await job_runner.close()
                 await browser_download_service.close()

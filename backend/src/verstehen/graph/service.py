@@ -46,7 +46,7 @@ class PositionsSaved(BaseModel):
 
 class GraphService:
     """Coordinate graph reads and writes, with injected lifecycle guards and notifications.
-    Extraction registers its guard in T2; session deletion remains session-owned.
+    The app injects extraction guards; session deletion remains session-owned.
     """
 
     def __init__(

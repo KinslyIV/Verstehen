@@ -1,6 +1,6 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T1 graph backend).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T2 extraction backend).
 
 ## M9 progress
 
@@ -16,10 +16,39 @@ deselected), 197 frontend tests across 28 files, and all static checks. The 36 n
 cases include rollback on a failed coverage insert and route integration. No UI changes, UI
 verification flows, or model calls are part of T1.
 
-Next: orchestrator review of T1, then T2 extraction/imports/teaching hooks. T2 must connect
-`GraphService.extraction_running` to its registry and use the app's notified `GraphStore` for
-merges. Session trace cleanup is implemented as a helper; the session-delete route integration
-belongs to T2. The four T1 decisions at the top of `decisions.md` are for user review.
+T2 backend is implemented: teacher-prose coverage, exact extraction/auditor prompts and tool
+texts, healed and validated findings, candidate exploration, app-wide source runs with FIFO
+serialized audit/merge, serial digest-aware batches, per-call usage, cancellation and status
+notifications, bounded notes imports and PDFium Markdown, graph settings, gated prober tools,
+graph-context creation, and session deletion modes with extraction wind-down. Shared prose
+selection and PDFium locking now live in `teaching/`. API types and backend feature entries are
+updated. Six T2 implementation decisions are recorded for user review.
+
+Validation on `91ea64b` plus the final T2 working tree: `make check` passed with 761 backend
+tests (2 live tests deselected), 197 frontend tests across 28 files, and all static checks.
+The 37 new offline cases cover extraction, API integration, PDF conversion, settings, and lifecycle
+behavior. API types are regenerated. No real-model calls or packaging changes were made.
+
+Browser evidence: `make verify FLOW='session-rename-delete session-new-and-stream'` passed all
+3 cases. The full rebuilt fake-model suite, then guarded `--workers=2` run, passed 76/85 cases;
+startup timeouts and UI timing/visibility assertions required unchanged isolated reruns. The
+nine selected flows (`job-recovery-reload plan-diagram plan-rewrite question-ask question-dismiss
+question-malformed-retry teach-predict-check teaching-handoff-reload teaching-handoff`) ran
+serially in `verify-output/t2-rerun`: 9/10 cases passed (the handoff flow also repeats its light
+case). A final isolated `question-ask` passed in `verify-output/t2-question-final`. Every one of
+the 85 cases has a passing result across these runs, with no weakened assertions or UI edits.
+The same question flow also passed against a read-only archive of the T1 backend for comparison.
+
+Inspected `screenshot.png` and retained `trace.zip` under `app/verify-output/` for
+`session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+`session-rename-delete.flow.ts-session-rename-delete`,
+`t2-rerun/teaching-handoff.flow.ts-teaching-handoff-dark`, and
+`t2-question-final/question-ask.flow.ts-question-ask`.
+
+Next: orchestrator review of T2, then T3 graph page and T4 session/table surfaces. The existing
+session DELETE default remains preserve-graph until T4 sends its explicit selection. The task
+instruction forbids real-model calls, so `make verify-live` is left for the orchestrator's authorized
+integration verification.
 
 ## Where we are
 

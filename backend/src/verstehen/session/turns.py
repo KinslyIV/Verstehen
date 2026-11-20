@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, JsonValue, TypeAdapter
-from pydantic_ai import Agent
+from pydantic_ai import Agent, Tool
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
 from verstehen.jobs.runner import JobRunner
@@ -180,6 +180,8 @@ class TurnService:
         self.jobs_store = jobs_store
         self.job_runner = job_runner
         self.side_threads = side_threads
+        self.trigger_extraction: Callable[[str], Awaitable[None]] | None = None
+        self.graph_tools: Callable[[], tuple[Tool[None], ...]] | None = None
         self.delivery_service = DeliveryService(
             sessions_store,
             entries_store,
@@ -382,7 +384,9 @@ class TurnService:
     async def write_ahead(self, state: TurnState, appends: list[Entry]) -> Continue:
         if appends:
             await self.entries_store.append(state.session_id, appends)
-            if not state.entries and isinstance(appends[0], UserEntry):
+            if not any(
+                isinstance(entry, UserEntry) for entry in state.entries
+            ) and isinstance(appends[0], UserEntry):
                 self.title_service.start(state.session_id, appends[0].text)
             state.entries.extend(appends)
             state.runtime.delivery.discard(entry.entry_id for entry in appends)
@@ -465,6 +469,13 @@ class TurnService:
                 question_pending=question_pending,
                 extra_tools=(
                     *files,
+                    *(
+                        self.graph_tools()
+                        if self.graph_tools
+                        and settings.graph.enabled
+                        and settings.agent.graph_tools
+                        else ()
+                    ),
                     *job_tools(dispatcher, settings.tools, prober=True),
                 ),
                 deliver_prose=deliver,
@@ -695,6 +706,8 @@ class TurnService:
             await self.start(state.session_id, TurnInput(type="handoff"))
         await self.compaction_service.kick(state.session_id, state.role)
         await self.pump_deliveries(state.session_id)
+        if self.trigger_extraction is not None and not self.runtimes.closing:
+            await self.trigger_extraction(state.session_id)
 
     async def pump_deliveries(self, session_id: str) -> None:
         try:
