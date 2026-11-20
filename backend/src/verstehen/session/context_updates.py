@@ -10,7 +10,7 @@ from pydantic_ai.models import ModelRequestContext
 from verstehen.session.projection import user_message
 from verstehen.store.entries import MarkerEntry, UserEntry
 
-ContextKind = Literal["job_result", "composer_steer"]
+ContextKind = Literal["job_result", "composer_steer", "side_question"]
 ContextEntry = UserEntry | MarkerEntry
 
 
@@ -72,7 +72,9 @@ class SessionDelivery:
 
 
 class ContextUpdates(AbstractCapability[None]):
-    """The context-update step: inject job results and composer steers before a model request."""
+    """The context-update step: inject job results, composer steers, and side_question updates.
+    Side-question updates are computed from the side-chat snapshot, never queued here.
+    """
 
     def __init__(self, take: Callable[[], Awaitable[list[ContextEntry]]]):
         self.take = take

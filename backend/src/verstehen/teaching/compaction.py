@@ -192,7 +192,12 @@ def serialize_for_summary(entries: Sequence[Entry]) -> str:
             error = " (error)" if entry.is_error else ""
             lines.append(f"[RESULT for {entry.tool_name}{error}] {content}")
         elif has_model_content(entry):
-            lines.append(f"[SYSTEM NOTE] {entry.content}")
+            label = (
+                "LEARNER–HELPER CONVERSATION"
+                if entry.marker_type == "side-question"
+                else "SYSTEM NOTE"
+            )
+            lines.append(f"[{label}] {entry.content}")
     return "\n\n".join(lines)
 
 

@@ -94,6 +94,7 @@ async def core(tmp_path: Path):
             notifications,
             jobs_store,
             job_runner,
+            lambda session_id: asyncio.sleep(0, []),
         )
         try:
             yield settings_store, adapter, resolver, session_service, turn_service

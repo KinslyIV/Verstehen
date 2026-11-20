@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -18,10 +19,19 @@ from verstehen.session.compactions import CompactionService
 from verstehen.session.context_updates import ContextEntry, ContextUpdates
 from verstehen.session.delivery import DeliveryService
 from verstehen.session.events import Notification, Notifications, TurnEvent
-from verstehen.session.projection import retry_drops, to_llm_messages
+from verstehen.session.projection import (
+    retry_drops,
+    side_budget_retry_drops,
+    to_llm_messages,
+)
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry, SessionRuntime, TurnRun
 from verstehen.session.titles import TitleService
+from verstehen.sidechat.delivery import (
+    SIDE_CONTEXT_BUDGET_ERROR,
+    side_context_fits,
+    side_conversation_entries,
+)
 from verstehen.store.entries import (
     AssistantEntry,
     EntriesStore,
@@ -36,6 +46,7 @@ from verstehen.store.entries import (
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
+from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
@@ -102,6 +113,8 @@ class TurnState:
     response: AssistantEntry | None = None
     saved_without_turn: bool = False
     saved: list[Entry] = field(default_factory=list)
+    before_compaction: list[Entry] | None = None
+    dropped: set[str] = field(default_factory=set)
 
     @property
     def role(self) -> Literal["teacher", "prober"]:
@@ -111,6 +124,24 @@ class TurnState:
 @dataclass
 class Continue:
     state: TurnState
+
+
+def retry_ids(state: TurnState) -> set[str]:
+    """The failed attempts a retry leaves out, looking past its own compaction after a budget failure."""
+    if state.before_compaction is not None and (
+        ids := side_budget_retry_drops(state.before_compaction, state.entries)
+    ):
+        return ids
+    return retry_drops(state.entries)
+
+
+def with_updates(
+    input: TurnInput, appends: list[Entry], updates: list[MarkerEntry]
+) -> list[Entry]:
+    """Place side updates after an answer's result, and before any other input."""
+    if input.type in ("answer", "retry-question"):
+        return [*appends, *updates]
+    return [*updates, *appends]
 
 
 class TurnService:
@@ -132,6 +163,7 @@ class TurnService:
         notifications: Notifications,
         jobs_store: JobsStore,
         job_runner: JobRunner,
+        side_threads: Callable[[str], Awaitable[list[SideThread]]],
         provider_events: bool = False,
     ):
         self.sessions_store = sessions_store
@@ -147,6 +179,7 @@ class TurnService:
         self.notifications = notifications
         self.jobs_store = jobs_store
         self.job_runner = job_runner
+        self.side_threads = side_threads
         self.delivery_service = DeliveryService(
             sessions_store,
             entries_store,
@@ -200,7 +233,7 @@ class TurnService:
                     raise ValueError("The session is waiting for the learner")
                 return list(markers)
             case "retry":
-                retry_drops(state.entries)
+                retry_ids(state)
             case "answer":
                 return answer_appends(state.entries, input.tool_call_id, input.answer)
             case "retry-question":
@@ -277,15 +310,63 @@ class TurnService:
 
     async def compaction_gate(self, state: TurnState) -> Refused | Continue:
         assert state.resolved is not None
-        pending = (
-            state.runtime.delivery.pending_markers()
-            if state.input.type == "steers"
-            else []
-        )
+        state.before_compaction = list(state.entries)
+        cargo, omitted = await self.request_cargo(state)
         await self.compaction_service.ensure_compacted(
-            state.session_id, state.role, state.resolved, pending
+            state.session_id, state.role, state.resolved, cargo, omitted
         )
         return Continue(state)
+
+    async def request_cargo(self, state: TurnState) -> tuple[list[Entry], set[str]]:
+        """What the turn is about to add (input and side updates) and the retry entries it leaves out."""
+        try:
+            appends = self.input_appends(state)
+            omitted = retry_ids(state) if state.input.type == "retry" else set()
+        except ValueError:
+            return [], set()
+        updates = await self.side_updates([*state.entries, *appends], state)
+        if not updates and state.input.type != "steers":
+            return [], omitted
+        return with_updates(state.input, appends, updates), omitted
+
+    async def side_updates(
+        self,
+        entries: list[Entry],
+        state: TurnState,
+        threads: list[SideThread] | None = None,
+    ) -> list[MarkerEntry]:
+        if has_unresolved_question(entries):
+            return []
+        if threads is None:
+            threads = await self.side_threads(state.session_id)
+        return side_conversation_entries(entries, threads)
+
+    async def fits_side_context(self, state: TurnState, entries: list[Entry]) -> bool:
+        assert state.resolved is not None
+        instructions = await compose_instructions(
+            self.settings_store, self.data_dir, state.role
+        )
+        settings = await self.settings_store.read()
+        request = [entry for entry in entries if entry.entry_id not in state.dropped]
+        return side_context_fits(
+            request,
+            instructions,
+            state.resolved.context_limit,
+            settings.compaction_limit,
+        )
+
+    async def side_appends(
+        self, state: TurnState, appends: list[Entry], threads: list[SideThread]
+    ) -> Refused | list[Entry]:
+        updates = await self.side_updates([*state.entries, *appends], state, threads)
+        if not updates:
+            return appends
+        ordered = with_updates(state.input, appends, updates)
+        if await self.fits_side_context(state, [*state.entries, *ordered]):
+            return ordered
+        if state.input.type == "steers":
+            return Refused(400, {"error": SIDE_CONTEXT_BUDGET_ERROR})
+        return appends
 
     async def claim(self, state: TurnState) -> Refused | Continue:
         state.run = state.runtime.claim_turn()
@@ -309,6 +390,7 @@ class TurnService:
         return Continue(state)
 
     async def claim_and_write_ahead(self, state: TurnState) -> Refused | Continue:
+        threads = await self.side_threads(state.session_id)
         async with state.runtime.lock:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
@@ -328,10 +410,15 @@ class TurnService:
                 gated = await self.model_gate(state)
                 if isinstance(gated, Refused):
                     return gated
+            if state.input.type == "retry":
+                state.dropped = retry_ids(state)
+            delivered = await self.side_appends(state, appends, threads)
+            if isinstance(delivered, Refused):
+                return delivered
             claimed = await self.claim(state)
             if isinstance(claimed, Refused):
                 return claimed
-            return await self.write_ahead(state, appends)
+            return await self.write_ahead(state, delivered)
 
     async def build_agent(self, state: TurnState) -> Refused | Continue:
         assert state.resolved is not None
@@ -413,14 +500,22 @@ class TurnService:
     async def take_context_updates(self, state: TurnState) -> list[ContextEntry]:
         assert state.run is not None and state.resolved is not None
         delivery = state.runtime.delivery
+        history = [*state.entries, *state.saved]
         jobs_allowed = bool(delivery.pending_markers()) and (
             await self.provider_policy.admit("background", state.resolved.account)
         )
         taken = delivery.take(
             state.run,
             jobs_allowed=jobs_allowed,
-            question_pending=has_unresolved_question([*state.entries, *state.saved]),
+            question_pending=has_unresolved_question(history),
         )
+        side_question = await self.side_updates([*history, *taken], state)
+        if side_question and not await self.fits_side_context(
+            state, [*history, *taken, *side_question]
+        ):
+            delivery.release(state.run)
+            raise ValueError(SIDE_CONTEXT_BUDGET_ERROR)
+        taken.extend(side_question)
         if taken:
             state.saved.extend(taken)
             state.run.publish(TurnEvent(type="context_update", entries=taken))
@@ -467,7 +562,7 @@ class TurnService:
             if run.aborted:
                 raise asyncio.CancelledError
             history = to_llm_messages(
-                state.entries, retry=state.input.type == "retry", data_dir=self.data_dir
+                state.entries, drops=state.dropped, data_dir=self.data_dir
             )
             async with state.agent.iter(message_history=history) as agent_run:
                 async for node in agent_run:

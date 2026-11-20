@@ -50,6 +50,7 @@ from verstehen.store.jobs import JobDelivery, JobPatch, JobRecord, JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import Settings, SettingsStore, ToolSettings
+from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.compaction import compaction_cut_index, serialize_for_summary
 from verstehen.teaching.job_tools import ACKNOWLEDGEMENTS, JobDispatcher, job_tools
@@ -151,7 +152,13 @@ def seed_entries() -> list[Entry]:
 
 
 @asynccontextmanager
-async def stack(tmp_path: Path, replies: list[dict], *, seed: bool = True):
+async def stack(
+    tmp_path: Path,
+    replies: list[dict],
+    *,
+    seed: bool = True,
+    threads: list[SideThread] | None = None,
+):
     script = tmp_path / "script.json"
     script.write_text(json.dumps(replies))
     async with open_database(tmp_path / "test.db") as database:
@@ -193,6 +200,10 @@ async def stack(tmp_path: Path, replies: list[dict], *, seed: bool = True):
             lambda session_id: None,
         )
         entries_store = EntriesStore(database)
+
+        async def side_threads(session_id: str) -> list[SideThread]:
+            return [thread.model_copy(deep=True) for thread in threads or []]
+
         turn = TurnService(
             sessions_store,
             entries_store,
@@ -206,6 +217,7 @@ async def stack(tmp_path: Path, replies: list[dict], *, seed: bool = True):
             notifications,
             jobs_store,
             runner,
+            side_threads,
         )
         sessions = SessionService(
             sessions_store,

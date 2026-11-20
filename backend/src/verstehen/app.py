@@ -171,6 +171,7 @@ def create_app(settings: Settings) -> FastAPI:
                 notifications,
                 jobs_store,
                 job_runner,
+                side_chat_service.snapshot,
                 settings.provider_events,
             )
             app.state.job_service = JobService(

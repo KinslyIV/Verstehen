@@ -144,7 +144,7 @@ Session detail exposes `side_segments` (`by_entry`, `entry_points`, `current`).
 `GET …/{thread}/stream` replays and streams helper text through SSE; `POST …/{thread}/stop`
 keeps partial text. `side-chats-changed` announces starts and settlements. The helper receives
 visible lesson content with open-question keys hidden and uses the session's foreground model.
-The UI is below; delivery to the teacher arrives in T3.
+The UI and delivery to the teacher are below.
 
 Verify offline with `backend/tests/test_side_chat.py` and `test_side_chat_api.py`: segment
 boundaries, shuffled open quizzes, answered questions, compaction redaction, model turns and
@@ -164,3 +164,10 @@ helpers, usage admission, prompt overrides, role-isolated scripts, and session d
 
 Side-chat changes reach the open session through the `side-chats-changed` notification and a refresh after every
 reconnect.
+
+## Side chat delivery to the teacher (M8 T3)
+
+| Feature | How it works | Verify flow | Offline coverage |
+|---|---|---|---|
+| Delivery to the teacher | The teacher's next model request carries each new learner–helper exchange once as a hidden `side-question` marker (`exchange_<thread>_update_<n>`). At turn start the markers are saved with the input (after an answer's result, otherwise before the input); during a run they arrive before each later model request. Partial replies go as suffixes ("continued reply", "reply status update", "updated wording"). They are withheld while a question is pending, never wake the teacher by themselves, and the thread never shows them. | `side-chat-delivery` (reply arrives; marker saved, hidden) | `test_side_delivery.py`: marker texts, suffixes, status updates, ledger across compaction and reopening, interrupted replies, turn-start and mid-run delivery, pending question, compaction serialization and projection |
+| Budget error | If the request with the markers does not fit the model's limit minus the reserve (or the compaction threshold when the limit is unknown), nothing is delivered and the turn fails with LearnHarness's "New side-chat exchanges exceed…" error. A refused wake returns 400 and saves no markers; Retry may cross the compaction its own gate made. | none (needs an over-limit session) | `test_side_delivery.py`: budget refusal, retry after a budget failure, refused wake, unadmitted request |

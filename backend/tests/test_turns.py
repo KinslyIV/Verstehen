@@ -84,6 +84,7 @@ async def turn_service_context(tmp_path: Path, model=None):
             notifications,
             jobs_store,
             job_runner,
+            lambda session_id: asyncio.sleep(0, []),
         )
         session = await turn_service.sessions_store.create("Test")
         try:

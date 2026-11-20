@@ -85,7 +85,9 @@ def test_retry_drops_only_trailing_errors_and_keeps_saved_entries():
     failed_again = AssistantEntry(parts=[], stop_reason="error")
     entries = [old_error, user, failed, failed_again]
     assert retry_drops(entries) == {failed.entry_id, failed_again.entry_id}
-    assert to_llm_messages(entries, retry=True) == to_llm_messages([old_error, user])
+    assert to_llm_messages(entries, drops=retry_drops(entries)) == to_llm_messages(
+        [old_error, user]
+    )
     assert len(entries) == 4
     assert to_llm_messages(entries) == to_llm_messages([user])
 

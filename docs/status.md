@@ -495,6 +495,9 @@ Each case also retains `trace.zip`; the separate evidence rerun preserves the fu
   failure, `job-recovery-reload` (aborted `/api/jobs` polls during reload), passed 3/3 on rerun.
 - **T2 side chat UI: implemented** (review pending). Side chat tab, segment buttons, selection Ask,
   Ctrl+J, stop/retry/reattach, drafts, `working`; flows `side-chat-*`.
-- **Next:** T3 delivery to the teacher.
+- **T3 delivery to the teacher: implemented** (review pending). `sidechat/delivery.py` (ledger,
+  updates, budget), kind `side_question` in the context-update step, turn-start write-ahead,
+  compaction gate cargo, retry across its own compaction; flow `side-chat-delivery`.
+- **Next:** review of T3, then `make verify-live` and the milestone report.
 - **Flagged:** `job-recovery-reload` (M7) is flaky: an aborted jobs poll during reload counts as a
   browser error.
