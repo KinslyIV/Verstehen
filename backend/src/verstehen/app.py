@@ -10,6 +10,7 @@ from starlette.responses import JSONResponse, Response
 from verstehen.api.access import request_refusal
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
+from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
@@ -18,6 +19,7 @@ from verstehen.api.sessions import router as sessions_router
 from verstehen.api.side_chats import router as side_chats_router
 from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
+from verstehen.graph.service import GraphRefused, GraphService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.jobs.workers.browser import BrowserDownloadService
@@ -42,6 +44,7 @@ from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore
+from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
@@ -158,6 +161,43 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.data_dir,
                 side_chat_service,
             )
+
+            async def check_graph_session(session_id: str) -> None:
+                if runtimes.get(session_id).run is not None:
+                    raise GraphRefused(
+                        "A turn is running in this session — try again when it finishes",
+                        409,
+                        "turn_in_flight",
+                    )
+                if await jobs_store.running(session_id):
+                    raise GraphRefused(
+                        "Background jobs are still running in this session — try again when they finish",
+                        409,
+                        "jobs_running",
+                    )
+
+            async def delete_graph_session(session_id: str) -> None:
+                result = await app.state.session_service.delete(session_id)
+                if result is not None:
+                    raise GraphRefused(
+                        result.reason.get("error", "Could not delete session"),
+                        result.status,
+                        result.reason.get("code"),
+                    )
+
+            def graph_changed(revision: int) -> None:
+                notifications.publish(
+                    Notification(type="graph-changed", revision=revision)
+                )
+
+            app.state.graph_service = GraphService(
+                GraphStore(database, graph_changed),
+                sessions_store,
+                settings_store,
+                usage_store,
+                delete_graph_session,
+                check_graph_session,
+            )
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
@@ -231,6 +271,7 @@ def create_app(settings: Settings) -> FastAPI:
             allow_headers=["x-verstehen-token", "content-type"],
         )
 
+    app.include_router(graph_router)
     app.include_router(tools_router)
     app.include_router(router)
     app.include_router(sessions_router)

@@ -4,6 +4,111 @@
  */
 
 export interface paths {
+	'/api/graph': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Graph */
+		get: operations['get_graph_api_graph_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/nodes/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Delete Node */
+		delete: operations['delete_node_api_graph_nodes__id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/sources': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Sources */
+		get: operations['get_sources_api_graph_sources_get'];
+		put?: never;
+		/** Organize Sources */
+		post: operations['organize_sources_api_graph_sources_post'];
+		/** Delete Sources */
+		delete: operations['delete_sources_api_graph_sources_delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/positions': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Positions */
+		put: operations['put_positions_api_graph_positions_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/render-settings': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Render Settings */
+		get: operations['get_render_settings_api_graph_render_settings_get'];
+		/** Put Render Settings */
+		put: operations['put_render_settings_api_graph_render_settings_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/costs': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Costs */
+		get: operations['get_costs_api_graph_costs_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/search-keys': {
 		parameters: {
 			query?: never;
@@ -654,6 +759,46 @@ export interface components {
 			 */
 			priced: boolean;
 		};
+		/** Cluster */
+		Cluster: {
+			/** Id */
+			id: string;
+			/** Label */
+			label: string | null;
+			/** Members */
+			members: string[];
+		};
+		/** CostTotals */
+		CostTotals: {
+			/**
+			 * Dollars
+			 * @default 0
+			 */
+			dollars: number;
+			/**
+			 * Unpriced Runs
+			 * @default 0
+			 */
+			unpriced_runs: number;
+			/**
+			 * Subscription Runs
+			 * @default 0
+			 */
+			subscription_runs: number;
+			/** Subscription Providers */
+			subscription_providers?: string[];
+			/** Plan Cost Label */
+			plan_cost_label?: string | null;
+			/**
+			 * Runs
+			 * @default 0
+			 */
+			runs: number;
+			/** Tokens */
+			tokens?: {
+				[key: string]: number;
+			};
+		};
 		/** Created */
 		Created: {
 			/** Id */
@@ -733,10 +878,158 @@ export interface components {
 			/** Folders */
 			folders?: string[];
 		};
+		/** GraphChain */
+		GraphChain: {
+			/** Id */
+			id: string;
+			/** Premises */
+			premises: string[];
+			/** Conclusion */
+			conclusion: string;
+			/** Created At */
+			created_at?: string;
+			/** Provenance */
+			provenance?: components['schemas']['ProvenancePoint'][];
+		};
+		/** GraphCostSummary */
+		GraphCostSummary: {
+			/** Total Dollars */
+			total_dollars: number;
+			/** Unpriced Runs */
+			unpriced_runs: number;
+			/** Subscription Runs */
+			subscription_runs: number;
+			/** Subscription Providers */
+			subscription_providers: string[];
+			/** Plan Cost Label */
+			plan_cost_label: string | null;
+			/** Tokens */
+			tokens: {
+				[key: string]: number;
+			};
+			/** Stages */
+			stages: {
+				[key: string]: components['schemas']['CostTotals'];
+			};
+			/** Sources */
+			sources: components['schemas']['SourceCosts'][];
+		};
+		/** GraphEdge */
+		GraphEdge: {
+			/** From */
+			from: string;
+			/** To */
+			to: string;
+		};
+		/** GraphNode */
+		GraphNode: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Statement */
+			statement: string;
+			/** Aliases */
+			aliases?: string[];
+			/** Created At */
+			created_at?: string;
+			/** Provenance */
+			provenance?: components['schemas']['ProvenancePoint'][];
+		};
+		/** GraphRenderSettings */
+		GraphRenderSettings: {
+			/**
+			 * Size Units
+			 * @default world
+			 * @constant
+			 */
+			size_units: 'world';
+			/**
+			 * Node Size
+			 * @default 2
+			 */
+			node_size: number;
+			/**
+			 * Edge Width
+			 * @default 1
+			 */
+			edge_width: number;
+			/**
+			 * Arrow Length
+			 * @default 2
+			 */
+			arrow_length: number;
+			/**
+			 * Label Zoom
+			 * @default 0.5
+			 */
+			label_zoom: number;
+			/**
+			 * Label Size
+			 * @default 3
+			 */
+			label_size: number;
+			/**
+			 * Cluster Labels
+			 * @default true
+			 */
+			cluster_labels: boolean;
+			/**
+			 * Cluster Label Size
+			 * @default 14
+			 */
+			cluster_label_size: number;
+			regions?: components['schemas']['RegionTuning'];
+			physics?: components['schemas']['PhysicsTuning'];
+		};
+		/** GraphSnapshot */
+		GraphSnapshot: {
+			/** Nodes */
+			nodes: components['schemas']['GraphNode'][];
+			/** Edges */
+			edges?: components['schemas']['GraphEdge'][];
+			/** Logical Edges */
+			logical_edges?: components['schemas']['GraphEdge'][];
+			/** Imp Links */
+			imp_links?: components['schemas']['ImplicationLink'][];
+			/** Propositions */
+			propositions: components['schemas']['GraphNode'][];
+			/** Chains */
+			chains?: components['schemas']['GraphChain'][];
+			/** Sessions */
+			sessions: {
+				[key: string]: string;
+			};
+			/** File Sources */
+			file_sources: {
+				[key: string]: string;
+			};
+			/** Node Sessions */
+			node_sessions: {
+				[key: string]: string[];
+			};
+			/** Clusters */
+			clusters: components['schemas']['Cluster'][];
+			/** Positions */
+			positions: {
+				[key: string]: components['schemas']['Position'];
+			};
+			/** Revision */
+			revision: number;
+		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
 			/** Detail */
 			detail?: components['schemas']['ValidationError'][];
+		};
+		/** ImplicationLink */
+		ImplicationLink: {
+			/** Id */
+			id: string;
+			/** Premises */
+			premises: string[];
+			/** Conclusion */
+			conclusion: string;
 		};
 		/** JobDelivery */
 		JobDelivery: {
@@ -954,6 +1247,17 @@ export interface components {
 			/** Missing */
 			missing: ('strong' | 'cheap' | 'vision')[];
 		};
+		/** NodeDeleted */
+		NodeDeleted: {
+			stats: components['schemas']['NodeDeletionStats'];
+			/** Revision */
+			revision: number;
+		};
+		/** NodeDeletionStats */
+		NodeDeletionStats: {
+			/** Chains Removed */
+			chains_removed: number;
+		};
 		/** NotRunning */
 		NotRunning: {
 			/**
@@ -981,9 +1285,15 @@ export interface components {
 				| 'chats-changed'
 				| 'compaction-changed'
 				| 'jobs-changed'
-				| 'side-chats-changed';
-			/** Session Id */
+				| 'side-chats-changed'
+				| 'graph-changed';
+			/**
+			 * Session Id
+			 * @default
+			 */
 			session_id: string;
+			/** Revision */
+			revision?: number | null;
 			/** Running */
 			running?: boolean | null;
 		};
@@ -1024,6 +1334,84 @@ export interface components {
 			 * @constant
 			 */
 			parked: true;
+		};
+		/** PhysicsTuning */
+		PhysicsTuning: {
+			/**
+			 * Charge Strength
+			 * @default -240
+			 */
+			charge_strength: number;
+			/**
+			 * Link Strength
+			 * @default 1
+			 */
+			link_strength: number;
+			/**
+			 * Link Distance
+			 * @default 40
+			 */
+			link_distance: number;
+			/**
+			 * Gravity
+			 * @default 0.12
+			 */
+			gravity: number;
+			/**
+			 * Cluster Pull
+			 * @default 0.15
+			 */
+			cluster_pull: number;
+			/**
+			 * Velocity Decay
+			 * @default 0.4
+			 */
+			velocity_decay: number;
+			/**
+			 * Depth Mode
+			 * @default off
+			 * @enum {string}
+			 */
+			depth_mode: 'off' | 'vertical' | 'radial';
+			/**
+			 * Depth Strength
+			 * @default 0.8
+			 */
+			depth_strength: number;
+			/**
+			 * Depth Spacing
+			 * @default 60
+			 */
+			depth_spacing: number;
+			/**
+			 * Depth Base Radius
+			 * @default 220
+			 */
+			depth_base_radius: number;
+		};
+		/** Position */
+		Position: {
+			/** X */
+			x: number;
+			/** Y */
+			y: number;
+		};
+		/** PositionsSaved */
+		PositionsSaved: {
+			/** Positions */
+			positions: {
+				[key: string]: components['schemas']['Position'];
+			};
+		};
+		/** ProvenancePoint */
+		ProvenancePoint: {
+			/** Session Id */
+			session_id: string;
+			/**
+			 * Message Id
+			 * @default
+			 */
+			message_id: string;
 		};
 		/** QuestionAnswer */
 		QuestionAnswer: {
@@ -1068,6 +1456,34 @@ export interface components {
 			dismissed?: boolean | null;
 			/** Answered At */
 			answered_at: string;
+		};
+		/** RegionTuning */
+		RegionTuning: {
+			/**
+			 * Dilation
+			 * @default 20
+			 */
+			dilation: number;
+			/**
+			 * Blur
+			 * @default 40
+			 */
+			blur: number;
+			/**
+			 * Bitmap
+			 * @default 256
+			 */
+			bitmap: number;
+			/**
+			 * Edge Alpha
+			 * @default 0.2
+			 */
+			edge_alpha: number;
+			/**
+			 * Enabled
+			 * @default true
+			 */
+			enabled: boolean;
 		};
 		/** Renamed */
 		Renamed: {
@@ -1342,6 +1758,80 @@ export interface components {
 			/** Reason */
 			reason?: string | null;
 		};
+		/** SourceCosts */
+		SourceCosts: {
+			/** Id */
+			id: string;
+			/** Title */
+			title: string;
+			totals: components['schemas']['CostTotals'];
+		};
+		/** SourceDirectory */
+		SourceDirectory: {
+			organization: components['schemas']['SourceOrganization'];
+			/** Sources */
+			sources: components['schemas']['SourceEntry'][];
+			/** Created Folder Id */
+			created_folder_id?: string | null;
+			/**
+			 * Revision
+			 * @default 0
+			 */
+			revision: number;
+		};
+		/** SourceEntry */
+		SourceEntry: {
+			/** Id */
+			id: string;
+			/**
+			 * Kind
+			 * @enum {string}
+			 */
+			kind: 'chat' | 'notes' | 'missing';
+			/** Label */
+			label: string | null;
+			/** Created At */
+			created_at: string | null;
+			/** Session Kind */
+			session_kind?: string | null;
+			/** File Path */
+			file_path?: string | null;
+		};
+		/** SourceFolder */
+		SourceFolder: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Parent Id */
+			parent_id: string | null;
+			/** Created At */
+			created_at: string;
+			/** Import Path */
+			import_path?: string | null;
+		};
+		/** SourceOrganization */
+		SourceOrganization: {
+			/**
+			 * Version
+			 * @default 1
+			 * @constant
+			 */
+			version: 1;
+			/** Folders */
+			folders?: components['schemas']['SourceFolder'][];
+			/** Placements */
+			placements?: {
+				[key: string]: components['schemas']['SourcePlacement'];
+			};
+		};
+		/** SourcePlacement */
+		SourcePlacement: {
+			/** Folder Id */
+			folder_id?: string | null;
+			/** Name */
+			name?: string | null;
+		};
 		/** SteerInput */
 		SteerInput: {
 			/** Id */
@@ -1528,6 +2018,440 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+	get_graph_api_graph_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphSnapshot'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	delete_node_api_graph_nodes__id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['NodeDeleted'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_sources_api_graph_sources_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SourceDirectory'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	organize_sources_api_graph_sources_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SourceDirectory'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	delete_sources_api_graph_sources_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SourceDirectory'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_positions_api_graph_positions_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PositionsSaved'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_render_settings_api_graph_render_settings_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphRenderSettings'] | null;
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_render_settings_api_graph_render_settings_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphRenderSettings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_costs_api_graph_costs_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphCostSummary'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	get_search_keys_api_search_keys_get: {
 		parameters: {
 			query?: never;

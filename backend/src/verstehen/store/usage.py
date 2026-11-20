@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from typing import List
 
 from aiosqlite import Connection
 from pydantic import BaseModel, Field
@@ -35,6 +36,18 @@ class UsageStore:
                 "output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, "
                 "created_at FROM usage WHERE session_id = ? ORDER BY created_at",
                 (session_id,),
+            ) as cursor:
+                return [
+                    UsageRecord.model_validate(dict(zip(UsageRecord.model_fields, row)))
+                    for row in await cursor.fetchall()
+                ]
+
+    async def list_graph(self) -> List[UsageRecord]:
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT request_id, session_id, role, account, model, input_tokens, "
+                "output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, "
+                "created_at FROM usage WHERE role IN ('extractor', 'auditor') ORDER BY created_at"
             ) as cursor:
                 return [
                     UsageRecord.model_validate(dict(zip(UsageRecord.model_fields, row)))

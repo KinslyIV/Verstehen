@@ -1,6 +1,25 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M7 T5 jobs UI).
+> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T1 graph backend).
+
+## M9 progress
+
+T1 backend is implemented on `m9-plan`: transactional graph ledgers and migration `0006`,
+read-time identity/alias and chain merging, derived edges/implications, birth-session clusters,
+source lookup and session readers, deterministic merge/simplification with atomic coverage or
+notes checkpoints, BM25 candidate pages, deletion modes, organization and imported placements,
+position sanitization (no server layout), render settings, usage costs, graph routes, and
+post-commit `graph-changed` events. API types and backend route feature entries are updated.
+
+Validation: `make check` passed on the final T1 working tree: 724 backend tests (2 live tests
+deselected), 197 frontend tests across 28 files, and all static checks. The 36 new offline graph
+cases include rollback on a failed coverage insert and route integration. No UI changes, UI
+verification flows, or model calls are part of T1.
+
+Next: orchestrator review of T1, then T2 extraction/imports/teaching hooks. T2 must connect
+`GraphService.extraction_running` to its registry and use the app's notified `GraphStore` for
+merges. Session trace cleanup is implemented as a helper; the session-delete route integration
+belongs to T2. The four T1 decisions at the top of `decisions.md` are for user review.
 
 ## Where we are
 
