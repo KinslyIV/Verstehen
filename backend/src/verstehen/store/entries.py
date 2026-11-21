@@ -21,6 +21,7 @@ class ThinkingPart(BaseModel):
 
     type: Literal["thinking"] = "thinking"
     thinking: str
+    id: str | None = None
     signature: str | None = None
     redacted: bool = False
 

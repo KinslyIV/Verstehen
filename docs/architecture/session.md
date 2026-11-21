@@ -76,6 +76,10 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
   for everything after it. Without an anchor it estimates the projected history plus the system
   prompt. The limit is the setting, capped at the model's context limit minus the reserve when
   that limit is known.
+- **Signed thinking floor.** In the unanchored/projected estimate and the recent-tail cut walk,
+  a same-model ChatGPT reply with signed thinking, a non-failed/non-aborted stop, and positive
+  output usage counts at least its saved output tokens. The same rule applies to the side-chat
+  delivery budget. There is no setting to turn it off.
 - **The turn gate** (`ensure_compacted`) waits for a running compaction, then compacts first if
   the saved entries are over the limit. It also counts what the turn is about to add when there is
   side-chat cargo (with the incoming input) or a wake's pending markers, as LH does.
@@ -97,6 +101,10 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
 
 - Failed and aborted replies and their results are left out; empty unsigned thinking never
   reaches the model.
+- Thinking is replayed only when the entry's provider and requested model id match the current
+  `ModelIdentity`. ChatGPT also requires the saved reasoning item id; replay restores the id,
+  signature, and provider name so Pydantic AI sends encrypted reasoning as a Responses item.
+  Switching models drops thinking from the projection, while keeping the saved entry intact.
 - Each unresolved tool call of a completed reply gets LH's "interrupted" result
   (`INTERRUPTED_TEXT`), so the model always sees a call with its result.
 - An image a `read` call attached is replayed from its saved content-hash file; `show_image`
@@ -125,7 +133,7 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
   idle window in which the UI also sends `handoff` (a duplicate-handoff 400).
 - **Readers of a session's tail skip compaction markers** (pending question, dismissal pause,
   continuation, handoff, failure banner). Retry is the exception.
-- **ChatGPT encrypted reasoning is not resent.** Turns save the thinking text and signature but not
-  the reasoning item id, so only the visible summary is replayed (fix on `reasoning-resend`).
+- **Older ChatGPT replies have no reasoning item id** and may store the API-reported model name.
+  Their thinking is omitted from replay; newly saved replies keep the requested identity and id.
 - **The frontend can send the probe handoff twice under load** (400 "No probe handoff is owed",
   seen in `teach-predict-check`). Open; see the [roadmap](../roadmap.md).

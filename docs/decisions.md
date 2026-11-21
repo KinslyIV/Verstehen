@@ -23,6 +23,13 @@ alternative, and the consequence, until the user reviews them at the end of the 
   `workers` from the main config. The alternative was a separate worker setting; the consequence
   is one shared worker policy for fake and live verification.
 
+| Date | Orchestrator decision, for user review | Alternative and consequence |
+|---|---|---|
+| 2026-11-20 | **Reasoning resend:** stamp an assistant entry's provider from the requested model's `system`, as LH does. | Using the response's provider name leaves the fake stream's provider empty and prevents its saved thinking from matching. Requested provider and model now identify the reply consistently. |
+| 2026-11-21 | **Reasoning resend, integration:** pass the current model identity to `side_context_fits`, applying the same-model ChatGPT output-token floor to the side-chat delivery budget (LH `chat-handler.ts:368,382`). | Keeping character-only estimates there would undercount signed reasoning despite the always-count-reasoning decision. Larger estimates can withhold delivery or refuse an oversized wake. |
+| 2026-11-21 | **Verification race:** `session-rename-delete` waits for the completed opening reply's `AGENT'S THINKING` button before its existing Send assertion. | Initial Send visibility can match the idle render before the opening turn starts, allowing deletion during the turn. A transient Stop wait could be missed; the stable reply indicator plus Send waits for settlement without changing timeouts or app behavior. |
+| 2026-11-21 | **Live reasoning fixture:** use a medium-thinking model and a small multi-step arithmetic problem, and expose safe request/response metadata when checking encrypted reasoning. | The low-effort `17 * 23` request returned only text, so it never exercised resend. The fixture retains its reasoning item id and encrypted-content assertions; the shared round-trip helper permits a rerun with the same isolated sign-in. |
+
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
@@ -44,8 +51,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   trigger.
 - **The compaction marker is appended** at the end of the log, with `last_summarized_entry_id`;
   readers of a session's tail skip it (Retry still stops at it). LH inserts it in place.
-- **No "include reasoning" compaction switch.** If ChatGPT encrypted reasoning is resent, such a
-  reply always counts at least its saved output tokens.
+- **No "include reasoning" compaction switch.** Same-model ChatGPT replies with signed thinking,
+  a non-failed/non-aborted stop, and positive output usage always count at least their saved
+  output tokens.
 - **A `continue` that isn't owed does nothing** and returns success. LH always runs a turn.
 - **Titles** are written by the cheap model, as a foreground call started with the first message.
   The last title to arrive wins, even over a rename; a failure keeps the current title, no retry.
@@ -112,7 +120,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   slot. LH writes it when you pick on the new-session screen.
 - **Background use is one switch per provider, Claude Code included.**
 - **The user never enters a model's context limit.**
-- **Thinking from another model is kept**; LH's model-match filter is not ported.
 - **ChatGPT model lists are cached** per account for the sidecar's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
 

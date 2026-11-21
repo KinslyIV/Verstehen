@@ -41,6 +41,9 @@ shortcuts, which target a pick writes), `models/picks.ts` (pure selection rules)
   the Main tab changes the session, Cheap and Vision change the global slots, and only **Set as
   default** writes the strong slot; Settings → Models and the setup dialog write the slots
   directly.
+- **Model identity.** `ResolvedModel.identity` builds `store.model_identity.ModelIdentity` from
+  the requested model's `system` and `model_name`, rather than API-reported response names.
+  Projection and estimates use it to match saved thinking to the current model.
 - **Resolution is fresh every request** and never falls back. An unusable pick returns 503
   `model_unavailable` with the reason; Send keeps the draft and opens the menu.
 - **Background consent** is one switch per provider, Claude Code included, on by default. The
@@ -83,6 +86,7 @@ shortcuts, which target a pick writes), `models/picks.ts` (pure selection rules)
   Native, Claude Code research uses Tavily, then Brave; an explicitly chosen keyed engine is used
   as chosen.
 - **Fake-script mode exposes only the fake adapter**, so offline runs never probe the host CLI.
-- **ChatGPT encrypted reasoning is not resent** ([session](session.md)).
+- **ChatGPT reasoning needs its Responses item id and encrypted signature** to be replayed as
+  reasoning. Both are saved and resent only to the same provider and model ([session](session.md)).
 - **The real sign-in and Claude Code discovery were never checked on the laptop.** Open; see the
   [roadmap](../roadmap.md).

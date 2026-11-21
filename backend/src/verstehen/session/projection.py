@@ -21,6 +21,8 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.entries import ThinkingPart as SavedThinkingPart
+from verstehen.store.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.teaching.compaction import compacted_history, has_model_content
 from verstehen.teaching.files.read import load_attachment
 
@@ -110,7 +112,20 @@ def side_budget_retry_drops(
     return omitted
 
 
-def assistant_response(entry: AssistantEntry) -> ModelResponse:
+def resendable_thinking(part: SavedThinkingPart, provider: str | None) -> bool:
+    if not (part.thinking.strip() or part.signature or part.redacted):
+        return False
+    return provider != CHATGPT_PROVIDER or part.id is not None
+
+
+def assistant_response(
+    entry: AssistantEntry, model: ModelIdentity | None
+) -> ModelResponse:
+    same_model = (
+        model is not None
+        and entry.provider == model.provider
+        and entry.model == model.model
+    )
     parts: list[TextPart | ThinkingPart | ToolCallPart] = []
     for part in entry.parts:
         if part.type == "text":
@@ -120,10 +135,11 @@ def assistant_response(entry: AssistantEntry) -> ModelResponse:
             if not isinstance(arguments, (dict, str)):
                 arguments = None
             parts.append(ToolCallPart(part.tool_name, arguments, part.tool_call_id))
-        elif part.thinking.strip() or part.signature or part.redacted:
+        elif same_model and resendable_thinking(part, entry.provider):
             parts.append(
                 ThinkingPart(
                     part.thinking,
+                    id=part.id,
                     signature=part.signature,
                     provider_name=entry.provider,
                 )
@@ -185,6 +201,7 @@ def user_message(entry: UserEntry | MarkerEntry) -> ModelRequest:
 def to_llm_messages(
     entries: Sequence[Entry],
     *,
+    model: ModelIdentity | None = None,
     drops: Collection[str] = (),
     data_dir: Path | None = None,
 ) -> list[ModelMessage]:
@@ -212,7 +229,7 @@ def to_llm_messages(
                 "error",
                 "aborted",
             }:
-                response = assistant_response(assistant)
+                response = assistant_response(assistant, model)
                 messages.append(response)
                 if returned := tool_returns(response, results, data_dir):
                     messages.append(ModelRequest(parts=returned))

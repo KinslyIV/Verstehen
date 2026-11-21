@@ -107,22 +107,24 @@ class CompactionService:
             instructions = await compose_instructions(
                 self.settings_store, self.data_dir, role
             )
-            tokens = projected_context_tokens(
-                [e for e in [*entries, *pending] if e.entry_id not in omitted],
-                instructions,
-            )
             if resolved is None:
                 session = await self.sessions_store.get(session_id)
                 if session is None:
                     return None
                 resolved = await self.resolver_service.resolve(role, session)
+            model = resolved.identity
+            tokens = projected_context_tokens(
+                [e for e in [*entries, *pending] if e.entry_id not in omitted],
+                instructions,
+                model,
+            )
             if tokens <= effective_limit(
                 settings.compaction_limit, resolved.context_limit
             ):
                 return None
             if not await self.provider_policy.admit("background", resolved.account):
                 return None
-            cut = compaction_cut_index(entries)
+            cut = compaction_cut_index(entries, model)
             previous = active_compaction(entries)
             start = kept_index(entries, previous)
             if start >= 0 and cut <= start:

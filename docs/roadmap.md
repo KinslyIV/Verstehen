@@ -76,9 +76,8 @@ All of this is merged into `main`.
 | Composer paperclip, drag-and-drop path chips, `PathInput`, citations, Cite | not scheduled; learner files are read by path through the file tools |
 | LH's floating, draggable, docked side-chat window and thread list | the side chat is a right-panel tab |
 | Plan marginalia, the Plan chip, and the plan popup | the plan lives in the Plan tab |
-| `includeReasoning` compaction switch | nothing to correct without the reasoning resend; see [decisions](decisions.md) |
+| `includeReasoning` compaction switch | signed same-model ChatGPT reasoning always gets the output-token floor; see [decisions](decisions.md) |
 | Exa, Firecrawl, and Ollama search | native search, Tavily, and Brave cover research |
-| LH's model-match filter for thinking | thinking from another model is kept |
 
 ## Known gaps
 
@@ -90,11 +89,12 @@ merges.
   the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
   `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
   `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
-  and `question-ask` each failed with 6 local Playwright workers but passed alone, pointing to
-  a timing bug; local workers are now capped at 3 (2026-11-21). At 3 workers,
-  `composer-steer` and `question-ask` passed, but `session-rename-delete` still failed: deletion
-  returned 409 because a turn was running, and the New session heading never appeared. It
-  passed in the one isolated rerun; the bug remains open. Under heavy host load (other worktrees running verify,
+  and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
+  are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
+  `reasoning-resend`: its initial Send assertion could match before the opening turn started,
+  so deletion returned 409 during the turn. It now waits for the completed reply's thinking
+  button before Send confirms settlement; the full 72-case verification suite passes. The other timing
+  bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
   (2026-11-21).
@@ -104,7 +104,8 @@ merges.
   smooth sustained streaming is not established.
 - **Account sign-in doesn't wake a session** waiting on background consent; the next event does.
 - **A failed photo annotation can leave its image file** in `<data dir>/images/`.
-- **ChatGPT encrypted reasoning is not resent** until `reasoning-resend` merges.
+- **Live Claude verification is quota-blocked** on 2026-11-21 until the five-hour reset at
+  17:00 UTC. Full fake verification and live ChatGPT reasoning acceptance pass.
 - **Laptop checks never done:** ChatGPT sign-in, Claude Code discovery, the model menu, and a real
   lesson through probe, plan, teaching, research, and a demo in the installed app.
 - **PDF text with PyMuPDF (user note, 2026-11-21):** switch PDF text extraction (the PDF worker

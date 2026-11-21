@@ -52,7 +52,9 @@ message), `selection-ask.svelte` and `selection.ts` (select text → Ask, with a
 - **Budget for delivery** (the context limit minus the 16,384-token reserve, or the compaction
   limit when the limit is unknown). Three outcomes: at turn start, ordinary input proceeds without
   the markers; a wake is refused with 400; during a model-request hook the running turn fails with
-  LH's "New side-chat exchanges exceed…" error.
+  LH's "New side-chat exchanges exceed…" error. `side_context_fits` receives the current
+  `ModelIdentity`, so same-model signed ChatGPT thinking also gets the saved output-token floor
+  used by compaction.
 - **The helper's own size check** is separate and runs only when the model's context limit is
   known.
 

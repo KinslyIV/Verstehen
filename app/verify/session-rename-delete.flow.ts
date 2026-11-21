@@ -5,6 +5,7 @@ test('session-rename-delete', async ({ page }) => {
 	await page.getByRole('textbox').fill('Derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
+	await expect(page.getByRole('button', { name: "AGENT'S THINKING", exact: true })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
 	await page.getByRole('button', { name: 'Derivatives', exact: true }).click();
 	await page.getByRole('textbox', { name: 'Session title' }).fill('Slope');

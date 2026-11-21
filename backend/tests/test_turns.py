@@ -253,6 +253,31 @@ def test_second_turn_gets_409_and_stop_keeps_partial_thinking_and_text(tmp_path:
     asyncio.run(scenario())
 
 
+def test_signed_thinking_is_resent_to_the_same_model_next_turn(tmp_path: Path):
+    async def scenario():
+        calls = []
+
+        async def stream(messages: list[ModelMessage], info: AgentInfo):
+            calls.append(messages)
+            if len(calls) == 1:
+                yield {0: DeltaThinkingPart(content="Plan", signature="sig")}
+            yield "A reply"
+
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (turn_service, session_id):
+            await completed(await start(turn_service, session_id))
+            reply = (await turn_service.entries_store.list(session_id))[-1]
+            assert isinstance(reply, AssistantEntry)
+            assert (reply.provider, reply.model) == ("function", "function::stream")
+            await completed(await start(turn_service, session_id))
+            resent = next(m for m in calls[1] if isinstance(m, ModelResponse))
+            thinking = [p for p in resent.parts if p.part_kind == "thinking"]
+            assert [(p.content, p.signature) for p in thinking] == [("Plan", "sig")]
+
+    asyncio.run(scenario())
+
+
 def test_error_then_retry_hides_failed_attempt_from_model(tmp_path: Path):
     async def scenario():
         calls = []
