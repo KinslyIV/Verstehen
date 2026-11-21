@@ -14,11 +14,17 @@ Run from the repository root after `make setup`:
 - `make verify-live` builds the SPA and runs `app/verify-live/lesson-first-turn.flow.ts` with the installed, logged-in Claude Code. It configures Haiku at low thinking via the settings API and uses the Claude subscription.
 - Live artifacts are in `app/verify-live-output/<flow>/` with the same screenshot and trace settings.
 
-Use affected fake-model flows while editing UI work. Run full `make verify` and `make verify-live`
-before every merge and after shared UI or runtime changes. Run the affected
-`make check-backend` / `make check-frontend` while
-editing and full `make check` before every commit. Desktop packaging needs `make app` when
-packaging changes; unrelated changes do not require it.
+When to run what:
+
+- **While editing:** the affected `make check-backend` / `make check-frontend`, and the affected
+  fake-model flows batched in one `make verify FLOW='…'` (or `make verify-run` after an unchanged
+  build).
+- **Before every commit:** full `make check`.
+- **Once per milestone, at its end, before the milestone's PR into `dev`:** full `make verify` and
+  `make verify-live`. Not per task, not per merge into `dev`.
+- **On `dev` → `main`:** CI runs `make check` and `make verify`.
+- **Docs-only and offline tooling work:** `make check`; no UI flows (CI still runs `make verify`).
+- **Packaging changes:** `make app`; other changes don't need it.
 
 The rerun guard requires a successful build from `make verify` or `make verify-live`, unchanged
 frontend `src/` and `static/` paths/content, package and installed npm lockfiles, Node version, and frontend configuration
@@ -44,11 +50,16 @@ To add a flow, copy `app/verify/app-reaches-sidecar.flow.ts`, declare its JSON f
 with `test.use({ script: 'verify/scripts/your-script.json' })`, and add the feature-map entry.
 Static layout flows reuse `verify/scripts/health.json` without making model calls.
 The shared fixture gives every flow its own sidecar, preview, and temporary data directory,
-saves a full-page `screenshot.png` of the final page (flows take no screenshots themselves),
-and fails on console errors, uncaught page errors, and failed requests.
+saves a full-page `screenshot.png` of the final page (a flow may save extra intermediate
+screenshots when a state matters), and fails on console errors, uncaught page errors, and failed
+requests, except expected HTTP errors and requests a reload aborts.
 The live flow uses that fixture with `test.use({ script: 'none' })`. Assert streamed turn states
 and learner controls because provider wording varies.
 
-Look at the screenshots yourself and attach the ones you checked to your report.
+A flow that fails and then passes on rerun is a flake, and a flake is a bug: record it in
+`docs/roadmap.md` (Known gaps) and fix it before merge. Never weaken an assertion or timeout to pass.
+Every flow file must appear in a Verify flow column of `docs/feature-map.md` (`make check` enforces it).
+
+Look at the screenshots yourself and attach the ones you checked to the PR.
 Keep logic permutations in cheap offline tests and representative real flows in this suite.
 Focused iteration plus full integration verification preserves coverage as the app grows.
