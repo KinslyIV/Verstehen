@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-21 (worker simplification on `simplify-workers`, PR #7).
+> PRs. Last update: 2026-11-21 (LearnHarness import on `learnharness-import`).
 
 ## Where we are
 
@@ -14,6 +14,10 @@ Full 72-case fake-model verification and live ChatGPT reasoning acceptance passe
 Claude verification (`make verify-live`) was blocked by the five-hour subscription quota (reset at
 17:00 UTC on 2026-11-21) and still needs to be rerun. All six orchestrator decisions from PR #3 and
 PR #5 were reviewed and kept on 2026-11-21.
+
+The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `learnharness-import`
+and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
+confirm that converted reasoning is accepted.
 
 ## Next
 

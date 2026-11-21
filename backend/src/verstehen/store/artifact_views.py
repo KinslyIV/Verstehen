@@ -1,4 +1,16 @@
+from aiosqlite import Connection
+
 from verstehen.store.database import Database
+
+
+async def set_inverted(
+    connection: Connection, session_id: str, entry_id: str, inverted: bool
+) -> None:
+    await connection.execute(
+        "INSERT INTO artifact_views (entry_id, session_id, inverted) VALUES (?, ?, ?) "
+        "ON CONFLICT(entry_id) DO UPDATE SET inverted = excluded.inverted",
+        (entry_id, session_id, int(inverted)),
+    )
 
 
 class ArtifactViewsStore:
@@ -17,8 +29,4 @@ class ArtifactViewsStore:
 
     async def set(self, session_id: str, entry_id: str, inverted: bool) -> None:
         async with self.database.transaction() as connection:
-            await connection.execute(
-                "INSERT INTO artifact_views (entry_id, session_id, inverted) VALUES (?, ?, ?) "
-                "ON CONFLICT(entry_id) DO UPDATE SET inverted = excluded.inverted",
-                (entry_id, session_id, int(inverted)),
-            )
+            await set_inverted(connection, session_id, entry_id, inverted)

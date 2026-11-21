@@ -123,6 +123,33 @@ async def main():
 asyncio.run(main())
 `;
 
+export const learnHarnessFixture = resolve(
+	appDirectory,
+	'../backend/tests/fixtures/learnharness/basic'
+);
+
+async function importLearnHarness(folder: string, dataDirectory: string): Promise<void> {
+	const child = spawn(
+		resolve(appDirectory, '../backend/.venv/bin/verstehen'),
+		['import-learnharness', folder],
+		{
+			env: {
+				...Object.fromEntries(
+					Object.entries(process.env).filter(([key]) => !key.startsWith('VERSTEHEN_'))
+				),
+				VERSTEHEN_DATA_DIR: dataDirectory
+			},
+			stdio: ['pipe', 'pipe', 'pipe']
+		}
+	);
+	let output = '';
+	child.stdout.on('data', (data) => (output += data));
+	child.stderr.on('data', (data) => (output += data));
+	child.stdin.end('replace\n');
+	const [code] = await once(child, 'exit');
+	if (code !== 0) throw new Error(`import-learnharness failed (${code}):\n${output}`);
+}
+
 export interface GraphSeed {
 	nodes: { id: string; name: string; statement: string; session: string }[];
 	chains: { id: string; premises: string[]; conclusion: string; session: string }[];
@@ -131,6 +158,7 @@ export interface GraphSeed {
 
 export const test = base.extend<{
 	script: string;
+	learnHarnessFolder: string;
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
@@ -140,6 +168,7 @@ export const test = base.extend<{
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
+	learnHarnessFolder: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
 	sidecarControl: async ({ dataDirectory }, use) => {
 		await use({
@@ -152,10 +181,11 @@ export const test = base.extend<{
 		if (!baseURL) throw new Error('Preview is not started');
 		await use(() => sidecarControl.restart());
 	},
-	dataDirectory: async ({ script }, use) => {
+	dataDirectory: async ({ script, learnHarnessFolder }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		try {
+			if (learnHarnessFolder) await importLearnHarness(learnHarnessFolder, directory);
 			await use(directory);
 		} finally {
 			await rm(directory, { recursive: true, force: true });

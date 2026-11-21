@@ -1,0 +1,4 @@
+{"id": "n_fx1", "name": "Slope", "statement": "Slope is rise over run.", "aliases": ["rise/run"], "createdAt": "2026-09-21T14:31:20.000Z", "provenance": [{"chatId": "chat_fx_teach", "messageId": "a6"}]}
+{"id": "n_fx2", "name": "Slope units", "statement": "Slope is measured in output per input unit.", "aliases": [], "createdAt": "2026-09-21T14:31:20.000Z", "provenance": [{"chatId": "chat_fx_teach", "messageId": "a3"}]}
+{"id": "n_fx3", "name": "Gradient", "statement": "A gradient generalizes slope.", "aliases": [], "createdAt": "2026-09-21T14:32:20.000Z", "provenance": [{"chatId": "src_fx", "messageId": ""}]}
+{"id": "n_fx1", "name": "Slope", "statement": "Slope equals rise divided by run.", "aliases": [], "createdAt": "2026-09-21T14:32:20.000Z", "provenance": [{"chatId": "src_fx", "messageId": ""}]}

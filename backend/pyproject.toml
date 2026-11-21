@@ -50,7 +50,7 @@ name = "Move dependencies down: api -> session -> features -> agents -> store"
 type = "layers"
 broken_contract_guidance = "Move dependencies down the declared layers; pass callbacks from session for upward notifications."
 layers = [
-  "verstehen.api",
+  "verstehen.api | verstehen.lh_import",
   "verstehen.session",
   "verstehen.jobs | verstehen.sidechat | verstehen.graph",
   "verstehen.teaching | verstehen.providers",

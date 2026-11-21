@@ -1,0 +1,9 @@
+{
+ "id": "chat_fx_practice",
+ "title": "Practice fixture",
+ "kind": "practice",
+ "createdAt": "2026-09-21T14:13:20.000Z",
+ "updatedAt": "2026-09-21T14:14:20.000Z",
+ "messages": [],
+ "version": 2
+}

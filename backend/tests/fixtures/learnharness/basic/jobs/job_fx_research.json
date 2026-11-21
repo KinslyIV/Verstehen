@@ -1,0 +1,51 @@
+{
+ "id": "job_fx_research",
+ "kind": "research",
+ "chatId": "chat_fx_teach",
+ "toolCallId": "call_research",
+ "status": "done",
+ "createdAt": "2026-09-21T14:23:20.000Z",
+ "updatedAt": "2026-09-21T14:28:20.000Z",
+ "input": {
+  "question": "What is slope?"
+ },
+ "activity": "delivered",
+ "delivery": {
+  "kind": "result",
+  "status": "delivered"
+ },
+ "result": {
+  "brief": "Slope is rise over run [Khan](https://example.com/slope).",
+  "sources": [
+   {
+    "title": "Khan",
+    "url": "https://example.com/slope"
+   }
+  ]
+ },
+ "usage": {
+  "model": "chatgpt:gpt-6-luna",
+  "inputTokens": 40,
+  "outputTokens": 8,
+  "cacheReadTokens": 0,
+  "cacheWriteTokens": 0,
+  "reasoningTokens": 2,
+  "steps": 2,
+  "calls": [
+   {
+    "inputTokens": 15,
+    "outputTokens": 3,
+    "cacheReadTokens": 5,
+    "cacheWriteTokens": 0,
+    "reasoningTokens": 1
+   },
+   {
+    "inputTokens": 25,
+    "outputTokens": 5,
+    "cacheReadTokens": 5,
+    "cacheWriteTokens": 0,
+    "reasoningTokens": 1
+   }
+  ]
+ }
+}

@@ -1,0 +1,18 @@
+{
+ "version": 1,
+ "folders": [
+  {
+   "id": "folder_fx",
+   "name": "Notes",
+   "parentId": null,
+   "createdAt": "2026-09-21T14:32:20.000Z",
+   "importPath": "notes"
+  }
+ ],
+ "placements": {
+  "src_fx": {
+   "folderId": "folder_fx",
+   "name": "Gradients"
+  }
+ }
+}

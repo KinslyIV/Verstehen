@@ -14,12 +14,39 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
-_Nothing is waiting._
+**LearnHarness import:**
+
+- **Learner-message images are dropped**, with one warning per session. `UserEntry` has no
+  attachments. Alternative: refuse the import. Consequence: such images are lost (the user's data has none).
+- **Plan-block and probe-handoff details keep LH's camelCase keys.** Verstehen's consumers read them.
+  Alternative: the plan's snake_case, which would break plan blocks.
+- **Job delivery:** a steer/abort marker settles delivery; a real LH `pending` stays pending; a
+  terminal job with no delivery and no marker gets none. Legacy `running` jobs with a saved result
+  and no delivery or marker get pending result delivery, matching LH's `normalizeLegacyResult`.
+  Alternative: pending for all jobs, which would replay old results.
+- **Running jobs** without a result become `error` ("Interrupted by the LearnHarness import"); one
+  still `running` with a saved result is classified as `error` or `done` by `is_failure` (matching
+  LH's `normalizeLegacyResult`). Alternative: mark all with results `done` or leave `running`.
+- **ChatGPT account:** exactly one ChatGPT account sets the session's model pick; none or several
+  leave the default, with a warning. Historical usage always uses `chatgpt:learnharness-import`.
+  Alternative: pick the first account, which could bill the wrong one.
+- **Usage roles:** `prober`/`teacher` by `has_probe_done`, `sideQuestion` and `compaction` by
+  message id, `extractor`/`auditor`, one row per job call. Request ids `<owner>#<n>`.
+- **Refusals:** any wrong-shape record (including ledger lines, the plan `tree`, and times without
+  a time zone) refuses the import; only unparsable JSONL lines are skipped. LH skips both.
+- **Orphans:** jobs of skipped or missing chats are skipped; graph rows naming non-imported
+  sessions are kept; unplaceable or shared-segment side threads are imported with a warning.
+- **Running the flow alone** needs `FLOW='learnharness-import.flow'`: the worktree path contains
+  the flow name, so the bare name matches every flow.
 
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
 - **Compaction is always Verstehen's own**, never provider-native.
+
+## Decided, not yet implemented
+
+_Nothing._
 
 ## Deliberate differences from LearnHarness
 

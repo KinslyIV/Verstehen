@@ -16,8 +16,8 @@ class Settings:
     provider_events: bool = False
 
 
-def load_settings() -> Settings:
-    """Validate launch environment variables and create the data directory."""
+def load_settings(*, create_data_dir: bool = True) -> Settings:
+    """Validate launch environment variables and, unless told not to, create the data directory."""
     desktop_flag = os.environ.get("VERSTEHEN_DESKTOP")
     token = os.environ.get("VERSTEHEN_TOKEN")
     if desktop_flag not in (None, "1"):
@@ -44,7 +44,8 @@ def load_settings() -> Settings:
     data_dir = Path(
         os.environ.get("VERSTEHEN_DATA_DIR", "~/.local/share/verstehen")
     ).expanduser()
-    data_dir.mkdir(parents=True, exist_ok=True)
+    if create_data_dir:
+        data_dir.mkdir(parents=True, exist_ok=True)
     allowed_hosts = tuple(
         name.strip().lower()
         for name in os.environ.get("VERSTEHEN_ALLOWED_HOSTS", "").split(",")

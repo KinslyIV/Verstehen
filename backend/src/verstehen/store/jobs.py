@@ -132,6 +132,28 @@ async def mark_delivered(connection: Connection, job_id: str) -> None:
     )
 
 
+async def insert_job(connection: Connection, job: JobRecord) -> None:
+    await connection.execute(
+        f"INSERT INTO jobs ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            job.id,
+            job.session_id,
+            job.kind,
+            job.tool_call_id,
+            encode(job.input),
+            job.status,
+            job.activity,
+            encode(job.result),
+            job.error,
+            None if job.delivery is None else job.delivery.kind,
+            None if job.delivery is None else job.delivery.status,
+            encode(job.usage),
+            job.created_at.isoformat(),
+            job.updated_at.isoformat(),
+        ),
+    )
+
+
 class JobsStore:
     """Persist background jobs: worker progress and the session's pending delivery."""
 
@@ -145,25 +167,7 @@ class JobsStore:
             session_id=session_id, kind=kind, tool_call_id=tool_call_id, input=input
         )
         async with self.database.transaction() as connection:
-            await connection.execute(
-                f"INSERT INTO jobs ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    job.id,
-                    job.session_id,
-                    job.kind,
-                    job.tool_call_id,
-                    encode(job.input),
-                    job.status,
-                    job.activity,
-                    None,
-                    None,
-                    None,
-                    None,
-                    None,
-                    job.created_at.isoformat(),
-                    job.updated_at.isoformat(),
-                ),
-            )
+            await insert_job(connection, job)
         return job
 
     async def get(self, job_id: str) -> JobRecord | None:

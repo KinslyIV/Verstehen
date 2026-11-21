@@ -1,0 +1,697 @@
+{
+ "id": "chat_fx_teach",
+ "title": "Slopes",
+ "createdAt": "2026-09-21T14:13:20.000Z",
+ "updatedAt": "2026-09-21T14:33:20.000Z",
+ "version": 2,
+ "settings": {
+  "model": {
+   "provider": "chatgpt",
+   "id": "gpt-6-astra"
+  },
+  "thinkingLevel": "medium"
+ },
+ "messages": [
+  {
+   "id": "u1",
+   "role": "user",
+   "content": "Teach me about slopes.",
+   "timestamp": 1790000000000
+  },
+  {
+   "id": "a1",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "thinking",
+     "thinking": "Plan the probe",
+     "thinkingSignature": "{\"type\": \"reasoning\", \"id\": \"rs_fx1\", \"encrypted_content\": \"ENCRYPTED_FX1\", \"summary\": [{\"type\": \"summary_text\", \"text\": \"Plan the probe\"}], \"content\": null}"
+    },
+    {
+     "type": "text",
+     "text": "Let me ask what you know first.",
+     "textSignature": "sig_Let"
+    },
+    {
+     "type": "toolCall",
+     "id": "call_probe",
+     "name": "probe",
+     "arguments": {
+      "question": "What is the slope of y = 2x?",
+      "options": [
+       {
+        "label": "1",
+        "value": "a"
+       },
+       {
+        "label": "2",
+        "value": "b"
+       }
+      ],
+      "explanation": "The coefficient of x is the slope.",
+      "correctAnswer": "b"
+     }
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 100,
+    "output": 10,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 1,
+    "totalTokens": 110,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000060000
+  },
+  {
+   "id": "r_probe",
+   "role": "toolResult",
+   "toolCallId": "call_probe",
+   "toolName": "probe",
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"kind\":\"quiz\",\"answers\":[{\"index\":2,\"label\":\"2\"}],\"correct\":true,\"confidence\":90,\"thinking\":\"Slope is the coefficient.\"}"
+    }
+   ],
+   "details": {
+    "kind": "quiz",
+    "tool": "probe",
+    "questionText": "What is the slope of y = 2x?",
+    "options": [
+     {
+      "index": 1,
+      "label": "1"
+     },
+     {
+      "index": 2,
+      "label": "2"
+     }
+    ],
+    "dontKnow": false,
+    "answers": [
+     {
+      "label": "2",
+      "value": "b",
+      "index": 2
+     }
+    ],
+    "thinking": "Slope is the coefficient.",
+    "answeredAt": "2026-09-21T14:16:20.000Z",
+    "correctIndices": [
+     2
+    ],
+    "explanation": "The coefficient of x is the slope.",
+    "correct": true,
+    "confidence": 90
+   },
+   "isError": false,
+   "timestamp": 1790000180000
+  },
+  {
+   "id": "a2",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "toolCall",
+     "id": "call_done",
+     "name": "probe_done",
+     "arguments": {
+      "assessment": {
+       "strands": [
+        {
+         "strand": "slope",
+         "assessment": "Knows the coefficient."
+        }
+       ],
+       "summary": "Ready."
+      }
+     }
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 400,
+    "output": 40,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 4,
+    "totalTokens": 440,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000240000
+  },
+  {
+   "id": "r_done",
+   "role": "toolResult",
+   "toolCallId": "call_done",
+   "toolName": "probe_done",
+   "content": [
+    {
+     "type": "text",
+     "text": "Assessment recorded."
+    }
+   ],
+   "details": {
+    "ok": true
+   },
+   "isError": false,
+   "timestamp": 1790000300000
+  },
+  {
+   "id": "steer_probe_chat_fx_teach",
+   "role": "custom",
+   "customType": "probe-handoff",
+   "content": "Next: plan the full teaching arc.",
+   "display": true,
+   "details": {
+    "chatId": "chat_fx_teach"
+   },
+   "timestamp": 1790000360000
+  },
+  {
+   "id": "a3",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "text",
+     "text": "Here is the plan.",
+     "textSignature": "sig_Her"
+    },
+    {
+     "type": "toolCall",
+     "id": "call_plan",
+     "name": "plan_init",
+     "arguments": {
+      "mermaid": "graph TD\n  rise-run[Rise over run] --> units[Slope units]"
+     }
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 700,
+    "output": 70,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 7,
+    "totalTokens": 770,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000420000
+  },
+  {
+   "id": "r_plan",
+   "role": "toolResult",
+   "toolCallId": "call_plan",
+   "toolName": "plan_init",
+   "content": [
+    {
+     "type": "text",
+     "text": "{\"ok\":true,\"nodeIds\":[\"rise-run\",\"units\"]}"
+    }
+   ],
+   "details": {
+    "ok": true,
+    "tree": {
+     "nodes": [
+      {
+       "id": "rise-run",
+       "title": "Rise over run"
+      },
+      {
+       "id": "units",
+       "title": "Slope units"
+      }
+     ],
+     "edges": [
+      {
+       "from": "rise-run",
+       "to": "units"
+      }
+     ],
+     "version": 1
+    }
+   },
+   "isError": false,
+   "timestamp": 1790000480000
+  },
+  {
+   "id": "pb_fx1",
+   "role": "custom",
+   "customType": "plan-block",
+   "content": "",
+   "display": true,
+   "details": {
+    "planCallId": "call_plan",
+    "block": {
+     "kind": "full",
+     "at": "2026-09-21T14:22:20.000Z",
+     "current": null,
+     "nodes": [
+      {
+       "id": "rise-run",
+       "title": "Rise over run",
+       "status": "upcoming"
+      },
+      {
+       "id": "units",
+       "title": "Slope units",
+       "status": "upcoming"
+      }
+     ],
+     "edges": [
+      {
+       "from": "rise-run",
+       "to": "units"
+      }
+     ]
+    }
+   },
+   "timestamp": 1790000540000
+  },
+  {
+   "id": "a4",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "toolCall",
+     "id": "call_research",
+     "name": "research",
+     "arguments": {
+      "question": "What is slope?"
+     }
+    },
+    {
+     "type": "toolCall",
+     "id": "call_visual",
+     "name": "visual",
+     "arguments": {
+      "brief": "A square."
+     }
+    },
+    {
+     "type": "toolCall",
+     "id": "call_pdf",
+     "name": "pdf",
+     "arguments": {
+      "path": "notes.pdf",
+      "question": "Summarise"
+     }
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 1000,
+    "output": 100,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 10,
+    "totalTokens": 1100,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000600000
+  },
+  {
+   "id": "r_research",
+   "role": "toolResult",
+   "toolCallId": "call_research",
+   "toolName": "research",
+   "content": [
+    {
+     "type": "text",
+     "text": "Dispatched (job job_fx_research)."
+    }
+   ],
+   "details": "Dispatched (job job_fx_research).",
+   "isError": false,
+   "timestamp": 1790000660000
+  },
+  {
+   "id": "r_visual",
+   "role": "toolResult",
+   "toolCallId": "call_visual",
+   "toolName": "visual",
+   "content": [
+    {
+     "type": "text",
+     "text": "Dispatched (job job_fx_visual)."
+    }
+   ],
+   "details": "Dispatched (job job_fx_visual).",
+   "isError": false,
+   "timestamp": 1790000660000
+  },
+  {
+   "id": "r_pdf",
+   "role": "toolResult",
+   "toolCallId": "call_pdf",
+   "toolName": "pdf",
+   "content": [
+    {
+     "type": "text",
+     "text": "Dispatched (job job_fx_pdf)."
+    }
+   ],
+   "details": "Dispatched (job job_fx_pdf).",
+   "isError": false,
+   "timestamp": 1790000660000
+  },
+  {
+   "id": "a5",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "toolCall",
+     "id": "call_read",
+     "name": "read",
+     "arguments": {
+      "path": "/tmp/picture.png"
+     }
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 1200,
+    "output": 120,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 12,
+    "totalTokens": 1320,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "toolUse",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000720000
+  },
+  {
+   "id": "r_read",
+   "role": "toolResult",
+   "toolCallId": "call_read",
+   "toolName": "read",
+   "content": [
+    {
+     "type": "text",
+     "text": "Read image file [image/png]"
+    },
+    {
+     "type": "image",
+     "data": "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGM8ISfHwMDAxMDAwMDAAAANBAEIfXHKZgAAAABJRU5ErkJggg==",
+     "mimeType": "image/png"
+    }
+   ],
+   "details": null,
+   "isError": false,
+   "timestamp": 1790000780000
+  },
+  {
+   "id": "a6",
+   "role": "assistant",
+   "content": [
+    {
+     "type": "text",
+     "text": "The slope is rise over run.",
+     "textSignature": "sig_The"
+    }
+   ],
+   "api": "openai-responses",
+   "provider": "chatgpt",
+   "model": "gpt-6-astra",
+   "usage": {
+    "input": 1400,
+    "output": 140,
+    "cacheRead": 0,
+    "cacheWrite": 0,
+    "reasoning": 14,
+    "totalTokens": 1540,
+    "cost": {
+     "input": 0,
+     "output": 0,
+     "cacheRead": 0,
+     "cacheWrite": 0,
+     "total": 0
+    }
+   },
+   "stopReason": "stop",
+   "rawStopReason": "completed",
+   "durationMs": 1200,
+   "thinkingLevel": "medium",
+   "timestamp": 1790000840000
+  },
+  {
+   "id": "steer_job_fx_research",
+   "role": "custom",
+   "customType": "subagent-steer",
+   "content": "Research complete. Slope is rise over run.",
+   "display": true,
+   "details": {
+    "jobId": "job_fx_research",
+    "kind": "research",
+    "toolCallId": "call_research",
+    "result": {
+     "brief": "Slope is rise over run [Khan](https://example.com/slope).",
+     "sources": [
+      {
+       "title": "Khan",
+       "url": "https://example.com/slope"
+      }
+     ]
+    }
+   },
+   "timestamp": 1790000900000
+  },
+  {
+   "id": "steer_job_fx_visual",
+   "role": "custom",
+   "customType": "subagent-steer",
+   "content": "The figure is drawn.",
+   "display": true,
+   "details": {
+    "jobId": "job_fx_visual",
+    "kind": "visual",
+    "toolCallId": "call_visual",
+    "result": {
+     "svg": "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>",
+     "notes": "A square."
+    },
+    "ui": {
+     "inverted": true
+    }
+   },
+   "timestamp": 1790000960000
+  },
+  {
+   "id": "sq_fx1",
+   "role": "custom",
+   "customType": "side-question",
+   "content": "Recorded learner-helper conversation update",
+   "display": false,
+   "details": {
+    "threadId": "side_fx1",
+    "updates": [
+     {
+      "id": "ask_fx1",
+      "role": "user",
+      "text": "Why rise over run?",
+      "at": "2026-09-21T14:30:20.000Z",
+      "append": false
+     }
+    ]
+   },
+   "timestamp": 1790001020000
+  }
+ ],
+ "tree": {
+  "nodes": [
+   {
+    "id": "rise-run",
+    "title": "Rise over run"
+   },
+   {
+    "id": "units",
+    "title": "Slope units"
+   }
+  ],
+  "edges": [
+   {
+    "from": "rise-run",
+    "to": "units"
+   }
+  ],
+  "version": 1
+ },
+ "turns": [
+  {
+   "id": "turn_1",
+   "messageId": "a1",
+   "at": "2026-09-21T14:15:20.000Z",
+   "model": "chatgpt:gpt-6-astra",
+   "steps": [
+    {
+     "inputTokens": 100,
+     "outputTokens": 10,
+     "cacheReadTokens": 5,
+     "cacheWriteTokens": 0,
+     "reasoningTokens": 1
+    },
+    {
+     "inputTokens": 120,
+     "outputTokens": 12,
+     "cacheReadTokens": 5,
+     "cacheWriteTokens": 0,
+     "reasoningTokens": 1
+    }
+   ]
+  },
+  {
+   "id": "turn_2",
+   "messageId": "a6",
+   "at": "2026-09-21T14:27:20.000Z",
+   "model": "chatgpt:gpt-6-astra",
+   "steps": [
+    {
+     "inputTokens": 300,
+     "outputTokens": 30,
+     "cacheReadTokens": 5,
+     "cacheWriteTokens": 0,
+     "reasoningTokens": 1
+    }
+   ]
+  }
+ ],
+ "extractions": [
+  {
+   "startedAt": 1790001080000,
+   "at": "2026-09-21T14:32:20.000Z",
+   "durationMs": 4000,
+   "stats": {
+    "nodes": 2,
+    "chains": 1
+   },
+   "stages": {
+    "extractor": {
+     "model": "chatgpt:gpt-6-luna",
+     "steps": [
+      {
+       "inputTokens": 500,
+       "outputTokens": 50,
+       "cacheReadTokens": 5,
+       "cacheWriteTokens": 0,
+       "reasoningTokens": 1
+      }
+     ]
+    },
+    "auditor": {
+     "model": "chatgpt:gpt-6-luna",
+     "steps": [
+      {
+       "inputTokens": 200,
+       "outputTokens": 20,
+       "cacheReadTokens": 5,
+       "cacheWriteTokens": 0,
+       "reasoningTokens": 1
+      },
+      {
+       "inputTokens": 210,
+       "outputTokens": 21,
+       "cacheReadTokens": 5,
+       "cacheWriteTokens": 0,
+       "reasoningTokens": 1
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "sideChats": [
+  {
+   "id": "side_fx1",
+   "open": true,
+   "createdAt": "2026-09-21T14:30:20.000Z",
+   "anchor": {
+    "messageId": "a6",
+    "partId": "a6-t0",
+    "blockIndex": 0,
+    "blockText": "The slope is rise over run."
+   },
+   "messages": [
+    {
+     "id": "ask_fx1",
+     "role": "user",
+     "text": "Why rise over run?",
+     "at": "2026-09-21T14:30:20.000Z",
+     "quotes": [
+      "rise over run"
+     ]
+    },
+    {
+     "id": "ans_fx1",
+     "role": "assistant",
+     "text": "Because slope compares vertical to horizontal change.",
+     "at": "2026-09-21T14:31:20.000Z",
+     "model": "chatgpt:gpt-6-astra",
+     "requestId": "req_fx1"
+    }
+   ]
+  }
+ ]
+}

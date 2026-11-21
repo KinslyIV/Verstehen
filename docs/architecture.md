@@ -43,8 +43,11 @@ The backend is `backend/src/verstehen/`, one package per LearnHarness topic. The
 by import-linter (`backend/pyproject.toml`):
 
 ```
-api  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
+api | lh_import  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
 ```
+
+`lh_import` is the one-off LearnHarness import ([store](architecture/store.md#importing-from-learnharness)),
+run from the command line instead of the API.
 
 - A package imports only packages to its right. `session` calls `jobs`, `sidechat`, and `graph`
   directly; they reach a session only through plain functions injected at startup (for example
@@ -119,7 +122,7 @@ settles. Details: [session and turns](architecture/session.md).
 | Side chat | [side chat](architecture/sidechat.md) | `sidechat/` | `lib/sidechat/` | [side chat](learnharness/side-chat.md) |
 | Knowledge graph | [graph](architecture/graph.md) | `graph/` | `lib/graph/`, `/graph` | [knowledge graph](learnharness/knowledge-graph.md) |
 | Providers and models | [providers](architecture/providers.md) | `providers/` | `lib/models/`, model menu, Accounts, setup | [providers](learnharness/providers.md) |
-| Storage | [store](architecture/store.md) | `store/`, migrations | — | [storage and events](learnharness/storage-and-events.md) |
+| Storage | [store](architecture/store.md) | `store/`, migrations, `lh_import/` | — | [storage and events](learnharness/storage-and-events.md) |
 | API and events | [API and events](architecture/api-and-events.md) | `api/`, `session/events.py` | `lib/api/` | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |
 | Frontend shell | [frontend shell](architecture/frontend-shell.md) | — | routes, layout, settings, markdown, Tauri shell | [overview](learnharness/overview.md) |
 | Tooling and packaging | [tooling](architecture/tooling.md) | `cli.py`, `self_check.py`, fake model | verify flows | — |

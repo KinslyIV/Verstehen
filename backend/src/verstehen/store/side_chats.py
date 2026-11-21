@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import uuid4
 
+from aiosqlite import Connection
 from pydantic import BaseModel, Field
 
 from verstehen.store.database import Database
@@ -32,6 +33,44 @@ class SideThread(BaseModel):
     anchor: SideAnchor
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     messages: list[SideExchange] = Field(default_factory=list)
+
+
+async def insert_side_thread(
+    connection: Connection, session_id: str, thread: SideThread
+) -> None:
+    await connection.execute(
+        "INSERT INTO side_threads (id, session_id, anchor, created_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(id) DO NOTHING",
+        (
+            thread.id,
+            session_id,
+            thread.anchor.model_dump_json(),
+            thread.created_at.isoformat(),
+        ),
+    )
+
+
+async def insert_side_exchange(
+    connection: Connection, thread_id: str, exchange: SideExchange
+) -> None:
+    await connection.execute(
+        "INSERT INTO side_exchanges (id, thread_id, seq, role, text, quotes, model, request_id, stopped, error, created_at) "
+        "SELECT ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ? "
+        "FROM side_exchanges WHERE thread_id = ? ON CONFLICT(thread_id, id) DO NOTHING",
+        (
+            exchange.id,
+            thread_id,
+            exchange.role,
+            exchange.text,
+            json.dumps(exchange.quotes),
+            exchange.model,
+            exchange.request_id,
+            exchange.stopped,
+            exchange.error,
+            exchange.created_at.isoformat(),
+            thread_id,
+        ),
+    )
 
 
 class SideChatsStore:
@@ -88,35 +127,10 @@ class SideChatsStore:
     ) -> None:
         thread = SideThread.model_validate(thread)
         async with self.database.transaction() as connection:
-            await connection.execute(
-                "INSERT INTO side_threads (id, session_id, anchor, created_at) VALUES (?, ?, ?, ?) "
-                "ON CONFLICT(id) DO NOTHING",
-                (
-                    thread.id,
-                    session_id,
-                    thread.anchor.model_dump_json(),
-                    thread.created_at.isoformat(),
-                ),
-            )
+            await insert_side_thread(connection, session_id, thread)
             if exchange is not None:
-                exchange = SideExchange.model_validate(exchange)
-                await connection.execute(
-                    "INSERT INTO side_exchanges (id, thread_id, seq, role, text, quotes, model, request_id, stopped, error, created_at) "
-                    "SELECT ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ? "
-                    "FROM side_exchanges WHERE thread_id = ? ON CONFLICT(thread_id, id) DO NOTHING",
-                    (
-                        exchange.id,
-                        thread.id,
-                        exchange.role,
-                        exchange.text,
-                        json.dumps(exchange.quotes),
-                        exchange.model,
-                        exchange.request_id,
-                        exchange.stopped,
-                        exchange.error,
-                        exchange.created_at.isoformat(),
-                        thread.id,
-                    ),
+                await insert_side_exchange(
+                    connection, thread.id, SideExchange.model_validate(exchange)
                 )
             if usage is not None:
                 await insert_usage(connection, usage)

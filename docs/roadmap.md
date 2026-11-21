@@ -16,7 +16,7 @@ step and its open questions are in [status](status.md); how each area works is i
 - **Deferred:** the plugin API (plugin questions, problems, workers, jobs, the knowledge picker) and
   flashcards.
 - **Excluded:** dictation (speech to text).
-- **No LearnHarness data import.** Verstehen starts with an empty graph and no sessions.
+- **LearnHarness data import** is a one-way command-line replace; see [store](architecture/store.md#importing-from-learnharness).
 
 ## Done
 
@@ -56,9 +56,12 @@ All of this is merged into `main`.
 
 ## Next
 
-1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account)
-   is in `dev`; `reasoning-resend` (ChatGPT encrypted reasoning resent to the same model) still has
-   to merge into `dev`. Then `dev` merges into `main`.
+1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account),
+   docs redesign, slim verification, and `reasoning-resend` (ChatGPT encrypted reasoning resent to
+   the same model) are in `dev`; `learnharness-import` (`verstehen-sidecar import-learnharness
+   <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
+   LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
+   it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
 2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
    sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
    lesson document.
