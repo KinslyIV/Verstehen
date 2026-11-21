@@ -3,6 +3,17 @@
 > One page: where the project is, the next step, and open questions. Replace it at the end of each
 > piece of work; history lives in git and the PRs. Last update: 2026-11-21 (docs redesign).
 
+## Slimmer verification (2026-11-21)
+
+Done on `slim-verify` (builds on #4): the 11 theme-looping flows now run once in the default dark
+theme, and the Settings Accounts and Tools state grids moved to Vitest (`settings-accounts`
+and `settings-tools` keep one browser case each). `make verify` went from 96 to 72 cases. Playwright
+workers are 1 on machines with 4 or fewer threads and the default elsewhere. On the 12-thread
+laptop (6 default workers) full `make verify` took 2m46s but flaked on a different untouched flow in
+each of three runs (`composer-steer`, `session-rename-delete`, `question-ask`; all pass alone). With
+`FLOW='--workers=3'` all 72 passed in 3m31s. `make check` passed (796 pytest, 351 Vitest) and
+`make verify-live` passed. Open: the load-sensitive flows (see the flake rule in the verify skill).
+
 ## Where we are
 
 M1–M9 are merged into `main`: the full teaching loop, real providers, question tools, compaction,

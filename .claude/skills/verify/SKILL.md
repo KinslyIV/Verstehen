@@ -60,6 +60,11 @@ A flow that fails and then passes on rerun is a flake, and a flake is a bug: rec
 `docs/roadmap.md` (Known gaps) and fix it before merge. Never weaken an assertion or timeout to pass.
 Every flow file must appear in a Verify flow column of `docs/feature-map.md` (`make check` enforces it).
 
+New flows run in the default (dark) theme; only appearance and layout flows test a specific theme.
+Playwright uses 1 worker on machines with 4 or fewer CPU threads and its default elsewhere and in CI.
+Put cheap state permutations (such as the Settings account and tool states) in Vitest, with one
+browser flow for the end-to-end case.
+
 Look at the screenshots yourself and attach the ones you checked to the PR.
 Keep logic permutations in cheap offline tests and representative real flows in this suite.
 Focused iteration plus full integration verification preserves coverage as the app grows.
