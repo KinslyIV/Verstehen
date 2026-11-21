@@ -81,6 +81,8 @@ test('early_stream_end_recovers_once_without_resending_input', async () => {
 	expect(controller.error).toBe('The connection dropped before the turn completed.');
 });
 test('conflict_polls_and_retries_the_same_input', async () => {
+	controller.dispose();
+	controller = new SessionController('one', 1, 5_000);
 	await controller.load();
 	controller.draft = 'Why?';
 	vi.mocked(api.postInput)

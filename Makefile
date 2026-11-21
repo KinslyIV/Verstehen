@@ -18,22 +18,22 @@ check-backend:
 	uv run --project backend python tools/check_comments.py
 	uv run --project backend python tools/check_migrations.py
 	uv run --project backend python tools/check_versions.py
-	uv run --project backend pytest -c backend/pyproject.toml
+	uv run --project backend pytest -c backend/pyproject.toml -n auto
 
 check-frontend:
 	npm run check --prefix app
-	cd app && npx eslint .
-	cd app && npx prettier --check .
+	cd app && npx eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/
+	cd app && npx prettier --check . --cache
 	npm run test --prefix app
 
 test:
-	uv run --project backend pytest -c backend/pyproject.toml
+	uv run --project backend pytest -c backend/pyproject.toml -n auto
 	npm run test --prefix app
 
 fmt:
 	uv run --project backend ruff check --fix .
 	uv run --project backend ruff format .
-	cd app && npx prettier --write .
+	cd app && npx prettier --write . --cache
 
 lock-migrations:
 	uv run --project backend python tools/check_migrations.py --lock
