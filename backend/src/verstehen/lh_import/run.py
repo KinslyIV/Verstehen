@@ -126,7 +126,11 @@ async def run_import(
         return False
     database_path = settings.data_dir / "verstehen.db"
     existing = await asyncio.to_thread(count_contents, database_path)
-    if confirm(confirmation_prompt(existing)).strip() != CONFIRMATION:
+    try:
+        answer = confirm(confirmation_prompt(existing))
+    except EOFError:
+        answer = ""
+    if answer.strip() != CONFIRMATION:
         say("Aborted: nothing was changed.")
         return False
     backup = await asyncio.to_thread(back_up, settings.data_dir)

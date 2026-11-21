@@ -3,7 +3,7 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TypeVar
+from typing import NoReturn, TypeVar
 
 from pydantic import BaseModel, ValidationError
 
@@ -81,9 +81,15 @@ def refusing(where: str) -> Iterator[None]:
         raise ImportRefused(f"{where}: {error}") from None
 
 
+def reject_json_constant(token: str) -> NoReturn:
+    raise ValueError(f"invalid JSON constant {token}")
+
+
 def read_json(path: Path, name: str) -> object:
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(
+            path.read_text(encoding="utf-8"), parse_constant=reject_json_constant
+        )
     except (OSError, ValueError) as error:
         raise ImportRefused(f"{name}: cannot be read as JSON ({error})") from None
 
@@ -94,12 +100,15 @@ def read_jsonl(
     if not path.exists():
         return []
     records: list[Record] = []
-    text = path.read_text(encoding="utf-8", newline="")
-    for number, line in enumerate(text.split("\n"), 1):
-        if not line.strip():
+    raw = path.read_bytes()
+    for number, raw_line in enumerate(raw.split(b"\n"), 1):
+        if not raw_line:
             continue
         try:
-            value = json.loads(line)
+            line = raw_line.decode("utf-8")
+            if not line.strip():
+                continue
+            value = json.loads(line, parse_constant=reject_json_constant)
         except ValueError:
             corrupt_lines.append(f"{name}:{number}")
             continue

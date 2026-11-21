@@ -476,6 +476,43 @@ def test_corrupt_ledger_lines_are_skipped_and_reported(tmp_path: Path):
     assert len(data.checkpoints) == 1
 
 
+def test_invalid_utf8_and_nonstandard_json_constants_in_ledgers_are_skipped(
+    tmp_path: Path,
+):
+    def edit(folder: Path):
+        sessions = folder / "graph" / "sessions.jsonl"
+        sessions.write_bytes(sessions.read_bytes() + b'\xff\xfe{"chatId": "bad"}\n')
+        coverage = folder / "graph" / "coverage.jsonl"
+        coverage_bytes = coverage.read_bytes()
+        if not coverage_bytes.endswith(b"\n"):
+            coverage_bytes += b"\n"
+        coverage.write_bytes(
+            coverage_bytes
+            + b'{"chatId":"chat_fx_teach","fp":"x","tokens":NaN,"foldedAt":"2026-11-16T16:00:00.000Z"}\n'
+            + b'{"chatId":"chat_fx_teach","fp":"y","tokens":Infinity,"foldedAt":"2026-11-16T16:00:00.000Z"}\n'
+        )
+
+    data = read_folder(fixture_copy(tmp_path, edit))
+    assert data.corrupt_lines == [
+        "graph/sessions.jsonl:2",
+        "graph/coverage.jsonl:4",
+        "graph/coverage.jsonl:5",
+    ]
+    assert len(data.checkpoints) == 1
+    assert len(data.coverage) == 3
+
+    def edit_chat(folder: Path):
+        path = folder / "chats" / f"{CHAT}.json"
+        path.write_text(
+            path.read_text().replace('"durationMs": 1200', '"durationMs": NaN', 1)
+        )
+
+    with pytest.raises(
+        ImportRefused, match=r"chat_fx_teach\.json: cannot be read as JSON"
+    ):
+        read_folder(fixture_copy(tmp_path / "chat-nan", edit_chat))
+
+
 def test_folder_without_learnharness_directories_is_refused(tmp_path: Path):
     with pytest.raises(ImportRefused, match="not a LearnHarness data folder"):
         read_folder(tmp_path)
@@ -687,6 +724,16 @@ def test_sidecar_command_prints_refusals(tmp_path: Path):
     refused = sidecar_import(tmp_path / "data", str(tmp_path))
     assert refused.returncode == 1
     assert "not a LearnHarness data folder" in refused.stderr
+
+
+def test_eof_at_confirmation_cancels_cleanly(tmp_path: Path):
+    data_dir = seeded_data_dir(tmp_path)
+    before = directory_snapshot(data_dir)
+    result = sidecar_import(data_dir, str(FIXTURE), stdin="")
+    assert result.returncode == 1
+    assert "Aborted: nothing was changed." in result.stdout
+    assert result.stderr == ""
+    assert directory_snapshot(data_dir) == before
 
 
 def test_cancelling_into_a_missing_directory_creates_nothing(tmp_path: Path):
@@ -927,17 +974,25 @@ def test_plan_tree_with_an_extra_field_is_refused(tmp_path: Path):
         read_folder(fixture_copy(tmp_path, edit))
 
 
-def edit_plan_result(
-    tmp_path: Path, name: str, mutate: Callable[[dict], object]
+def edit_message(
+    tmp_path: Path, name: str, message_id: str, mutate: Callable[[dict, dict], object]
 ) -> Path:
     def edit(folder: Path):
         def change(chat: dict):
-            result = next(m for m in chat["messages"] if m["id"] == "r_plan")
-            mutate(result["details"])
+            message = next(m for m in chat["messages"] if m["id"] == message_id)
+            mutate(message, chat)
 
         edit_json(folder / "chats" / f"{CHAT}.json", change)
 
     return fixture_copy(tmp_path / name, edit)
+
+
+def edit_plan_result(
+    tmp_path: Path, name: str, mutate: Callable[[dict], object]
+) -> Path:
+    return edit_message(
+        tmp_path, name, "r_plan", lambda message, _chat: mutate(message["details"])
+    )
 
 
 @pytest.mark.parametrize(
@@ -990,6 +1045,11 @@ def edit_plan_result(
             lambda details: details.update(ok=False, error="boom"),
             r"chat_fx_teach\.json message r_plan: a failed plan_init result carries only an error",
         ),
+        (
+            "empty_nodes",
+            lambda details: details["tree"].update(nodes=[], edges=[]),
+            r"chat_fx_teach\.json message r_plan: the plan_init tree is invalid: No nodes found",
+        ),
     ],
 )
 def test_malformed_plan_init_results_are_refused(
@@ -1001,6 +1061,67 @@ def test_malformed_plan_init_results_are_refused(
     folder = edit_plan_result(tmp_path, name, mutate)
     with pytest.raises(ImportRefused, match=pattern):
         converted(folder)
+
+
+def test_plan_init_engine_errors_preserve_text_and_status(tmp_path: Path):
+    for label, empty_details in (("empty-dict", {}), ("null", None)):
+        folder = edit_message(
+            tmp_path,
+            label,
+            "r_plan",
+            lambda message, _chat, d=empty_details: message.update(
+                isError=True,
+                content=[{"type": "text", "text": "Tool timed out"}],
+                details=d,
+            ),
+        )
+        entry = entry_named(teach_entries(converted(folder)).entries, "r_plan")
+        assert isinstance(entry, ToolResultEntry)
+        assert entry.is_error is True
+        assert entry.text == "Tool timed out"
+        assert entry.details == empty_details
+
+
+def test_errored_plan_init_cannot_succeed_or_use_question_recovery(tmp_path: Path):
+    recovery_bypass = edit_message(
+        tmp_path,
+        "plan-recovery",
+        "r_plan",
+        lambda message, _chat: message.update(
+            isError=True, details={"questionRecovery": True, "ok": "false"}
+        ),
+    )
+    with pytest.raises(
+        ImportRefused, match=r"chat_fx_teach\.json message r_plan plan_init result: ok"
+    ):
+        converted(recovery_bypass)
+
+    errored_success = edit_message(
+        tmp_path,
+        "errored-success",
+        "r_plan",
+        lambda message, _chat: message.update(isError=True),
+    )
+    with pytest.raises(
+        ImportRefused,
+        match=r"chat_fx_teach\.json message r_plan: an errored plan_init result cannot succeed",
+    ):
+        converted(errored_success)
+
+    question_recovery = edit_message(
+        tmp_path,
+        "probe-recovery",
+        "r_probe",
+        lambda message, _chat: message.update(
+            isError=True, details={"questionRecovery": True}
+        ),
+    )
+    probe_entry = entry_named(
+        teach_entries(converted(question_recovery)).entries, "r_probe"
+    )
+    assert isinstance(probe_entry, ToolResultEntry)
+    assert probe_entry.is_error is True
+    assert probe_entry.details == {"question_recovery": True}
 
 
 def test_plan_init_preserves_version_and_failed_result(tmp_path: Path):

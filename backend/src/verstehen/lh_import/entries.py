@@ -270,7 +270,11 @@ class ChatEntries:
         where = self.where(message)
         if images and name != "read":
             self.warn(f"{len(images)} image(s) in a {name} result were not imported")
-        if message.is_error and _flag(details, "questionRecovery"):
+        if (
+            name in QUESTION_KINDS
+            and message.is_error
+            and _flag(details, "questionRecovery")
+        ):
             return {"question_recovery": True}
         if (
             name in QUESTION_KINDS
@@ -278,8 +282,10 @@ class ChatEntries:
             and "answers" in details
         ):
             return self.answer_details(details, where)
-        if name == "plan_init" and not (message.is_error and details is None):
-            return self.plan_details(details, where)
+        if name == "plan_init":
+            if message.is_error and (details is None or details == {}):
+                return details
+            return self.plan_details(details, where, is_error=message.is_error)
         if name in JOB_TOOLS:
             return None
         if name == "show_image" and isinstance(details, dict):
@@ -305,7 +311,9 @@ class ChatEntries:
             ) from None
         return answer.model_dump(mode="json", exclude_none=True)
 
-    def plan_details(self, details: JsonValue, where: str) -> JsonValue:
+    def plan_details(
+        self, details: JsonValue, where: str, *, is_error: bool = False
+    ) -> JsonValue:
         """A plan_init result, checked by Verstehen's own plan builder, keeping LH's saved version."""
         result = parse(lh.PlanInitDetails, details, f"{where} plan_init result")
         if not result.ok:
@@ -314,11 +322,17 @@ class ChatEntries:
                     f"{where}: a failed plan_init result carries only an error"
                 )
             return {"ok": False, "error": result.error}
+        if is_error:
+            raise ImportRefused(f"{where}: an errored plan_init result cannot succeed")
         if result.tree is None or result.error is not None:
             raise ImportRefused(
                 f"{where}: a successful plan_init result carries only a tree"
             )
         saved = result.tree
+        if not saved.nodes:
+            raise ImportRefused(
+                f"{where}: the plan_init tree is invalid: No nodes found — the plan needs at least one."
+            )
         try:
             tree = create_tree(
                 [
