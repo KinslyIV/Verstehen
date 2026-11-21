@@ -7,8 +7,11 @@
 Done on `remove-claude-code-download`: the Claude Code download (service, routes, SHA-256, discovery
 priority, Settings button and progress) is gone; Settings → Accounts shows an **Install Claude Code**
 link to the setup docs when not installed or too old, with the new reason strings. The Chromium demo
-browser download is untouched. Verified with `make check` and `make verify FLOW='settings-accounts
-setup-dialog'`. Nothing next.
+browser download is untouched. The desktop shell allow-list now also opens exactly the setup URL
+(regression test reads `tauri.conf.json`); the "Run claude to sign in" line shows only for a usable
+binary. Two GPT 6.2 Sol review rounds; round 2 left only nits, fixed. Verified with `make check`
+(757 backend, 334 frontend tests) and `make verify FLOW='settings-accounts setup-dialog'` (9/9),
+screenshots of all four states (light/dark) and the setup dialog inspected. Next: merge.
 
 ## M9 progress
 

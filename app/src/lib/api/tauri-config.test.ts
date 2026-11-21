@@ -6,7 +6,7 @@ const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
 const allowed = new RegExp(config.plugins.shell.open);
 
 test.each([
-	'https://auth.openai.com/oauth/authorize?client_id=abc&state=1',
+	'https://auth.openai.com/api/accounts/authorize?response_type=code&state=1',
 	CLAUDE_CODE_INSTALL_URL
 ])('the desktop shell may open %s', (url) => {
 	expect(allowed.test(url)).toBe(true);
