@@ -421,8 +421,9 @@ In the port:
 - Python 3.14; uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
 - **One command runs everything** (decided): `make check` at the repo root runs pytest, ruff,
   pyrefly, svelte-check, ESLint, Prettier, Vitest, and the code-rule checks below. `make test` runs
-  only tests; `make fmt` fixes formatting. No CI for now; `make check` is required before every
-  commit.
+  only tests; `make fmt` fixes formatting. CI runs `make check` and `make verify` on GitHub-hosted
+  runners for every PR against `main` and push to `main`; `make check` is still required locally
+  before every commit.
 - **Code rules are checks** (decided):
   - the comment checker: at most 3 lines per comment or docstring block. It excludes generated code
     (the OpenAPI types), the shadcn-svelte components folder, the vendored `ClaudeCodeModel`, and the
