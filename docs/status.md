@@ -16,12 +16,12 @@ the same areas and checked by `make check`, and the workflow has the new roles a
 
 ## Next
 
-1. **Review the decision queue** in [decisions](decisions.md#waiting-for-your-review): the real
-   choices, the bulk-accept list, and the proposed removals.
-2. **Merge `reasoning-resend` into `dev`** (`chatgpt-catalog-cache` is already in `dev`), then
+1. **Merge `reasoning-resend` into `dev`** (`chatgpt-catalog-cache` is already in `dev`), then
    `dev` into `main`.
+2. **Fix the flaky flows** listed in the [roadmap](roadmap.md#known-gaps): CI now runs them with
+   zero retries on `dev` → `main`.
 3. **Plan M10** (practice sessions).
 
 ## Open questions
 
-_None besides the decision review queue._
+_None._ The M1–M9 decision queue was reviewed on 2026-11-21.

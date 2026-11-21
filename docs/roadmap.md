@@ -102,6 +102,8 @@ merges.
 - **ChatGPT encrypted reasoning is not resent** until `reasoning-resend` merges.
 - **Laptop checks never done:** ChatGPT sign-in, Claude Code discovery, the model menu, and a real
   lesson through probe, plan, teaching, research, and a demo in the installed app.
+- **PDF text with PyMuPDF (user note, 2026-11-21):** switch PDF text extraction (the PDF worker
+  and notes imports) to PyMuPDF later; its AGPL license fits this repository.
 - **Small upkeep:** remove the openapi-typescript TypeScript 6 override once it supports TS 6;
   re-check the mode-watcher pre-paint write after 1.1.0; graph cards could deep-link to a message
   once the thread has message anchors.
