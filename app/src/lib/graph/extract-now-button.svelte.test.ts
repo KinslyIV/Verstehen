@@ -43,3 +43,18 @@ test('a_new_coverage_failure_replaces_an_older_refusal', async () => {
 	await screen.rerender({ ...props, failure: 'Newer failure.' });
 	await expect.element(page.getByRole('alert')).toHaveTextContent('Newer failure.');
 });
+test('a_refusal_that_arrives_after_coverage_reported_a_newer_run_is_discarded', async () => {
+	let refuse: (error: unknown) => void = () => {};
+	vi.mocked(api.extractCoverage).mockReturnValue(
+		new Promise((_, reject) => {
+			refuse = reject;
+		})
+	);
+	const screen = await render(ExtractNowButton, props);
+	await page.getByRole('button', { name: 'Extract now', exact: true }).click();
+	await screen.rerender({ ...props, busy: true });
+	refuse(new api.ApiError(409, 'conflict', 'conflict', 'Already running.'));
+	await screen.rerender({ ...props, busy: false });
+	await expect.element(page.getByRole('button', { name: 'Extract now' })).toBeVisible();
+	await expect.element(page.getByRole('alert')).not.toBeInTheDocument();
+});

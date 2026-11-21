@@ -12,7 +12,10 @@ checks the slots with `getModels()` on send (now a cache read, not a ChatGPT cal
 stale or late-error result never replaces a newer one, and connection errors also evict. Settings →
 Models shows loading/error and hands its one refreshed catalog to the controls. Refused Retry keeps the
 failure banner, and Extract now shows refusal and post-launch failure reasons (coverage
-`failure_reason`). Next: review and merge.
+`failure_reason`). Rounds 2–3: only the current fetch may evict or mark needs sign-in (a superseded
+fetch reports "The ChatGPT model list changed. Try again."), dispatch-time unavailability evicts, and
+Extract now discards refusals that arrive after coverage reported a newer run. Three GPT 6.2 Sol
+review rounds; round 3 left no blockers and its items are fixed. Next: merge.
 
 ## Claude Code download removed (2026-11-21)
 

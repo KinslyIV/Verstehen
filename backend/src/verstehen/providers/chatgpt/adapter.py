@@ -168,7 +168,7 @@ class ChatGPTAccountAdapter:
         except Exception as error:
             if self.fetches.get(account.id) is not task:
                 raise AccountUnavailable(
-                    "ChatGPT could not be reached. Try again.", "unavailable"
+                    "The ChatGPT model list changed. Try again.", "unavailable"
                 ) from None
             raise self.unavailable(
                 account.id, error, provider.source if provider else None

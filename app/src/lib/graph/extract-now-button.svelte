@@ -22,18 +22,27 @@
 	let requesting = $state(false);
 	let refusal = $state<string | null>(null);
 	let message = $derived(busy || complete ? null : (refusal ?? failure));
+	/** Bumped when coverage reports newer state, so an older refusal is discarded. */
+	let attempt = 0;
 	$effect(() => {
-		if (busy || complete || failure) refusal = null;
+		if (busy || complete || failure) {
+			attempt += 1;
+			refusal = null;
+		}
 	});
 
 	async function start() {
+		const current = ++attempt;
 		requesting = true;
 		refusal = null;
 		try {
 			await extractCoverage(sessionId);
 		} catch (cause) {
-			refusal =
-				cause instanceof ApiError ? (cause.reason ?? cause.message) : 'Extraction could not start.';
+			if (current === attempt)
+				refusal =
+					cause instanceof ApiError
+						? (cause.reason ?? cause.message)
+						: 'Extraction could not start.';
 		} finally {
 			requesting = false;
 			onstarted?.();

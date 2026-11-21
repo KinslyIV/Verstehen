@@ -497,6 +497,37 @@ def test_failure_reason_survives_a_refused_start_and_a_deletion_that_has_not_com
     asyncio.run(scenario())
 
 
+def test_failure_reason_survives_a_conflict_that_appears_during_readiness(tmp_path):
+    async def scenario():
+        async def respond(messages, info):
+            raise AssertionError
+
+        async with pipeline(tmp_path, respond) as service:
+            session = await service.sessions_store.create("Lesson")
+            service.failure_reasons[session.id] = "Sign in again."
+            checking, release = asyncio.Event(), asyncio.Event()
+
+            async def ready(purpose):
+                checking.set()
+                await release.wait()
+
+            async def wait():
+                await asyncio.Event().wait()
+                return EmissionStats()
+
+            service.ready = ready
+            starting = asyncio.create_task(service.start(session.id))
+            await checking.wait()
+            service.launch(session.id, wait)
+            release.set()
+            with pytest.raises(GraphRefused) as refused:
+                await starting
+            assert refused.value.status == 409
+            assert service.failure_reasons[session.id] == "Sign in again."
+
+    asyncio.run(scenario())
+
+
 def test_two_sources_audit_one_at_a_time_and_abort_cancels_waiter(tmp_path):
     async def scenario():
         first_audit = asyncio.Event()
