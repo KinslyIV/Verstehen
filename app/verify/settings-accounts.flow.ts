@@ -112,6 +112,9 @@ for (const theme of ['dark', 'light']) {
 				await (await addPopupPromise).close();
 				await expect(chatgpt.getByRole('button', { name: 'Add account' })).toBeEnabled();
 			}
+			const login = cli.getByText('Uses your Claude Code login. Run claude to sign in.');
+			if (state === 'tested' || state === 'untested') await expect(login).toBeVisible();
+			else await expect(login).toHaveCount(0);
 			const install = cli.getByRole('button', { name: 'Install Claude Code' });
 			if (state === 'not_installed' || state === 'too_old') {
 				await expect(install).toBeVisible();

@@ -39,7 +39,7 @@
 	},
 	"plugins": {
 		"shell": {
-			"open": "^https://auth\\.openai\\.com/.*"
+			"open": "^(https://auth\\.openai\\.com/.*|https://code\\.claude\\.com/docs/en/setup)$"
 		}
 	}
 }

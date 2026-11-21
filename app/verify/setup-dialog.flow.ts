@@ -11,6 +11,9 @@ test('setup-dialog', async ({ page }) => {
 	await page.getByRole('textbox').fill('Understanding derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
+	await expect(
+		page.getByText('Add a ChatGPT account or set up Claude Code in Settings.')
+	).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Open Settings' })).toBeVisible();
 
 	await page.route('**/api/accounts/**', async (route) => {
@@ -49,5 +52,9 @@ test('setup-dialog', async ({ page }) => {
 	await expect(page.getByRole('dialog')).toBeVisible();
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
 	await expect(page.getByRole('textbox')).toHaveValue('Understanding derivatives');
+	connected = false;
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
+	await expect(
+		page.getByText('Add a ChatGPT account or set up Claude Code in Settings.')
+	).toBeVisible();
 });

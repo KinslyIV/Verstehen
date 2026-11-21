@@ -11,6 +11,7 @@
 		removeChatGPTAccount,
 		getClaudeCode,
 		openExternal,
+		CLAUDE_CODE_INSTALL_URL,
 		type Account,
 		type BinaryStatus,
 		type Settings
@@ -24,7 +25,6 @@
 	let busy = $state(false);
 	let disposed = false;
 	let polling = false;
-	const INSTALL_URL = 'https://code.claude.com/docs/en/setup';
 	const stateLabels: Record<string, string> = {
 		ready: 'Connected',
 		needs_sign_in: 'Needs sign-in',
@@ -210,14 +210,16 @@
 				{#if claude.reason}<p class="mt-2 text-xs leading-5 text-muted-foreground">
 						{claude.reason}
 					</p>{/if}
-				<p class="mt-2 text-xs text-muted-foreground">
-					Uses your Claude Code login. Run claude to sign in.
-				</p>
+				{#if claude.state === 'tested' || claude.state === 'untested'}<p
+						class="mt-2 text-xs text-muted-foreground"
+					>
+						Uses your Claude Code login. Run claude to sign in.
+					</p>{/if}
 			</div>
 			{#if claude.state === 'not_installed' || claude.state === 'too_old'}<Button
 					variant="outline"
 					size="sm"
-					onclick={() => void openExternal(INSTALL_URL)}
+					onclick={() => void openExternal(CLAUDE_CODE_INSTALL_URL)}
 				>
 					Install Claude Code
 				</Button>{/if}{/if}

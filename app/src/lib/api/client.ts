@@ -246,6 +246,7 @@ export async function removeChatGPTAccount(id: string): Promise<void> {
 export async function getClaudeCode(): Promise<BinaryStatus> {
 	return (await request('/api/accounts/claude-code')).json();
 }
+export const CLAUDE_CODE_INSTALL_URL = 'https://code.claude.com/docs/en/setup';
 export async function openExternal(url: string): Promise<void> {
 	if (isTauri()) await invoke('plugin:shell|open', { path: url });
 	else window.open(url, '_blank', 'noopener,noreferrer');
