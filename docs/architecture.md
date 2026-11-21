@@ -2,7 +2,8 @@
 
 How Verstehen is built today: the processes, the package order, one turn from end to end, and a
 map to the area docs. Each area doc covers its backend and frontend code together, so you only
-need to read the area your task touches. What was decided, and why, is in [decisions](decisions.md).
+need to read the area your task touches. Where Verstehen deliberately differs from LearnHarness is
+in [decisions](decisions.md).
 
 ## The system at a glance
 
@@ -138,6 +139,6 @@ Structure changes only; behavior stays the same unless [decisions](decisions.md)
    named kind. The probe handoff is an explicit phase transition.
 5. **No subscription staging.** `ProviderPolicy` is asked before a wake turn starts and before
    queued job results are injected; composer steers and side-chat updates are not gated. Automatic
-   input is saved before dispatch, which differs from the recorded decision
-   ([providers](architecture/providers.md), [known gaps](roadmap.md#known-gaps)).
+   input is saved before dispatch, and a Retry delivers it once
+   ([providers](architecture/providers.md)).
 6. **Derived state** for the phase, owed handoff, and plan, so a restart loses nothing.

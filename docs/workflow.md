@@ -32,7 +32,8 @@ place that names the roles and models; AGENTS.md and plans link here.
   before the user chooses; if the user picks quickly and an implication was not covered, say so.
 - The approved plan goes in `docs/plans/<milestone>.md`: the tasks, the files they touch, the
   behavior with its LearnHarness references, the tests, the verify flows, and the feature-map
-  entries. Each user decision goes into [decisions](decisions.md).
+  entries. User decisions go into [decisions](decisions.md) until they are implemented and the
+  area docs describe them; differences from LearnHarness stay there.
 
 ## 2. Implement (autonomous, no questions to the user)
 
@@ -55,6 +56,16 @@ place that names the roles and models; AGENTS.md and plans link here.
 - **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging, real-model calls other
   than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
   and reported.
+
+- **User decisions (2026-11-21), slimmer verification:** flows run once in the default dark
+  theme; only `layout-lesson-dark` and `settings-appearance-light` explicitly test a theme.
+  Settings account states (not installed, too old, untested, tested) and tool download states
+  (idle, downloading, failed, found) belong in Vitest. Accounts keeps one `tested` browser case;
+  Tools keeps one `found` browser case. Session-performance flows stay in the full suite.
+- **User decision (2026-11-21), workers:** locally, Playwright uses 1 worker on machines with
+  4 or fewer CPU threads (Pixal), and at most 3 elsewhere; CI uses Playwright's default.
+  Six local workers on the laptop made `composer-steer`, `session-rename-delete`, and
+  `question-ask` fail; each passes alone, pointing to a timing bug.
 
 ## 3. Review (until clean, at most 4 rounds)
 
@@ -89,5 +100,6 @@ place that names the roles and models; AGENTS.md and plans link here.
   - **The PR to merge.**
 - On the branch, before the PR: update [status](status.md), the area docs in
   [architecture](architecture/) you changed, the [feature map](feature-map.md), and
-  [decisions](decisions.md) (a new decision replaces the one it contradicts). When the milestone
-  merges, its plan's lasting content is in the area docs and the plan is deleted.
+  [decisions](decisions.md): add any difference from LearnHarness, and remove decisions that are
+  now implemented and documented. When the milestone merges, its plan's lasting content is in the
+  area docs and the plan is deleted.

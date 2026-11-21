@@ -60,10 +60,15 @@ A flow that fails and then passes on rerun is a flake, and a flake is a bug: rec
 `docs/roadmap.md` (Known gaps) and fix it before merge. Never weaken an assertion or timeout to pass.
 Every flow file must appear in a Verify flow column of `docs/feature-map.md` (`make check` enforces it).
 
-New flows run in the default (dark) theme; only appearance and layout flows test a specific theme.
-Playwright uses 1 worker on machines with 4 or fewer CPU threads and its default elsewhere and in CI.
-Put cheap state permutations (such as the Settings account and tool states) in Vitest, with one
-browser flow for the end-to-end case.
+- **User decisions (2026-11-21), slimmer verification:** flows run once in the default dark
+  theme; only `layout-lesson-dark` and `settings-appearance-light` explicitly test a theme.
+  Settings account states (not installed, too old, untested, tested) and tool download states
+  (idle, downloading, failed, found) belong in Vitest. Accounts keeps one `tested` browser case;
+  Tools keeps one `found` browser case. Session-performance flows stay in the full suite.
+- **User decision (2026-11-21), workers:** locally, Playwright uses 1 worker on machines with
+  4 or fewer CPU threads (Pixal), and at most 3 elsewhere; CI uses Playwright's default.
+  Six local workers on the laptop made `composer-steer`, `session-rename-delete`, and
+  `question-ask` fail; each passes alone, pointing to a timing bug.
 
 Look at the screenshots yourself and attach the ones you checked to the PR.
 Keep logic permutations in cheap offline tests and representative real flows in this suite.

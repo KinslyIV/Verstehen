@@ -5,6 +5,8 @@ Every feature, how to reach it, and how to verify it, grouped by the same areas 
 `make check` fails when a flow file under `app/verify/` or `app/verify-live/` is missing from a
 **Verify flow** column, or when that column names a flow with no file (`tools/check_feature_map.py`).
 Flow names are the file names without `.flow.ts`; flows run in the default dark theme.
+Only `layout-lesson-dark` and `settings-appearance-light` explicitly test a theme. Locally,
+Playwright uses 1 worker on machines with ≤4 CPU threads and at most 3 elsewhere; CI uses its default.
 How to run flows and keep evidence is in the verify skill (`.claude/skills/verify/SKILL.md`).
 
 ## Session and turns
@@ -158,5 +160,5 @@ Area doc: [tooling](architecture/tooling.md).
 |---|---|---|---|
 | Live lesson turn | `make verify-live`: the logged-in Claude Code on Haiku at low thinking opens a lesson, answers the question in the dock, and checks that the reaction streams and settles. Claude Code must be on PATH. Evidence in `app/verify-live-output/`. | `lesson-first-turn` | — |
 | Desktop app | Install the Arch package and open **Verstehen** from the launcher. The user checks the Tauri window on the laptop; agents do not run it. | — | `make app`: the frozen self-check (including Pillow PNG and a timed `regex` match), port handshake, authenticated health, refusal without a token, migrations, shutdown on stdin EOF. A second `make app` keeps the image ID, installs no toolchain, and runs one `vite build`. |
-| CI | Open a PR against `main` or push to `main`; `.github/workflows/ci.yml` runs `make check` and `make verify` on GitHub-hosted Ubuntu. Fake-model flows retry once only in CI; the list reporter shows flaky passes, and failures upload `app/verify-output` screenshots and traces. | — | `make check`; `make verify FLOW='app-reaches-sidecar'` locally with zero retries; actionlint for both workflows; first GitHub PR run checks the hosted integration. |
+| CI | Open a PR against `main` or push to `main`; `.github/workflows/ci.yml` runs `make check` and `make verify` on GitHub-hosted Ubuntu. Flows never retry; failures upload `app/verify-output` screenshots and traces. | — | `make check`; `make verify FLOW='app-reaches-sidecar'`; actionlint for both workflows; first GitHub PR run checks the hosted integration. |
 | Arch releases | Bump the three application versions, merge, then manually push `vX.Y.Z`. `.github/workflows/release.yml` checks the tag and versions, builds with `make app`, and publishes the package to a GitHub Release. Download and install on the Arch laptop as described in the README. | — | `tools/check_versions.py`; actionlint; a matching tag must pass and a mismatched tag must fail before building; the first tagged release checks the hosted build and publication. |

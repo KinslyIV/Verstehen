@@ -50,8 +50,7 @@ shortcuts, which target a pick writes), `models/picks.ts` (pure selection rules)
   ChatGPT plan usage is approved); it does not re-read the app's background switch.
 - **Automatic input is saved before dispatch.** Wake markers are saved with the write-ahead input,
   and mid-run context updates join the turn's entries before the provider call, so a failed
-  request still settles them. This differs from the 2026-11-18 decision that steers are saved only
-  once their request was dispatched; see the [roadmap](../roadmap.md#known-gaps).
+  request still settles them. A Retry then delivers it once. This is the decided behavior.
 - **Claude Code** uses the installed `claude` (PATH, then LH's known folders). States:
   `not_installed`, `too_old` (below 2.1.259), `untested`, `tested` (2.1.327). Models `opus`,
   `sonnet`, `haiku`. The system prompt is only our instructions, and our code always passes the
