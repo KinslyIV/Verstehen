@@ -612,7 +612,6 @@ Probe, plan, teach, as in LH.
   driver's latest output line (bounded to 500 characters) and its percentage when available,
   rather than inventing byte counts the driver does not report.
 
-
 ## Faster checks and linked environments (2026-11-21)
 
 - **User decision:** Makefile pytest commands use pytest-xdist `-n auto`; pytest `addopts` stays

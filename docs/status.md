@@ -18,7 +18,10 @@ on Pixal, cold in **260.48s** and warm in **157.08s** (about 40% faster). Each r
 run passed without the dependency-cache timeout or a retry. No UI changes or UI verification
 needed. Setup reported five existing low-severity npm audit findings; dependencies were not
 upgraded outside this task.
-Next: orchestrator review, then user merge with green CI. No open design questions.
+Review: `conflict_polls_and_retries_the_same_input` failed once under load because the shared test
+controller's 20ms conflict deadline expired before the retry; that test now uses its own 5s
+deadline (the bound test keeps 20ms). `make check` then passed in 153s (warm).
+Next: user merge with green CI. No open design questions.
 
 ## CI and release setup (2026-11-21)
 
