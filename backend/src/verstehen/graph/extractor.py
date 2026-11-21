@@ -149,7 +149,9 @@ async def run_submit_agent(
                     if tool is None:
                         raise ValueError(f"Unknown tool: {call.tool_name}")
                     value = tool.schema.model_validate(
-                        heal_stringified_arrays(call.args_as_dict())
+                        heal_stringified_arrays(call.args_as_dict()),
+                        by_alias=True,
+                        by_name=False,
                     )
                     result = await tool.execute(value)
                     if tool is submit:

@@ -336,3 +336,38 @@ def test_session_delete_rolls_back_graph_and_event_when_session_delete_fails(
         assert changed_events == []
         assert app.state.extraction_service.failure_reasons[session] == "Sign in again."
         assert session not in app.state.extraction_service.deleting
+
+
+def test_chains_table_source_delete_rolls_back_session_when_graph_write_fails(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        session = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.append(
+                    GraphNode(
+                        id="n_one",
+                        name="Name",
+                        statement="Statement",
+                        provenance=[ProvenancePoint(session_id=session)],
+                    )
+                )
+            async with app.state.database.transaction() as connection:
+                await connection.execute(
+                    "CREATE TRIGGER fail_graph_write BEFORE UPDATE ON graph_revision "
+                    "BEGIN SELECT RAISE(ABORT, 'graph write failed'); END"
+                )
+
+        client.portal.call(seed)
+        response = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={"source_ids": [session], "folder_ids": [], "delete_sessions": True},
+        )
+        assert response.status_code == 500
+        assert client.get(f"/api/sessions/{session}").status_code == 200
+        assert len(client.get("/api/graph").json()["propositions"]) == 1

@@ -982,3 +982,87 @@ def test_deleting_source_times_out_blocks_launch_and_clears_fence(tmp_path):
                 await task
 
     asyncio.run(scenario())
+
+
+def test_submit_agent_rejects_snake_case_wire_names_and_allows_retry(tmp_path):
+    async def scenario():
+        phase = "findings"
+        calls = 0
+
+        async def respond(messages, info):
+            nonlocal calls
+            calls += 1
+            if phase == "findings":
+                if calls == 2:
+                    retry = [
+                        p.content
+                        for m in messages
+                        if hasattr(m, "parts")
+                        for p in m.parts
+                        if isinstance(p, ToolReturnPart) and p.outcome == "failed"
+                    ]
+                    assert any("messageId" in str(r) for r in retry)
+                return tool_response(
+                    "submit_findings",
+                    {
+                        "propositions": [
+                            {
+                                "id": "p1",
+                                "name": "Claim",
+                                "statement": "True",
+                                "message_id" if calls == 1 else "messageId": "m1",
+                            }
+                        ],
+                        "chains": [],
+                    },
+                )
+            if calls == 2:
+                retry = [
+                    p.content
+                    for m in messages
+                    if hasattr(m, "parts")
+                    for p in m.parts
+                    if isinstance(p, ToolReturnPart) and p.outcome == "failed"
+                ]
+                assert any("linkTo" in str(r) for r in retry)
+            return tool_response(
+                "submit_review",
+                {
+                    "links": [
+                        {
+                            "id": "p1",
+                            "link_to" if calls == 1 else "linkTo": "n_1",
+                        }
+                    ]
+                },
+            )
+
+        async with pipeline(tmp_path, respond) as service:
+            resolved = await service.resolver_service.resolve("extractor")
+            findings = await run_submit_agent(
+                resolved,
+                UsageModel(resolved, service.usage_store, "source", "extractor"),
+                admission,
+                "extractor",
+                "instructions",
+                "source",
+                findings_tool(set(), {"m1"}),
+            )
+            assert findings.propositions[0].message_id == "m1"
+            assert calls == 2
+
+            phase = "review"
+            calls = 0
+            verdicts = await run_submit_agent(
+                resolved,
+                UsageModel(resolved, service.usage_store, "source", "auditor"),
+                admission,
+                "auditor",
+                "instructions",
+                "source",
+                review_tool(),
+            )
+            assert verdicts.links[0].link_to == "n_1"
+            assert calls == 2
+
+    asyncio.run(scenario())

@@ -200,7 +200,9 @@ def create_app(settings: Settings) -> FastAPI:
                     )
 
             async def delete_graph_session(session_id: str) -> None:
-                result = await app.state.session_service.delete(session_id)
+                result = await app.state.session_service.delete(
+                    session_id, "delete-nodes"
+                )
                 if result is not None:
                     raise GraphRefused(
                         result.reason.get("error", "Could not delete session"),
