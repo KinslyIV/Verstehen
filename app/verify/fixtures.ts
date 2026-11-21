@@ -158,16 +158,17 @@ export interface GraphSeed {
 
 export const test = base.extend<{
 	script: string;
+	learnHarnessFolder: string;
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
-	importLearnHarness: (folder: string) => Promise<void>;
 	expectedStatuses: number[];
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
+	learnHarnessFolder: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
 	sidecarControl: async ({ dataDirectory }, use) => {
 		await use({
@@ -180,10 +181,11 @@ export const test = base.extend<{
 		if (!baseURL) throw new Error('Preview is not started');
 		await use(() => sidecarControl.restart());
 	},
-	dataDirectory: async ({ script }, use) => {
+	dataDirectory: async ({ script, learnHarnessFolder }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		try {
+			if (learnHarnessFolder) await importLearnHarness(learnHarnessFolder, directory);
 			await use(directory);
 		} finally {
 			await rm(directory, { recursive: true, force: true });
@@ -209,12 +211,6 @@ export const test = base.extend<{
 				['-c', seedGraphSource, dataDirectory, file],
 				{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
 			);
-		});
-	},
-	importLearnHarness: async ({ dataDirectory, restartSidecar }, use) => {
-		await use(async (folder) => {
-			await importLearnHarness(folder, dataDirectory);
-			await restartSidecar();
 		});
 	},
 	baseURL: async ({ script, playwright, dataDirectory, sidecarControl }, use) => {

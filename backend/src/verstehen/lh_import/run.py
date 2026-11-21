@@ -76,10 +76,10 @@ def restore_lines(data_dir: Path, backup: Path) -> list[str]:
             f"  rm -f {quote(str(data_dir / 'verstehen.db-wal'))} {quote(str(data_dir / 'verstehen.db-shm'))}",
         ]
     else:
-        lines.append(
-            f"  rm -f {quote(str(data_dir / 'verstehen.db'))} {quote(str(data_dir / 'verstehen.db-wal'))} {quote(str(data_dir / 'verstehen.db-shm'))}"
-            "   (there was no database before the import)"
-        )
+        lines += [
+            f"  rm -f {quote(str(data_dir / 'verstehen.db'))} {quote(str(data_dir / 'verstehen.db-wal'))} {quote(str(data_dir / 'verstehen.db-shm'))}",
+            "There was no database before the import.",
+        ]
     if (backup / "images").is_dir():
         lines += [
             f"  cp -r {quote(str(backup / 'images') + '/.')} {quote(str(data_dir / 'images') + '/')}",

@@ -50,18 +50,18 @@ All of this is merged into `main`.
 - **M9 Knowledge graph.** Graph ledgers and read-time merging, the extractor → auditor → merge
   pipeline, coverage, notes imports, deletion modes, the `/graph` page with LH's canvas renderer,
   the chains table, picks, the coverage ring, and Settings → Graph.
-- **LearnHarness import.** `verstehen-sidecar import-learnharness <folder> [--dry-run]` replaces
-  every session, job, usage row, and graph table with a LearnHarness data folder, after a backup
-  and a typed `replace`; ChatGPT reasoning is converted so it can be replayed.
 - **Since M9:** CI on GitHub-hosted runners and tag-driven Arch releases (AGPL-3.0-only), the
   Claude Code download removed in favour of an install link, faster checks, and the
   docs redesign.
 
 ## Next
 
-1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account)
-   is in `dev`; `reasoning-resend` (ChatGPT encrypted reasoning resent to the same model) still has
-   to merge into `dev`. Then `dev` merges into `main`.
+1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account),
+   docs redesign, slim verification, and `reasoning-resend` (ChatGPT encrypted reasoning resent to
+   the same model) are in `dev`; `learnharness-import` (`verstehen-sidecar import-learnharness
+   <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
+   LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
+   it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
 2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
    sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
    lesson document.

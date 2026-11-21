@@ -22,7 +22,7 @@ class LhRecord(BaseModel):
     """A LearnHarness JSON shape: camelCase on disk, and any unknown field is refused."""
 
     model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid"
+        alias_generator=to_camel, populate_by_name=True, extra="forbid", strict=True
     )
 
 
@@ -244,6 +244,14 @@ class PlanTree(LhRecord):
     nodes: list[PlanNode]
     edges: list[PlanEdge]
     version: int
+
+
+class PlanInitDetails(LhRecord):
+    """A plan_init result's details: the saved tree on success, the error on failure."""
+
+    ok: bool
+    tree: PlanTree | None = None
+    error: str | None = None
 
 
 class ChatRecord(LhRecord):

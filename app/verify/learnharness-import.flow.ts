@@ -2,10 +2,9 @@ import { test, expect, learnHarnessFixture } from './fixtures';
 import { camera, waitForLayout } from './graph';
 import { openSideChatTab, sideThread } from './side-chat';
 
-test.use({ script: 'verify/scripts/health.json' });
+test.use({ script: 'verify/scripts/health.json', learnHarnessFolder: learnHarnessFixture });
 
-test('learnharness-import', async ({ page, request, importLearnHarness }) => {
-	await importLearnHarness(learnHarnessFixture);
+test('learnharness-import', async ({ page, request }) => {
 	await page.goto('/');
 	await expect(page.getByRole('link', { name: /Slopes/ })).toBeVisible();
 

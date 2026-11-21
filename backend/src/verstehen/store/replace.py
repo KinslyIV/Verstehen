@@ -1,7 +1,9 @@
+import shutil
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 from verstehen.store.artifact_views import set_inverted
 from verstehen.store.database import Database
@@ -56,26 +58,30 @@ class ContentCounts:
 
 
 def count_contents(database_path: Path) -> ContentCounts:
-    """Count what a replacement would delete, reading the file as it is: no migration, no writes."""
+    """Count what a replacement would delete from a temporary copy, without touching the folder."""
     if not database_path.is_file():
         return ContentCounts(0, 0)
     try:
-        with closing(
-            sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
-        ) as connection:
-            tables = {
-                row[0]
-                for row in connection.execute(
-                    "SELECT name FROM sqlite_master WHERE type = 'table'"
-                )
-            }
-            counts = [
-                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
-                if table in tables
-                else 0
-                for table in ("sessions", "graph_nodes")
-            ]
-    except sqlite3.Error as error:
+        with TemporaryDirectory() as directory:
+            copy = Path(directory) / database_path.name
+            for suffix in ("", "-wal", "-shm"):
+                source = database_path.with_name(database_path.name + suffix)
+                if source.is_file():
+                    shutil.copy2(source, copy.with_name(copy.name + suffix))
+            with closing(sqlite3.connect(copy)) as connection:
+                tables = {
+                    row[0]
+                    for row in connection.execute(
+                        "SELECT name FROM sqlite_master WHERE type = 'table'"
+                    )
+                }
+                counts = [
+                    connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                    if table in tables
+                    else 0
+                    for table in ("sessions", "graph_nodes")
+                ]
+    except (OSError, sqlite3.Error) as error:
         raise OSError(f"Could not read {database_path}: {error}") from error
     return ContentCounts(*counts)
 

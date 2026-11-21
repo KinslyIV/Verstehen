@@ -699,12 +699,47 @@ def test_cancelling_into_a_missing_directory_creates_nothing(tmp_path: Path):
     assert list(empty.iterdir()) == []
 
 
+def directory_snapshot(root: Path) -> dict[Path, bytes]:
+    return {
+        path.relative_to(root): path.read_bytes()
+        for path in sorted(root.rglob("*"))
+        if path.is_file()
+    }
+
+
+def restore_commands(lines: list[str]) -> list[str]:
+    after = lines[lines.index("To go back: close Verstehen, then run") + 1 :]
+    commands = [line.strip() for line in after if line.startswith("  ")]
+    assert commands
+    for command in commands:
+        subprocess.run(["bash", "-n"], input=command, text=True, check=True)
+    return commands
+
+
 def test_cancelling_leaves_an_older_database_byte_identical(tmp_path: Path):
     data_dir = seeded_data_dir(tmp_path, migrations=3)
-    before = (data_dir / "verstehen.db").read_bytes()
+    before = directory_snapshot(data_dir)
+    assert Path("verstehen.db-wal") not in before
     lines = run(FIXTURE, data_dir, answer="no")
     assert "1 existing session(s)" in lines[-2]
-    assert (data_dir / "verstehen.db").read_bytes() == before
+    assert directory_snapshot(data_dir) == before
+    assert not (data_dir / "backups").exists()
+
+
+def test_cancelling_leaves_a_database_with_a_wal_file_byte_identical(tmp_path: Path):
+    data_dir = seeded_data_dir(tmp_path)
+
+    async def snapshot_uncheckpointed_wal(database):
+        await SessionsStore(database).create("In WAL")
+        return directory_snapshot(data_dir)
+
+    before = asyncio.run(with_database(data_dir, snapshot_uncheckpointed_wal))
+    assert Path("verstehen.db-wal") in before
+    for relative, data in before.items():
+        (data_dir / relative).write_bytes(data)
+    lines = run(FIXTURE, data_dir, answer="no")
+    assert "2 existing session(s)" in lines[-2]
+    assert directory_snapshot(data_dir) == before
     assert not (data_dir / "backups").exists()
 
 
@@ -726,7 +761,15 @@ def test_importing_into_a_fresh_directory_needs_no_database_backup(tmp_path: Pat
     [backup] = (data_dir / "backups").iterdir()
     assert not (backup / "verstehen.db").exists()
     assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
-    assert any("rm -f" in line and "no database before" in line for line in lines)
+    assert "There was no database before the import." in lines
+    commands = restore_commands(lines)
+    for suffix in ("-wal", "-shm"):
+        (data_dir / f"verstehen.db{suffix}").write_bytes(b"side")
+    subprocess.run(
+        ["bash", "-euo", "pipefail"], input="\n".join(commands), text=True, check=True
+    )
+    for suffix in ("", "-wal", "-shm"):
+        assert not (data_dir / f"verstehen.db{suffix}").exists()
 
 
 def test_restore_commands_quote_paths_and_describe_the_image_overlay(tmp_path: Path):
@@ -739,6 +782,17 @@ def test_restore_commands_quote_paths_and_describe_the_image_overlay(tmp_path: P
     assert f"  cp {shlex.quote(str(backup / 'verstehen.db'))} {quoted}" in lines
     assert any(line.startswith("  cp -r '") and "images" in line for line in lines)
     assert any("only adds the backed-up files" in line for line in lines)
+    commands = restore_commands(lines)
+    (data_dir / "images" / "keep.png").write_bytes(b"changed after import")
+    for suffix in ("-wal", "-shm"):
+        (data_dir / f"verstehen.db{suffix}").write_bytes(b"side")
+    subprocess.run(
+        ["bash", "-euo", "pipefail"], input="\n".join(commands), text=True, check=True
+    )
+    assert asyncio.run(with_database(data_dir, session_titles)) == ["Existing session"]
+    assert (data_dir / "images" / "keep.png").read_bytes() == b"old image"
+    for suffix in ("-wal", "-shm"):
+        assert not (data_dir / f"verstehen.db{suffix}").exists()
 
 
 def test_reasoning_is_converted_only_for_chatgpt(tmp_path: Path):
@@ -871,6 +925,104 @@ def test_plan_tree_with_an_extra_field_is_refused(tmp_path: Path):
         ImportRefused, match=r"chat_fx_teach\.json: tree\.nodes\.0\.surprise"
     ):
         read_folder(fixture_copy(tmp_path, edit))
+
+
+def edit_plan_result(
+    tmp_path: Path, name: str, mutate: Callable[[dict], object]
+) -> Path:
+    def edit(folder: Path):
+        def change(chat: dict):
+            result = next(m for m in chat["messages"] if m["id"] == "r_plan")
+            mutate(result["details"])
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    return fixture_copy(tmp_path / name, edit)
+
+
+@pytest.mark.parametrize(
+    ("name", "mutate", "pattern"),
+    [
+        (
+            "string_ok",
+            lambda details: details.update(ok="false"),
+            r"chat_fx_teach\.json message r_plan plan_init result: ok",
+        ),
+        (
+            "unknown_field",
+            lambda details: details.update(surprise=1),
+            r"chat_fx_teach\.json message r_plan plan_init result: surprise",
+        ),
+        (
+            "unknown_node_field",
+            lambda details: details["tree"]["nodes"][0].update(surprise=1),
+            r"chat_fx_teach\.json message r_plan plan_init result: tree\.nodes\.0\.surprise",
+        ),
+        (
+            "string_version",
+            lambda details: details["tree"].update(version="1"),
+            r"chat_fx_teach\.json message r_plan plan_init result: tree\.version",
+        ),
+        (
+            "missing_edge_node",
+            lambda details: details["tree"].update(
+                edges=[{"from": "rise-run", "to": "missing"}]
+            ),
+            r'chat_fx_teach\.json message r_plan: the plan_init tree is invalid: .*unknown node id "missing"',
+        ),
+        (
+            "ok_without_tree",
+            lambda details: details.pop("tree"),
+            r"chat_fx_teach\.json message r_plan: a successful plan_init result carries only a tree",
+        ),
+        (
+            "ok_with_error",
+            lambda details: details.update(error="boom"),
+            r"chat_fx_teach\.json message r_plan: a successful plan_init result carries only a tree",
+        ),
+        (
+            "failed_without_error",
+            lambda details: (details.update(ok=False), details.pop("tree")),
+            r"chat_fx_teach\.json message r_plan: a failed plan_init result carries only an error",
+        ),
+        (
+            "failed_with_tree",
+            lambda details: details.update(ok=False, error="boom"),
+            r"chat_fx_teach\.json message r_plan: a failed plan_init result carries only an error",
+        ),
+    ],
+)
+def test_malformed_plan_init_results_are_refused(
+    tmp_path: Path,
+    name: str,
+    mutate: Callable[[dict], object],
+    pattern: str,
+):
+    folder = edit_plan_result(tmp_path, name, mutate)
+    with pytest.raises(ImportRefused, match=pattern):
+        converted(folder)
+
+
+def test_plan_init_preserves_version_and_failed_result(tmp_path: Path):
+    versioned = edit_plan_result(
+        tmp_path, "versioned", lambda details: details["tree"].update(version=3)
+    )
+    entries = teach_entries(converted(versioned)).entries
+    assert details_of(entry_named(entries, "r_plan"))["tree"]["version"] == 3
+
+    failed = edit_plan_result(
+        tmp_path,
+        "failed",
+        lambda details: (
+            details.clear(),
+            details.update(ok=False, error="Invalid mermaid"),
+        ),
+    )
+    failed_entries = teach_entries(converted(failed)).entries
+    assert details_of(entry_named(failed_entries, "r_plan")) == {
+        "ok": False,
+        "error": "Invalid mermaid",
+    }
 
 
 def test_bad_time_names_the_file_and_field(tmp_path: Path):
