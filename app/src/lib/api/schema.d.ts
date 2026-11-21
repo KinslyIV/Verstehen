@@ -1700,6 +1700,8 @@ export interface components {
 			running: boolean;
 			/** Last Folded At */
 			last_folded_at: string | null;
+			/** Failure Reason */
+			failure_reason?: string | null;
 		};
 		/** SessionDetail */
 		SessionDetail: {

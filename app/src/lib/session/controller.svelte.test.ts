@@ -141,6 +141,28 @@ test('unusable_model_opens_menu_with_reason_and_keeps_the_draft', async () => {
 	expect(controller.entries).toEqual([]);
 });
 
+test('refused_retry_keeps_the_saved_failure_visible_and_opens_the_model_menu', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([
+			{
+				kind: 'assistant',
+				entry_id: 'a',
+				parts: [],
+				stop_reason: 'error',
+				error_text: 'Provider failed'
+			}
+		])
+	);
+	await controller.load();
+	vi.mocked(api.postInput).mockRejectedValue(
+		new api.ApiError(503, 'model_unavailable', 'unavailable', 'Sign in again.')
+	);
+	await controller.send('retry');
+	expect(controller.error).toBe('Provider failed');
+	expect(controller.modelMenuOpen).toBe(true);
+	expect(controller.notice).toBe('Sign in again.');
+});
+
 test('mount_continues_an_answer_saved_without_its_reaction_once', async () => {
 	const entries = [questionBatch('one'), questionResult('one')];
 	vi.mocked(api.getSession).mockResolvedValue(record(entries));

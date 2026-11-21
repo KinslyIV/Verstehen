@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import os
+import time
 from pathlib import Path
 from typing import cast
 from urllib.parse import parse_qs, urlsplit
@@ -743,7 +744,7 @@ def test_model_cache_is_dropped_when_the_account_changes_or_fails(
                 )
                 with pytest.raises(AccountUnavailable):
                     await Agent(model).run("Hello")
-            assert account_id not in adapter.model_lists
+            assert account_id not in adapter.catalogs
             if how in ("sign_in", "api_error"):
                 await adapter.models((await adapter.accounts())[0])
                 assert len(fetches) == 2
@@ -804,3 +805,370 @@ def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
         for query, expected in (("", 1), ("", 1), ("?refresh=true", 2)):
             client.get("/api/models" + query)
             assert len(fetches) == expected
+
+
+def gated_adapter(store: CredentialsStore):
+    """Adapter whose Nth /models response waits for gates[N], then names the model by N."""
+    gates: list[asyncio.Event] = []
+    requests: list[httpx2.Request] = []
+
+    async def response(request: httpx2.Request):
+        index = len(requests)
+        requests.append(request)
+        await gates[index].wait()
+        entry = {
+            "slug": "gpt-5",
+            "display_name": f"Fetch {index}",
+            "visibility": "list",
+        }
+        return httpx2.Response(200, json={"models": [entry]})
+
+    adapter = ChatGPTAccountAdapter(
+        store, lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(response))
+    )
+    return adapter, gates, requests
+
+
+def test_fetch_started_before_invalidate_is_not_cached_and_new_result_is_kept(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, gates, requests = gated_adapter(store)
+        gates.extend([asyncio.Event(), asyncio.Event()])
+        try:
+            account = (await adapter.accounts())[0]
+            stale = asyncio.create_task(adapter.models(account))
+            while not requests:
+                await asyncio.sleep(0)
+            store.sign_in(credentials())
+            adapter.invalidate(account_id)
+            fresh = asyncio.create_task(adapter.models(account))
+            while len(requests) < 2:
+                await asyncio.sleep(0)
+            gates[1].set()
+            assert (await fresh)[0].name == "Fetch 1"
+            gates[0].set()
+            assert (await stale)[0].name == "Fetch 0"
+            assert adapter.catalogs[account_id][0].name == "Fetch 1"
+            assert adapter.fetches == {}
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_forgetting_during_a_fetch_discards_its_result(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, gates, requests = gated_adapter(store)
+        gates.append(asyncio.Event())
+        try:
+            account = (await adapter.accounts())[0]
+            pending = asyncio.create_task(adapter.models(account))
+            while not requests:
+                await asyncio.sleep(0)
+            adapter.forget_models()
+            gates[0].set()
+            await pending
+            assert adapter.catalogs == {} and adapter.fetches == {}
+            assert account_id not in adapter.catalogs
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_misses_on_a_failing_endpoint_share_one_request_and_error(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter, fetches = counting_adapter(store, status=500)
+        try:
+            account = (await adapter.accounts())[0]
+            results = await asyncio.gather(
+                *(adapter.models(account) for _ in range(3)), return_exceptions=True
+            )
+            assert all(isinstance(r, AccountUnavailable) for r in results)
+            assert len(fetches) == 1 and adapter.fetches == {}
+            with pytest.raises(AccountUnavailable):
+                await adapter.models(account)
+            assert len(fetches) == 2
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_late_error_from_an_invalidated_provider_keeps_the_new_cache(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, fetches = counting_adapter(store)
+        try:
+            account = (await adapter.accounts())[0]
+            old_model = await adapter.build_model(
+                account, ModelPick(account=account_id, model="gpt-5")
+            )
+            store.sign_in(credentials())
+            adapter.invalidate(account_id)
+            await adapter.models(account)
+            with pytest.raises(AccountUnavailable):
+                await Agent(old_model).run("Hello")
+            assert account_id in adapter.catalogs
+            await adapter.models(account)
+            assert len(fetches) == 1
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_removed_account_leaves_no_catalog_or_fetch_state(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, _ = counting_adapter(store)
+        try:
+            await adapter.models((await adapter.accounts())[0])
+            await ChatGPTSignInService(adapter).remove(account_id)
+            assert adapter.catalogs == {} and adapter.fetches == {}
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_connection_error_evicts_the_cache_without_marking_sign_in_needed(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+
+        def response(request: httpx2.Request):
+            if request.url.path.endswith("/models"):
+                body = {
+                    "models": [
+                        {"slug": "gpt-5", "display_name": "G", "visibility": "list"}
+                    ]
+                }
+                return httpx2.Response(200, json=body)
+            raise httpx2.ConnectError("offline", request=request)
+
+        adapter = ChatGPTAccountAdapter(
+            store, lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(response))
+        )
+        try:
+            account = (await adapter.accounts())[0]
+            await adapter.models(account)
+            model = await adapter.build_model(
+                account, ModelPick(account=account_id, model="gpt-5")
+            )
+            with pytest.raises(AccountUnavailable) as failure:
+                await Agent(model).run("Hello")
+            assert failure.value.state == "unavailable"
+            assert account_id not in adapter.catalogs
+            assert (await adapter.accounts())[0].state == "ready"
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def reply_stream(text: str) -> str:
+    message = {
+        "type": "message",
+        "id": "msg_1",
+        "role": "assistant",
+        "status": "completed",
+        "content": [{"type": "output_text", "text": text, "annotations": []}],
+    }
+    body = {
+        "id": "resp_1",
+        "object": "response",
+        "model": "gpt-5",
+        "created_at": 1,
+        "status": "completed",
+        "output": [message],
+        "usage": {"input_tokens": 3, "output_tokens": 1, "total_tokens": 4},
+    }
+    events = [
+        {"type": "response.created", "response": {**body, "status": "in_progress"}},
+        {
+            "type": "response.output_item.added",
+            "output_index": 0,
+            "item": {**message, "content": [], "status": "in_progress"},
+        },
+        {
+            "type": "response.output_text.delta",
+            "item_id": "msg_1",
+            "output_index": 0,
+            "content_index": 0,
+            "delta": text,
+            "logprobs": [],
+        },
+        {"type": "response.completed", "response": body},
+    ]
+    return "".join(
+        "data: " + json.dumps({**event, "sequence_number": i}) + "\n\n"
+        for i, event in enumerate(events)
+    )
+
+
+class FakeChatGPT:
+    """Serve /models and /responses; `denied` makes inference fail with 403."""
+
+    def __init__(self):
+        self.denied = False
+        self.model_requests = 0
+        self.inference_requests = 0
+
+    def __call__(self, request: httpx2.Request) -> httpx2.Response:
+        if request.url.path.endswith("/models"):
+            self.model_requests += 1
+            entry = {"slug": "gpt-5", "display_name": "GPT", "visibility": "list"}
+            return httpx2.Response(200, json={"models": [entry]})
+        self.inference_requests += 1
+        if self.denied:
+            return httpx2.Response(403, json={"error": {"message": "denied"}})
+        return httpx2.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=reply_stream("Hello"),
+        )
+
+
+def wait_for(check, timeout: float = 10):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if value := check():
+            return value
+        time.sleep(0.05)
+    raise AssertionError("condition not reached")
+
+
+@pytest.fixture
+def chatgpt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    server = FakeChatGPT()
+    adapters: list[ChatGPTAccountAdapter] = []
+
+    def make_adapter(store: CredentialsStore) -> ChatGPTAccountAdapter:
+        adapters.append(
+            ChatGPTAccountAdapter(
+                store,
+                lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(server)),
+            )
+        )
+        return adapters[0]
+
+    monkeypatch.setattr("verstehen.app.ChatGPTAccountAdapter", make_adapter)
+    CredentialsStore(tmp_path).sign_in(credentials())
+    with TestClient(
+        create_app(Settings(tmp_path)), base_url="http://localhost"
+    ) as client:
+        account = client.get("/api/accounts/chatgpt").json()[0]["id"]
+        pick = {"account": account, "model": "gpt-5", "thinking_level": "medium"}
+        client.put(
+            "/api/settings",
+            json={"models": {"strong": pick, "cheap": pick, "vision": pick}},
+        )
+        yield client, server, account, tmp_path, adapters[0]
+
+
+def sign_in_again(adapter: ChatGPTAccountAdapter, account: str, tmp_path: Path) -> None:
+    CredentialsStore(tmp_path).sign_in(credentials())
+    adapter.invalidate(account)
+
+
+def account_state(client: TestClient) -> str:
+    return client.get("/api/models").json()["accounts"][0]["account"]["state"]
+
+
+def test_warmed_cache_inference_403_ends_a_lesson_turn_cleanly_and_recovers(chatgpt):
+    client, server, account, tmp_path, adapter = chatgpt
+    assert account_state(client) == "ready"
+    session = client.post("/api/sessions", json={"title": "t"}).json()["id"]
+    first_fetches = server.model_requests
+    server.denied = True
+    posted = client.post(
+        f"/api/sessions/{session}/input", json={"type": "text", "text": "hi"}
+    )
+    assert posted.status_code == 200
+    detail = wait_for(
+        lambda: (
+            (d := client.get(f"/api/sessions/{session}").json())
+            and not d["turn_in_flight"]
+            and d
+        )
+    )
+    users = [e for e in detail["entries"] if e["kind"] == "user"]
+    assert len(users) == 1
+    assert server.model_requests == first_fetches
+    assert account_state(client) == "needs_sign_in"
+    calls = server.inference_requests
+    refused = client.post(f"/api/sessions/{session}/input", json={"type": "retry"})
+    assert refused.status_code == 503 and refused.json()["code"] == "model_unavailable"
+    assert server.inference_requests == calls
+
+    sign_in_again(adapter, account, tmp_path)
+    server.denied = False
+    retried = client.post(f"/api/sessions/{session}/input", json={"type": "retry"})
+    assert retried.status_code == 200
+    detail = wait_for(
+        lambda: (
+            (d := client.get(f"/api/sessions/{session}").json())
+            and not d["turn_in_flight"]
+            and d
+        )
+    )
+    assert any(e["kind"] == "assistant" for e in detail["entries"])
+    assert len([e for e in detail["entries"] if e["kind"] == "user"]) == 1
+
+
+def test_warmed_cache_inference_403_ends_a_side_answer_cleanly_and_recovers(chatgpt):
+    client, server, account, tmp_path, adapter = chatgpt
+    session = client.post("/api/sessions", json={"title": "t"}).json()["id"]
+    client.post(f"/api/sessions/{session}/input", json={"type": "text", "text": "hi"})
+    detail = wait_for(
+        lambda: (
+            (d := client.get(f"/api/sessions/{session}").json())
+            and not d["turn_in_flight"]
+            and any(e["kind"] == "assistant" for e in d["entries"])
+            and d
+        )
+    )
+    assistant = next(e for e in detail["entries"] if e["kind"] == "assistant")
+    side = f"/api/sessions/{session}/side-chats"
+    server.denied = True
+    asked = client.post(
+        side, json={"anchor": {"entry_id": assistant["entry_id"]}, "text": "why"}
+    )
+    assert asked.status_code == 200
+    thread = asked.json()["id"]
+
+    def settled():
+        listed = client.get(side).json()
+        return not listed["answering"] and listed["threads"][0]
+
+    saved = wait_for(settled)
+    assert [m["role"] for m in saved["messages"]].count("user") == 1
+    assert saved["messages"][-1]["error"]
+    assert account_state(client) == "needs_sign_in"
+    calls = server.inference_requests
+    refused = client.post(side, json={"thread_id": thread, "retry": True})
+    assert refused.status_code == 503 and refused.json()["code"] == "model_unavailable"
+    assert server.inference_requests == calls
+
+    sign_in_again(adapter, account, tmp_path)
+    server.denied = False
+    retried = client.post(side, json={"thread_id": thread, "retry": True})
+    assert retried.status_code == 200
+    saved = wait_for(settled)
+    assert saved["messages"][-1]["role"] == "assistant"
+    assert not saved["messages"][-1]["error"]
+    assert [m["role"] for m in saved["messages"]].count("user") == 1

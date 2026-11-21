@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { Popover } from 'bits-ui';
 	import { ChevronDown } from '@lucide/svelte';
 	import {
@@ -24,7 +24,8 @@
 		initialTab = 'strong',
 		shortcuts = true,
 		label,
-		onchanged
+		onchanged,
+		initialCatalog
 	}: {
 		pick?: ModelPick | null;
 		sessionId?: string;
@@ -36,8 +37,9 @@
 		shortcuts?: boolean;
 		label?: string;
 		onchanged?: () => void;
+		initialCatalog?: ModelCatalog;
 	} = $props();
-	let catalog = $state<ModelCatalog>();
+	let catalog = $state<ModelCatalog | undefined>(untrack(() => initialCatalog));
 	let tab = $state<ModelTab>('strong');
 	let busy = $state(false);
 	let error = $state<string | null>(null);
@@ -107,7 +109,7 @@
 		}
 	}
 	onMount(() => {
-		void refresh();
+		if (!catalog) void refresh();
 		window.addEventListener('keydown', keyboard);
 		window.addEventListener('verstehen:models-changed', refresh);
 		return () => {

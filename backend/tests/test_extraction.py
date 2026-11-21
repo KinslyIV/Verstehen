@@ -36,7 +36,7 @@ from verstehen.graph.pdf_markdown import (
     Line,
     lines_to_markdown,
 )
-from verstehen.providers.accounts import Account
+from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.fake import script_role
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolvedModel, ResolverService
@@ -433,6 +433,36 @@ def test_failed_batch_stays_uncovered_and_later_batches_continue_with_digest(tmp
             assert coverage.covered_count == 2 and coverage.uncovered_count == 1
             assert "THE GRAPH SO FAR" not in prompts[0]
             assert "THE GRAPH SO FAR" in prompts[-1]
+
+    asyncio.run(scenario())
+
+
+def test_run_failure_reason_is_reported_in_coverage_until_the_next_start(tmp_path):
+    async def scenario():
+        denied = True
+
+        async def respond(messages, info):
+            if denied:
+                raise AccountUnavailable("Sign in again.")
+            if script_role.get() == "extractor":
+                return tool_response(
+                    "submit_findings", {"propositions": [], "chains": []}
+                )
+            return tool_response("submit_review", {"links": []})
+
+        async with pipeline(tmp_path, respond) as service:
+            await service.settings_store.write(Settings())
+            session = await service.sessions_store.create("Lesson")
+            await service.entries_store.append(
+                session.id, [AssistantEntry(parts=[TextPart(text="x" * 2100)])]
+            )
+            await (await service.start(session.id))
+            assert (await service.coverage(session.id)).failure_reason == (
+                "Sign in again."
+            )
+            denied = False
+            await (await service.start(session.id))
+            assert (await service.coverage(session.id)).failure_reason is None
 
     asyncio.run(scenario())
 

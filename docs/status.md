@@ -8,7 +8,11 @@ Done on `chatgpt-catalog-cache`: `ChatGPTAccountAdapter` caches each account's m
 sidecar's lifetime (one shared fetch per miss, failures not cached), and the picker, `normalize`,
 and every `resolve()` use it. Sign-in, removal, unavailability, and model-call API errors drop the
 entry; Settings → Models forces one refresh via `GET /api/models?refresh=true`. New session still
-checks the slots with `getModels()` on send (now a cache read, not a ChatGPT call). Next: review and merge.
+checks the slots with `getModels()` on send (now a cache read, not a ChatGPT call). Review round 1 fixes: the cache is two dicts (`catalogs`, shared `fetches` task) with no locks, a
+stale or late-error result never replaces a newer one, and connection errors also evict. Settings →
+Models shows loading/error and hands its one refreshed catalog to the controls. Refused Retry keeps the
+failure banner, and Extract now shows refusal and post-launch failure reasons (coverage
+`failure_reason`). Next: review and merge.
 
 ## Claude Code download removed (2026-11-21)
 

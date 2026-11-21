@@ -121,6 +121,7 @@ class ExtractionService:
         self.readers = GraphReaders(graph_store, sessions_store)
         self.tasks: dict[str, asyncio.Task[EmissionStats]] = {}
         self.runs: dict[str, RunningExtraction] = {}
+        self.failure_reasons: dict[str, str] = {}
         self.audit_lock = asyncio.Lock()
         self.deleting: set[str] = set()
         self.closing = False
@@ -155,6 +156,7 @@ class ExtractionService:
                 (c.folded_at for c in ledger.coverage if c.session_id == session_id),
                 default=None,
             ),
+            failure_reason=self.failure_reasons.get(session_id),
         )
 
     async def ready(self, purpose: RequestPurpose) -> None:
@@ -205,6 +207,7 @@ class ExtractionService:
         if await self.sessions_store.get(session_id) is None:
             raise GraphRefused("Not found", 404)
         await self.ready(purpose)
+        self.failure_reasons.pop(session_id, None)
         task = self.launch(session_id, lambda: self.run_session(session_id, purpose))
         task.add_done_callback(self.log_failure)
         return task
@@ -266,10 +269,14 @@ class ExtractionService:
                 add_stats(stats, merged)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as error:
                 logger.exception(
                     "Extraction batch failed for %s; remains uncovered", session_id
                 )
+                reason = getattr(error, "reason", None)
+                if isinstance(reason, str):
+                    self.failure_reasons[session_id] = reason
+                    self.changed()
         return stats
 
     async def import_notes(self, file_path: str, text: str) -> EmissionStats:
@@ -466,6 +473,7 @@ class ExtractionService:
 
     async def begin_deletion(self, source: str) -> bool:
         self.deleting.add(source)
+        self.failure_reasons.pop(source, None)
         return await self.wind_down(source)
 
     def end_deletion(self, source: str) -> None:

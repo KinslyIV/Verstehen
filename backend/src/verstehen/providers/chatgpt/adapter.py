@@ -6,9 +6,9 @@ from typing import Any, cast
 import anyio
 import httpx2
 from genai_prices.data_snapshot import get_snapshot
-from openai import APIStatusError
+from openai import APIError
 from pydantic_ai import RunContext
-from pydantic_ai.exceptions import ModelHTTPError
+from pydantic_ai.exceptions import ModelAPIError
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models import Model, ModelRequestParameters, StreamedResponse
 from pydantic_ai.models.openai import OpenAIResponsesModel
@@ -60,8 +60,8 @@ class ChatGPTAccountAdapter:
         self.client_factory = client_factory
         self.providers: dict[str, AccountProvider] = {}
         self.clients: list[httpx2.AsyncClient] = []
-        self.model_lists: dict[str, list[CatalogModel]] = {}
-        self.fetch_locks: dict[str, asyncio.Lock] = {}
+        self.catalogs: dict[str, list[CatalogModel]] = {}
+        self.fetches: dict[str, asyncio.Task[list[CatalogModel]]] = {}
 
     async def accounts(self) -> list[Account]:
         accounts = []
@@ -92,10 +92,16 @@ class ChatGPTAccountAdapter:
         return provider
 
     def forget_models(self) -> None:
-        self.model_lists.clear()
+        self.catalogs.clear()
+        self.fetches.clear()
+
+    def forget_account_models(self, account_id: str) -> None:
+        """Drop the cached list and abandon any in-flight fetch's result."""
+        self.catalogs.pop(account_id, None)
+        self.fetches.pop(account_id, None)
 
     def invalidate(self, account_id: str) -> None:
-        self.model_lists.pop(account_id, None)
+        self.forget_account_models(account_id)
         if provider := self.providers.pop(account_id, None):
             provider.source.invalidated = True
 
@@ -109,9 +115,9 @@ class ChatGPTAccountAdapter:
         error: Exception,
         source: AccountCredentialSource | None = None,
     ) -> AccountUnavailable:
-        self.model_lists.pop(account_id, None)
         if source is not None and source.invalidated:
             return AccountUnavailable("The ChatGPT account changed. Select it again.")
+        self.forget_account_models(account_id)
         if isinstance(error, AccountUnavailable):
             return error
         status = getattr(error, "status_code", None)
@@ -140,14 +146,25 @@ class ChatGPTAccountAdapter:
         )
 
     async def models(self, account: Account) -> list[CatalogModel]:
-        lock = self.fetch_locks.setdefault(account.id, asyncio.Lock())
-        async with lock:
-            if account.id in self.model_lists:
-                return self.model_lists[account.id]
-            fetched = await self.fetch_models(account)
-            if account.id in self.providers:  # not invalidated while fetching
-                self.model_lists[account.id] = fetched
-            return fetched
+        if account.id in self.catalogs:
+            return self.catalogs[account.id]
+        task = self.fetches.get(account.id)
+        if task is None:
+            task = asyncio.create_task(self.load_models(account))
+            self.fetches[account.id] = task
+        return await asyncio.shield(task)
+
+    async def load_models(self, account: Account) -> list[CatalogModel]:
+        """Fetch once for all waiting callers; cache only if still the current fetch."""
+        task = asyncio.current_task()
+        try:
+            models = await self.fetch_models(account)
+            if self.fetches.get(account.id) is task:
+                self.catalogs[account.id] = models
+            return models
+        finally:
+            if self.fetches.get(account.id) is task:
+                del self.fetches[account.id]
 
     async def fetch_models(self, account: Account) -> list[CatalogModel]:
         provider = None
@@ -244,7 +261,7 @@ class AccountModel(WrapperModel):
             return await self.wrapped.request(
                 messages, model_settings, model_request_parameters
             )
-        except (APIStatusError, ModelHTTPError, CredentialsRefreshError) as error:
+        except (APIError, ModelAPIError, CredentialsRefreshError) as error:
             raise self.adapter.unavailable(
                 self.account_id, error, self.source
             ) from None
@@ -262,7 +279,7 @@ class AccountModel(WrapperModel):
                 messages, model_settings, model_request_parameters, run_context
             ) as stream:
                 yield stream
-        except (APIStatusError, ModelHTTPError, CredentialsRefreshError) as error:
+        except (APIError, ModelAPIError, CredentialsRefreshError) as error:
             raise self.adapter.unavailable(
                 self.account_id, error, self.source
             ) from None
