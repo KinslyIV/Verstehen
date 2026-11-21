@@ -1,6 +1,9 @@
 # Development workflow
 
-How work goes from an idea to merged code. Agents run on Pixal, the user works in T3 Code.
+How work goes from an idea to merged code. Agents usually run on Pixal, or on the user's Arch
+laptop through a T3 linked environment when Pixal is busy; the user works in T3 Code. Always point
+`VERSTEHEN_DATA_DIR` elsewhere: the laptop's
+`~/.local/share/verstehen` holds real user data.
 
 ## Roles
 
