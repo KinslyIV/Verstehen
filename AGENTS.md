@@ -19,8 +19,8 @@ T3 linked environment. The app runs on the laptop: `make app` builds the Arch pa
 2. [`docs/roadmap.md`](docs/roadmap.md): what is built, what is left, known gaps.
 3. [`docs/architecture.md`](docs/architecture.md): the system, the package order, one turn end to
    end, and the area map.
-4. The area doc for your task in [`docs/architecture/`](docs/architecture/), and its section in
-   [`docs/decisions.md`](docs/decisions.md).
+4. The area doc for your task in [`docs/architecture/`](docs/architecture/), and that area's
+   deliberate differences from LearnHarness in [`docs/decisions.md`](docs/decisions.md).
 5. The LearnHarness Part A doc for that area in `docs/learnharness/` (the specification).
 6. [`docs/patterns.md`](docs/patterns.md): the one example to copy for each pattern.
 
@@ -39,8 +39,10 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
 - **LearnHarness's code is the specification** (commit `cb25c8e`). When a Part A doc and the code
   disagree, the code is right: report the mismatch, don't fix the doc yourself. A behavior change
   from LearnHarness needs a decision in `docs/decisions.md`, in the same commit as the code.
-- **Decided is what `docs/decisions.md` says.** A new decision replaces the one it contradicts, in
-  place. If a recorded decision looks wrong, say so with the reason; only the user changes it.
+- **Decided is what the docs say**: the area docs describe the decided design, and
+  `docs/decisions.md` holds the differences from LearnHarness, the constraints, and decisions not
+  yet implemented. Keep it slim: a decision leaves it once implemented and documented, unless it is
+  a difference from LearnHarness. If a decision looks wrong, say so; only the user changes it.
 - **Data and secrets.** Never touch the user's real data in `~/.local/share/verstehen`: always set
   `VERSTEHEN_DATA_DIR` elsewhere. Never read, print, or commit credentials (`credentials.json`, the
   Claude Code login, the ChatGPT tokens).
@@ -108,5 +110,5 @@ Every change comes with a way to prove it works, and you run it before you say i
 ## When you finish
 
 Update [`docs/status.md`](docs/status.md), the area docs you changed in `docs/architecture/`, the
-[feature map](docs/feature-map.md), and [`docs/decisions.md`](docs/decisions.md) (replace, never
-append a contradicting row).
+[feature map](docs/feature-map.md), and [`docs/decisions.md`](docs/decisions.md) (add differences
+from LearnHarness; remove decisions now implemented and documented).

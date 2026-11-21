@@ -32,7 +32,8 @@ place that names the roles and models; AGENTS.md and plans link here.
   before the user chooses; if the user picks quickly and an implication was not covered, say so.
 - The approved plan goes in `docs/plans/<milestone>.md`: the tasks, the files they touch, the
   behavior with its LearnHarness references, the tests, the verify flows, and the feature-map
-  entries. Each user decision goes into [decisions](decisions.md).
+  entries. User decisions go into [decisions](decisions.md) until they are implemented and the
+  area docs describe them; differences from LearnHarness stay there.
 
 ## 2. Implement (autonomous, no questions to the user)
 
@@ -89,5 +90,6 @@ place that names the roles and models; AGENTS.md and plans link here.
   - **The PR to merge.**
 - On the branch, before the PR: update [status](status.md), the area docs in
   [architecture](architecture/) you changed, the [feature map](feature-map.md), and
-  [decisions](decisions.md) (a new decision replaces the one it contradicts). When the milestone
-  merges, its plan's lasting content is in the area docs and the plan is deleted.
+  [decisions](decisions.md): add any difference from LearnHarness, and remove decisions that are
+  now implemented and documented. When the milestone merges, its plan's lasting content is in the
+  area docs and the plan is deleted.

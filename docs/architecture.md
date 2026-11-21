@@ -2,7 +2,8 @@
 
 How Verstehen is built today: the processes, the package order, one turn from end to end, and a
 map to the area docs. Each area doc covers its backend and frontend code together, so you only
-need to read the area your task touches. What was decided, and why, is in [decisions](decisions.md).
+need to read the area your task touches. Where Verstehen deliberately differs from LearnHarness is
+in [decisions](decisions.md).
 
 ## The system at a glance
 
