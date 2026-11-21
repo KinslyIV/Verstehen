@@ -232,6 +232,7 @@ def create_app(settings: Settings) -> FastAPI:
                 job_runner,
                 side_chat_service.snapshot,
                 extraction_service,
+                graph_store,
                 settings.provider_events,
             )
 

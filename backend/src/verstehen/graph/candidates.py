@@ -1,11 +1,12 @@
 import math
 import unicodedata
 from collections import Counter
+from collections.abc import Sequence
 
 import regex
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
-from verstehen.graph.merge import ExtractedProposition
+from verstehen.graph.merge import Proposition
 from verstehen.store.graph import GraphNode
 
 STOP_WORDS = set(
@@ -33,17 +34,15 @@ class CandidateRequest(BaseModel):
 class CandidateMatch(BaseModel):
     proposition_id: str
     candidate_ids: list[str]
-    offset: int
-    total_candidates: int
-    has_more: bool
     next_offset: int | None
 
 
 class CandidateNode(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
     id: str
     name: str
     statement: str
-    matched_aliases: list[str]
+    matched_aliases: list[str] = Field(alias="matchedAliases")
     sessions: list[str]
 
 
@@ -81,7 +80,7 @@ class PropositionCandidateSearch:
         )
 
     def search(
-        self, proposition: ExtractedProposition, hints: list[str]
+        self, proposition: Proposition, hints: list[str]
     ) -> list[tuple[GraphNode, float, str | None]]:
         query = set(
             words(
@@ -124,10 +123,10 @@ class PropositionCandidateSearch:
 
 def proposition_candidate_batch(
     search: PropositionCandidateSearch,
-    propositions: list[ExtractedProposition],
+    propositions: Sequence[Proposition],
     requests: list[CandidateRequest],
 ) -> CandidateBatch:
-    by_id: dict[str, ExtractedProposition] = {}
+    by_id: dict[str, Proposition] = {}
     for proposition in propositions:
         by_id.setdefault(proposition.id, proposition)
     seen = set()
@@ -166,9 +165,6 @@ def proposition_candidate_batch(
             CandidateMatch(
                 proposition_id=request.id,
                 candidate_ids=[node.id for node, _, _ in page],
-                offset=request.offset,
-                total_candidates=len(hits),
-                has_more=has_more,
                 next_offset=request.offset + len(page) if has_more else None,
             )
         )

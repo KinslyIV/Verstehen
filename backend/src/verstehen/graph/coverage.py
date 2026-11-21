@@ -100,7 +100,3 @@ def batch_runs(
     if current:
         runs.append(current)
     return runs
-
-
-def batch_tag(batch: list[CoverageSlot]) -> str:
-    return hashlib.sha256("".join(s.fp for s in batch).encode()).hexdigest()[:12]

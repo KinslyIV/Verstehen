@@ -112,6 +112,7 @@ async def core(tmp_path: Path):
             job_runner,
             lambda session_id: asyncio.sleep(0, []),
             extraction_service,
+            graph_store,
         )
         try:
             yield settings_store, adapter, resolver, session_service, turn_service

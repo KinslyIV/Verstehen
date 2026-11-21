@@ -10,9 +10,9 @@ from verstehen.graph.candidates import (
     proposition_candidate_batch,
 )
 from verstehen.graph.extractor import SubmitTool
-from verstehen.graph.merge import AuditVerdicts, IdentityLink, SessionFindings
+from verstehen.graph.merge import AuditVerdicts, Findings
 from verstehen.graph.model import get_graph
-from verstehen.graph.snapshot import graph_session_index, graph_session_propositions
+from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.store.graph import GraphStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.teaching.graph_tools import (
@@ -58,72 +58,10 @@ class FindInput(BaseModel):
     )
 
 
-class Link(BaseModel):
-    model_config = ConfigDict(strict=True)
-    id: str = Field(description='The proposition id from the findings ("p1", …).')
-    linkTo: str = Field(
-        description="The id of the EXISTING graph node this proposition IS — your identity verdict. EQUIVALENCE BIAS (2026-09-27): paraphrases, rewordings, and compressions of the same claim MERGE; only genuinely distinct propositions stay apart."
-    )
-
-
-class Review(BaseModel):
-    links: list[Link] = Field(
-        description="Identity verdicts — which findings propositions ARE existing graph nodes. A proposition absent from here = create a new node. Pass [] when none — never omit the field."
-    )
-
-
-class GraphReaders:
-    """Read one graph's birth-session views for the prober and auditor."""
-
-    def __init__(self, graph_store: GraphStore, sessions_store: SessionsStore):
-        self.graph_store, self.sessions_store = graph_store, sessions_store
-
-    async def sessions(self, *, auditor: bool = False) -> str:
-        sessions = graph_session_index(
-            await self.graph_store.read(), await self.sessions_store.list()
-        )
-        if not sessions:
-            return "The knowledge graph is empty — no session has contributed propositions yet."
-        lines = []
-        for i, s in enumerate(sessions):
-            dates = (
-                ""
-                if auditor
-                else f", born {s.created_at or 'unknown date'}"
-                + (f", last active {s.updated_at}" if s.updated_at else "")
-            )
-            lines.append(
-                f"{i + 1}. {s.name} ({s.kind}, {s.propositions} proposition{'' if s.propositions == 1 else 's'}{dates}) — id: {s.id}"
-            )
-        head = f"{len(sessions)} session(s)" + (
-            ":" if auditor else " in the knowledge graph, most recent first:"
-        )
-        return head + "\n" + "\n".join(lines)
-
-    async def propositions(self, session: str, *, auditor: bool = False) -> str:
-        ledger = await self.graph_store.read()
-        propositions = graph_session_propositions(ledger, session)
-        if not propositions:
-            return f'No propositions born in session "{session}". Call list_sessions for the current ids.'
-        nodes = {n.id: n for n in get_graph(ledger).nodes}
-        lines = [
-            f"- {p.node_id} :: {p.name}\n  statement: {nodes[p.node_id].statement}"
-            if auditor
-            else f"- {p.name}"
-            for p in propositions
-        ]
-        return (
-            f"{len(propositions)} proposition(s) {'born in' if auditor else 'covered in'} this session:\n"
-            + "\n".join(lines)
-        )
-
-
 async def prepare_auditor_review(
-    readers: GraphReaders, findings: SessionFindings
+    graph_store: GraphStore, sessions_store: SessionsStore, findings: Findings
 ) -> tuple[str, list[SubmitTool]]:
-    search = PropositionCandidateSearch(
-        get_graph(await readers.graph_store.read()).nodes
-    )
+    search = PropositionCandidateSearch(get_graph(await graph_store.read()).nodes)
     continuations: dict[str, CandidateRequest] = {}
     tokens: dict[str, str] = {}
 
@@ -161,23 +99,18 @@ async def prepare_auditor_review(
             )
         return {
             "matches": matches,
-            "candidates": [
-                {
-                    "id": c.id,
-                    "name": c.name,
-                    "statement": c.statement,
-                    "matchedAliases": c.matched_aliases,
-                    "sessions": c.sessions,
-                }
-                for c in batch.candidates
-            ],
+            "candidates": [c.model_dump(by_alias=True) for c in batch.candidates],
         }
 
     async def sessions(_: EmptyInput) -> str:
-        return await readers.sessions(auditor=True)
+        return format_graph_sessions(
+            await graph_store.read(), await sessions_store.list(), auditor=True
+        )
 
     async def propositions(value: SessionInput) -> str:
-        return await readers.propositions(value.session, auditor=True)
+        return format_graph_propositions(
+            await graph_store.read(), value.session, auditor=True
+        )
 
     initial = (
         await lookup(
@@ -217,14 +150,12 @@ async def prepare_auditor_review(
 
 
 def review_tool() -> SubmitTool:
-    async def execute(value: Review) -> AuditVerdicts:
-        return AuditVerdicts(
-            links=[IdentityLink(id=p.id, link_to=p.linkTo) for p in value.links]
-        )
+    async def execute(value: AuditVerdicts) -> AuditVerdicts:
+        return value
 
     return SubmitTool(
         "submit_review",
         "Submit the identity verdicts ONLY (links) — never the propositions themselves.",
-        Review,
+        AuditVerdicts,
         execute,
     )

@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -57,10 +58,11 @@ def test_delete_refuses_turn_job_and_extraction_wind_down(tmp_path: Path, monkey
         )
         other = client.post("/api/sessions", json={}).json()["id"]
 
+        @asynccontextmanager
         async def winding(id):
-            return False
+            yield False
 
-        monkeypatch.setattr(app.state.extraction_service, "wind_down", winding)
+        monkeypatch.setattr(app.state.extraction_service, "deleting_source", winding)
         response = client.delete(f"/api/sessions/{other}")
         assert (
             response.status_code == 503
@@ -139,6 +141,7 @@ def test_import_transport_rejects_unsafe_binary_disallowed_and_oversized_files(
             "/api/graph/import", files={"files": ("notes.md", b"Ideas")}
         )
         assert response.json()["results"][0]["code"] == "models_not_configured"
+        assert client.get("/api/graph/sources").json()["sources"] == []
 
 
 def test_manual_extract_conflict_and_session_delete_cancel_a_live_run(tmp_path: Path):

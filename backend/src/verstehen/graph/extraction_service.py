@@ -1,31 +1,33 @@
 import asyncio
 import logging
 import time
-from collections.abc import Awaitable, Callable
-from contextlib import AbstractAsyncContextManager
+from collections.abc import AsyncGenerator, Awaitable, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from verstehen.graph.auditor import GraphReaders, prepare_auditor_review, review_tool
+from verstehen.graph.auditor import prepare_auditor_review, review_tool
 from verstehen.graph.coverage import (
     CoverageSlot,
     SessionCoverage,
     batch_runs,
     coverage_of,
 )
-from verstehen.graph.deletion import DeleteMode, delete_sources_traces
 from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extractor import (
-    extractor_instructions,
     findings_tool,
     run_submit_agent,
     source_digest,
 )
-from verstehen.graph.merge import EmissionStats, MergeSource, merge_findings
+from verstehen.graph.merge import EmissionStats, merge_findings
 from verstehen.graph.model import get_graph
 from verstehen.graph.organization import register_import
-from verstehen.graph.prompts import AUDITOR_INSTRUCTIONS
+from verstehen.graph.prompts import (
+    AUDITOR_INSTRUCTIONS,
+    EXTRACTOR_INSTRUCTIONS,
+    NOTES_EXTRACTOR_INSTRUCTIONS,
+)
 from verstehen.providers.policy import ProviderPolicy, RequestPurpose
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.providers.usage import UsageModel
@@ -36,6 +38,11 @@ from verstehen.store.settings import SettingsStore
 from verstehen.store.usage import UsageStore
 
 logger = logging.getLogger(__name__)
+
+
+def log_failure(task: asyncio.Task[EmissionStats]) -> None:
+    if not task.cancelled() and (error := task.exception()) is not None:
+        logger.error("Extraction failed: %s", error)
 
 
 class ExtractionPart(BaseModel):
@@ -118,7 +125,6 @@ class ExtractionService:
         )
         self.usage_store, self.admission, self.changed = usage_store, admission, changed
         self.provider_events = provider_events
-        self.readers = GraphReaders(graph_store, sessions_store)
         self.tasks: dict[str, asyncio.Task[EmissionStats]] = {}
         self.runs: dict[str, RunningExtraction] = {}
         self.failure_reasons: dict[str, str] = {}
@@ -132,14 +138,6 @@ class ExtractionService:
 
     def statuses(self) -> list[RunningExtraction]:
         return sorted(self.runs.values(), key=lambda r: r.started_at)
-
-    def phase(
-        self,
-        run: RunningExtraction,
-        phase: Literal["extracting", "waiting", "auditing", "merging"],
-    ) -> None:
-        run.phase = phase
-        self.changed()
 
     async def coverage(self, session_id: str) -> SessionCoverage:
         ledger = await self.graph_store.read()
@@ -209,13 +207,8 @@ class ExtractionService:
         await self.ready(purpose)
         task = self.launch(session_id, lambda: self.run_session(session_id, purpose))
         self.failure_reasons.pop(session_id, None)
-        task.add_done_callback(self.log_failure)
+        task.add_done_callback(log_failure)
         return task
-
-    @staticmethod
-    def log_failure(task: asyncio.Task[EmissionStats]) -> None:
-        if not task.cancelled() and (error := task.exception()) is not None:
-            logger.error("Extraction failed: %s", error)
 
     async def trigger(self, session_id: str) -> None:
         try:
@@ -254,19 +247,18 @@ class ExtractionService:
             try:
                 merged = await self.run_batch(
                     session_id,
-                    "chat",
                     session.title,
-                    ExtractionPart(i=i + 1, n=len(batches))
-                    if len(batches) > 1
-                    else None,
                     "# "
                     + session.title
                     + "\n\n"
                     + "\n\n".join(line for s in batch for line in s.lines),
-                    batch,
                     purpose,
+                    part=ExtractionPart(i=i + 1, n=len(batches))
+                    if len(batches) > 1
+                    else None,
+                    slots=batch,
                 )
-                add_stats(stats, merged)
+                stats.add(merged)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
@@ -298,6 +290,7 @@ class ExtractionService:
         failures: list[str] = []
         succeeded = 0
         try:
+            await self.ready("foreground")
             now = timestamp()
             async with self.graph_store.transaction() as ledger:
                 register_import(ledger, file_path)
@@ -305,7 +298,6 @@ class ExtractionService:
                 ledger.sources.append(
                     NotesSource(id=source, file_path=file_path, imported_at=now)
                 )
-            await self.ready("foreground")
             budget = (await self.settings_store.read()).graph.extraction_chunk_tokens
             chunks = chunk_notes(text, budget)
             for i, chunk in enumerate(chunks):
@@ -316,15 +308,13 @@ class ExtractionService:
                 try:
                     merged = await self.run_batch(
                         source,
-                        "notes",
                         file_path,
-                        part,
                         f"SOURCE (the author's personal notes): {file_path}{suffix}\n\n{chunk}",
-                        None,
                         "foreground",
-                        now,
+                        part=part,
+                        folded_at=now,
                     )
-                    add_stats(stats, merged)
+                    stats.add(merged)
                     succeeded += 1
                 except asyncio.CancelledError:
                     raise
@@ -344,14 +334,16 @@ class ExtractionService:
     async def run_batch(
         self,
         source: str,
-        kind: Literal["chat", "notes"],
         title: str,
-        part: ExtractionPart | None,
         view: str,
-        batch: list[CoverageSlot] | None,
         purpose: RequestPurpose,
+        *,
+        part: ExtractionPart | None = None,
+        slots: list[CoverageSlot] | None = None,
         folded_at: str | None = None,
     ) -> EmissionStats:
+        notes = slots is None
+        kind: Literal["chat", "notes"] = "notes" if notes else "chat"
         key = f"{source}#{part.i}" if part else source
         self.last_started_at = max(int(time.time() * 1000), self.last_started_at + 1)
         run = RunningExtraction(
@@ -364,6 +356,13 @@ class ExtractionService:
         )
         self.runs[key] = run
         self.changed()
+
+        def set_phase(
+            phase: Literal["extracting", "waiting", "auditing", "merging"],
+        ) -> None:
+            run.phase = phase
+            self.changed()
+
         try:
             graph = get_graph(await self.graph_store.read())
             digest = source_digest(graph, source)
@@ -371,18 +370,20 @@ class ExtractionService:
             findings = await self.call_stage(
                 run,
                 "extractor",
-                extractor_instructions(kind == "notes"),
+                NOTES_EXTRACTOR_INSTRUCTIONS if notes else EXTRACTOR_INSTRUCTIONS,
                 prompt,
                 findings_tool(
                     {n.id for n in graph.nodes},
-                    {s.message.entry_id for s in batch} if batch is not None else None,
+                    {s.message.entry_id for s in slots} if slots is not None else None,
                 ),
                 purpose,
             )
-            self.phase(run, "waiting")
+            set_phase("waiting")
             async with self.audit_lock:
-                self.phase(run, "auditing")
-                prompt, tools = await prepare_auditor_review(self.readers, findings)
+                set_phase("auditing")
+                prompt, tools = await prepare_auditor_review(
+                    self.graph_store, self.sessions_store, findings
+                )
                 verdicts = await self.call_stage(
                     run,
                     "auditor",
@@ -392,8 +393,8 @@ class ExtractionService:
                     purpose,
                     tools,
                 )
-                self.phase(run, "merging")
-                if kind == "chat" and await self.sessions_store.get(source) is None:
+                set_phase("merging")
+                if not notes and await self.sessions_store.get(source) is None:
                     raise asyncio.CancelledError
                 now = timestamp()
                 coverage = (
@@ -401,9 +402,9 @@ class ExtractionService:
                         CoverageEntry(
                             session_id=source, fp=s.fp, tokens=s.tokens, folded_at=now
                         )
-                        for s in batch
+                        for s in slots
                     ]
-                    if batch is not None
+                    if slots is not None
                     else None
                 )
                 return await merge_findings(
@@ -411,7 +412,8 @@ class ExtractionService:
                     source,
                     findings,
                     verdicts,
-                    MergeSource(folded_at=folded_at or now, coverage=coverage),
+                    folded_at or now,
+                    coverage,
                 )
         finally:
             self.runs.pop(key, None)
@@ -458,28 +460,23 @@ class ExtractionService:
             task.cancel()
         return True
 
-    async def wind_down(self, source: str, timeout: float = 10) -> bool:
-        task = self.tasks.get(source)
-        if task is None:
-            return True
-        self.abort(source)
-        done, _ = await asyncio.wait([task], timeout=timeout)
-        return bool(done)
-
-    async def delete_session_traces(self, session_id: str, mode: DeleteMode) -> None:
-        async with self.graph_store.transaction() as ledger:
-            delete_sources_traces(ledger, {session_id}, mode)
-            ledger.organization.placements.pop(session_id, None)
-
-    async def begin_deletion(self, source: str) -> bool:
+    @asynccontextmanager
+    async def deleting_source(
+        self, source: str, timeout: float = 10
+    ) -> AsyncGenerator[bool]:
         self.deleting.add(source)
-        return await self.wind_down(source)
+        try:
+            if task := self.tasks.get(source):
+                self.abort(source)
+                done, _ = await asyncio.wait([task], timeout=timeout)
+                yield bool(done)
+            else:
+                yield True
+        finally:
+            self.deleting.discard(source)
 
     def forget_failure(self, session_id: str) -> None:
         self.failure_reasons.pop(session_id, None)
-
-    def end_deletion(self, source: str) -> None:
-        self.deleting.discard(source)
 
     async def close(self) -> None:
         self.closing = True
@@ -487,9 +484,3 @@ class ExtractionService:
         for task in tasks:
             task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
-
-
-def add_stats(total: EmissionStats, added: EmissionStats) -> None:
-    total.nodes += added.nodes
-    total.chains += added.chains
-    total.dropped_chains += added.dropped_chains

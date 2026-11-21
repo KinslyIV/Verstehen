@@ -11,13 +11,13 @@ Backend, `backend/src/verstehen/graph/`:
 
 | File | What it holds |
 |---|---|
-| `extraction_service.py` | `ExtractionService`: app-wide source runs (one per source), serial batches per source, the FIFO audit and merge gate, notes imports, abort, deletion wind-down |
-| `extractor.py`, `auditor.py`, `prompts.py` | the extractor and auditor agents with LH's prompts and tool texts; findings are healed and validated |
+| `extraction_service.py` | `ExtractionService`: app-wide source runs (one per source), serial batches per source, the FIFO audit and merge gate, notes imports, abort, `deleting_source` wind-down context |
+| `extractor.py`, `auditor.py`, `prompts.py` | the extractor and auditor agents with LH's prompts and tool texts; findings are healed and validated against the canonical `merge.py` models |
 | `candidates.py` | BM25 candidate pages for the auditor |
-| `merge.py` | the deterministic merge and chain simplification, committed with coverage or a notes checkpoint in one transaction |
+| `merge.py` | the canonical findings and audit-verdict models, deterministic merge, and chain simplification, committed with coverage or a notes checkpoint in one transaction |
 | `coverage.py` | which teacher prose is covered, fingerprints, batching |
 | `service.py` | `GraphService`: snapshot, node deletion, positions, render settings, source organization and deletion, costs |
-| `model.py`, `snapshot.py` | read-time merging (identity, aliases, chains), derived edges and implications, birth-session clusters, the session readers |
+| `model.py`, `snapshot.py` | read-time merging (identity, aliases, chains), derived edges and implications, birth-session clusters, session index and birth-session formatters (`format_graph_sessions`, `format_graph_propositions`) |
 | `organization.py`, `deletion.py`, `positions.py` | folders and moves, deletion modes, position sanitization |
 | `notes.py`, `pdf_markdown.py` | notes files and PDF-to-Markdown on PDFium |
 | `context.py` | the `graph-context` marker for a session started from picks |
@@ -68,7 +68,8 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
 ## Collaborators
 
 - `SessionService`, `TurnService`, and `GraphService` receive `ExtractionService` through their
-  constructors. Extraction admits requests through the jobs' `WorkerAdmission`
+  constructors (`TurnService` reads the graph directly from `GraphStore` and `SessionsStore` for
+  prober graph tools). Extraction admits requests through the jobs' `WorkerAdmission`
   ([jobs](jobs.md)). `GraphService` deletes sessions through an injected function.
 
 ## Traps found in M1–M9
