@@ -14,7 +14,14 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
-_Nothing is waiting._
+- **Orchestrator decision, for user review (2026-11-21):** The Install Claude Code
+  popup check for not-installed / too-old accounts is now a Vitest assertion that `openExternal`
+  receives the install URL. The alternative was another browser case; the consequence is that
+  the one accounts flow covers `tested`, while Vitest checks the install action without opening
+  a real popup.
+- **Orchestrator decision, for user review (2026-11-21):** `playwright.live.config.ts` inherits
+  `workers` from the main config. The alternative was a separate worker setting; the consequence
+  is one shared worker policy for fake and live verification.
 
 ## Constraints
 

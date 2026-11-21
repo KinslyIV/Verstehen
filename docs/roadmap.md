@@ -89,7 +89,12 @@ merges.
   fails on them: the thinking auto-close timer,
   the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
   `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
-  `side-chat-reload`, `question-ask`. Under heavy host load (other worktrees running verify,
+  `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
+  and `question-ask` each failed with 6 local Playwright workers but passed alone, pointing to
+  a timing bug; local workers are now capped at 3 (2026-11-21). At 3 workers,
+  `composer-steer` and `question-ask` passed, but `session-rename-delete` still failed: deletion
+  returned 409 because a turn was running, and the New session heading never appeared. It
+  passed in the one isolated rerun; the bug remains open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
   (2026-11-21).
