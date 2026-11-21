@@ -49,7 +49,7 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   `dist/verstehen-<version>-1-x86_64.pkg.tar.zst`. Neither Chromium nor the Claude Code CLI is
   bundled. `make app-image` refreshes the image.
 - **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
-  uploads `app/verify-output` on failure. Fake flows retry once in CI only.
+  uploads `app/verify-output` on failure. Flows never retry, in CI or locally.
 - **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,
   `app/src-tauri/Cargo.toml`, and `app/src-tauri/tauri.conf.json`, merge, then push `vX.Y.Z`; the
   workflow checks the versions, runs `make app`, and publishes a GitHub Release.

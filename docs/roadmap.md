@@ -85,7 +85,8 @@ All of this is merged into `main`.
 Open problems found along the way. Each is fixed or decided before the milestone that touches it
 merges.
 
-- **Flaky tests and flows.** Under the flake rule these are bugs: the thinking auto-close timer,
+- **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
+  fails on them: the thinking auto-close timer,
   the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
   `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
   `side-chat-reload`, `question-ask`. Under heavy host load (other worktrees running verify,
@@ -94,14 +95,8 @@ merges.
   (2026-11-21).
 - **Duplicate probe handoff under load.** The frontend sometimes sends `handoff` twice (400 "No
   probe handoff is owed", seen in `teach-predict-check`).
-- **CI retries fake flows once**, which lets a flaky flow pass. This conflicts with the flake rule;
-  the CI decision is the user's to change.
 - **Long single paragraphs stream slowly.** One huge paragraph re-parses as one block, as in LH;
   smooth sustained streaming is not established.
-- **Automatic input is saved before dispatch.** The 2026-11-18 "No subscription staging"
-  decision says steer entries are saved only if their request was dispatched. The code saves wake
-  markers with the write-ahead input and mid-run updates before the provider call, so a request
-  that fails at dispatch still settles them. Decide: change the code, or change the decision.
 - **Account sign-in doesn't wake a session** waiting on background consent; the next event does.
 - **A failed photo annotation can leave its image file** in `<data dir>/images/`.
 - **ChatGPT encrypted reasoning is not resent** until `reasoning-resend` merges.

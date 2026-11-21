@@ -24,8 +24,4 @@ the same areas and checked by `make check`, and the workflow has the new roles a
 
 ## Open questions
 
-- **CI retries fake flows once**, which conflicts with the new flake rule. Keep the retry, or set it
-  to zero and fix the flaky flows first? (User decision; see the [roadmap](roadmap.md#known-gaps).)
-- **Automatic input is saved before dispatch**, unlike the 2026-11-18 "no subscription staging"
-  decision says. Change the code or the decision? ([roadmap](roadmap.md#known-gaps))
 - **Merged local branches:** about 40 are merged into `main`. Delete them? (Waiting for the user.)

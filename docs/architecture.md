@@ -138,6 +138,6 @@ Structure changes only; behavior stays the same unless [decisions](decisions.md)
    named kind. The probe handoff is an explicit phase transition.
 5. **No subscription staging.** `ProviderPolicy` is asked before a wake turn starts and before
    queued job results are injected; composer steers and side-chat updates are not gated. Automatic
-   input is saved before dispatch, which differs from the recorded decision
-   ([providers](architecture/providers.md), [known gaps](roadmap.md#known-gaps)).
+   input is saved before dispatch, and a Retry delivers it once
+   ([providers](architecture/providers.md)).
 6. **Derived state** for the phase, owed handoff, and plan, so a restart loses nothing.

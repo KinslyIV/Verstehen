@@ -47,7 +47,7 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
 - **Composer steers** (`POST /api/sessions/{id}/steer`) queue in memory and land in the running
   turn's next context update, as in LH. A restart drops them.
 - **Once means once saved.** The deterministic id deduplicates saved markers; a request that fails
-  at dispatch can still leave its marker saved ([known gaps](../roadmap.md#known-gaps)).
+  at dispatch still leaves its marker saved, and a Retry delivers it once.
 - **Recovery.** `GET /api/jobs` runs the sweep at most once every 30 seconds: interrupted jobs re-run
   (except in a session with an active turn) and saved deliveries are restored. A shutdown leaves running jobs `running` so the next sweep picks them up.
 - **Demo security.** Demo HTML runs in `<iframe sandbox="allow-scripts" srcdoc>` without
