@@ -10,7 +10,6 @@ from pydantic import BaseModel
 
 MINIMUM_VERSION = "2.1.259"
 TESTED_VERSION = "2.1.327"
-TESTED_SHA256 = "343c744baa14bfd38286a7cb90871051f04379956da6c5b803a9e66019a76ac9"
 BinaryState = Literal["not_installed", "too_old", "untested", "tested"]
 logger = logging.getLogger(__name__)
 
@@ -24,12 +23,7 @@ class BinaryStatus(BaseModel):
     reason: str | None = None
 
 
-def downloaded_binary(data_dir: Path) -> Path:
-    return data_dir / "claude-code" / TESTED_VERSION / "claude"
-
-
 def resolve_binary(
-    data_dir: Path,
     env: Mapping[str, str] | None = None,
     home_dir: Path | None = None,
 ) -> Path | None:
@@ -53,21 +47,19 @@ def resolve_binary(
     if env.get("USER"):
         directories.append(Path("/etc/profiles/per-user") / env["USER"] / "bin")
     directories.extend([home / ".nix-profile/bin", Path("/run/current-system/sw/bin")])
-    for path in [
-        downloaded_binary(data_dir),
-        *(folder / "claude" for folder in directories),
-    ]:
+    for folder in directories:
+        path = folder / "claude"
         if path.is_file() and os.access(path, os.X_OK):
             return path.absolute()
     return None
 
 
-async def inspect_binary(data_dir: Path) -> BinaryStatus:
-    path = resolve_binary(data_dir)
+async def inspect_binary() -> BinaryStatus:
+    path = resolve_binary()
     if path is None:
         return BinaryStatus(
             state="not_installed",
-            reason="Install Claude Code or download the tested version.",
+            reason="Install Claude Code, then run claude to sign in.",
         )
     process = None
     try:
@@ -89,7 +81,7 @@ async def inspect_binary(data_dir: Path) -> BinaryStatus:
         return BinaryStatus(
             state="not_installed",
             path=path,
-            reason="Cannot determine the Claude Code version. Install or download the tested version.",
+            reason="Cannot determine the Claude Code version. Reinstall Claude Code.",
         )
     finally:
         if process is not None and process.returncode is None:
@@ -102,7 +94,7 @@ async def inspect_binary(data_dir: Path) -> BinaryStatus:
             state="too_old",
             path=path,
             version=version,
-            reason="Update Claude Code or download the tested version.",
+            reason="Update Claude Code with claude update.",
         )
     if version != TESTED_VERSION:
         reason = f"Claude Code {version} hasn't been tested with Verstehen."

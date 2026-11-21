@@ -592,24 +592,6 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
-	'/api/accounts/claude-code/download': {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		/** Get Download */
-		get: operations['get_download_api_accounts_claude_code_download_get'];
-		put?: never;
-		/** Start Download */
-		post: operations['start_download_api_accounts_claude_code_download_post'];
-		delete?: never;
-		options?: never;
-		head?: never;
-		patch?: never;
-		trace?: never;
-	};
 	'/api/accounts/chatgpt': {
 		parameters: {
 			query?: never;
@@ -892,29 +874,6 @@ export interface components {
 			/** Tool Call Id */
 			tool_call_id: string;
 			answer: components['schemas']['QuestionAnswer'];
-		};
-		/** DownloadProgress */
-		DownloadProgress: {
-			/**
-			 * State
-			 * @default idle
-			 * @enum {string}
-			 */
-			state: 'idle' | 'downloading' | 'complete' | 'failed';
-			/**
-			 * Version
-			 * @default 2.1.327
-			 */
-			version: string;
-			/**
-			 * Received Bytes
-			 * @default 0
-			 */
-			received_bytes: number;
-			/** Total Bytes */
-			total_bytes?: number | null;
-			/** Error */
-			error?: string | null;
 		};
 		/** EmissionStats */
 		EmissionStats: {
@@ -4340,46 +4299,6 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['BinaryStatus'];
-				};
-			};
-		};
-	};
-	get_download_api_accounts_claude_code_download_get: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description Successful Response */
-			200: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					'application/json': components['schemas']['DownloadProgress'];
-				};
-			};
-		};
-	};
-	start_download_api_accounts_claude_code_download_post: {
-		parameters: {
-			query?: never;
-			header?: never;
-			path?: never;
-			cookie?: never;
-		};
-		requestBody?: never;
-		responses: {
-			/** @description Successful Response */
-			202: {
-				headers: {
-					[name: string]: unknown;
-				};
-				content: {
-					'application/json': components['schemas']['DownloadProgress'];
 				};
 			};
 		};

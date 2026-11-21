@@ -36,7 +36,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
     monkeypatch,
 ):
     monkeypatch.setattr(
-        "verstehen.providers.claude_code.binary.resolve_binary", lambda _: None
+        "verstehen.providers.claude_code.binary.resolve_binary", lambda: None
     )
     with TestClient(
         create_app(Settings(tmp_path)), base_url="http://localhost"
@@ -67,7 +67,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
                         "kind": "claude_code",
                         "label": "Claude Code",
                         "state": "not_installed",
-                        "reason": "Install Claude Code or download the tested version.",
+                        "reason": "Install Claude Code, then run claude to sign in.",
                     },
                     "models": [],
                 }

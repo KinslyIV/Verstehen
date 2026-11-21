@@ -306,8 +306,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`.
   - It runs **the installed `claude`** (decided 2026-11-19; the package doesn't bundle the CLI).
     Verstehen records the version it was tested with and warns in Settings and the log when the
-    installed one differs. Settings can download exactly the tested version (checksum-verified) into
-    the data dir, and Verstehen then uses that copy. The opt-in live test re-checks a new version.
+    installed one differs. When it is missing or too old, Settings links to the install docs
+    (the download was removed 2026-11-21). The opt-in live test re-checks a new version.
     It reuses the existing Claude login.
   - **Constraint:** the Claude Code login is for personal use in this private app. Anthropic
     doesn't allow third-party products to offer claude.ai login, so Verstehen is never distributed

@@ -22,11 +22,9 @@ test('setup-dialog', async ({ page }) => {
 					state: 'not_installed',
 					minimum_version: '2.1.259',
 					tested_version: '2.1.327',
-					reason: 'Install Claude Code or download the tested version.'
+					reason: 'Install Claude Code, then run claude to sign in.'
 				}
 			});
-		if (path.endsWith('/download'))
-			return route.fulfill({ json: { state: 'idle', version: '2.1.327', received_bytes: 0 } });
 		throw new Error(`Unmocked account route ${path}`);
 	});
 	await page.getByRole('button', { name: 'Open Settings', exact: true }).click();

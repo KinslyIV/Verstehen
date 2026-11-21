@@ -29,7 +29,6 @@ from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
 from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter
-from verstehen.providers.claude_code.download import DownloadService
 from verstehen.providers.credentials import CredentialsStore
 from verstehen.providers.fake import FakeAccountAdapter
 from verstehen.providers.policy import ProviderPolicy
@@ -70,17 +69,13 @@ def create_app(settings: Settings) -> FastAPI:
             entries_store = EntriesStore(database)
             settings_store = SettingsStore(database)
             notifications = Notifications()
-            claude_code_adapter = ClaudeCodeAccountAdapter(
-                settings.data_dir, settings.provider_events
-            )
-            claude_code_download_service = DownloadService(settings.data_dir)
+            claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
             chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
             browser_download_service = BrowserDownloadService(settings.data_dir)
             app.state.browser_download_service = browser_download_service
             chatgpt_sign_in_service = ChatGPTSignInService(chatgpt_adapter)
             app.state.claude_code_adapter = claude_code_adapter
-            app.state.claude_code_download_service = claude_code_download_service
             app.state.chatgpt_sign_in_service = chatgpt_sign_in_service
             adapters: list[AccountAdapter] = (
                 [FakeAccountAdapter(settings.fake_model_script)]
@@ -258,7 +253,6 @@ def create_app(settings: Settings) -> FastAPI:
                 await browser_download_service.close()
                 await runtimes.close()
                 await title_service.close()
-                await claude_code_download_service.close()
                 claude_code_adapter.close()
                 await chatgpt_sign_in_service.close()
                 await chatgpt_adapter.close()

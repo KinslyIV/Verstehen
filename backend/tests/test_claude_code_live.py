@@ -1,6 +1,5 @@
 import asyncio
 import tempfile
-from pathlib import Path
 
 import pytest
 from pydantic_ai import Agent
@@ -14,7 +13,7 @@ def test_installed_claude_short_reply(monkeypatch):
     async def run():
         with tempfile.TemporaryDirectory(prefix="verstehen-live-") as directory:
             monkeypatch.setenv("VERSTEHEN_DATA_DIR", directory)
-            adapter = ClaudeCodeAccountAdapter(Path(directory))
+            adapter = ClaudeCodeAccountAdapter()
             try:
                 status = await adapter.status()
                 print(f"Claude Code version tested: {status.version} ({status.path})")

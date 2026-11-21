@@ -19,7 +19,6 @@ export type SettingsStatus = components['schemas']['SettingsStatus'];
 export type ModelSlots = components['schemas']['ModelSlots'];
 export type Account = components['schemas']['Account'];
 export type BinaryStatus = components['schemas']['BinaryStatus'];
-export type DownloadProgress = components['schemas']['DownloadProgress'];
 export type SignInStatus = components['schemas']['SignInStatus'];
 export type GraphSnapshot = components['schemas']['GraphSnapshot'];
 export type GraphNode = components['schemas']['GraphNode'];
@@ -246,11 +245,6 @@ export async function removeChatGPTAccount(id: string): Promise<void> {
 }
 export async function getClaudeCode(): Promise<BinaryStatus> {
 	return (await request('/api/accounts/claude-code')).json();
-}
-export async function claudeCodeDownload(start = false): Promise<DownloadProgress> {
-	return (
-		await request('/api/accounts/claude-code/download', { method: start ? 'POST' : 'GET' })
-	).json();
 }
 export async function openExternal(url: string): Promise<void> {
 	if (isTauri()) await invoke('plugin:shell|open', { path: url });

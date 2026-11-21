@@ -1,6 +1,14 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20 (M9 T4 chains table and session surfaces).
+> Updated at the end of every piece of work. Last update: 2026-11-21 (Claude Code download removed).
+
+## Claude Code download removed (2026-11-21)
+
+Done on `remove-claude-code-download`: the Claude Code download (service, routes, SHA-256, discovery
+priority, Settings button and progress) is gone; Settings → Accounts shows an **Install Claude Code**
+link to the setup docs when not installed or too old, with the new reason strings. The Chromium demo
+browser download is untouched. Verified with `make check` and `make verify FLOW='settings-accounts
+setup-dialog'`. Nothing next.
 
 ## M9 progress
 

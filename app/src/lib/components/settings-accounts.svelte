@@ -10,16 +10,13 @@
 		getSignIn,
 		removeChatGPTAccount,
 		getClaudeCode,
-		claudeCodeDownload,
 		openExternal,
 		type Account,
 		type BinaryStatus,
-		type DownloadProgress,
 		type Settings
 	} from '#lib/api/client.js';
 	let accounts = $state<Account[]>([]);
 	let claude = $state<BinaryStatus>();
-	let download = $state<DownloadProgress>();
 	let settings = $state<Settings>();
 	let error = $state<string | null>(null);
 	let pending = $state<string | null>(null);
@@ -27,6 +24,7 @@
 	let busy = $state(false);
 	let disposed = false;
 	let polling = false;
+	const INSTALL_URL = 'https://code.claude.com/docs/en/setup';
 	const stateLabels: Record<string, string> = {
 		ready: 'Connected',
 		needs_sign_in: 'Needs sign-in',
@@ -38,14 +36,9 @@
 	};
 	async function refresh() {
 		try {
-			const values = await Promise.all([
-				listChatGPTAccounts(),
-				getClaudeCode(),
-				getSettings(),
-				claudeCodeDownload()
-			]);
+			const values = await Promise.all([listChatGPTAccounts(), getClaudeCode(), getSettings()]);
 			if (disposed) return;
-			[accounts, claude, settings, download] = values;
+			[accounts, claude, settings] = values;
 		} catch (cause) {
 			if (!disposed) error = cause instanceof Error ? cause.message : String(cause);
 		}
@@ -62,10 +55,6 @@
 					if (result.state === 'failed') error = result.reason ?? 'Sign-in failed.';
 					await refresh();
 				}
-			}
-			if (download?.state === 'downloading') {
-				download = await claudeCodeDownload();
-				if (download.state === 'complete') await refresh();
 			}
 		} catch (cause) {
 			if (!disposed) error = cause instanceof Error ? cause.message : String(cause);
@@ -134,17 +123,6 @@
 			error = null;
 		} catch (cause) {
 			settings = previous;
-			error = cause instanceof Error ? cause.message : String(cause);
-		} finally {
-			busy = false;
-		}
-	}
-	async function startDownload() {
-		busy = true;
-		error = null;
-		try {
-			download = await claudeCodeDownload(true);
-		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
 			busy = false;
@@ -236,34 +214,13 @@
 					Uses your Claude Code login. Run claude to sign in.
 				</p>
 			</div>
-			<Button
-				variant="outline"
-				size="sm"
-				disabled={busy || download?.state === 'downloading'}
-				onclick={() => void startDownload()}
-			>
-				Download the tested version · {claude.tested_version}
-			</Button>{/if}
-		{#if download?.state === 'downloading'}<div role="status" class="space-y-2">
-				<p class="text-xs text-muted-foreground">
-					Downloading… {(download.received_bytes / 1048576).toFixed(1)} MB{download.total_bytes
-						? ` / ${(download.total_bytes / 1048576).toFixed(1)} MB`
-						: ''}
-				</p>
-				<progress
-					class="h-1 w-full"
-					value={download.total_bytes ? download.received_bytes : undefined}
-					max={download.total_bytes ?? undefined}
-					aria-label="Claude Code download"
-				></progress>
-			</div>{:else if download?.state === 'failed'}<p role="alert" class="text-sm text-destructive">
-				{download.error}
-			</p>{:else if download?.state === 'complete'}<p
-				role="status"
-				class="text-xs text-muted-foreground"
-			>
-				Tested version installed.
-			</p>{/if}
+			{#if claude.state === 'not_installed' || claude.state === 'too_old'}<Button
+					variant="outline"
+					size="sm"
+					onclick={() => void openExternal(INSTALL_URL)}
+				>
+					Install Claude Code
+				</Button>{/if}{/if}
 		{#if settings}<div class="flex items-center justify-between text-sm">
 				<span id="claude-background">Allow background use</span><Switch.Root
 					aria-labelledby="claude-background"

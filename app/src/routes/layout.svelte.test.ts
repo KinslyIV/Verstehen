@@ -32,7 +32,6 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
-	claudeCodeDownload: async () => ({ state: 'idle' }),
 	listSessions: async () => [],
 	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
 		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
