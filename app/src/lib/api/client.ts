@@ -203,8 +203,8 @@ export async function streamNotifications(
 	);
 }
 
-export async function getModels(): Promise<ModelCatalog> {
-	return (await request('/api/models')).json();
+export async function getModels(options: { refresh?: boolean } = {}): Promise<ModelCatalog> {
+	return (await request(options.refresh ? '/api/models?refresh=true' : '/api/models')).json();
 }
 export async function getSettings(): Promise<SettingsStatus> {
 	return (await request('/api/settings')).json();

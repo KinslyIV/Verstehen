@@ -1,6 +1,21 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-21 (CI and release setup).
+> Updated at the end of every piece of work. Last update: 2026-11-21 (ChatGPT model list cache).
+
+## ChatGPT model list cache (2026-11-21)
+
+Done on `chatgpt-catalog-cache`: `ChatGPTAccountAdapter` caches each account's model list for the
+sidecar's lifetime (one shared fetch per miss, failures not cached), and the picker, `normalize`,
+and every `resolve()` use it. Sign-in, removal, unavailability, and model-call API errors drop the
+entry; Settings → Models forces one refresh via `GET /api/models?refresh=true`. New session still
+checks the slots with `getModels()` on send (now a cache read, not a ChatGPT call). Review round 1 fixes: the cache is two dicts (`catalogs`, shared `fetches` task) with no locks, a
+stale or late-error result never replaces a newer one, and connection errors also evict. Settings →
+Models shows loading/error and hands its one refreshed catalog to the controls. Refused Retry keeps the
+failure banner, and Extract now shows refusal and post-launch failure reasons (coverage
+`failure_reason`). Rounds 2–3: only the current fetch may evict or mark needs sign-in (a superseded
+fetch reports "The ChatGPT model list changed. Try again."), dispatch-time unavailability evicts, and
+Extract now discards refusals that arrive after coverage reported a newer run. Three GPT 6.2 Sol
+review rounds; round 3 left no blockers and its items are fixed. Merged into `dev`.
 
 ## CI and release setup (2026-11-21)
 

@@ -29,13 +29,15 @@ class AccountUnavailable(Exception):
 
 
 class AccountAdapter(Protocol):
-    """Own discovery, credentials, catalog refresh, model builds, and context reports.
+    """Own discovery, credentials, cached catalogs (forget_models drops them), model builds, and context reports.
     models/build_model raise AccountUnavailable(reason, state); never mutate the given account.
     """
 
     async def accounts(self) -> list[Account]: ...
 
     async def models(self, account: Account) -> list[CatalogModel]: ...
+
+    def forget_models(self) -> None: ...
 
     async def build_model(self, account: Account, pick: ModelPick) -> Model: ...
 

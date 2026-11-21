@@ -47,8 +47,10 @@ async def put_settings(
 
 
 @router.get("/api/models", response_model=ModelCatalog)
-async def get_models(provider_service: ProviderServiceDependency) -> ModelCatalog:
-    return await provider_service.catalog()
+async def get_models(
+    provider_service: ProviderServiceDependency, refresh: bool = False
+) -> ModelCatalog:
+    return await provider_service.catalog(refresh)
 
 
 @router.post("/api/settings/default-model", response_model=ModelPick)

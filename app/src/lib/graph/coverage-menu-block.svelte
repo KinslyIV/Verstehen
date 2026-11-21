@@ -50,6 +50,7 @@
 			busy={coverage.running}
 			complete={view.state === 'complete'}
 			testid="ctx-extract"
+			failure={coverage.failure_reason}
 			onstarted={load}
 		/>
 	</div>

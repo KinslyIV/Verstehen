@@ -2,7 +2,7 @@ import { test, expect } from './fixtures';
 import { createSession } from './compaction';
 import { scriptExtractors, setGraphSettings } from './graph';
 
-test.use({ script: 'verify/scripts/graph-coverage.json' });
+test.use({ script: 'verify/scripts/graph-coverage.json', expectedStatuses: [503] });
 
 const prose =
 	'We compared the slopes of lines and then the average rate of change of a curve between two points. '.repeat(
@@ -33,6 +33,42 @@ test('graph-coverage', async ({ page, request, appendEntries }) => {
 	await expect(popover).toContainText('Chunk threshold');
 	await expect(popover).toContainText('500 tokens');
 	await page.screenshot({ path: test.info().outputPath('ring.png'), animations: 'disabled' });
+
+	// A refused start shows the server's reason under the button.
+	await page.route('**/api/graph/coverage/extract', (route) =>
+		route.fulfill({
+			status: 503,
+			json: { error: 'Sign in again.', code: 'model_unavailable', reason: 'Sign in again.' }
+		})
+	);
+	await page.getByTestId('coverage-extract').click();
+	await expect(popover.getByTestId('coverage-extract-error')).toHaveText('Sign in again.');
+	await page.screenshot({
+		path: test.info().outputPath('extract-refused.png'),
+		animations: 'disabled'
+	});
+	await page.unroute('**/api/graph/coverage/extract');
+
+	// A failure after launch arrives as the coverage failure reason.
+	await page.route(`**/api/sessions/${id}`, async (route) => {
+		const response = await route.fetch();
+		const body = await response.json();
+		body.coverage.failure_reason = 'ChatGPT authorization expired. Sign in again.';
+		await route.fulfill({ response, json: body });
+	});
+	await page.reload();
+	await ring.click();
+	await expect(popover.getByTestId('coverage-extract-error')).toHaveText(
+		'ChatGPT authorization expired. Sign in again.'
+	);
+	await expect(popover.getByTestId('coverage-extract')).toBeEnabled();
+	await page.screenshot({
+		path: test.info().outputPath('extract-failure-reason.png'),
+		animations: 'disabled'
+	});
+	await page.unroute(`**/api/sessions/${id}`);
+	await page.reload();
+	await ring.click();
 
 	// Extract now starts a run; the Jobs tab lists it with End.
 	await page.getByTestId('coverage-extract').click();
