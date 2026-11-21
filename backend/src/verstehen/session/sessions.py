@@ -237,6 +237,7 @@ class SessionService:
                     session_id
                 )
                 await self.sessions_store.delete(session_id)
+                self.extraction_service.forget_failure(session_id)
                 runtime.mark_deleted()
                 runtime.delivery.clear()
                 await asyncio.to_thread(remove_images, self.data_dir, orphaned)

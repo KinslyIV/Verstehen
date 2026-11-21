@@ -1,5 +1,6 @@
 import asyncio
 import base64
+import gc
 import json
 import os
 import time
@@ -790,11 +791,10 @@ def test_concurrent_model_cache_misses_share_one_fetch(tmp_path: Path):
 def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    fetches: list[str] = []
+    fetches: list[object] = []
 
-    async def counted(self, account):
-        self.provider(account.id)
-        fetches.append(account.id)
+    async def counted(self, provider):
+        fetches.append(provider)
         return []
 
     monkeypatch.setattr(ChatGPTAccountAdapter, "fetch_models", counted)
@@ -807,7 +807,7 @@ def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
             assert len(fetches) == expected
 
 
-def gated_adapter(store: CredentialsStore):
+def gated_adapter(store: CredentialsStore, failures: dict[int, int] | None = None):
     """Adapter whose Nth /models response waits for gates[N], then names the model by N."""
     gates: list[asyncio.Event] = []
     requests: list[httpx2.Request] = []
@@ -816,6 +816,8 @@ def gated_adapter(store: CredentialsStore):
         index = len(requests)
         requests.append(request)
         await gates[index].wait()
+        if failures and index in failures:
+            return httpx2.Response(failures[index], json={"error": {"code": "x"}})
         entry = {
             "slug": "gpt-5",
             "display_name": f"Fetch {index}",
@@ -1172,3 +1174,97 @@ def test_warmed_cache_inference_403_ends_a_side_answer_cleanly_and_recovers(chat
     assert saved["messages"][-1]["role"] == "assistant"
     assert not saved["messages"][-1]["error"]
     assert [m["role"] for m in saved["messages"]].count("user") == 1
+
+
+@pytest.mark.parametrize("status", [403, 500])
+@pytest.mark.parametrize("newer_finishes_first", [True, False])
+def test_late_failure_of_a_forgotten_fetch_has_no_side_effects(
+    tmp_path: Path, status: int, newer_finishes_first: bool
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, gates, requests = gated_adapter(store, {0: status})
+        gates.extend([asyncio.Event(), asyncio.Event()])
+        try:
+            account = (await adapter.accounts())[0]
+            stale = asyncio.create_task(adapter.models(account))
+            while not requests:
+                await asyncio.sleep(0)
+            adapter.forget_models()
+            fresh = asyncio.create_task(adapter.models(account))
+            while len(requests) < 2:
+                await asyncio.sleep(0)
+            current = adapter.fetches[account_id]
+            if newer_finishes_first:
+                gates[1].set()
+                assert (await fresh)[0].name == "Fetch 1"
+            gates[0].set()
+            with pytest.raises(AccountUnavailable) as failure:
+                await stale
+            assert failure.value.state == "unavailable"
+            assert (await adapter.accounts())[0].state == "ready"
+            if newer_finishes_first:
+                assert adapter.catalogs[account_id][0].name == "Fetch 1"
+            else:
+                assert adapter.fetches[account_id] is current and not current.done()
+                gates[1].set()
+                assert (await fresh)[0].name == "Fetch 1"
+                assert adapter.catalogs[account_id][0].name == "Fetch 1"
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_dispatch_time_unavailability_evicts_the_cache_and_keeps_its_reason(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, _ = counting_adapter(store)
+        try:
+            account = (await adapter.accounts())[0]
+            await adapter.models(account)
+            model = await adapter.build_model(
+                account, ModelPick(account=account_id, model="gpt-5")
+            )
+            store.mark_unavailable(account_id, "Approve ChatGPT plan usage.")
+            with pytest.raises(AccountUnavailable) as failure:
+                await Agent(model).run("Hello")
+            assert failure.value.reason == "Approve ChatGPT plan usage."
+            assert account_id not in adapter.catalogs
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_fetch_nobody_waits_for_does_not_leave_an_unretrieved_exception(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter, fetches = counting_adapter(store, status=500)
+        reported: list[object] = []
+        asyncio.get_running_loop().set_exception_handler(
+            lambda loop, context: reported.append(context)
+        )
+        try:
+            account = (await adapter.accounts())[0]
+            waiter = asyncio.create_task(adapter.models(account))
+            await asyncio.sleep(0)
+            task = adapter.fetches[account.id]
+            waiter.cancel()
+            await asyncio.gather(waiter, return_exceptions=True)
+            await asyncio.wait([task])
+            del task
+            gc.collect()
+            await asyncio.sleep(0)
+            assert reported == [] and len(fetches) == 1
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())

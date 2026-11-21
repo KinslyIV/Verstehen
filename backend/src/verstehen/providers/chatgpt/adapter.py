@@ -151,51 +151,55 @@ class ChatGPTAccountAdapter:
         task = self.fetches.get(account.id)
         if task is None:
             task = asyncio.create_task(self.load_models(account))
+            task.add_done_callback(lambda t: t.cancelled() or t.exception())
             self.fetches[account.id] = task
         return await asyncio.shield(task)
 
     async def load_models(self, account: Account) -> list[CatalogModel]:
-        """Fetch once for all waiting callers; cache only if still the current fetch."""
+        """Fetch once for all waiting callers; only the current fetch caches or evicts."""
         task = asyncio.current_task()
+        provider = None
         try:
-            models = await self.fetch_models(account)
+            provider = self.provider(account.id)
+            models = await self.fetch_models(provider)
             if self.fetches.get(account.id) is task:
                 self.catalogs[account.id] = models
             return models
+        except Exception as error:
+            if self.fetches.get(account.id) is not task:
+                raise AccountUnavailable(
+                    "ChatGPT could not be reached. Try again.", "unavailable"
+                ) from None
+            raise self.unavailable(
+                account.id, error, provider.source if provider else None
+            ) from None
         finally:
             if self.fetches.get(account.id) is task:
                 del self.fetches[account.id]
 
-    async def fetch_models(self, account: Account) -> list[CatalogModel]:
-        provider = None
-        try:
-            provider = self.provider(account.id)
-            with anyio.fail_after(15):
-                body = await provider.client.get(
-                    "/models", cast_to=dict, options={"timeout": 15, "max_retries": 0}
-                )
-            entries = body["models"]
-            if not isinstance(entries, list):
-                raise ValueError("Invalid model list")
-            models = []
-            for entry in entries:
-                if not isinstance(entry, dict) or entry.get("visibility") != "list":
-                    continue
-                model_id, name = entry.get("slug"), entry.get("display_name")
-                if (
-                    not isinstance(model_id, str)
-                    or not model_id
-                    or not isinstance(name, str)
-                ):
-                    continue
-                catalog = catalog_model(model_id, name, provider)
-                if catalog is not None:
-                    models.append(catalog)
-            return models
-        except Exception as error:
-            raise self.unavailable(
-                account.id, error, provider.source if provider else None
-            ) from None
+    async def fetch_models(self, provider: AccountProvider) -> list[CatalogModel]:
+        with anyio.fail_after(15):
+            body = await provider.client.get(
+                "/models", cast_to=dict, options={"timeout": 15, "max_retries": 0}
+            )
+        entries = body["models"]
+        if not isinstance(entries, list):
+            raise ValueError("Invalid model list")
+        models = []
+        for entry in entries:
+            if not isinstance(entry, dict) or entry.get("visibility") != "list":
+                continue
+            model_id, name = entry.get("slug"), entry.get("display_name")
+            if (
+                not isinstance(model_id, str)
+                or not model_id
+                or not isinstance(name, str)
+            ):
+                continue
+            catalog = catalog_model(model_id, name, provider)
+            if catalog is not None:
+                models.append(catalog)
+        return models
 
     async def build_model(self, account: Account, pick: ModelPick) -> Model:
         return AccountModel(
@@ -261,7 +265,12 @@ class AccountModel(WrapperModel):
             return await self.wrapped.request(
                 messages, model_settings, model_request_parameters
             )
-        except (APIError, ModelAPIError, CredentialsRefreshError) as error:
+        except (
+            APIError,
+            ModelAPIError,
+            CredentialsRefreshError,
+            AccountUnavailable,
+        ) as error:
             raise self.adapter.unavailable(
                 self.account_id, error, self.source
             ) from None
@@ -279,7 +288,12 @@ class AccountModel(WrapperModel):
                 messages, model_settings, model_request_parameters, run_context
             ) as stream:
                 yield stream
-        except (APIError, ModelAPIError, CredentialsRefreshError) as error:
+        except (
+            APIError,
+            ModelAPIError,
+            CredentialsRefreshError,
+            AccountUnavailable,
+        ) as error:
             raise self.adapter.unavailable(
                 self.account_id, error, self.source
             ) from None

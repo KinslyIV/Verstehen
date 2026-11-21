@@ -207,8 +207,8 @@ class ExtractionService:
         if await self.sessions_store.get(session_id) is None:
             raise GraphRefused("Not found", 404)
         await self.ready(purpose)
-        self.failure_reasons.pop(session_id, None)
         task = self.launch(session_id, lambda: self.run_session(session_id, purpose))
+        self.failure_reasons.pop(session_id, None)
         task.add_done_callback(self.log_failure)
         return task
 
@@ -473,8 +473,10 @@ class ExtractionService:
 
     async def begin_deletion(self, source: str) -> bool:
         self.deleting.add(source)
-        self.failure_reasons.pop(source, None)
         return await self.wind_down(source)
+
+    def forget_failure(self, session_id: str) -> None:
+        self.failure_reasons.pop(session_id, None)
 
     def end_deletion(self, source: str) -> None:
         self.deleting.discard(source)

@@ -20,6 +20,7 @@ from verstehen.graph.coverage import (
     coverage_of,
     message_view_lines,
 )
+from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extraction_service import (
     ExtractionService,
     NotesImportError,
@@ -463,6 +464,35 @@ def test_run_failure_reason_is_reported_in_coverage_until_the_next_start(tmp_pat
             denied = False
             await (await service.start(session.id))
             assert (await service.coverage(session.id)).failure_reason is None
+
+    asyncio.run(scenario())
+
+
+def test_failure_reason_survives_a_refused_start_and_a_deletion_that_has_not_committed(
+    tmp_path,
+):
+    async def scenario():
+        async def respond(messages, info):
+            raise AssertionError
+
+        async with pipeline(tmp_path, respond) as service:
+            session = await service.sessions_store.create("Lesson")
+            service.failure_reasons[session.id] = "Sign in again."
+
+            async def wait():
+                await asyncio.Event().wait()
+                return EmissionStats()
+
+            service.launch(session.id, wait)
+            with pytest.raises(GraphRefused) as refused:
+                await service.start(session.id)
+            assert refused.value.status == 409
+            assert service.failure_reasons[session.id] == "Sign in again."
+            await service.begin_deletion(session.id)
+            assert service.failure_reasons[session.id] == "Sign in again."
+            service.end_deletion(session.id)
+            service.forget_failure(session.id)
+            assert session.id not in service.failure_reasons
 
     asyncio.run(scenario())
 

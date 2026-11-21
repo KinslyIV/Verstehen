@@ -21,7 +21,10 @@
 	} = $props();
 	let requesting = $state(false);
 	let refusal = $state<string | null>(null);
-	let message = $derived(refusal ?? failure);
+	let message = $derived(busy || complete ? null : (refusal ?? failure));
+	$effect(() => {
+		if (busy || complete || failure) refusal = null;
+	});
 
 	async function start() {
 		requesting = true;
