@@ -940,3 +940,35 @@ def test_artifact_view_is_kept_beside_the_log_for_demo_and_figure_markers(
             )
 
     asyncio.run(scenario())
+
+
+def test_runner_cleans_up_early_cancellation_and_ignores_progress_write_errors(
+    tmp_path: Path,
+):
+    async def scenario():
+        async with stack(tmp_path, [worker("researcher")]) as s:
+            store = s.runner.jobs_store
+            job = await store.create(
+                s.session_id, "research", "c1", {"question": "Why?"}
+            )
+            s.runner.start(job.id)
+            await s.runner.close()
+            assert not s.runner.is_live(job.id)
+            assert job.id not in s.runner.aborted
+
+            s.runner.closing = False
+            original_update = store.update
+
+            async def flaky_update(job_id, patch, *, only_if=None):
+                if patch.activity == "researching":
+                    raise RuntimeError("transient sqlite busy")
+                return await original_update(job_id, patch, only_if=only_if)
+
+            store.update = flaky_update  # type: ignore[method-assign]
+            s.runner.start(job.id)
+            await s.runner.live[job.id]
+            done = await store.get(job.id)
+            assert done is not None and done.status == "done"
+            assert not s.runner.is_live(job.id)
+
+    asyncio.run(scenario())

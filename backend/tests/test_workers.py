@@ -13,8 +13,10 @@ from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.messages import (
     ModelRequest,
     ModelResponse,
+    SystemPromptPart,
     TextPart,
     ToolCallPart,
+    ToolReturnPart,
     UserPromptPart,
 )
 from pydantic_ai.models.function import AgentInfo, FunctionModel
@@ -647,7 +649,6 @@ def test_fake_title_model_serves_worker_roles_from_the_script(tmp_path):
 
 def test_worker_cancellation_interrupts_model_request_and_reports_usage():
     async def run():
-        cancellation = asyncio.Event()
         started = asyncio.Event()
 
         async def reply(messages, info):
@@ -656,19 +657,19 @@ def test_worker_cancellation_interrupts_model_request_and_reports_usage():
             return ModelResponse(parts=[TextPart("never")])
 
         task = asyncio.create_task(
-            run_researcher(
-                ResearchInput(question="q"),
-                FunctionModel(reply),
-                cancellation=cancellation,
-            )
+            run_researcher(ResearchInput(question="q"), FunctionModel(reply))
         )
         await started.wait()
-        cancellation.set()
+        task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await task
         usage = []
+
+        async def on_usage(request):
+            usage.append(request)
+
         result = await run_researcher(
-            ResearchInput(question="q"), scripted("brief"), on_usage=usage.append
+            ResearchInput(question="q"), scripted("brief"), on_usage=on_usage
         )
         assert result.brief == "brief" and len(usage) == 1
 
@@ -779,14 +780,70 @@ def test_pdf_download_enforces_size_and_removes_unreadable_downloads(tmp_path):
 
 
 def test_invalid_tool_arguments_return_feedback_without_crashing_the_worker():
+    seen_retry = False
+
+    def inspect(messages, info):
+        nonlocal seen_retry
+        if any(
+            isinstance(part, ToolReturnPart) and part.outcome == "retried"
+            for message in messages
+            if isinstance(message, ModelRequest)
+            for part in message.parts
+        ):
+            seen_retry = True
+
     model = scripted(
         [call("write_svg", svg=42)],
         [call("write_svg", svg=SVG)],
         [call("render_svg")],
         "Fixed.",
+        inspect=inspect,
     )
     result = asyncio.run(run_visual_maker(VisualInput(brief="circle"), model))
     assert result.svg == SVG
+    assert seen_retry
+
+
+def test_researcher_keeps_text_from_final_tool_call_reply_at_step_limit():
+    brief = "## Summary\nUseful answer. [Source](https://example.com/a)"
+    model = scripted([TextPart(brief), call("web_search", query="extra")])
+    result = asyncio.run(
+        run_researcher(ResearchInput(question="q"), model, max_steps=1)
+    )
+    assert not is_failure("research", result)
+    assert result.brief == brief
+    assert result.sources == [Source(title="Source", url="https://example.com/a")]
+
+
+def test_empty_final_replies_and_whitespace_match_lh(tmp_path):
+    visual = asyncio.run(
+        run_visual_maker(
+            VisualInput(brief="circle"),
+            scripted([call("write_svg", svg=SVG)], [call("render_svg")], []),
+            max_iterations=3,
+        )
+    )
+    assert visual.svg == SVG and visual.notes is None
+
+    path = make_pdf(tmp_path / "document.pdf")
+    pdf_result = asyncio.run(
+        run_pdf_reader(
+            PdfInput(path=str(path), question="q"),
+            scripted([call("pdf_extract", pages="1")], []),
+            access=source_access(tmp_path),
+        )
+    )
+    assert pdf_result.brief == "(no brief text)"
+
+    padded = asyncio.run(
+        run_visual_maker(
+            VisualInput(brief="circle"),
+            scripted(
+                [call("write_svg", svg=SVG)], [call("render_svg")], "  Clean.  \n"
+            ),
+        )
+    )
+    assert padded.notes == "Clean."
 
 
 def test_headless_opaque_origin_refuses_storage_and_local_files(chromium):
@@ -835,29 +892,64 @@ def test_demo_clean_run_delivers_only_verified_html(chromium):
     assert result.html == html and result.notes == "Try the demo."
 
 
-@pytest.mark.parametrize(
-    "name", ["research", "pdf", "visual", "demo", "web", "pdf_web"]
-)
-def test_worker_prompts_descriptions_and_schemas_match_lh(name):
-    from verstehen.jobs.workers import demo, pdf, research, visual, web
+def captured_wire(name: str, tmp_path: Path) -> tuple[str, list[dict[str, Any]]]:
+    system_prompt = ""
+    tools: list[dict[str, Any]] = []
 
+    def capture(messages, info: AgentInfo):
+        nonlocal system_prompt, tools
+        if not tools:
+            for message in messages:
+                if isinstance(message, ModelRequest):
+                    for part in message.parts:
+                        if isinstance(part, SystemPromptPart):
+                            system_prompt = str(part.content)
+            tools = [
+                {
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters_json_schema": tool.parameters_json_schema,
+                }
+                for tool in info.function_tools
+            ]
+        return ModelResponse(parts=[TextPart("done")])
+
+    model = FunctionModel(capture)
+    if name == "research":
+        asyncio.run(run_researcher(ResearchInput(question="q"), model, search="tavily"))
+    elif name == "pdf":
+        path = make_pdf(tmp_path / "document.pdf")
+        asyncio.run(
+            run_pdf_reader(
+                PdfInput(path=str(path), question="q"),
+                model,
+                access=source_access(tmp_path),
+            )
+        )
+    elif name == "visual":
+        asyncio.run(run_visual_maker(VisualInput(brief="x"), model))
+    else:
+        asyncio.run(
+            run_demo_builder(
+                DemoInput(title="t", brief="x"), model, executable="unused"
+            )
+        )
+    return system_prompt, tools
+
+
+@pytest.mark.parametrize("name", ["research", "pdf", "visual", "demo"])
+def test_worker_prompts_descriptions_and_schemas_match_lh(name, tmp_path):
     fixtures = json.loads(
         (Path(__file__).parent / "fixtures/workers/wire.json").read_text()
     )
-    module = {
-        "research": research,
-        "pdf": pdf,
-        "visual": visual,
-        "demo": demo,
-        "web": web,
-        "pdf_web": web,
-    }[name]
-    if "instructions" in fixtures[name]:
-        assert getattr(module, "INSTRUCTIONS") == fixtures[name]["instructions"]
-    if "schemas" in fixtures[name]:
-        assert (
-            getattr(module, "PDF_SCHEMAS" if name == "pdf_web" else "SCHEMAS")
-        ) == fixtures[name]["schemas"]
+    prompt, tools = captured_wire(name, tmp_path)
+    assert prompt == fixtures[name]["instructions"]
+    expected = (
+        fixtures["web"]["schemas"] + fixtures["pdf_web"]["schemas"]
+        if name == "research"
+        else fixtures[name]["schemas"]
+    )
+    assert tools == expected
 
 
 def test_cancelled_cpu_work_finishes_before_worker_resources_are_released():
