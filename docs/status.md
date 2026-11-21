@@ -1,6 +1,27 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-21 (CI and release setup).
+> Updated at the end of every piece of work. Last update: 2026-11-21 (Faster checks).
+
+## Faster checks (2026-11-21)
+
+Done on `faster-checks`: Makefile pytest commands use pytest-xdist `-n auto`; single-file runs
+keep their existing defaults. ESLint uses a content cache and Prettier uses its cache under
+`app/node_modules/.cache`, consistently in Makefile and npm scripts. Decisions document the
+measured gains and type-aware ESLint cache trade-off, with fresh CI lint caches as the backstop.
+Agent instructions now allow the Arch laptop through a T3 linked environment when Pixal is busy,
+with `VERSTEHEN_DATA_DIR` always outside the real data directory.
+
+Validation on `72357db` plus these changes: `make setup` passed; full `make check` passed twice
+on Pixal, cold in **260.48s** and warm in **157.08s** (about 40% faster). Each run passed
+757 backend tests and 334 frontend tests; pytest auto-selected four workers (70.41s cold,
+74.29s warm). Both lint caches were confirmed under `app/node_modules/.cache`. The cold Vitest
+run passed without the dependency-cache timeout or a retry. No UI changes or UI verification
+needed. Setup reported five existing low-severity npm audit findings; dependencies were not
+upgraded outside this task.
+Review: `conflict_polls_and_retries_the_same_input` failed once under load because the shared test
+controller's 20ms conflict deadline expired before the retry; that test now uses its own 5s
+deadline (the bound test keeps 20ms). `make check` then passed in 153s (warm).
+Next: user merge with green CI. No open design questions.
 
 ## CI and release setup (2026-11-21)
 

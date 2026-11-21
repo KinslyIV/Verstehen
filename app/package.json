@@ -14,8 +14,8 @@
 		"prepare": "svelte-kit sync || echo ''",
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
-		"lint": "prettier --check . && eslint .",
-		"format": "prettier --write .",
+		"lint": "prettier --check . --cache && eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/",
+		"format": "prettier --write . --cache",
 		"test:unit": "vitest",
 		"test": "npm run test:unit -- --run"
 	},

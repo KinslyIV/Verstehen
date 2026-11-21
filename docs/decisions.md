@@ -611,3 +611,17 @@ Probe, plan, teach, as in LH.
 - **Orchestrator decision, for user review:** browser download progress exposes the bundled
   driver's latest output line (bounded to 500 characters) and its percentage when available,
   rather than inventing byte counts the driver does not report.
+
+## Faster checks and linked environments (2026-11-21)
+
+- **User decision:** Makefile pytest commands use pytest-xdist `-n auto`; pytest `addopts` stays
+  unchanged so single-file runs do not spawn workers. ESLint uses its content cache and Prettier
+  uses its cache under `app/node_modules/.cache`. Pixal measurements: pytest 141s → 73s (757 tests,
+  all passing in parallel), ESLint ~90s → ~2s, and Prettier ~10s → ~2s for unchanged files.
+  Trade-off: type-aware ESLint rules (`svelte/no-unused-props`,
+  `svelte/require-store-reactive-access`) can miss a new error in an unchanged file caused by a
+  type change elsewhere. CI runs without a restored lint cache and is the backstop; deleting
+  `app/node_modules/.cache/eslint` forces a full lint.
+- **User decision:** Agents may run on the user's Arch laptop through a T3 linked environment
+  when Pixal is busy. The laptop's `~/.local/share/verstehen` holds real user data, so
+  `VERSTEHEN_DATA_DIR` must always point elsewhere.
