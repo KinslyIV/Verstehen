@@ -1,0 +1,130 @@
+{
+  "cases": [
+    {
+      "kind": "research",
+      "result": {
+        "brief": "Full brief.",
+        "sources": [
+          {
+            "title": "Source",
+            "url": "https://a.test"
+          }
+        ]
+      },
+      "steer": "Research complete — the researcher's full brief follows. Weave it into the lesson and cite its sources when you use its findings:\n\nFull brief.",
+      "failure": false
+    },
+    {
+      "kind": "research",
+      "result": {
+        "brief": "Research failed: no text",
+        "sources": []
+      },
+      "steer": "Research failed: no text\n\nContinue with what you can establish and flag the uncertainty to the learner.",
+      "failure": true
+    },
+    {
+      "kind": "pdf",
+      "result": {
+        "path": "/paper.pdf",
+        "question": "q",
+        "brief": "Read (p. 1).",
+        "pagesRead": [
+          1
+        ],
+        "pagesConsulted": [
+          1
+        ]
+      },
+      "steer": "PDF reading complete — the reader's brief on \"/paper.pdf\" follows, with page citations. Weave it into the lesson and cite pages when you use it:\n\nRead (p. 1).",
+      "failure": false
+    },
+    {
+      "kind": "pdf",
+      "result": {
+        "path": "/paper.pdf",
+        "question": "q",
+        "brief": "PDF failed: missing",
+        "pagesRead": [],
+        "pagesConsulted": []
+      },
+      "steer": "PDF failed: missing\n\nContinue with what you can establish from the session and flag the gap to the learner.",
+      "failure": true
+    },
+    {
+      "kind": "demo",
+      "result": {
+        "title": "Demo",
+        "html": "<p>demo</p>",
+        "tested": true
+      },
+      "steer": "The demo \"Demo\" is built, headlessly tested, and rendered in the lesson. Builder notes: (none).\nTeach with it — reference its controls by name and point the learner at what to try.",
+      "failure": false
+    },
+    {
+      "kind": "demo",
+      "result": {
+        "title": "Demo",
+        "html": "",
+        "tested": true,
+        "notes": "FAILED: test"
+      },
+      "steer": "The demo \"Demo\" could not be built: FAILED: test. Fall back to explaining in prose; if the brief was the problem, re-call demo with a tighter one.",
+      "failure": true
+    },
+    {
+      "kind": "visual",
+      "result": {
+        "svg": "<svg/>",
+        "notes": "Notes"
+      },
+      "steer": "The figure is drawn, verified by inspection, and rendered in the lesson. Maker notes: Notes.\nReference its elements as you teach.",
+      "failure": false
+    },
+    {
+      "kind": "visual",
+      "result": {
+        "svg": "<svg/>",
+        "image": {
+          "path": "/image.png",
+          "snapshotId": "snapshot"
+        }
+      },
+      "steer": "The annotated image is drawn, verified by inspection, and rendered in the lesson. Maker notes: (none).\nReference its marks as you teach.",
+      "failure": false
+    },
+    {
+      "kind": "visual",
+      "result": {
+        "svg": "",
+        "notes": "FAILED: render"
+      },
+      "steer": "The figure could not be made: FAILED: render. Fall back to prose or mermaid, or re-call visual with a tighter brief.",
+      "failure": true
+    },
+    {
+      "kind": "demo",
+      "result": {
+        "title": "Demo",
+        "html": "",
+        "tested": true
+      },
+      "steer": "The demo \"Demo\" could not be built: unknown reason. Fall back to explaining in prose; if the brief was the problem, re-call demo with a tighter one.",
+      "failure": true
+    },
+    {
+      "kind": "visual",
+      "result": {
+        "svg": ""
+      },
+      "steer": "The figure could not be made: unknown reason. Fall back to prose or mermaid, or re-call visual with a tighter brief.",
+      "failure": true
+    }
+  ],
+  "aborts": {
+    "research": "Research aborted — the learner aborted the research job, so no brief is coming. Acknowledge it in one line and continue teaching without it (or offer to re-dispatch it).",
+    "pdf": "The PDF reading job was aborted by the learner — no brief is coming. Acknowledge it in one line and continue without it (a re-dispatch is fine if the learner wants it).",
+    "demo": "The demo job was aborted by the learner — no demo is coming. Acknowledge it in one line and teach the topic in prose instead (a re-dispatch is fine if the learner wants it).",
+    "visual": "The figure job was aborted by the learner — no figure is coming. Acknowledge it in one line and teach without it (a re-dispatch is fine if the learner wants it)."
+  }
+}

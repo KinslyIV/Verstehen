@@ -1,0 +1,94 @@
+[
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [
+						{
+							"id": "p1",
+							"name": "Limit",
+							"statement": "A limit is the value a function approaches as its input approaches a point."
+						},
+						{
+							"id": "p2",
+							"name": "One-sided limit",
+							"statement": "A one-sided limit approaches a point from only the left or only the right."
+						},
+						{
+							"id": "p3",
+							"name": "Continuity",
+							"statement": "A function is continuous at a point when its limit there equals its value."
+						}
+					],
+					"chains": [
+						{
+							"premises": ["p1", "p2"],
+							"conclusion": "p3"
+						}
+					]
+				}
+			}
+		],
+		"delay_ms": 1500
+	},
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [
+						{
+							"id": "p1",
+							"name": "Force",
+							"statement": "A net force on an object equals its mass times its acceleration."
+						},
+						{
+							"id": "p2",
+							"name": "Momentum",
+							"statement": "Momentum is the product of an object’s mass and its velocity."
+						},
+						{
+							"id": "p3",
+							"name": "Impulse",
+							"statement": "The impulse on an object equals its change in momentum."
+						}
+					],
+					"chains": [
+						{
+							"premises": ["p1"],
+							"conclusion": "p3"
+						}
+					]
+				}
+			}
+		],
+		"delay_ms": 1500
+	},
+	{
+		"role": "auditor",
+		"tool_calls": [
+			{
+				"name": "submit_review",
+				"arguments": {
+					"links": []
+				}
+			}
+		],
+		"delay_ms": 300
+	},
+	{
+		"role": "auditor",
+		"tool_calls": [
+			{
+				"name": "submit_review",
+				"arguments": {
+					"links": []
+				}
+			}
+		],
+		"delay_ms": 300
+	}
+]

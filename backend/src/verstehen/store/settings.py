@@ -1,3 +1,4 @@
+import math
 import re
 from pathlib import Path
 from typing import Literal
@@ -101,10 +102,59 @@ class FileAccessSettings(BaseModel):
         return {**value, "folders": folders}
 
 
+SearchEngine = Literal["native", "tavily", "brave"]
+
+
+class ToolSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    research: bool = True
+    demo: bool = True
+    visual: bool = True
+    pdf: bool = True
+
+
+class GraphSettings(BaseModel):
+    enabled: bool = True
+    rendering: bool = True
+    extraction_chunk_tokens: int = 4096
+
+    @field_validator("enabled", "rendering", mode="before")
+    @classmethod
+    def sanitize_boolean(cls, value: object) -> bool:
+        return value if isinstance(value, bool) else True
+
+    @field_validator("extraction_chunk_tokens", mode="before")
+    @classmethod
+    def sanitize_chunk_tokens(cls, value: object) -> int:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(value)
+            and value > 0
+        ):
+            return max(500, math.floor(value))
+        return 4096
+
+
+class AgentSettings(BaseModel):
+    graph_tools: bool = True
+
+    @field_validator("graph_tools", mode="before")
+    @classmethod
+    def sanitize_graph_tools(cls, value: object) -> bool:
+        return value if isinstance(value, bool) else True
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    graph: GraphSettings = Field(default_factory=GraphSettings)
+    agent: AgentSettings = Field(default_factory=AgentSettings)
     models: ModelSlots = Field(default_factory=ModelSlots)
     background: BackgroundSettings = Field(default_factory=BackgroundSettings)
+    tools: ToolSettings = Field(default_factory=ToolSettings)
+    worker_request_concurrency: int | None = None
+    demo_browser: str | None = None
+    search_engine: SearchEngine = Field(default_factory=lambda: "native")
     quizzing: Quizzing = Field(default_factory=lambda: "choice")
     file_access: FileAccessSettings = Field(default_factory=FileAccessSettings)
     compaction_limit: int | None = Field(default=None, strict=True)
@@ -113,6 +163,23 @@ class Settings(BaseModel):
     @classmethod
     def floor_compaction_limit(cls, value: int | None) -> int | None:
         return None if value is None else max(value, COMPACTION_LIMIT_FLOOR)
+
+    @field_validator("worker_request_concurrency", mode="before")
+    @classmethod
+    def sanitize_concurrency(cls, value: object) -> int | None:
+        if (
+            isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and 0 < value <= 2**53 - 1
+            and int(value) == value
+        ):
+            return int(value)
+        return None
+
+    @field_validator("demo_browser", mode="before")
+    @classmethod
+    def sanitize_browser(cls, value: object) -> str | None:
+        return (value.strip() or None) if isinstance(value, str) else None
 
 
 def decode_file_access(encoded: str | None) -> FileAccessSettings:

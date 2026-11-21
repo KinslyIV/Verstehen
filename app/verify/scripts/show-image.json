@@ -1,0 +1,14 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "show_image",
+				"arguments": {
+					"path": "PLACEHOLDER",
+					"caption": "The secant connects the two marked points."
+				}
+			}
+		]
+	},
+	{ "text": "The slope is the change in height divided by the change in horizontal position." }
+]

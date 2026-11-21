@@ -162,8 +162,9 @@ Every change comes with a way to prove it works, and you run it before you say i
   to a separate directory.
 - **Never read, print, or commit credentials**: `credentials.json`, the Claude Code login, the
   ChatGPT tokens.
-- **Git during a run:** work on the task's own branch, and commit with `make check` passing. Never
-  push, never merge, never commit to `main`. The user merges.
+- **Git during a run:** work on the task's own branch; commit with `make check` passing, push the
+  branch, and open a PR against `main`. Never commit or push to `main`, force-push, or merge. The
+  user merges.
 
 ## When you finish a piece of work
 

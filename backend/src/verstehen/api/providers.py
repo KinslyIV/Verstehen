@@ -35,16 +35,22 @@ async def get_settings(provider_service: ProviderServiceDependency) -> SettingsS
 
 
 @router.put("/api/settings", response_model=Settings)
-async def put_settings(body: Settings, provider_service: ProviderServiceDependency):
+async def put_settings(
+    body: Settings, provider_service: ProviderServiceDependency, request: Request
+):
     try:
-        return await provider_service.save_settings(body)
+        saved = await provider_service.save_settings(body)
+        await request.app.state.turn_service.delivery_service.pump_all()
+        return saved
     except ResolutionError as error:
         return JSONResponse(error.envelope(), status_code=503)
 
 
 @router.get("/api/models", response_model=ModelCatalog)
-async def get_models(provider_service: ProviderServiceDependency) -> ModelCatalog:
-    return await provider_service.catalog()
+async def get_models(
+    provider_service: ProviderServiceDependency, refresh: bool = False
+) -> ModelCatalog:
+    return await provider_service.catalog(refresh)
 
 
 @router.post("/api/settings/default-model", response_model=ModelPick)

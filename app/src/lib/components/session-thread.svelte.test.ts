@@ -7,17 +7,23 @@ import SessionThread from './session-thread.svelte';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getModels: async () => ({ accounts: [], slots: {} }),
+	getJobs: vi.fn(),
+	getExtractionStatus: async () => [],
+	getSettings: async () => ({}),
+	getSideChats: async () => ({ threads: [], answering: {} }),
 	getSession: vi.fn(),
 	postInput: vi.fn(),
 	streamTurn: vi.fn()
 }));
 beforeEach(() => {
 	sessionStorage.clear();
+	vi.mocked(api.getJobs).mockReset().mockResolvedValue({ jobs: [], turn_in_flight: false });
 	vi.mocked(api.getSession).mockReset();
 	vi.mocked(api.postInput).mockReset();
 });
 test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -47,6 +53,7 @@ test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', 
 });
 test('failed_saved_reply_offers_retry_after_reload', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -69,6 +76,7 @@ test('failed_saved_reply_offers_retry_after_reload', async () => {
 
 test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -105,6 +113,7 @@ test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 
 test('compacting_session_shows_the_indicator_and_disables_send_and_submit', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -122,6 +131,7 @@ test('compacting_session_shows_the_indicator_and_disables_send_and_submit', asyn
 
 test('saved_compaction_draws_the_moment_line_and_the_cut_divider', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
 		id: 'one',
 		title: 'Algebra',
 		kind: 'teach',
@@ -148,4 +158,72 @@ test('saved_compaction_draws_the_moment_line_and_the_cut_divider', async () => {
 		.element(screen.getByTestId('compaction-cut-divider'))
 		.toHaveTextContent('History compacted · 33k tok');
 	await expect.element(screen.getByText('SECRET SUMMARY')).not.toBeInTheDocument();
+});
+
+test('dispatch_card_follows_the_session_feed_by_tool_call_id', async () => {
+	const matching: api.JobRecord = {
+		id: 'job',
+		session_id: 'one',
+		kind: 'research',
+		tool_call_id: 'research-call',
+		input: {},
+		status: 'running',
+		activity: 'Matching research activity',
+		created_at: new Date().toISOString()
+	};
+	const unrelated = {
+		...matching,
+		id: 'other',
+		tool_call_id: 'other-call',
+		activity: 'Unrelated activity'
+	};
+	vi.mocked(api.getJobs).mockResolvedValue({ jobs: [unrelated, matching], turn_in_flight: false });
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Research',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{
+				kind: 'assistant',
+				entry_id: 'dispatch',
+				stop_reason: 'stop',
+				parts: [
+					{
+						type: 'tool_call',
+						tool_call_id: 'research-call',
+						tool_name: 'research',
+						arguments: { question: 'Why?' }
+					}
+				]
+			},
+			{
+				kind: 'tool_result',
+				entry_id: 'ack',
+				tool_call_id: 'research-call',
+				tool_name: 'research',
+				text: 'Dispatched.',
+				is_error: false
+			},
+			{
+				kind: 'assistant',
+				entry_id: 'prose',
+				stop_reason: 'stop',
+				parts: [{ type: 'text', text: 'While it runs.' }]
+			}
+		]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect
+		.element(screen.getByTestId('dispatch-card'))
+		.toMatchTextContent('Matching research activity');
+	await expect.element(screen.getByText('Unrelated activity')).not.toBeInTheDocument();
+	vi.mocked(api.getJobs).mockResolvedValue({
+		jobs: [unrelated, { ...matching, status: 'done' }],
+		turn_in_flight: false
+	});
+	window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: 'one' }));
+	await expect.element(screen.getByTestId('dispatch-settled')).toMatchTextContent('finished');
 });

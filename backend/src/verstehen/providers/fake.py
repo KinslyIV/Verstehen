@@ -2,7 +2,9 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from threading import Lock
 from typing import Any, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, JsonValue, RootModel, model_validator
@@ -31,6 +33,8 @@ from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.store.entries import EntryUsage
 from verstehen.store.settings import ModelPick
 
+script_role: ContextVar[str] = ContextVar("script_role", default="teacher")
+
 
 class ScriptToolCall(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -41,6 +45,7 @@ class ScriptToolCall(BaseModel):
 
 class ScriptReply(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    role: str | None = None
     text: str | None = None
     title: str | None = None
     thinking: str | None = None
@@ -92,15 +97,25 @@ def load_script(path: Path) -> list[ScriptReply]:
 def fake_model(script_path: Path) -> FunctionModel:
     replies = load_script(script_path)
     request_number = 0
+    reply_lock = Lock()
 
     def next_reply() -> ScriptReply:
         nonlocal request_number
-        request_number += 1
-        if request_number > len(replies):
-            raise RuntimeError(
-                f"Fake-model script {script_path} has no reply for request {request_number}."
+        with reply_lock:
+            request_number += 1
+            selected = next(
+                (
+                    index
+                    for index, reply in enumerate(replies)
+                    if reply.role is None or reply.role == script_role.get()
+                ),
+                None,
             )
-        return replies[request_number - 1]
+            if selected is None:
+                raise RuntimeError(
+                    f"Fake-model script {script_path} has no reply for request {request_number}."
+                )
+            return replies.pop(selected)
 
     async def respond(messages: list[ModelMessage], info: AgentInfo) -> ModelResponse:
         reply = next_reply()
@@ -206,8 +221,8 @@ def fake_model(script_path: Path) -> FunctionModel:
 
 
 class FakeAccountAdapter:
-    """Expose scripted lesson replies and independent title responses as one account.
-    App wiring only installs this adapter when a fake-model script was supplied at launch.
+    """Expose one test account with scripted lessons, workers, and independent titles.
+    Installed only when a fake-model script was supplied at launch.
     """
 
     def __init__(self, script_path: Path):
@@ -256,9 +271,15 @@ class FakeAccountAdapter:
                         raise RuntimeError("No title reply scripted")
                     return reply.title
 
+                workers = fake_model(self.script_path)
+
                 async def title(
                     messages: list[ModelMessage], info: AgentInfo
                 ) -> ModelResponse:
+                    if script_role.get() != "teacher":
+                        return await workers.request(
+                            messages, info.model_settings, info.model_request_parameters
+                        )
                     return ModelResponse(parts=[TextPart(await title_text())])
 
                 async def title_stream(
@@ -272,6 +293,9 @@ class FakeAccountAdapter:
             else:
                 self.models_by_id[pick.model] = fake_model(self.script_path)
         return self.models_by_id[pick.model]
+
+    def forget_models(self) -> None:
+        pass
 
     async def context_limit(self, account: Account, model: str) -> int | None:
         return None

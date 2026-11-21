@@ -33,6 +33,7 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
         "regex",
         "prompts",
         "playwright",
+        "headless",
         "claude-agent-sdk",
     }
     assert all(check["ok"] and check["detail"] for check in checks)
@@ -52,6 +53,7 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
         "check_regex",
         "check_prompts",
         "check_playwright",
+        "check_headless",
         "check_claude",
     ):
         monkeypatch.setattr(self_check, name, lambda: "checked")

@@ -1,6 +1,106 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-20.
+> Updated at the end of every piece of work. Last update: 2026-11-21 (ChatGPT model list cache).
+
+## ChatGPT model list cache (2026-11-21)
+
+Done on `chatgpt-catalog-cache`: `ChatGPTAccountAdapter` caches each account's model list for the
+sidecar's lifetime (one shared fetch per miss, failures not cached), and the picker, `normalize`,
+and every `resolve()` use it. Sign-in, removal, unavailability, and model-call API errors drop the
+entry; Settings → Models forces one refresh via `GET /api/models?refresh=true`. New session still
+checks the slots with `getModels()` on send (now a cache read, not a ChatGPT call). Review round 1 fixes: the cache is two dicts (`catalogs`, shared `fetches` task) with no locks, a
+stale or late-error result never replaces a newer one, and connection errors also evict. Settings →
+Models shows loading/error and hands its one refreshed catalog to the controls. Refused Retry keeps the
+failure banner, and Extract now shows refusal and post-launch failure reasons (coverage
+`failure_reason`). Rounds 2–3: only the current fetch may evict or mark needs sign-in (a superseded
+fetch reports "The ChatGPT model list changed. Try again."), dispatch-time unavailability evicts, and
+Extract now discards refusals that arrive after coverage reported a newer run. Three GPT 6.2 Sol
+review rounds; round 3 left no blockers and its items are fixed. Merged into `dev`.
+
+## CI and release setup (2026-11-21)
+
+Done on `ci-setup`: GitHub-hosted `ci` runs `make check` and fake-model `make verify` for PRs
+against `main` and pushes to `main`, with one CI-only retry and failure screenshot/trace artifacts.
+Live verification keeps zero retries and stays local. A manually pushed `vX.Y.Z` tag checks the
+three application versions, builds the Arch package, and publishes a GitHub Release. AGPL-3.0-only
+licensing and the branch/PR workflow are documented, with release and laptop install instructions.
+
+Validation on `0890968` plus these uncommitted changes: `make setup` and `make check` passed
+(757 backend tests, 2 live tests deselected; 334 frontend tests). Both workflows passed actionlint
+1.7.12 via Docker. `env -u CI make verify FLOW='app-reaches-sidecar'` passed (1/1); inspected the
+new-session screenshot and retained its trace in
+`app/verify-output/app-reaches-sidecar.flow.ts-app-reaches-sidecar/`. Playwright list-only discovery
+confirmed fake retries are 0 locally and 1 with `CI=true`, and live retries stay 0 even with CI set.
+The workflow's release guard accepted `v0.1.0` and rejected a mismatched tag before building.
+Next: user approves the force-push of rewritten `main`, the repo goes public, protection requiring
+`ci` is enabled on `main`, and the PR gets its first hosted CI run. The first tagged release will
+verify hosted packaging and publication. No GitHub settings, pushes, or releases were changed here.
+
+## Claude Code download removed (2026-11-21)
+
+Done on `remove-claude-code-download`: the Claude Code download (service, routes, SHA-256, discovery
+priority, Settings button and progress) is gone; Settings → Accounts shows an **Install Claude Code**
+link to the setup docs when not installed or too old, with the new reason strings. The Chromium demo
+browser download is untouched. The desktop shell allow-list now also opens exactly the setup URL
+(regression test reads `tauri.conf.json`); the "Run claude to sign in" line shows only for a usable
+binary. Two GPT 6.2 Sol review rounds; round 2 left only nits, fixed. Verified with `make check`
+(757 backend, 334 frontend tests) and `make verify FLOW='settings-accounts setup-dialog'` (9/9),
+screenshots of all four states (light/dark) and the setup dialog inspected. Next: merge.
+
+## M9 progress
+
+**M9 is complete on `m9-plan`, ready to merge** (orchestrator review of T1–T4 done).
+Final evidence at `3df6a24` plus the review commit: `make check` (762 backend, 329 frontend tests);
+`make verify` 94/96, the two failures (`job-recovery-reload`, `question-probe-answer-dark`) both
+passed 3/3 in a guarded rerun (known load flakes from M8); `make verify-live` passed. Screenshots
+checked: graph-canvas, graph-search-settings, graph-import, graph-rendering-off, graph-chains-table,
+graph-picks, graph-coverage, graph-delete. Open: the frontend sometimes sends the probe handoff
+twice under load (400 "No probe handoff is owed", `teach-predict-check`); fix outside M9.
+
+T1 backend is implemented on `m9-plan`: transactional graph ledgers and migration `0006`,
+read-time identity/alias and chain merging, derived edges/implications, birth-session clusters,
+source lookup and session readers, deterministic merge/simplification with atomic coverage or
+notes checkpoints, BM25 candidate pages, deletion modes, organization and imported placements,
+position sanitization (no server layout), render settings, usage costs, graph routes, and
+post-commit `graph-changed` events. API types and backend route feature entries are updated.
+
+Validation: `make check` passed on the final T1 working tree: 724 backend tests (2 live tests
+deselected), 197 frontend tests across 28 files, and all static checks. The 36 new offline graph
+cases include rollback on a failed coverage insert and route integration. No UI changes, UI
+verification flows, or model calls are part of T1.
+
+T2 backend is implemented: teacher-prose coverage, exact extraction/auditor prompts and tool
+texts, healed and validated findings, candidate exploration, app-wide source runs with FIFO
+serialized audit/merge, serial digest-aware batches, per-call usage, cancellation and status
+notifications, bounded notes imports and PDFium Markdown, graph settings, gated prober tools,
+graph-context creation, and session deletion modes with extraction wind-down. Shared prose
+selection and PDFium locking now live in `teaching/`. API types and backend feature entries are
+updated. Six T2 implementation decisions are recorded for user review.
+
+Validation on `91ea64b` plus the final T2 working tree: `make check` passed with 761 backend
+tests (2 live tests deselected), 197 frontend tests across 28 files, and all static checks.
+The 37 new offline cases cover extraction, API integration, PDF conversion, settings, and lifecycle
+behavior. API types are regenerated. No real-model calls or packaging changes were made.
+
+T2 review fix 1: `ExtractionService` is now constructor-injected into `SessionService`, `TurnService`, and `GraphService`; the post-construction `| None` callables and guards are gone. Tests build the services the same way, and the prober tool-set assertions include the graph tools. `make check` passed: 761 backend tests (2 live deselected), 197 frontend tests.
+
+T2 review fix 2: the full fake-model `make verify` after fix 1 passed 83/85. The two failures were `question-probe-answer-light` (a viewport-ratio assertion) and `teach-predict-check` (a console error from a duplicate `handoff` input, 400 "No probe handoff is owed"). Both pass in an isolated rerun (`make verify-run`, 5/5 cases). Neither touches graph code, so they look like parallel-load timing flakes; the earlier 9/85 run is not reproduced.
+
+Inspected `screenshot.png` and retained `trace.zip` under `app/verify-output/` for
+`session-new-and-stream.flow.ts-session-new-and-stream-{dark,light}`,
+`session-rename-delete.flow.ts-session-rename-delete`,
+`t2-rerun/teaching-handoff.flow.ts-teaching-handoff-dark`, and
+`t2-question-final/question-ask.flow.ts-question-ask`.
+
+T3 graph page is implemented on `m9-plan`: the **Knowledge graph** sidebar entry and `/graph` route (right panel hidden there); the TypeScript port of LH's canvas renderer, layout (d3-force, with the page-side settle and positions save), search, render settings panel, cost pill, pipeline pills, notes import queue, detail card, and the empty and rendering-off summary views, all in `app/src/lib/graph/`. The chains button opens a placeholder dialog and Start session waits for T4's picks. Nine T3 decisions are recorded for user review. `d3-force`, `d3-selection`, and `d3-zoom` are pinned in `package.json`.
+
+Verification: Vitest ports of LH's pure-helper tests (canvas, layout, render settings, import queue) plus settle, search, card placement, and costs. Verify flows `graph-extraction`, `graph-canvas-dark`, `graph-canvas-light`, `graph-search-settings`, `graph-import`, and `graph-rendering-off` passed; screenshots inspected under `app/verify-output/`.
+
+T4 is implemented on `m9-plan`: the chains table (source → chain → statements, KaTeX-joined chip lines, sort, fuzzy search, keyboard navigation, folders with rename and drag moves, selection bar), picks with one shared selection (the chip on both screens, **Start session** on the graph page, `graph_context` sent with the new session), the node, source, and session-trace delete dialogs (right-click and card Delete), the coverage ring and the session menu block with **Extract now**, extraction rows in the Jobs tab with End, and Settings → Graph. Ten T4 decisions are recorded for user review, including a T2 backend fix: the `graph-context` marker is now projected to the model.
+
+Verification: Vitest for chain lines, selection to chains, sort and search, folder moves, keyboard navigation, pick chip states, coverage fill and states, delete dialog copy and retry, and the graph settings field. Verify flows `graph-chains-table`, `graph-picks`, `graph-delete`, `graph-coverage`, and `settings-graph` pass; screenshots inspected under `app/verify-output/`.
+
+Next: orchestrator review of T3 and T4, then `make verify-live` (real Claude Code, run by the orchestrator).
 
 ## Where we are
 
@@ -290,7 +390,6 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
 3. **M5 teaching flow:** implemented and reviewed ([M5 plan](plans/m5-teaching-flow.md)). Merge
    `m5-plan` (it contains the plan, T1, T2, and this status); the other M5 branches are superseded.
    Then try a real lesson through probe, handoff, plan, and teaching on the laptop.
-
 4. **M6 compaction:** T1 backend and T2 UI done on `m6-plan` ([M6 plan](plans/m6-compaction.md)).
    The turn gate and settle kick share the session runtime's compaction task. Checkpoints preserve
    the append-only transcript and commit with their usage. Settings, session state, and notifications
@@ -332,6 +431,20 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
    light moment line, and the settings card. `make verify-live` passed at `666e8fe`
    (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png` inspected).
    M6 is ready for the user to review and merge `m6-plan`.
+
+5. **M7 background jobs and workers:** done on `m7-jobs` ([M7 plan](plans/m7-jobs-and-workers.md)):
+   group 1 (T1 workers, T2 Settings → Tools, T3 learner images) and group 2 (T4 jobs, delivery,
+   wakes `d06d1c9`; T5 jobs UI `8b314a9`), all reviewed. `m7-jobs` is built from `main` with M6
+   plus the plan and group 1 commits cherry-picked, so merging `m7-jobs` alone brings in all of
+   M7; `m7-plan`, `m7-t1-workers`, `m7-t2-tools-settings`, and `m7-t3-images` are superseded.
+   **Orchestrator review:** T4 tool texts checked verbatim against LH; live injection verified
+   against Pydantic AI (sent and kept once, saved after the prior tool results). T5's busy
+   Send/Stop button matches LH's code (decision row corrected). Known small gaps: an account
+   sign-in does not wake a session by itself (the next event does), and a failed photo annotation
+   can leave its image file. `make verify-live` passed at `8b314a9`
+   (`app/verify-live-output/lesson-first-turn.flow.ts-lesson-first-turn/screenshot.png`
+   inspected). Ready for the user to review the decisions and merge `m7-jobs`; then try a
+   real lesson with research and a demo on the laptop.
 
 ## Open questions
 
@@ -398,3 +511,104 @@ The laptop check for ChatGPT sign-in and Claude Code discovery remains open.
   (421 backend and 129 Vitest tests), and full `make verify` passed all 53 cases. Inspected the
   final `screenshot.png` in `app/verify-output/teaching-handoff.flow.ts-teaching-handoff-{dark,light}/`.
   Each case retains its trace. Next is orchestrator review.
+
+
+## M7 progress
+
+- **T1 standalone workers:** contracts and LH delivery texts; Tavily/Brave clients and native-search
+  selection; bounded public-only web/PDF fetching; PDF reading, SVG rendering/annotation, and
+  mandatory headless demo verification. Each worker takes an injected Pydantic AI model, callbacks,
+  and cancellation; shared helpers own isolated requests and threaded PDF/render work.
+  Fake replies accept a task-local role. Self-check renders a PDF page and runs an offline browser
+  page when available. Offline golden fixtures cover LH prompts, tool declarations, and steer texts.
+- **T1 validation:** full `make check` passed (512 backend and 129 Vitest tests, no verify flows: no learner-visible change).
+- **Next:** orchestrator review of `m7-t1-workers`, including the T1 implementation decisions in
+  `decisions.md`; T2/T4 supply runtime browser discovery, image snapshots, jobs, and delivery.
+  T1 adds no session code, settings, routes, or UI. No new product-design questions are open.
+- **T2 — Settings → Tools (`m7-t2-tools-settings`).** Stores the four background-tool switches,
+  worker request concurrency, search engine, and demo browser path. Search keys share the private
+  atomic credentials file with ChatGPT; environment keys win and are read-only. Browser discovery
+  follows setting → PATH → downloaded, with a bundled-driver Chromium download and shutdown
+  cancellation. The Tools cards and `settings-tools` dark/light flow cover editing, masked keys,
+  fallback notices, and download states. `make check` passed (457 backend, 148 Vitest tests) and
+  `make verify FLOW=settings-tools` passed all 8 cases.
+  Next: orchestrator review; T4 applies the switches/concurrency and wires keys/browser into jobs.
+- **T3 — learner images (`m7-t3-images`).** Added bounded learner-image loading and Pillow
+  normalization in a thread, reusing M5's file-access policy and image store. The teacher's
+  always-on `show_image` tool saves display-only details and returns LH's text confirmation.
+  The authenticated image route feeds the thread card through a disposable object URL; the
+  card shows the caption and source path and survives reload. Desktop CSP allows blob images.
+  Source/header limits include GIF and WebP frames, and the fake-model `show-image` flow uses
+  its own temporary source image. `make check` passed (448 backend and 133 Vitest tests) and `make verify FLOW='show-image'`
+  passed; inspected `app/verify-output/show-image.flow.ts-show-image/screenshot.png`.
+  Next: orchestrator review; jobs, workers, annotation cards, and delete cleanup remain other tasks.
+  No new open questions.
+- **T4 — jobs, delivery, and wakes (`m7-jobs`, backend).** Migration 0004 adds `jobs` and
+  `artifact_views`. The four job tools dispatch once per tool call id and acknowledge at once;
+  `JobRunner` resolves the role model fresh, asks background consent, runs T1's worker through the
+  FIFO `WorkerAdmission`, records usage rows, and saves result, status, and pending delivery in one
+  update before waking the session. A context-update capability injects job results (background
+  consent, never behind a pending question) and composer steers before every model request; saved
+  markers acknowledge their job in the same transaction. `DeliveryService` wakes idle sessions with
+  every pending marker and otherwise waits for events. Added abort, `GET /api/jobs` with a
+  30-second recovery sweep, steer, artifact-view, and delete-with-jobs routes; API types regenerated.
+  `make check` passed (626 backend, 167 Vitest tests; no verify flows: no learner-visible change yet). T5 below adds the UI. Decisions are marked for review in `decisions.md`.
+
+- **T5 — jobs UI (`m7-jobs`).** One session feed fetches on mount, debounced job events, and
+  resync. Dispatch cards match tool call ids; job markers render research/PDF briefs, SVG figures,
+  photo annotations, sandboxed demos, aborts, and failures as cards. Figure/demo inversion writes
+  the silent view table and survives reload; photo annotations never invert. Jobs shows running
+  work, elapsed time, subscription labels, details, totals, and LH's End states. Composer text
+  steers the running turn (queued until its context update), with a raced 409 falling back to Send.
+  Delete shows the running-jobs line and Try again. Desktop CSP follows M7 decision 14 and retains
+  blob images. Backend support fixes stream dispatch acknowledgements and expose the resolved
+  worker model before its first reply; fake Cheap-slot workers use role-tagged scripts.
+  Snapshot loading depends on the stable hash, so session refreshes keep the photo loaded.
+  Four T5 orchestrator decisions are recorded for review; the typed-draft Send button is the
+  documented LH difference. `VITEST_MAX_WORKERS=1 make check` passed (629 backend, 184 frontend
+  tests; 17 new Vitest cases). Full `make verify FLOW='--workers=1'` passed all 77 cases in
+  13.2 minutes on `d06d1c9` plus T5's uncommitted implementation. After a screenshot-only flow
+  adjustment, guarded `make verify-run FLOW='job-visual-annotate --workers=1
+  --output=verify-output/m7-t5-evidence'` passed its one case against the unchanged SPA build.
+  Earlier fixture/matcher failures were fixed; the known layout-width test flaked once and passed
+  the final full check. Earlier pipe-based verify runs received SIGTERM; the final PTY run completed.
+  No real-model calls, `make verify-live`, or packaging builds were run.
+  Next: orchestrator review of T5 and the integrated M7 branch. No new product questions.
+
+**T5 inspected screenshots:** all paths below are relative to `app/verify-output/`.
+Each case also retains `trace.zip`; the separate evidence rerun preserves the full-suite artifacts.
+
+| Flow | Screenshot paths | Inspected behavior |
+|---|---|---|
+| Research, dark/light | `job-research-live.flow.ts-job-research-live-{dark,light}/{running.png,screenshot.png}` | Live dispatch activity, elapsed/cost/detail/End row, then expanded sourced brief and empty Jobs tab. |
+| Idle wake | `job-idle-wake.flow.ts-job-idle-wake/screenshot.png` | Result card and teacher continuation without another learner send. |
+| Behind question | `job-behind-question.flow.ts-job-behind-question/{waiting.png,screenshot.png}` | Finished work waits behind the question, then its card lands with the answer turn. |
+| Demo | `job-demo.flow.ts-job-demo/screenshot.png` | Tested interactive iframe, persisted inversion after reload, and download control. |
+| Abort and failure | `job-abort.flow.ts-job-abort/screenshot.png` | Learner-abort line, worker-failure card, teacher acknowledgements, and empty Jobs tab. |
+| Restart recovery | `job-recovery-reload.flow.ts-job-recovery-reload/screenshot.png` | Interrupted worker re-runs after an actual sidecar restart; result survives reload. |
+| Composer steering | `composer-steer.flow.ts-composer-steer/{queued.png,screenshot.png}` | Quiet queued text above the composer, then a landed learner message in the same run with no retry line. |
+| Delete with jobs | `delete-jobs-running.flow.ts-delete-jobs-running/{jobs-running.png,screenshot.png}` | Exact running-jobs refusal and Try again; successful retry returns to an empty session list. |
+| Figure and photo | `m7-t5-evidence/job-visual-annotate.flow.ts-job-visual-annotate/{figure.png,screenshot.png}` | Inverted standalone figure with its switch; annotated photo retains natural colors and hides inversion. |
+
+## M8 progress
+
+**M8 is complete on `m8-plan`, ready to merge.**
+
+- **T1 side chat backend:** segments (server-side `side_segments`), the redacted lesson
+  document, the tool-less helper, `side_threads`/`side_exchanges`, `SideChatService` (ask, retry,
+  request ids, stop, reattach, size check, usage), SSE routes, `side-chats-changed`. The pure
+  compaction module moved to `teaching/compaction.py`.
+- **T2 side chat UI:** the Side chat tab, segment-boundary buttons, selection Ask with quotes,
+  Ctrl+J, drafts per thread, Go to current step, stop/retry/reattach, the dock's `working`.
+- **T3 delivery:** hidden `side-question` markers through the context-update step (`side_question`
+  kind) at turn start and before later model requests, withheld while a question is pending; LH's
+  budget error; Retry past its own compaction; marker serialization and projection.
+- **Evidence (final, HEAD of `m8-plan`):** `make check` (688 backend, 197 frontend tests);
+  `make verify` 84/85, the one failure `job-recovery-reload` (aborted `/api/jobs` poll on
+  reload) fixed in the fixture and then 3/3; `make verify-live` passed. Screenshots checked:
+  side-chat-ask, -selection, -stop-retry, -current-step, -delivery.
+- **Implementers:** T1 GPT-6.1 Sol (finished by the orchestrator after the usage limit), T2 and T3
+  Claude Sonnet 5.5 medium (stopgap).
+- **Flagged:** `teach-predict-check` failed once with an unexplained console 400 (passed 3/3 on
+  rerun); `side-chat-reload` and `question-ask` each failed once in T3's run and then passed.
+- **Next:** M9 knowledge graph.

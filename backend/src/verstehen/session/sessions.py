@@ -1,15 +1,26 @@
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List
 
+from verstehen.graph.context import GraphContext, graph_context_message
+from verstehen.graph.coverage import SessionCoverage
+from verstehen.graph.deletion import DeleteMode
+from verstehen.graph.extraction_service import ExtractionService
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
 from verstehen.session.projection import failed_response_at_end
 from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.titles import title_from_prompt
-from verstehen.store.entries import EntriesStore, Entry
+from verstehen.sidechat.segments import SideSegments, side_segments
+from verstehen.sidechat.service import SideChatService
+from verstehen.store.artifact_views import ArtifactViewsStore
+from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
+from verstehen.store.graph import GraphStore
+from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionsStore
 from verstehen.store.settings import ModelPick
 
@@ -28,6 +39,9 @@ class SessionSnapshot:
     turn_in_flight: bool
     turn_error: str | None
     compacting: bool
+    artifact_views: dict[str, bool]
+    side_segments: SideSegments
+    coverage: SessionCoverage | None = None
 
 
 class SessionService:
@@ -42,12 +56,24 @@ class SessionService:
         runtimes: RuntimeRegistry,
         notifications: Notifications,
         resolver_service: ResolverService,
+        jobs_store: JobsStore,
+        artifact_views_store: ArtifactViewsStore,
+        data_dir: Path,
+        extraction_service: ExtractionService,
+        graph_store: GraphStore,
+        side_chat_service: SideChatService | None = None,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.runtimes = runtimes
         self.notifications = notifications
         self.resolver_service = resolver_service
+        self.jobs_store = jobs_store
+        self.artifact_views_store = artifact_views_store
+        self.data_dir = data_dir
+        self.side_chat_service = side_chat_service
+        self.extraction_service = extraction_service
+        self.graph_store = graph_store
 
     async def list(self) -> List[ListedSession]:
         listed = []
@@ -61,7 +87,10 @@ class SessionService:
         return listed
 
     async def create(
-        self, title: str | None, pick: ModelPick | None = None
+        self,
+        title: str | None,
+        pick: ModelPick | None = None,
+        graph_context: GraphContext | None = None,
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -73,6 +102,11 @@ class SessionService:
         session = await self.sessions_store.create(
             title_from_prompt(title or "Untitled session"), pick
         )
+        if graph_context is not None and graph_context.propositions:
+            await self.entries_store.append(
+                session.id,
+                [await graph_context_message(graph_context, self.graph_store)],
+            )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
         )
@@ -92,7 +126,28 @@ class SessionService:
                 runtime.run is not None,
                 runtime.failure or (failed.error_text if failed else None),
                 runtime.compaction is not None,
+                await self.artifact_views_store.list(session_id),
+                side_segments(entries),
+                await self.extraction_service.coverage(session_id),
             )
+
+    async def set_artifact_view(
+        self, session_id: str, entry_id: str, inverted: bool
+    ) -> None | Refused:
+        if await self.sessions_store.get(session_id) is None:
+            return Refused(404, {"error": "Not found"})
+        entries = await self.entries_store.list(session_id)
+        if not any(
+            isinstance(entry, MarkerEntry)
+            and entry.entry_id == entry_id
+            and entry.marker_type == "subagent-steer"
+            and isinstance(entry.details, dict)
+            and entry.details.get("kind") in ("demo", "visual")
+            for entry in entries
+        ):
+            return Refused(400, {"error": "No demo/figure steer with that message id"})
+        await self.artifact_views_store.set(session_id, entry_id, inverted)
+        return None
 
     async def rename(self, session_id: str, title: str | None) -> str | Refused:
         if await self.sessions_store.get(session_id) is None:
@@ -142,7 +197,9 @@ class SessionService:
         )
         return session.title
 
-    async def delete(self, session_id: str) -> None | Refused:
+    async def delete(
+        self, session_id: str, mode: DeleteMode = "preserve-graph"
+    ) -> None | Refused:
         runtime = self.runtimes.get(session_id)
         async with runtime.lock:
             if await self.sessions_store.get(session_id) is None:
@@ -155,8 +212,37 @@ class SessionService:
                         "code": "turn_in_flight",
                     },
                 )
-            await self.sessions_store.delete(session_id)
-            runtime.mark_deleted()
+            if running := await self.jobs_store.running(session_id):
+                return Refused(
+                    409,
+                    {
+                        "error": "Background jobs are still running in this session — try again when they finish",
+                        "code": "jobs_running",
+                        "job_ids": [job.id for job in running],
+                    },
+                )
+            try:
+                if not await self.extraction_service.begin_deletion(session_id):
+                    return Refused(
+                        503,
+                        {
+                            "error": "The session's extraction is still winding down — try again in a moment",
+                            "code": "extraction_winding_down",
+                        },
+                    )
+                await self.extraction_service.delete_session_traces(session_id, mode)
+                if self.side_chat_service is not None:
+                    self.side_chat_service.stop_all(session_id)
+                orphaned = await self.sessions_store.unreferenced_image_hashes(
+                    session_id
+                )
+                await self.sessions_store.delete(session_id)
+                self.extraction_service.forget_failure(session_id)
+                runtime.mark_deleted()
+                runtime.delivery.clear()
+                await asyncio.to_thread(remove_images, self.data_dir, orphaned)
+            finally:
+                self.extraction_service.end_deletion(session_id)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )
@@ -190,3 +276,9 @@ class SessionService:
 
     def subscribe(self) -> AsyncGenerator[Notification | None]:
         return self.notifications.subscribe()
+
+
+def remove_images(data_dir: Path, hashes: set[str]) -> None:
+    for image_hash in hashes:
+        for path in (data_dir / "images").glob(f"{image_hash}.*"):
+            path.unlink(missing_ok=True)

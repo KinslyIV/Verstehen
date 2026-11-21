@@ -1,0 +1,54 @@
+[
+	{
+		"role": "teacher",
+		"text": "Starting the research.",
+		"tool_calls": [
+			{
+				"name": "research",
+				"id": "research-1",
+				"arguments": {
+					"question": "What is the slope of a secant line?",
+					"context": "Explaining average rate of change."
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"text": "I am waiting on it."
+	},
+	{
+		"role": "teacher",
+		"text": "Understood, I stopped the research. We can continue without it."
+	},
+	{
+		"role": "researcher",
+		"delay_ms": 60000,
+		"text": "## Summary\nA secant slope is the average rate of change between two points.\n\n## Findings\n1. **Definition** \u2014 the slope of the line through two points on a curve. [Khan Academy](https://www.khanacademy.org/math/ap-calculus-ab)\n2. **Use** \u2014 as the two points close in, the secant approaches the tangent. [Paul's Online Notes](https://tutorial.math.lamar.edu/)"
+	},
+	{
+		"role": "teacher",
+		"tool_calls": [
+			{
+				"name": "research",
+				"id": "research-2",
+				"arguments": {
+					"question": "Check another source"
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"text": "We can keep reasoning from what we know."
+	},
+	{
+		"role": "teacher",
+		"text": "The research failed, so we will continue without it."
+	},
+	{
+		"role": "researcher",
+		"delay_ms": 1000,
+		"error": "Offline search unavailable"
+	}
+]

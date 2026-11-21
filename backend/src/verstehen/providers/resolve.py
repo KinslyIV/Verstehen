@@ -11,6 +11,7 @@ from verstehen.providers.accounts import (
     AccountUnavailable,
 )
 from verstehen.providers.catalog import CatalogModel, context_limit
+from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import Session
 from verstehen.store.settings import ModelPick, SettingsStore, SlotName
 
@@ -71,6 +72,10 @@ class ResolvedModel:
     @property
     def kind(self) -> str:
         return self.account.kind
+
+    @property
+    def identity(self) -> ModelIdentity:
+        return ModelIdentity(self.model.system, self.model.model_name)
 
     @property
     def settings(self) -> ModelSettings:

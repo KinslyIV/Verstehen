@@ -1,18 +1,16 @@
 import asyncio
-import hashlib
 import json
 import os
 import sys
 from pathlib import Path
 
-import httpx2
 import pytest
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, StreamEvent
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
 
 from verstehen.providers.accounts import AccountUnavailable
-from verstehen.providers.claude_code import _transport, binary, download
+from verstehen.providers.claude_code import _transport, binary
 from verstehen.providers.claude_code.adapter import (
     THINKING_LEVELS,
     ClaudeCodeAccountAdapter,
@@ -30,19 +28,16 @@ def executable(path: Path, source: str) -> Path:
     return path
 
 
-def test_discovery_prefers_download_then_path_then_known_directories(tmp_path: Path):
+def test_discovery_prefers_path_then_known_directories(tmp_path: Path):
     home = tmp_path / "home"
     env = {"PATH": str(tmp_path / "path")}
     known = executable(home / ".local/bin/claude", "")
     on_path = executable(tmp_path / "path/claude", "")
-    downloaded = executable(binary.downloaded_binary(tmp_path), "")
-    assert binary.resolve_binary(tmp_path, env, home) == downloaded
-    downloaded.unlink()
-    assert binary.resolve_binary(tmp_path, env, home) == on_path
+    assert binary.resolve_binary(env, home) == on_path
     on_path.unlink()
-    assert binary.resolve_binary(tmp_path, env, home) == known
+    assert binary.resolve_binary(env, home) == known
     known.chmod(0o600)
-    assert binary.resolve_binary(tmp_path, env, home) != known
+    assert binary.resolve_binary(env, home) != known
 
 
 @pytest.mark.parametrize(
@@ -50,15 +45,13 @@ def test_discovery_prefers_download_then_path_then_known_directories(tmp_path: P
 )
 def test_discovery_finds_known_home_directories(tmp_path: Path, directory: str):
     path = executable(tmp_path / directory / "claude", "")
-    assert binary.resolve_binary(tmp_path / "data", {"PATH": ""}, tmp_path) == path
+    assert binary.resolve_binary({"PATH": ""}, tmp_path) == path
 
 
 def test_discovery_honors_npm_prefix(tmp_path: Path):
     path = executable(tmp_path / "npm/bin/claude", "")
     assert (
-        binary.resolve_binary(
-            tmp_path / "data", {"npm_config_prefix": str(tmp_path / "npm")}, tmp_path
-        )
+        binary.resolve_binary({"npm_config_prefix": str(tmp_path / "npm")}, tmp_path)
         == path
     )
 
@@ -80,68 +73,19 @@ def test_version_states(tmp_path: Path, monkeypatch, caplog, version, state):
         if version
         else None
     )
-    monkeypatch.setattr(binary, "resolve_binary", lambda _: path)
-    status = asyncio.run(binary.inspect_binary(tmp_path))
+    monkeypatch.setattr(binary, "resolve_binary", lambda: path)
+    status = asyncio.run(binary.inspect_binary())
     assert status.state == state
     if state == "untested":
         assert "hasn't been tested with Verstehen" in caplog.text
     if state == "too_old":
-        assert status.reason == "Update Claude Code or download the tested version."
-
-
-@pytest.mark.parametrize("matches", [True, False])
-def test_download_verifies_before_install_and_cleans_temporary_file(
-    tmp_path: Path, monkeypatch, matches
-):
-    data = b"small fake executable"
-    client = httpx2.AsyncClient(
-        transport=httpx2.MockTransport(
-            lambda request: httpx2.Response(200, content=data)
+        assert status.reason == "Update Claude Code with claude update."
+    if version is None:
+        assert status.reason == "Install Claude Code, then run claude to sign in."
+    if version == "invalid":
+        assert status.reason == (
+            "Cannot determine the Claude Code version. Reinstall Claude Code."
         )
-    )
-    monkeypatch.setattr(download.httpx2, "AsyncClient", lambda **_: client)
-    monkeypatch.setattr(
-        download,
-        "TESTED_SHA256",
-        hashlib.sha256(data).hexdigest() if matches else "0" * 64,
-    )
-
-    async def run():
-        service = download.DownloadService(tmp_path)
-        assert service.start().state == "downloading"
-        task = service.task
-        service.start()
-        assert service.task is task
-        assert task is not None
-        await task
-        return service.progress
-
-    progress = asyncio.run(run())
-    destination = binary.downloaded_binary(tmp_path)
-    assert progress.received_bytes == len(data)
-    if matches:
-        assert progress.state == "complete"
-        assert destination.read_bytes() == data
-        assert destination.stat().st_mode & 0o777 == 0o700
-        assert list(destination.parent.iterdir()) == [destination]
-    else:
-        assert progress.state == "failed" and "checksum" in (progress.error or "")
-        assert not destination.exists()
-        assert list(destination.parent.iterdir()) == []
-
-
-def test_download_http_failure_keeps_previous_install(tmp_path: Path, monkeypatch):
-    destination = executable(binary.downloaded_binary(tmp_path), "print('old')")
-    before = destination.read_bytes()
-    client = httpx2.AsyncClient(
-        transport=httpx2.MockTransport(lambda request: httpx2.Response(503))
-    )
-    monkeypatch.setattr(download.httpx2, "AsyncClient", lambda **_: client)
-    service = download.DownloadService(tmp_path)
-    asyncio.run(service.download())
-    assert service.progress.state == "failed"
-    assert destination.read_bytes() == before
-    assert list(destination.parent.iterdir()) == [destination]
 
 
 def test_context_summary_uses_control_messages_only_and_cleans_process(tmp_path: Path):
@@ -192,7 +136,7 @@ def test_adapter_refreshes_without_mutating_account_and_uses_runtime_only(
     status = binary.BinaryStatus(
         state="tested", path=tmp_path / "claude", version=binary.TESTED_VERSION
     )
-    adapter = ClaudeCodeAccountAdapter(tmp_path)
+    adapter = ClaudeCodeAccountAdapter()
     calls = []
 
     async def inspect():
@@ -398,8 +342,9 @@ def test_repeated_and_concurrent_lookups_inspect_binary_and_warn_once(
     tmp_path: Path, monkeypatch, caplog
 ):
     counter = tmp_path / "versions"
-    version_counting_binary(binary.downloaded_binary(tmp_path), counter)
-    adapter = ClaudeCodeAccountAdapter(tmp_path)
+    installed = version_counting_binary(tmp_path / "path/claude", counter)
+    monkeypatch.setenv("PATH", str(installed.parent))
+    adapter = ClaudeCodeAccountAdapter()
 
     async def context(path, model):
         return 123456
@@ -427,12 +372,12 @@ def test_repeated_and_concurrent_lookups_inspect_binary_and_warn_once(
     assert caplog.text.count("hasn't been tested with Verstehen") == 1
 
 
-@pytest.mark.parametrize("change", ["mtime", "size", "inode", "symlink", "download"])
+@pytest.mark.parametrize("change", ["mtime", "size", "inode", "symlink"])
 def test_changed_binary_is_reinspected(tmp_path: Path, monkeypatch, change: str):
     counter = tmp_path / "versions"
     installed = version_counting_binary(tmp_path / "path/claude", counter)
     monkeypatch.setenv("PATH", str(installed.parent))
-    adapter = ClaudeCodeAccountAdapter(tmp_path)
+    adapter = ClaudeCodeAccountAdapter()
 
     async def run():
         before = await adapter.status()
@@ -447,13 +392,11 @@ def test_changed_binary_is_reinspected(tmp_path: Path, monkeypatch, change: str)
             replacement = version_counting_binary(tmp_path / "replacement", counter)
             os.utime(replacement, ns=(stat.st_atime_ns, stat.st_mtime_ns))
             replacement.replace(installed)
-        elif change == "symlink":
+        else:
             replacement = tmp_path / "replacement"
             replacement.hardlink_to(installed)
             installed.unlink()
             installed.symlink_to(replacement)
-        else:
-            version_counting_binary(binary.downloaded_binary(tmp_path), counter)
         after = await adapter.status()
         assert after.state == before.state == "untested"
         assert await adapter.status() is after

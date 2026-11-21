@@ -1,0 +1,11 @@
+[
+	{
+		"role": "teacher",
+		"text": "A derivative describes how quickly a quantity changes. What do you already know about slope?"
+	},
+	{
+		"role": "sideQuestion",
+		"text": "A **derivative** is the slope of the tangent line at one point, the instantaneous rate of change.",
+		"delay_ms": 400
+	}
+]

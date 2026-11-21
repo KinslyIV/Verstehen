@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import Literal
 
@@ -10,7 +11,12 @@ from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolvedModel, ResolverService
 from verstehen.providers.usage import usage_record
-from verstehen.session.compaction import (
+from verstehen.session.events import Notification, Notifications
+from verstehen.session.runtime import RuntimeRegistry, SessionRuntime
+from verstehen.store.entries import EntriesStore, Entry
+from verstehen.store.sessions import SessionsStore
+from verstehen.store.settings import SettingsStore
+from verstehen.teaching.compaction import (
     SUMMARIZER_SYSTEM_PROMPT,
     active_compaction,
     compaction_cut_index,
@@ -22,12 +28,6 @@ from verstehen.session.compaction import (
     projected_context_tokens,
     serialize_for_summary,
 )
-from verstehen.session.events import Notification, Notifications
-from verstehen.session.model_identity import ModelIdentity
-from verstehen.session.runtime import RuntimeRegistry, SessionRuntime
-from verstehen.store.entries import EntriesStore, Entry
-from verstehen.store.sessions import SessionsStore
-from verstehen.store.settings import SettingsStore
 from verstehen.teaching.prompts import compose_instructions
 
 logger = logging.getLogger(__name__)
@@ -67,14 +67,19 @@ class CompactionService:
         session_id: str,
         role: TurnRole,
         resolved: ResolvedModel,
+        pending: Sequence[Entry] = (),
+        omitted: Collection[str] = (),
     ) -> None:
+        """Compact before a turn; `pending` entries it is about to append count toward the limit."""
         runtime = self.runtimes.get(session_id)
         if running := runtime.compaction:
             await asyncio.shield(running)
         async with runtime.lock:
             task = runtime.compaction
             if task is None:
-                task = await self.start_if_needed(session_id, runtime, role, resolved)
+                task = await self.start_if_needed(
+                    session_id, runtime, role, resolved, pending, omitted
+                )
         if task is not None:
             await asyncio.shield(task)
 
@@ -90,6 +95,8 @@ class CompactionService:
         runtime: SessionRuntime,
         role: TurnRole,
         resolved: ResolvedModel | None = None,
+        pending: Sequence[Entry] = (),
+        omitted: Collection[str] = (),
     ) -> asyncio.Task[None] | None:
         """Check admission and reserve the summary while holding the session lock."""
         if self.runtimes.closing or runtime.deleted or runtime.run is not None:
@@ -105,8 +112,12 @@ class CompactionService:
                 if session is None:
                     return None
                 resolved = await self.resolver_service.resolve(role, session)
-            model = ModelIdentity.of(resolved.model)
-            tokens = projected_context_tokens(entries, instructions, model)
+            model = resolved.identity
+            tokens = projected_context_tokens(
+                [e for e in [*entries, *pending] if e.entry_id not in omitted],
+                instructions,
+                model,
+            )
             if tokens <= effective_limit(
                 settings.compaction_limit, resolved.context_limit
             ):

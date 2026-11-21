@@ -11,12 +11,12 @@ from pydantic_ai.messages import ModelResponse
 from pydantic_ai.settings import ModelSettings
 
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
-from verstehen.providers.chatgpt.credentials import CredentialsStore
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
-from verstehen.session.model_identity import ModelIdentity
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.session.projection import to_llm_messages
 from verstehen.session.turns import update_response
 from verstehen.store.entries import AssistantEntry, UserEntry
+from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.settings import ModelPick
 
 
@@ -87,7 +87,7 @@ def test_chatgpt_encrypted_reasoning_is_resent_and_accepted(
                 account,
                 ModelPick(account=account.id, model=model_id, thinking_level="low"),
             )
-            identity = ModelIdentity.of(model)
+            identity = ModelIdentity(model.system, model.model_name)
             settings = ModelSettings(thinking="low")
             question = "What is 17 * 23? Answer with the number only."
             first = await Agent(model).run(question, model_settings=settings)

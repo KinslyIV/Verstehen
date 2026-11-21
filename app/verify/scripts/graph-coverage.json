@@ -1,0 +1,65 @@
+[
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [
+						{
+							"id": "p1",
+							"name": "Never merged",
+							"statement": "This run is ended before it merges.",
+							"messageId": "seed-teacher"
+						}
+					],
+					"chains": []
+				}
+			}
+		],
+		"delay_ms": 6000
+	},
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [
+						{
+							"id": "p1",
+							"name": "Average rate",
+							"statement": "The average rate of change over an interval is the change in output divided by the change in input.",
+							"messageId": "seed-teacher"
+						},
+						{
+							"id": "p2",
+							"name": "Secant slope",
+							"statement": "The slope of the secant line through two points of a curve equals the average rate of change between them.",
+							"messageId": "seed-teacher"
+						}
+					],
+					"chains": [
+						{
+							"premises": ["p1"],
+							"conclusion": "p2"
+						}
+					]
+				}
+			}
+		],
+		"delay_ms": 1500
+	},
+	{
+		"role": "auditor",
+		"tool_calls": [
+			{
+				"name": "submit_review",
+				"arguments": {
+					"links": []
+				}
+			}
+		],
+		"delay_ms": 300
+	}
+]

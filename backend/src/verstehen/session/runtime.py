@@ -2,6 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import List
 
+from verstehen.session.context_updates import SessionDelivery
 from verstehen.session.events import TurnEvent
 from verstehen.teaching.questions.inputs import DismissInput
 
@@ -91,6 +92,7 @@ class SessionRuntime:
         self.compaction: asyncio.Task[None] | None = None
         self.failure: str | None = None
         self.deleted = False
+        self.delivery = SessionDelivery()
 
     def claim_turn(self) -> TurnRun | None:
         if self.run is not None or self.compaction is not None or self.deleted:

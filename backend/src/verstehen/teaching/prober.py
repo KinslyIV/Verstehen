@@ -4,6 +4,7 @@ from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic_ai import Tool
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolReturn
@@ -34,6 +35,7 @@ def build_prober(
     question_pending: Callable[[], bool] = lambda: False,
     extra_tools: tuple[Tool[None], ...] = (),
     deliver_prose: bool = False,
+    extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
     return build_question_agent(
         model,
@@ -42,6 +44,7 @@ def build_prober(
         ("recall" if quizzing == "free" else "probe", "ask_user_question"),
         extra_tools=(*extra_tools, probe_done_tool(question_pending)),
         deliver_prose=deliver_prose,
+        extra_capabilities=extra_capabilities,
     )
 
 

@@ -5,11 +5,17 @@ import { questionBatch, questionResult } from '#lib/questions/question-fixtures.
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	dismissQuestion: vi.fn(),
+	getJobs: vi.fn(),
+	getExtractionStatus: async () => [],
+	getSettings: async () => ({}),
+	steerSession: vi.fn(),
+	setArtifactView: vi.fn(),
 	getSession: vi.fn(),
 	postInput: vi.fn(),
 	streamTurn: vi.fn()
 }));
 const record = (entries: api.Entry[] = [], busy = false): api.SessionDetail => ({
+	side_segments: { by_entry: {}, entry_points: {}, current: null },
 	id: 'one',
 	title: 'Lesson',
 	kind: 'teach',
@@ -20,6 +26,9 @@ const record = (entries: api.Entry[] = [], busy = false): api.SessionDetail => (
 let controller: SessionController;
 beforeEach(() => {
 	vi.mocked(api.getSession).mockReset().mockResolvedValue(record());
+	vi.mocked(api.getJobs).mockReset().mockResolvedValue({ jobs: [], turn_in_flight: false });
+	vi.mocked(api.steerSession).mockReset().mockResolvedValue();
+	vi.mocked(api.setArtifactView).mockReset().mockResolvedValue();
 	vi.mocked(api.dismissQuestion).mockReset().mockResolvedValue(false);
 	vi.mocked(api.postInput).mockReset().mockResolvedValue();
 	vi.mocked(api.streamTurn).mockReset().mockResolvedValue(true);
@@ -130,6 +139,28 @@ test('unusable_model_opens_menu_with_reason_and_keeps_the_draft', async () => {
 	expect(controller.notice).toBe('Sign in again.');
 	expect(controller.error).toBeNull();
 	expect(controller.entries).toEqual([]);
+});
+
+test('refused_retry_keeps_the_saved_failure_visible_and_opens_the_model_menu', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([
+			{
+				kind: 'assistant',
+				entry_id: 'a',
+				parts: [],
+				stop_reason: 'error',
+				error_text: 'Provider failed'
+			}
+		])
+	);
+	await controller.load();
+	vi.mocked(api.postInput).mockRejectedValue(
+		new api.ApiError(503, 'model_unavailable', 'unavailable', 'Sign in again.')
+	);
+	await controller.send('retry');
+	expect(controller.error).toBe('Provider failed');
+	expect(controller.modelMenuOpen).toBe(true);
+	expect(controller.notice).toBe('Sign in again.');
 });
 
 test('mount_continues_an_answer_saved_without_its_reaction_once', async () => {
@@ -380,4 +411,73 @@ test('a_failure_behind_a_compaction_marker_shows_but_cannot_retry', async () => 
 	vi.mocked(api.getSession).mockResolvedValue(record([marker, failed]));
 	await controller.synchronize();
 	expect(controller.retryBlocked).toBe(false);
+});
+
+test('text_steers_while_busy_and_sends_normally_when_idle', async () => {
+	await controller.load();
+	controller.busy = true;
+	controller.draft = 'Use a bike';
+	await controller.send();
+	expect(api.steerSession).toHaveBeenCalledWith(
+		'one',
+		expect.stringMatching(/^steer_/),
+		'Use a bike'
+	);
+	expect(api.postInput).not.toHaveBeenCalled();
+	expect(controller.draft).toBe('');
+	controller.busy = false;
+	controller.draft = 'Next example';
+	await controller.send();
+	expect(api.postInput).toHaveBeenCalledWith(
+		'one',
+		{ type: 'text', text: 'Next example' },
+		expect.any(AbortSignal)
+	);
+});
+
+test('a_raced_steer_409_falls_back_to_a_normal_send', async () => {
+	await controller.load();
+	controller.busy = true;
+	controller.draft = 'Use a bike';
+	vi.mocked(api.steerSession).mockRejectedValueOnce(new api.ApiError(409, 'not_running', 'Ended'));
+	await controller.send();
+	expect(api.postInput).toHaveBeenCalledExactlyOnceWith(
+		'one',
+		{ type: 'text', text: 'Use a bike' },
+		expect.any(AbortSignal)
+	);
+	expect(controller.queuedSteers).toEqual([]);
+});
+
+test('queued_steer_clears_when_context_update_lands_it', async () => {
+	await controller.load();
+	controller.busy = true;
+	controller.draft = 'Use a bike';
+	await controller.send();
+	const [steer] = controller.queuedSteers;
+	expect(steer?.text).toBe('Use a bike');
+	const entry: api.Entry = { kind: 'user', entry_id: steer!.id, text: steer!.text };
+	vi.mocked(api.streamTurn).mockImplementation(async (_, receive) => {
+		receive({ type: 'context_update', entries: [entry] });
+		expect(controller.queuedSteers).toEqual([]);
+		expect(controller.entries).toEqual([entry]);
+		receive({ type: 'context_update', entries: [entry] });
+		expect(controller.entries).toEqual([entry]);
+		vi.mocked(api.getSession).mockResolvedValue(record([entry]));
+		return true;
+	});
+	await controller.attach();
+});
+
+test('invert_switch_writes_the_silent_view_and_survives_record_reload', async () => {
+	await controller.load();
+	controller.setInverted('steer_demo', true);
+	expect(api.setArtifactView).toHaveBeenCalledWith('one', 'steer_demo', true);
+	expect(controller.record?.artifact_views).toEqual({ steer_demo: true });
+	vi.mocked(api.getSession).mockResolvedValue({
+		...record(),
+		artifact_views: { steer_demo: true }
+	});
+	await controller.synchronize();
+	expect(controller.record?.artifact_views?.steer_demo).toBe(true);
 });

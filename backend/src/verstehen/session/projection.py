@@ -1,4 +1,4 @@
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 
 from pydantic_ai.messages import (
@@ -13,8 +13,7 @@ from pydantic_ai.messages import (
     UserPromptPart,
 )
 
-from verstehen.session.compaction import compacted_history, has_model_content
-from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
+from verstehen.sidechat.delivery import SIDE_CONTEXT_BUDGET_ERROR
 from verstehen.store.entries import (
     AssistantEntry,
     Entry,
@@ -23,6 +22,8 @@ from verstehen.store.entries import (
     UserEntry,
 )
 from verstehen.store.entries import ThinkingPart as SavedThinkingPart
+from verstehen.store.model_identity import CHATGPT_PROVIDER, ModelIdentity
+from verstehen.teaching.compaction import compacted_history, has_model_content
 from verstehen.teaching.files.read import load_attachment
 
 INTERRUPTED_TEXT = "The question was interrupted — the learner never answered; continue without holding a result for it."
@@ -81,6 +82,34 @@ def retry_drops(entries: Sequence[Entry]) -> set[str]:
     if index < 0 or isinstance(entries[index], AssistantEntry):
         raise ValueError("retry input leaves no input to continue from")
     return ids
+
+
+def side_budget_retry_drops(
+    before: Sequence[Entry], after: Sequence[Entry]
+) -> set[str] | None:
+    """Let a retry of a budget failure look past the compaction its own gate just made."""
+    try:
+        omitted = retry_drops(before)
+    except ValueError:
+        return None
+    failure = next(
+        (entry for entry in reversed(before) if entry.entry_id in omitted), None
+    )
+    if (
+        not isinstance(failure, AssistantEntry)
+        or failure.error_text != SIDE_CONTEXT_BUDGET_ERROR
+    ):
+        return None
+    if len(after) < len(before) or any(
+        old.entry_id != new.entry_id for old, new in zip(before, after)
+    ):
+        return None
+    if not all(
+        entry.kind == "marker" and entry.marker_type == "compaction"
+        for entry in after[len(before) :]
+    ):
+        return None
+    return omitted
 
 
 def resendable_thinking(part: SavedThinkingPart, provider: str | None) -> bool:
@@ -173,11 +202,10 @@ def to_llm_messages(
     entries: Sequence[Entry],
     *,
     model: ModelIdentity | None = None,
-    retry: bool = False,
+    drops: Collection[str] = (),
     data_dir: Path | None = None,
 ) -> list[ModelMessage]:
-    """Project saved responses with their adjacent result batches."""
-    drops = retry_drops(entries) if retry else set()
+    """Project saved responses with their adjacent result batches, leaving out `drops`."""
     messages: list[ModelMessage] = []
     pending = (
         entry for entry in compacted_history(entries) if has_model_content(entry)
@@ -209,7 +237,15 @@ def to_llm_messages(
             continue
         if isinstance(entry, UserEntry) or (
             isinstance(entry, MarkerEntry)
-            and entry.marker_type in ("probe-handoff", "compaction")
+            and entry.marker_type
+            in (
+                "probe-handoff",
+                "compaction",
+                "subagent-steer",
+                "subagent-abort",
+                "side-question",
+                "graph-context",
+            )
         ):
             messages.append(user_message(entry))
         elif not isinstance(entry, ToolResultEntry):

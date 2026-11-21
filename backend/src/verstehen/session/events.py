@@ -4,21 +4,42 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from verstehen.store.entries import AssistantEntry, ToolResultEntry
+from verstehen.store.entries import (
+    AssistantEntry,
+    MarkerEntry,
+    ToolResultEntry,
+    UserEntry,
+)
 
 
 class TurnEvent(BaseModel):
     type: Literal[
-        "message_start", "message_update", "message_end", "error", "turn-settled"
+        "message_start",
+        "message_update",
+        "message_end",
+        "context_update",
+        "error",
+        "turn-settled",
     ]
     message: AssistantEntry | None = None
+    entries: list[UserEntry | MarkerEntry] | None = None
     results: list[ToolResultEntry] | None = None
     error_text: str | None = None
 
 
 class Notification(BaseModel):
-    type: Literal["turn-started", "turn-settled", "chats-changed", "compaction-changed"]
-    session_id: str
+    type: Literal[
+        "turn-started",
+        "turn-settled",
+        "chats-changed",
+        "compaction-changed",
+        "jobs-changed",
+        "side-chats-changed",
+        "graph-changed",
+        "extractions-changed",
+    ]
+    session_id: str = ""
+    revision: int | None = None
     running: bool | None = None
 
 

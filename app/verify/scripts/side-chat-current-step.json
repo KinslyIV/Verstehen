@@ -1,0 +1,15 @@
+[
+	{
+		"role": "teacher",
+		"text": "First step: a derivative describes how quickly a quantity changes."
+	},
+	{
+		"role": "sideQuestion",
+		"text": "It measures instantaneous change, like the speedometer reading at one moment.",
+		"delay_ms": 100
+	},
+	{
+		"role": "teacher",
+		"text": "Second step: the derivative of x squared is two x."
+	}
+]

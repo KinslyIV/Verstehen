@@ -120,10 +120,10 @@ test('model_refusals_retain_the_reason_and_missing_slots', async () => {
 });
 
 test('desktop_sign_in_opens_the_system_browser_through_the_existing_shell', async () => {
-	const { openSignIn } = await import('./client');
+	const { openExternal } = await import('./client');
 	vi.mocked(isTauri).mockReturnValue(true);
 	vi.mocked(invoke).mockClear().mockResolvedValue(undefined);
-	await openSignIn('https://auth.openai.com/authorize');
+	await openExternal('https://auth.openai.com/authorize');
 	expect(invoke).toHaveBeenCalledExactlyOnceWith('plugin:shell|open', {
 		path: 'https://auth.openai.com/authorize'
 	});

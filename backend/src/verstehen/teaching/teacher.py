@@ -1,4 +1,5 @@
 from pydantic_ai import Tool
+from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 
@@ -16,6 +17,7 @@ def build_teacher(
     plan_nodes: PlanNodeLookup | None = None,
     extra_tools: tuple[Tool[None], ...] = (),
     deliver_prose: bool = False,
+    extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
     return build_question_agent(
         model,
@@ -26,4 +28,5 @@ def build_teacher(
         extra_tools=extra_tools,
         deliver_prose=deliver_prose,
         guard_narration=True,
+        extra_capabilities=extra_capabilities,
     )

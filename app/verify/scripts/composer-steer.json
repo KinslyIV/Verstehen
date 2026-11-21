@@ -1,0 +1,19 @@
+[
+	{
+		"role": "teacher",
+		"delay_ms": 1500,
+		"tool_calls": [
+			{
+				"name": "ls",
+				"arguments": {
+					"path": "/tmp",
+					"limit": 1
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"text": "Switching to a bike: its average speed over a ride is a secant slope."
+	}
+]

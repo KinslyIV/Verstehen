@@ -7,7 +7,6 @@ from pydantic_ai.messages import ModelRequest, ModelResponse, UserPromptPart
 from pydantic_ai.messages import TextPart as ModelTextPart
 from pydantic_ai.messages import ThinkingPart as ModelThinkingPart
 
-from verstehen.session.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.session.projection import retry_drops, to_llm_messages
 from verstehen.session.titles import title_from_prompt
 from verstehen.store.database import open_database
@@ -22,6 +21,7 @@ from verstehen.store.entries import (
     UserEntry,
 )
 from verstehen.store.migrate import migrate
+from verstehen.store.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.store.sessions import SessionsStore
 
 
@@ -88,7 +88,9 @@ def test_retry_drops_only_trailing_errors_and_keeps_saved_entries():
     failed_again = AssistantEntry(parts=[], stop_reason="error")
     entries = [old_error, user, failed, failed_again]
     assert retry_drops(entries) == {failed.entry_id, failed_again.entry_id}
-    assert to_llm_messages(entries, retry=True) == to_llm_messages([old_error, user])
+    assert to_llm_messages(entries, drops=retry_drops(entries)) == to_llm_messages(
+        [old_error, user]
+    )
     assert len(entries) == 4
     assert to_llm_messages(entries) == to_llm_messages([user])
 
@@ -118,6 +120,20 @@ def test_retry_walks_over_ui_and_side_question_markers():
         for kind in ("plan-block", "side-question", "side-question-told")
     ]
     assert retry_drops([user, failed, *markers]) == {failed.entry_id}
+
+
+def test_graph_context_marker_reaches_the_model_before_the_learner_message():
+    context = MarkerEntry(
+        marker_type="graph-context", content="[Session context] picks"
+    )
+    messages = to_llm_messages([context, UserEntry(text="Teach me")])
+    texts = [
+        part.content
+        for message in messages
+        for part in message.parts
+        if isinstance(part, UserPromptPart)
+    ]
+    assert texts == ["[Session context] picks", "Teach me"]
 
 
 def test_session_and_all_entry_kinds_survive_reopening(tmp_path: Path):

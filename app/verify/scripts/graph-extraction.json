@@ -1,0 +1,90 @@
+[
+	{
+		"text": "Let’s keep going with the slope of a curve.",
+		"delay_ms": 250
+	},
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [
+						{
+							"id": "p1",
+							"name": "Average rate",
+							"statement": "The average rate of change over an interval is the change in output divided by the change in input.",
+							"messageId": "seed-teacher"
+						},
+						{
+							"id": "p2",
+							"name": "Secant slope",
+							"statement": "The slope of the secant line through two points of a curve equals the average rate of change between them.",
+							"messageId": "seed-teacher"
+						},
+						{
+							"id": "p3",
+							"name": "Instantaneous rate",
+							"statement": "The instantaneous rate of change is the limit of average rates as the interval shrinks to a single point.",
+							"messageId": "seed-teacher"
+						},
+						{
+							"id": "p4",
+							"name": "Derivative",
+							"statement": "The derivative at a point is the instantaneous rate of change of the function there.",
+							"messageId": "seed-teacher"
+						}
+					],
+					"chains": [
+						{
+							"premises": ["p1"],
+							"conclusion": "p2"
+						},
+						{
+							"premises": ["p2", "p3"],
+							"conclusion": "p4"
+						}
+					]
+				}
+			}
+		],
+		"delay_ms": 1500
+	},
+	{
+		"role": "auditor",
+		"tool_calls": [
+			{
+				"name": "submit_review",
+				"arguments": {
+					"links": []
+				}
+			}
+		],
+		"delay_ms": 500
+	},
+	{
+		"role": "extractor",
+		"tool_calls": [
+			{
+				"name": "submit_findings",
+				"arguments": {
+					"propositions": [],
+					"chains": []
+				}
+			}
+		],
+		"delay_ms": 300
+	},
+	{
+		"role": "auditor",
+		"tool_calls": [
+			{
+				"name": "submit_review",
+				"arguments": {
+					"links": []
+				}
+			}
+		],
+		"delay_ms": 300
+	}
+]

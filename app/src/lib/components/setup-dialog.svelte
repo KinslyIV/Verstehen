@@ -81,8 +81,8 @@
 			<div class="space-y-4 rounded-lg border p-5">
 				<h3 class="font-medium">Connect a provider</h3>
 				<p class="text-sm text-muted-foreground">
-					Add a ChatGPT account or detect / download Claude Code in Settings. This dialog advances
-					when an account is ready.
+					Add a ChatGPT account or set up Claude Code in Settings. This dialog advances when an
+					account is ready.
 				</p>
 				<Button onclick={() => (accountsOpen = true)} variant="outline">Open Settings</Button>
 			</div>

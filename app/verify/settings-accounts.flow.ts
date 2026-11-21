@@ -1,5 +1,5 @@
 import { test, expect } from './fixtures';
-import type { Account, BinaryStatus, DownloadProgress } from '../src/lib/api/client';
+import type { Account, BinaryStatus } from '../src/lib/api/client';
 test.use({ script: 'verify/scripts/health.json' });
 for (const theme of ['dark', 'light']) {
 	for (const state of ['not_installed', 'too_old', 'untested', 'tested'] as const) {
@@ -16,12 +16,12 @@ for (const theme of ['dark', 'light']) {
 				}
 			];
 			const reasons = {
-				not_installed: 'Install Claude Code or download the tested version.',
-				too_old: 'Update Claude Code or download the tested version.',
+				not_installed: 'Install Claude Code, then run claude to sign in.',
+				too_old: 'Update Claude Code with claude update.',
 				untested: "Claude Code 2.1.300 hasn't been tested with Verstehen.",
 				tested: null
 			};
-			let claude: BinaryStatus = {
+			const claude: BinaryStatus = {
 				state,
 				version:
 					state === 'not_installed'
@@ -35,23 +35,12 @@ for (const theme of ['dark', 'light']) {
 				tested_version: '2.1.327',
 				reason: reasons[state]
 			};
-			let download: DownloadProgress = { state: 'idle', version: '2.1.327', received_bytes: 0 };
 			let pendingAccount = 'one';
 			await page.route('**/api/accounts/**', async (route) => {
 				const url = new URL(route.request().url());
 				const path = url.pathname;
 				const method = route.request().method();
 				if (path === '/api/accounts/claude-code') return route.fulfill({ json: claude });
-				if (path.endsWith('/claude-code/download')) {
-					if (method === 'POST')
-						download = {
-							...download,
-							state: 'downloading',
-							received_bytes: 524288,
-							total_bytes: 1048576
-						};
-					return route.fulfill({ json: download });
-				}
 				if (path === '/api/accounts/chatgpt' && method === 'GET')
 					return route.fulfill({ json: accounts });
 				if (path.includes('/sign-in/')) {
@@ -74,6 +63,9 @@ for (const theme of ['dark', 'light']) {
 				}
 				throw new Error(`Unmocked account route: ${method} ${path}`);
 			});
+			await context.route('https://code.claude.com/**', (route) =>
+				route.fulfill({ contentType: 'text/html', body: '<p>Offline install fixture</p>' })
+			);
 			await context.route('https://auth.openai.com/**', (route) =>
 				route.fulfill({ contentType: 'text/html', body: '<p>Offline sign-in fixture</p>' })
 			);
@@ -120,18 +112,19 @@ for (const theme of ['dark', 'light']) {
 				await (await addPopupPromise).close();
 				await expect(chatgpt.getByRole('button', { name: 'Add account' })).toBeEnabled();
 			}
-			if (state === 'not_installed') {
-				await cli.getByRole('button', { name: /Download the tested version/ }).click();
-				await expect(cli.getByRole('progressbar', { name: 'Claude Code download' })).toBeVisible();
-				download = { ...download, state: 'complete', received_bytes: 1048576 };
-				claude = { ...claude, state: 'tested', version: '2.1.327', reason: null };
-				await expect(cli.getByText('Tested version installed.')).toBeVisible();
-				// Restore the original state for its screenshot after proving download completion.
-				await page.getByRole('button', { name: 'Appearance', exact: true }).click();
-				claude = { ...claude, state, version: null, reason: reasons[state] };
-				download = { ...download, state: 'idle', received_bytes: 0 };
-				await page.getByRole('button', { name: 'Accounts', exact: true }).click();
-				await expect(cli.getByText('Not installed', { exact: true })).toBeVisible();
+			const login = cli.getByText('Uses your Claude Code login. Run claude to sign in.');
+			if (state === 'tested' || state === 'untested') await expect(login).toBeVisible();
+			else await expect(login).toHaveCount(0);
+			const install = cli.getByRole('button', { name: 'Install Claude Code' });
+			if (state === 'not_installed' || state === 'too_old') {
+				await expect(install).toBeVisible();
+				const popupPromise = page.waitForEvent('popup');
+				await install.click();
+				const popup = await popupPromise;
+				expect(popup.url()).toBe('https://code.claude.com/docs/en/setup');
+				await popup.close();
+			} else {
+				await expect(install).toHaveCount(0);
 			}
 		});
 	}

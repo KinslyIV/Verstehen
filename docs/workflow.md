@@ -42,9 +42,10 @@ service tier. The parent model settings are unchanged.
   and the docs most closely, and the most cautious option when unsure. Each decision goes into
   [decisions](decisions.md) marked **"orchestrator decision, for user review"**, and into the final
   report.
-- **Nothing with outside effects happens during a run.** No pushing, no merging, no real-model calls
-  (the user's subscriptions) except `make verify-live`, no touching the user's real data, no credentials. Anything that would
-  need one of these is skipped and reported.
+- Agents may push the task branch and open a PR against `main`. Never commit or push to `main`,
+  force-push, or merge; the user merges. No real-model calls (the user's subscriptions) except
+  `make verify-live`, no touching the user's real data, no credentials. Anything that would need
+  one of these is skipped and reported.
 
 ## 3. Review (orchestrator and implementer, until clean)
 
@@ -72,6 +73,10 @@ service tier. The parent model settings are unchanged.
   itself or lists the open issues in the report. A run never loops forever.
 
 ## 4. Report (in the T3 Code thread)
+
+Push the task branch and open a PR against `main`, linking it in the report. The `ci` check
+(`make check` and `make verify` on GitHub-hosted runners) must be green before the user merges.
+`make verify-live` still runs locally before every merge because it needs the user's Claude login.
 
 When the run ends, the orchestrator posts one report in the thread. It is a **compact, meaningful
 summary of what the user needs to know, not a log** of what the agents did:

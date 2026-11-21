@@ -1,4 +1,5 @@
 import re
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
@@ -24,15 +25,19 @@ async def compose_instructions(
                 if FRAGMENT_RE.fullmatch(path.name)
             )
         )
-    fragments = []
-    for path in paths:
-        text = path.read_text(encoding="utf-8")
-        key = path.relative_to(PROMPTS_DIR).as_posix()
-        if isinstance(switches, dict) and switches.get(key) is True:
-            try:
-                text = (data_dir / "prompts" / key).read_text(encoding="utf-8")
-            except OSError, UnicodeError:
-                pass
-        if text.strip():
-            fragments.append(text.strip())
-    return "\n\n---\n\n".join(fragments)
+    keys = [path.relative_to(PROMPTS_DIR).as_posix() for path in paths]
+    return join_fragments(fragment_text(key, switches, data_dir) for key in keys)
+
+
+def fragment_text(key: str, switches: object, data_dir: Path) -> str:
+    """A prompt fragment's source text, or its enabled, readable override."""
+    if isinstance(switches, dict) and switches.get(key) is True:
+        try:
+            return (data_dir / "prompts" / key).read_text(encoding="utf-8")
+        except OSError, UnicodeError:
+            pass
+    return (PROMPTS_DIR / key).read_text(encoding="utf-8")
+
+
+def join_fragments(texts: Iterable[str]) -> str:
+    return "\n\n---\n\n".join(text.strip() for text in texts if text.strip())

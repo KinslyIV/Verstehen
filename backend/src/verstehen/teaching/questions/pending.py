@@ -88,15 +88,22 @@ def ends_in_dismissal(entries: Sequence[Entry]) -> bool:
     )
 
 
-def needs_continuation(entries: Sequence[Entry]) -> bool:
+def ends_in_question_recovery(entries: Sequence[Entry]) -> bool:
     tail = tail_ignoring_display_markers(entries)
-    if not tail or not isinstance(last := tail[-1], ToolResultEntry):
-        return False
-    if ends_in_dismissal(tail) or (
-        last.is_error
+    last = tail[-1] if tail else None
+    return (
+        isinstance(last, ToolResultEntry)
+        and last.is_error
         and isinstance(last.details, dict)
         and last.details.get("question_recovery") is True
-    ):
+    )
+
+
+def needs_continuation(entries: Sequence[Entry]) -> bool:
+    tail = tail_ignoring_display_markers(entries)
+    if not tail or not isinstance(tail[-1], ToolResultEntry):
+        return False
+    if ends_in_dismissal(tail) or ends_in_question_recovery(tail):
         return False
     resolved: set[str] = set()
     for entry in reversed(tail):

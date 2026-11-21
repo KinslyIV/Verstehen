@@ -52,8 +52,7 @@ class ClaudeCodeAccountAdapter:
     Context limits are cached per binary version and model, from CLI metadata only.
     """
 
-    def __init__(self, data_dir: Path, provider_events: bool = False):
-        self.data_dir = data_dir
+    def __init__(self, provider_events: bool = False):
         self.provider_events = provider_events
         self.inspection_lock = asyncio.Lock()
         self.binary_identity: tuple[Path, int, int, int] | None = None
@@ -63,7 +62,7 @@ class ClaudeCodeAccountAdapter:
 
     async def status(self) -> BinaryStatus:
         async with self.inspection_lock:
-            path = binary.resolve_binary(self.data_dir)
+            path = binary.resolve_binary()
             identity = None
             if path is not None:
                 try:
@@ -73,7 +72,7 @@ class ClaudeCodeAccountAdapter:
                 except OSError:
                     self.binary_status = None
             if self.binary_status is None or identity != self.binary_identity:
-                self.binary_status = await binary.inspect_binary(self.data_dir)
+                self.binary_status = await binary.inspect_binary()
                 self.binary_identity = identity
             return self.binary_status
 
@@ -137,6 +136,9 @@ class ClaudeCodeAccountAdapter:
                 status.path, self.directory.name, pick.thinking_level
             ),
         )
+
+    def forget_models(self) -> None:
+        pass
 
     async def context_limit(self, account: Account, model: str) -> int | None:
         status = await self.status()

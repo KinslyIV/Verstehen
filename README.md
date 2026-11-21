@@ -81,3 +81,17 @@ Cargo, npm, and uv caches between builds. Run `make app-image` to refresh the im
 Copy `dist/*.pkg.tar.zst` to the Arch laptop and install with `sudo pacman -U <file>`.
 Open **Verstehen** from the launcher. Run `/usr/lib/verstehen/verstehen-sidecar --self-check`
 to confirm the frozen dependencies. The Tauri shell is checked manually on the laptop.
+
+## Releases
+
+To cut a release, bump the versions in `backend/pyproject.toml`, `app/src-tauri/Cargo.toml`, and
+`app/src-tauri/tauri.conf.json`, then merge the PR with green CI. On the merged commit, run
+`git tag vX.Y.Z && git push origin vX.Y.Z`. The release workflow checks the versions, builds the
+Arch package, and publishes it to a GitHub Release with generated notes.
+
+On the Arch laptop, download and install the package:
+
+```sh
+gh release download vX.Y.Z -R KinslyIV/Verstehen -p '*.pkg.tar.zst'
+sudo pacman -U ./verstehen-X.Y.Z-1-x86_64.pkg.tar.zst
+```

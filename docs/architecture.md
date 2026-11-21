@@ -65,7 +65,7 @@ backend/                     Python project (uv)
       workers/               research, pdf, demo, visual
     sidechat/                side questions and their delivery to the main thread
     graph/                   extraction, audit, merge, BM25 candidates, imports, layout
-    providers/               model resolution, provider policy, one adapter per kind
+    providers/               model resolution, provider policy, one adapter per kind (ChatGPT model lists cached per account)
       claude_code/           vendored ClaudeCodeModel + VENDORED.md (Q10)
     store/                   SQLite connection, migrations/*.sql, one module per entity (Q5)
     config.py                data dir, environment
@@ -306,8 +306,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 - **Claude Code** is the vendored `ClaudeCodeModel` in `providers/claude_code/`.
   - It runs **the installed `claude`** (decided 2026-11-19; the package doesn't bundle the CLI).
     Verstehen records the version it was tested with and warns in Settings and the log when the
-    installed one differs. Settings can download exactly the tested version (checksum-verified) into
-    the data dir, and Verstehen then uses that copy. The opt-in live test re-checks a new version.
+    installed one differs. When it is missing or too old, Settings links to the install docs
+    (the download was removed 2026-11-21). The opt-in live test re-checks a new version.
     It reuses the existing Claude login.
   - **Constraint:** the Claude Code login is for personal use in this private app. Anthropic
     doesn't allow third-party products to offer claude.ai login, so Verstehen is never distributed
@@ -332,8 +332,8 @@ FastAPI on `127.0.0.1`, keeping LH's two-stream model:
 
 - **PDF:** pypdfium2. **SVG to PNG:** resvg via `resvg-py` (MIT, the same engine as LH, no native
   library to bundle). It replaced CairoSVG (decided).
-- **UI:** the Svelte versions of LH's React libraries (Svelte Flow for the graph view), plus d3-force,
-  dagre, KaTeX, and Mermaid directly.
+- **UI:** the Svelte versions of LH's React libraries, plus d3-force, d3-zoom, dagre, KaTeX, and
+  Mermaid directly. The graph view ports LH's own Canvas 2D renderer (decided 2026-11-20).
 - **Images** work through the vendored `ClaudeCodeModel` in user messages and tool results
   ([check](decisions.md#image-and-context-window-check-2026-11-18)).
 - **Logging:** a log file in the data dir, plus a debug switch that records raw provider events.
@@ -421,8 +421,9 @@ In the port:
 - Python 3.14; uv for the environment, ruff for lint and format, pyrefly for type checking (decided).
 - **One command runs everything** (decided): `make check` at the repo root runs pytest, ruff,
   pyrefly, svelte-check, ESLint, Prettier, Vitest, and the code-rule checks below. `make test` runs
-  only tests; `make fmt` fixes formatting. No CI for now; `make check` is required before every
-  commit.
+  only tests; `make fmt` fixes formatting. CI runs `make check` and `make verify` on GitHub-hosted
+  runners for every PR against `main` and push to `main`; `make check` is still required locally
+  before every commit.
 - **Code rules are checks** (decided):
   - the comment checker: at most 3 lines per comment or docstring block. It excludes generated code
     (the OpenAPI types), the shadcn-svelte components folder, the vendored `ClaudeCodeModel`, and the

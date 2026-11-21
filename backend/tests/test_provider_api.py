@@ -36,16 +36,26 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
     monkeypatch,
 ):
     monkeypatch.setattr(
-        "verstehen.providers.claude_code.binary.resolve_binary", lambda _: None
+        "verstehen.providers.claude_code.binary.resolve_binary", lambda: None
     )
     with TestClient(
         create_app(Settings(tmp_path)), base_url="http://localhost"
     ) as client:
         settings = client.get("/api/settings").json()
         assert settings == {
+            "graph": {
+                "enabled": True,
+                "rendering": True,
+                "extraction_chunk_tokens": 4096,
+            },
+            "agent": {"graph_tools": True},
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
+            "tools": {"research": True, "demo": True, "visual": True, "pdf": True},
+            "worker_request_concurrency": None,
+            "demo_browser": None,
+            "search_engine": "native",
             "file_access": {"restricted": False, "folders": []},
             "compaction_limit": None,
         }
@@ -57,7 +67,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
                         "kind": "claude_code",
                         "label": "Claude Code",
                         "state": "not_installed",
-                        "reason": "Install Claude Code or download the tested version.",
+                        "reason": "Install Claude Code, then run claude to sign in.",
                     },
                     "models": [],
                 }
@@ -121,9 +131,19 @@ def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path
         assert response.status_code == 503 and "images" in response.json()["reason"]
         assert client.get("/api/settings").json() == before
         assert client.put("/api/settings", json={}).json() == {
+            "graph": {
+                "enabled": True,
+                "rendering": True,
+                "extraction_chunk_tokens": 4096,
+            },
+            "agent": {"graph_tools": True},
             "models": {"strong": None, "cheap": None, "vision": None},
             "background": {"chatgpt": True, "claude_code": True},
             "quizzing": "choice",
+            "tools": {"research": True, "demo": True, "visual": True, "pdf": True},
+            "worker_request_concurrency": None,
+            "demo_browser": None,
+            "search_engine": "native",
             "file_access": {"restricted": False, "folders": []},
             "compaction_limit": None,
         }

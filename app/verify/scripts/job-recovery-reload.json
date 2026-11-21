@@ -1,0 +1,15 @@
+[
+	{
+		"role": "teacher",
+		"text": "The earlier research arrived after the restart: the secant slope is the average rate of change."
+	},
+	{
+		"role": "teacher",
+		"text": "The re-run research arrived: it agrees."
+	},
+	{
+		"role": "researcher",
+		"delay_ms": 2500,
+		"text": "## Summary\nA secant slope is the average rate of change between two points.\n\n## Findings\n1. **Definition** — the slope of the line through two points on a curve. [Khan Academy](https://www.khanacademy.org/math/ap-calculus-ab)\n2. **Use** — as the two points close in, the secant approaches the tangent. [Paul's Online Notes](https://tutorial.math.lamar.edu/)"
+	}
+]

@@ -6,7 +6,12 @@
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
 	import LearnerMessage from '#lib/markdown/learner-message.svelte';
 	import { SessionController } from '#lib/session/controller.svelte.js';
-	import { OPENING_FAILURE, readOpening, stashOpening } from '#lib/session/opening.js';
+	import {
+		OPENING_FAILURE,
+		awaitsOpening,
+		readOpening,
+		stashOpening
+	} from '#lib/session/opening.js';
 	import QuestionDock from '#lib/questions/question-dock.svelte';
 	import AnsweredCard from '#lib/questions/answered-card.svelte';
 	import MalformedQuestion from '#lib/questions/malformed-question.svelte';
@@ -16,6 +21,12 @@
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
+	import DispatchCard from '#lib/jobs/dispatch-card.svelte';
+	import MarkerCard from '#lib/jobs/marker-card.svelte';
+	import ImageCard from '#lib/teaching/image-card.svelte';
+	import SideEntryButton from '#lib/sidechat/side-entry-button.svelte';
+	import CoverageRing from '#lib/graph/coverage-ring.svelte';
+	import SelectionAsk from '#lib/sidechat/selection-ask.svelte';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
@@ -39,6 +50,7 @@
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
+	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion>();
@@ -71,6 +83,11 @@
 		viewport?.scrollTo({ top: viewport.scrollHeight });
 	}
 
+	function openSide(segmentId: string, quote?: string) {
+		controller.side.open(segmentId, quote);
+		panel?.open('side-chat');
+	}
+
 	function escape(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat)
 			return;
@@ -97,7 +114,7 @@
 		void (async () => {
 			await controller.load();
 			const opening = readOpening(id);
-			if (opening && controller.record && !controller.entries.length && !controller.busy) {
+			if (opening && controller.record && awaitsOpening(controller.entries) && !controller.busy) {
 				controller.draft = opening.text;
 				if (!opening.attempted) {
 					try {
@@ -112,9 +129,33 @@
 		const sync = (event: Event) => {
 			if ((event as CustomEvent<string>).detail === id) void controller.synchronize();
 		};
+		const syncSideChats = (event: Event) => {
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') void controller.side.refresh();
+		};
+		const syncJobs = (event: Event) => {
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') controller.jobs.schedule();
+		};
 		window.addEventListener('verstehen:sessions-changed', sync);
+		window.addEventListener('verstehen:jobs-changed', syncJobs);
+		const syncExtractions = () => {
+			controller.scheduleCoverage();
+			void controller.jobs.refreshExtractions();
+		};
+		const syncCoverage = () => controller.scheduleCoverage();
+		window.addEventListener('verstehen:side-chats-changed', syncSideChats);
+		window.addEventListener('verstehen:extractions-changed', syncExtractions);
+		window.addEventListener('verstehen:graph-changed', syncCoverage);
+		void controller.jobs.refresh();
+		void controller.jobs.refreshExtractions();
+		void controller.side.refresh();
 		return () => {
 			window.removeEventListener('verstehen:sessions-changed', sync);
+			window.removeEventListener('verstehen:jobs-changed', syncJobs);
+			window.removeEventListener('verstehen:side-chats-changed', syncSideChats);
+			window.removeEventListener('verstehen:extractions-changed', syncExtractions);
+			window.removeEventListener('verstehen:graph-changed', syncCoverage);
 			unwatchPlan?.();
 			controller.dispose();
 		};
@@ -141,6 +182,11 @@
 			>
 				{phaseLabel[phase]}
 			</span>
+			<CoverageRing
+				sessionId={id}
+				coverage={controller.record.coverage}
+				onextract={() => controller.scheduleCoverage()}
+			/>
 		</div>{/if}
 	<Scroller.Provider
 		autoScroll={controller.questionCalls.length > 0 || cards.size > 0 || phase !== 'probe'}
@@ -196,9 +242,19 @@
 									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
 									{#each prose as item, i (i)}
 										{#if item.kind === 'text'}
-											<AssistantMessage
-												content={item.text}
-												streaming={streaming && i === prose.length - 1}
+											<div data-source-entry-id={entry.entry_id}>
+												<AssistantMessage
+													content={item.text}
+													streaming={streaming && i === prose.length - 1}
+												/>
+											</div>
+										{:else if item.kind === 'image'}
+											<ImageCard result={item.result} />
+										{:else if item.kind === 'job'}
+											<DispatchCard
+												kind={item.jobKind}
+												job={jobsByCall.get(item.toolCallId)}
+												now={controller.jobs.now}
 											/>
 										{:else if item.kind === 'probe'}
 											<ProbeAssessment args={item.args} result={item.result} />
@@ -221,6 +277,14 @@
 									{/each}
 								</Scroller.Item>
 							{/if}
+							{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
+							{#if segmentId}<Scroller.Item>
+									<SideEntryButton
+										{segmentId}
+										hasHistory={controller.side.hasHistory(segmentId)}
+										onopen={openSide}
+									/>
+								</Scroller.Item>{/if}
 						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
 							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
 						{:else if block && entry.kind === 'marker' && entry.display}
@@ -234,6 +298,18 @@
 								>
 									<PlanDiagram plan={block} />
 								</button>
+							</Scroller.Item>
+						{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
+							<Scroller.Item>
+								<MarkerCard
+									{entry}
+									inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
+									oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
+									onsenderror={(text) => {
+										controller.draft = text;
+										void controller.send();
+									}}
+								/>
 							</Scroller.Item>
 						{:else if card}
 							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
@@ -319,6 +395,7 @@
 					if (pending) void controller.answerQuestion(pending, answer, draft);
 				}}
 				onstop={() => void controller.stop()}
+				onworking={(text) => (controller.working = text)}
 				{models}
 			/>
 		{/key}
@@ -328,6 +405,8 @@
 			busy={controller.busy}
 			compacting={controller.compacting}
 			disabled={controller.loading}
+			placeholder="Ask, answer, or steer the lesson…"
+			queuedSteers={controller.queuedSteers}
 			onsend={() => void controller.send()}
 			onstop={() => void controller.stop()}
 			{models}
@@ -341,6 +420,11 @@
 			onconfirm={confirmAbort}
 		/>
 	{/if}
+	<SelectionAsk
+		{viewport}
+		segmentFor={(entryId) => controller.record?.side_segments.by_entry[entryId]}
+		onask={openSide}
+	/>
 	{#if controller.setupOpen}<SetupDialog
 			onclose={() => (controller.setupOpen = false)}
 			ondone={() => (controller.setupOpen = false)}

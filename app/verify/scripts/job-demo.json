@@ -1,0 +1,48 @@
+[
+	{
+		"role": "teacher",
+		"text": "I will build something you can play with.",
+		"tool_calls": [
+			{
+				"name": "demo",
+				"id": "demo-1",
+				"arguments": {
+					"title": "Secant slope",
+					"brief": "Two draggable points on a parabola; show the secant slope as they move."
+				}
+			}
+		]
+	},
+	{
+		"role": "teacher",
+		"text": "While it builds, picture two points sliding along a curve."
+	},
+	{
+		"role": "teacher",
+		"text": "The demo is ready: slide the second point toward the first."
+	},
+	{
+		"role": "demoBuilder",
+		"tool_calls": [
+			{
+				"name": "write_demo",
+				"arguments": {
+					"html": "<!doctype html><html><body style=\"font-family:sans-serif;margin:16px;background:#fff;color:#111\"><h3>Secant slope</h3><label>x2 <input id=\"x\" type=\"range\" min=\"1\" max=\"4\" step=\"0.1\" value=\"3\"></label> <output id=\"out\"></output><svg id=\"plot\" width=\"360\" height=\"200\" style=\"display:block;margin-top:8px;background:#f1f5f9\"></svg><script>const f=x=>x*x;const out=document.getElementById('out');const svg=document.getElementById('plot');function draw(){const x2=parseFloat(document.getElementById('x').value);const m=(f(x2)-f(1))/(x2-1);out.textContent='slope = '+m.toFixed(2);const X=x=>20+x*80,Y=y=>190-y*11;let d='';for(let x=0;x<=4.2;x+=0.1)d+=(d?'L':'M')+X(x)+' '+Y(f(x));svg.innerHTML='<path d=\"'+d+'\" fill=\"none\" stroke=\"#0369a1\" stroke-width=\"2\"/><line x1=\"'+X(1)+'\" y1=\"'+Y(f(1))+'\" x2=\"'+X(x2)+'\" y2=\"'+Y(f(x2))+'\" stroke=\"#dc2626\" stroke-width=\"2\"/><circle cx=\"'+X(1)+'\" cy=\"'+Y(f(1))+'\" r=\"5\" fill=\"#dc2626\"/><circle cx=\"'+X(x2)+'\" cy=\"'+Y(f(x2))+'\" r=\"5\" fill=\"#dc2626\"/>'}document.getElementById('x').oninput=draw;draw();</script></body></html>"
+				}
+			}
+		]
+	},
+	{
+		"role": "demoBuilder",
+		"tool_calls": [
+			{
+				"name": "run_demo",
+				"arguments": {}
+			}
+		]
+	},
+	{
+		"role": "demoBuilder",
+		"text": "Slide x2 toward 1 and watch the secant slope approach 2."
+	}
+]

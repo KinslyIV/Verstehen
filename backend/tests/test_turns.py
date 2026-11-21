@@ -9,7 +9,11 @@ from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo, DeltaThinkingPart, FunctionModel
 
 from verstehen.api.sessions import notification_frames, turn_frames
+from verstehen.graph.extraction_service import ExtractionService
+from verstehen.jobs.runner import JobRunner
+from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.providers.accounts import AccountAdapter, AccountsService
+from verstehen.providers.credentials import CredentialsStore
 from verstehen.providers.fake import FakeAccountAdapter, fake_model
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolverService
@@ -18,8 +22,11 @@ from verstehen.session.runtime import RuntimeRegistry, TurnRun
 from verstehen.session.sessions import SessionService
 from verstehen.session.titles import TitleService
 from verstehen.session.turns import Continue, Refused, TurnInput, TurnService
+from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.database import open_database
 from verstehen.store.entries import AssistantEntry, EntriesStore, UserEntry
+from verstehen.store.graph import GraphStore
+from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import Settings, SettingsStore
@@ -53,6 +60,31 @@ async def turn_service_context(tmp_path: Path, model=None):
         title_service = TitleService(
             resolver_service, policy, usage_store, sessions_store, notifications
         )
+        jobs_store = JobsStore(database)
+        job_runner = JobRunner(
+            jobs_store,
+            settings_store,
+            resolver_service,
+            policy,
+            usage_store,
+            CredentialsStore(tmp_path),
+            WorkerAdmission(settings_store),
+            tmp_path,
+            lambda session_id: asyncio.sleep(0),
+            lambda session_id: None,
+        )
+        graph_store = GraphStore(database)
+        extraction_service = ExtractionService(
+            graph_store,
+            sessions_store,
+            EntriesStore(database),
+            settings_store,
+            resolver_service,
+            policy,
+            usage_store,
+            job_runner.admission.request,
+            lambda: None,
+        )
         turn_service = TurnService(
             SessionsStore(database),
             EntriesStore(database),
@@ -64,11 +96,16 @@ async def turn_service_context(tmp_path: Path, model=None):
             title_service,
             runtimes,
             notifications,
+            jobs_store,
+            job_runner,
+            lambda session_id: asyncio.sleep(0, []),
+            extraction_service,
         )
         session = await turn_service.sessions_store.create("Test")
         try:
             yield turn_service, session.id
         finally:
+            await extraction_service.close()
             await runtimes.close()
             await title_service.close()
 
@@ -80,6 +117,11 @@ def session_service_for(turn_service: TurnService) -> SessionService:
         turn_service.runtimes,
         turn_service.notifications,
         turn_service.resolver_service,
+        turn_service.jobs_store,
+        ArtifactViewsStore(turn_service.sessions_store.database),
+        Path("."),
+        turn_service.extraction_service,
+        turn_service.extraction_service.graph_store,
     )
 
 
@@ -120,6 +162,10 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
                 "ls",
                 "find",
                 "grep",
+                "research",
+                "pdf",
+                "list_sessions",
+                "list_propositions",
             }
             seen.extend(await turn_service.entries_store.list(session_id))
             yield "A reply"

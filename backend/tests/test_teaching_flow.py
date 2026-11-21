@@ -170,6 +170,10 @@ def test_probe_ack_switches_to_teacher_and_handoff_marker_is_saved_before_infere
                     "ls",
                     "find",
                     "grep",
+                    "research",
+                    "pdf",
+                    "list_sessions",
+                    "list_propositions",
                 }
                 yield {
                     0: DeltaToolCall(
@@ -192,10 +196,15 @@ def test_probe_ack_switches_to_teacher_and_handoff_marker_is_saved_before_infere
                     "quiz",
                     "ask_user_question",
                     "plan_init",
+                    "show_image",
                     "read",
                     "ls",
                     "find",
                     "grep",
+                    "research",
+                    "demo",
+                    "visual",
+                    "pdf",
                 }
                 assert messages[-1].parts[0].content == HANDOFF_TEXT
                 entries = await service.entries_store.list(session_id)

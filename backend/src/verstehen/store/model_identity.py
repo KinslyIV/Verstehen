@@ -1,7 +1,5 @@
 from dataclasses import dataclass
 
-from pydantic_ai.models import Model
-
 CHATGPT_PROVIDER = "openai-chatgpt"
 
 
@@ -11,7 +9,3 @@ class ModelIdentity:
 
     provider: str
     model: str
-
-    @classmethod
-    def of(cls, model: Model) -> "ModelIdentity":
-        return cls(model.system, model.model_name)

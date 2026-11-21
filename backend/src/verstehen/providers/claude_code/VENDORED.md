@@ -19,7 +19,7 @@ Local patches to upstream files:
 4. Python files: repository Ruff import ordering and formatting (double quotes, wrapping).
    Relative imports already work under `verstehen.providers.claude_code`; no import remapping.
 
-App-owned files (not upstream): `adapter.py`, `binary.py`, `context.py`, and `download.py`.
+App-owned files (not upstream): `adapter.py`, `binary.py`, and `context.py`.
 The adapter always supplies the discovered absolute CLI path and every lockdown option itself:
 `tools=[]`, `max_turns=1`, `setting_sources=[]`, `skills=[]`, `strict_mcp_config=True`,
 `extra_args={"no-session-persistence": None}`. It also disables Claude memory files through
