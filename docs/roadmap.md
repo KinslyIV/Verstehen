@@ -88,7 +88,13 @@ merges.
   fails on them: the thinking auto-close timer,
   the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
   `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
-  `side-chat-reload`, `question-ask`. Under heavy host load (other worktrees running verify,
+  `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
+  and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
+  are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
+  `reasoning-resend`: its initial Send assertion could match before the opening turn started,
+  so deletion returned 409 during the turn. It now waits for the completed reply's thinking
+  button before Send confirms settlement; the full 72-case verification suite passes. The other timing
+  bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
   (2026-11-21).
@@ -98,8 +104,8 @@ merges.
   smooth sustained streaming is not established.
 - **Account sign-in doesn't wake a session** waiting on background consent; the next event does.
 - **A failed photo annotation can leave its image file** in `<data dir>/images/`.
-- **Live ChatGPT reasoning acceptance remains unverified.** Offline transport tests prove the
-  reasoning item is resent; the opt-in live test still needs the user's browser sign-in.
+- **Live Claude verification is quota-blocked** on 2026-11-21 until the five-hour reset at
+  17:00 UTC. Full fake verification and live ChatGPT reasoning acceptance pass.
 - **Laptop checks never done:** ChatGPT sign-in, Claude Code discovery, the model menu, and a real
   lesson through probe, plan, teaching, research, and a demo in the installed app.
 - **PDF text with PyMuPDF (user note, 2026-11-21):** switch PDF text extraction (the PDF worker

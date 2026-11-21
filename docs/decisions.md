@@ -14,10 +14,21 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+- **Orchestrator decision, for user review (2026-11-21):** The Install Claude Code
+  popup check for not-installed / too-old accounts is now a Vitest assertion that `openExternal`
+  receives the install URL. The alternative was another browser case; the consequence is that
+  the one accounts flow covers `tested`, while Vitest checks the install action without opening
+  a real popup.
+- **Orchestrator decision, for user review (2026-11-21):** `playwright.live.config.ts` inherits
+  `workers` from the main config. The alternative was a separate worker setting; the consequence
+  is one shared worker policy for fake and live verification.
+
 | Date | Orchestrator decision, for user review | Alternative and consequence |
 |---|---|---|
 | 2026-11-20 | **Reasoning resend:** stamp an assistant entry's provider from the requested model's `system`, as LH does. | Using the response's provider name leaves the fake stream's provider empty and prevents its saved thinking from matching. Requested provider and model now identify the reply consistently. |
 | 2026-11-21 | **Reasoning resend, integration:** pass the current model identity to `side_context_fits`, applying the same-model ChatGPT output-token floor to the side-chat delivery budget (LH `chat-handler.ts:368,382`). | Keeping character-only estimates there would undercount signed reasoning despite the always-count-reasoning decision. Larger estimates can withhold delivery or refuse an oversized wake. |
+| 2026-11-21 | **Verification race:** `session-rename-delete` waits for the completed opening reply's `AGENT'S THINKING` button before its existing Send assertion. | Initial Send visibility can match the idle render before the opening turn starts, allowing deletion during the turn. A transient Stop wait could be missed; the stable reply indicator plus Send waits for settlement without changing timeouts or app behavior. |
+| 2026-11-21 | **Live reasoning fixture:** use a medium-thinking model and a small multi-step arithmetic problem, and expose safe request/response metadata when checking encrypted reasoning. | The low-effort `17 * 23` request returned only text, so it never exercised resend. The fixture retains its reasoning item id and encrypted-content assertions; the shared round-trip helper permits a rerun with the same isolated sign-in. |
 
 ## Constraints
 
