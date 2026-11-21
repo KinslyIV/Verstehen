@@ -1,6 +1,25 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-21 (Claude Code download removed).
+> Updated at the end of every piece of work. Last update: 2026-11-21 (CI and release setup).
+
+## CI and release setup (2026-11-21)
+
+Done on `ci-setup`: GitHub-hosted `ci` runs `make check` and fake-model `make verify` for PRs
+against `main` and pushes to `main`, with one CI-only retry and failure screenshot/trace artifacts.
+Live verification keeps zero retries and stays local. A manually pushed `vX.Y.Z` tag checks the
+three application versions, builds the Arch package, and publishes a GitHub Release. AGPL-3.0-only
+licensing and the branch/PR workflow are documented, with release and laptop install instructions.
+
+Validation on `0890968` plus these uncommitted changes: `make setup` and `make check` passed
+(757 backend tests, 2 live tests deselected; 334 frontend tests). Both workflows passed actionlint
+1.7.12 via Docker. `env -u CI make verify FLOW='app-reaches-sidecar'` passed (1/1); inspected the
+new-session screenshot and retained its trace in
+`app/verify-output/app-reaches-sidecar.flow.ts-app-reaches-sidecar/`. Playwright list-only discovery
+confirmed fake retries are 0 locally and 1 with `CI=true`, and live retries stay 0 even with CI set.
+The workflow's release guard accepted `v0.1.0` and rejected a mismatched tag before building.
+Next: user approves the force-push of rewritten `main`, the repo goes public, protection requiring
+`ci` is enabled on `main`, and the PR gets its first hosted CI run. The first tagged release will
+verify hosted packaging and publication. No GitHub settings, pushes, or releases were changed here.
 
 ## Claude Code download removed (2026-11-21)
 

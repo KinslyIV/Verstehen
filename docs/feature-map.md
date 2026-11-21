@@ -90,6 +90,13 @@ refreshes the toolchain explicitly. Verify with a second `make app`: the image I
 the log contains no pacman toolchain installation and one `vite build`, and all packaging smoke
 checks pass.
 
+## Development and releases
+
+| Feature | How to reach it | Verification |
+|---|---|---|
+| CI | Open a PR against `main` or push to `main`; `.github/workflows/ci.yml` runs `make check` and `make verify` on GitHub-hosted Ubuntu. Fake-model flows retry once only in CI; the list reporter shows flaky passes, and failures upload `app/verify-output` screenshots and traces. | `make check`; `make verify FLOW='app-reaches-sidecar'` locally with zero retries; actionlint for both workflows; first GitHub PR run checks the hosted integration. |
+| Arch releases | Bump the three application versions, merge, then manually push `vX.Y.Z`. `.github/workflows/release.yml` checks the tag and versions, builds with `make app`, and publishes the package to a GitHub Release. Download and install on the Arch laptop as described in the README. | `tools/check_versions.py`; actionlint; a matching tag must pass and a mismatched tag must fail before building; the first tagged release checks the hosted build and publication. |
+
 ## Live provider checks
 
 Claude Code opt-in live check (not run by `make check`):
