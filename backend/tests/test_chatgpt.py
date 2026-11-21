@@ -3,6 +3,7 @@ import base64
 import json
 import os
 from pathlib import Path
+from typing import cast
 from urllib.parse import parse_qs, urlsplit
 
 import httpx2
@@ -18,7 +19,7 @@ from pydantic_ai.providers.openai_chatgpt import (
 
 from verstehen.app import create_app
 from verstehen.config import Settings
-from verstehen.providers.accounts import AccountUnavailable
+from verstehen.providers.accounts import AccountsService, AccountUnavailable
 from verstehen.providers.chatgpt.adapter import (
     AccountProvider,
     ChatGPTAccountAdapter,
@@ -27,9 +28,14 @@ from verstehen.providers.chatgpt.adapter import (
 from verstehen.providers.chatgpt.credentials import (
     AccountCredentialSource,
 )
-from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService, SignInBusy
+from verstehen.providers.chatgpt.sign_in import (
+    ChatGPTSignInService,
+    SignInBusy,
+    SignInStatus,
+)
 from verstehen.providers.credentials import CredentialsStore
-from verstehen.store.settings import ModelPick
+from verstehen.providers.resolve import ResolverService
+from verstehen.store.settings import ModelPick, SettingsStore
 
 
 def jwt(**claims: object) -> str:
@@ -643,3 +649,158 @@ def test_authenticated_reply_uses_chatgpt_responses_dialect(
             await adapter.close()
 
     asyncio.run(scenario())
+
+
+class SignedInFlow:
+    async def exchange_code_from_callback(self) -> OpenAIChatGPTCredentials:
+        return credentials()
+
+
+def counting_adapter(store: CredentialsStore, status: int = 200):
+    """Adapter whose /models fetches are counted in the returned list."""
+    fetches: list[str] = []
+
+    async def response(request: httpx2.Request):
+        if request.url.path.endswith("/models"):
+            fetches.append(request.headers["authorization"])
+            await asyncio.sleep(0)
+            if status != 200:
+                return httpx2.Response(status, json={"error": {"code": "x"}})
+            body = {
+                "models": [
+                    {"slug": "gpt-5", "display_name": "GPT Five", "visibility": "list"}
+                ]
+            }
+            return httpx2.Response(200, json=body)
+        return httpx2.Response(500, json={"error": {"message": "gone"}})
+
+    adapter = ChatGPTAccountAdapter(
+        store, lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(response))
+    )
+    return adapter, fetches
+
+
+def test_second_models_call_uses_the_cache_and_accounts_stay_separate(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        store.sign_in(credentials("two"))
+        adapter, fetches = counting_adapter(store)
+        try:
+            for account in await adapter.accounts():
+                first = await adapter.models(account)
+                assert await adapter.models(account) == first
+            assert len(fetches) == 2
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_resolution_after_the_catalog_uses_the_cached_models(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, fetches = counting_adapter(store)
+        resolver = ResolverService(
+            cast(SettingsStore, None), AccountsService([adapter])
+        )
+        try:
+            account = (await adapter.accounts())[0]
+            await adapter.models(account)
+            pick = ModelPick(account=account_id, model="gpt-5")
+            for _ in range(3):
+                assert (await resolver.normalize(pick)).model == "gpt-5"
+            assert len(fetches) == 1
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("how", ["sign_in", "remove", "unavailable", "api_error"])
+def test_model_cache_is_dropped_when_the_account_changes_or_fails(
+    tmp_path: Path, how: str
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        account_id = store.sign_in(credentials()).id
+        adapter, fetches = counting_adapter(store)
+        try:
+            account = (await adapter.accounts())[0]
+            await adapter.models(account)
+            if how == "remove":
+                await ChatGPTSignInService(adapter).remove(account_id)
+            elif how == "sign_in":
+                await ChatGPTSignInService(adapter).complete(
+                    cast(OpenAIChatGPTOAuthFlow, SignedInFlow()), SignInStatus(id="1")
+                )
+            elif how == "unavailable":
+                adapter.unavailable(account_id, ModelHTTPError(401, "gpt-5"))
+            else:
+                model = await adapter.build_model(
+                    account, ModelPick(account=account_id, model="gpt-5")
+                )
+                with pytest.raises(AccountUnavailable):
+                    await Agent(model).run("Hello")
+            assert account_id not in adapter.model_lists
+            if how in ("sign_in", "api_error"):
+                await adapter.models((await adapter.accounts())[0])
+                assert len(fetches) == 2
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_failed_model_fetch_is_not_cached_and_is_retried(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter, fetches = counting_adapter(store, status=500)
+        try:
+            account = (await adapter.accounts())[0]
+            for _ in range(2):
+                with pytest.raises(AccountUnavailable):
+                    await adapter.models(account)
+            assert len(fetches) == 2
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_concurrent_model_cache_misses_share_one_fetch(tmp_path: Path):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter, fetches = counting_adapter(store)
+        try:
+            account = (await adapter.accounts())[0]
+            results = await asyncio.gather(*(adapter.models(account) for _ in range(5)))
+            assert all(result == results[0] for result in results)
+            assert len(fetches) == 1
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
+def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    fetches: list[str] = []
+
+    async def counted(self, account):
+        self.provider(account.id)
+        fetches.append(account.id)
+        return []
+
+    monkeypatch.setattr(ChatGPTAccountAdapter, "fetch_models", counted)
+    CredentialsStore(tmp_path).sign_in(credentials())
+    with TestClient(
+        create_app(Settings(tmp_path)), base_url="http://localhost"
+    ) as client:
+        for query, expected in (("", 1), ("", 1), ("?refresh=true", 2)):
+            client.get("/api/models" + query)
+            assert len(fetches) == expected

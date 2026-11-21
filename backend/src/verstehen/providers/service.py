@@ -61,8 +61,11 @@ class ProviderService:
         await self.settings_store.write(settings)
         return pick
 
-    async def catalog(self) -> ModelCatalog:
+    async def catalog(self, refresh: bool = False) -> ModelCatalog:
         accounts = []
+        if refresh:
+            for adapter in self.accounts_service.adapters:
+                adapter.forget_models()
         for adapter in self.accounts_service.adapters:
             for account in await adapter.accounts():
                 try:

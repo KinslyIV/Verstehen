@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from typing import Any, cast
@@ -46,8 +47,8 @@ class AccountProvider(OpenAIChatGPTProvider):
 
 
 class ChatGPTAccountAdapter:
-    """Own one authenticated client per account for this sidecar's lifetime.
-    Safe account snapshots never carry credentials; failures are persisted separately.
+    """Own one authenticated client and one cached model list per account for this
+    sidecar's lifetime. Safe account snapshots never carry credentials.
     """
 
     def __init__(
@@ -59,6 +60,8 @@ class ChatGPTAccountAdapter:
         self.client_factory = client_factory
         self.providers: dict[str, AccountProvider] = {}
         self.clients: list[httpx2.AsyncClient] = []
+        self.model_lists: dict[str, list[CatalogModel]] = {}
+        self.fetch_locks: dict[str, asyncio.Lock] = {}
 
     async def accounts(self) -> list[Account]:
         accounts = []
@@ -88,7 +91,11 @@ class ChatGPTAccountAdapter:
         provider.source.ensure_available()
         return provider
 
+    def forget_models(self) -> None:
+        self.model_lists.clear()
+
     def invalidate(self, account_id: str) -> None:
+        self.model_lists.pop(account_id, None)
         if provider := self.providers.pop(account_id, None):
             provider.source.invalidated = True
 
@@ -102,6 +109,7 @@ class ChatGPTAccountAdapter:
         error: Exception,
         source: AccountCredentialSource | None = None,
     ) -> AccountUnavailable:
+        self.model_lists.pop(account_id, None)
         if source is not None and source.invalidated:
             return AccountUnavailable("The ChatGPT account changed. Select it again.")
         if isinstance(error, AccountUnavailable):
@@ -132,6 +140,16 @@ class ChatGPTAccountAdapter:
         )
 
     async def models(self, account: Account) -> list[CatalogModel]:
+        lock = self.fetch_locks.setdefault(account.id, asyncio.Lock())
+        async with lock:
+            if account.id in self.model_lists:
+                return self.model_lists[account.id]
+            fetched = await self.fetch_models(account)
+            if account.id in self.providers:  # not invalidated while fetching
+                self.model_lists[account.id] = fetched
+            return fetched
+
+    async def fetch_models(self, account: Account) -> list[CatalogModel]:
         provider = None
         try:
             provider = self.provider(account.id)

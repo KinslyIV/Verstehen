@@ -65,7 +65,7 @@ backend/                     Python project (uv)
       workers/               research, pdf, demo, visual
     sidechat/                side questions and their delivery to the main thread
     graph/                   extraction, audit, merge, BM25 candidates, imports, layout
-    providers/               model resolution, provider policy, one adapter per kind
+    providers/               model resolution, provider policy, one adapter per kind (ChatGPT model lists cached per account)
       claude_code/           vendored ClaudeCodeModel + VENDORED.md (Q10)
     store/                   SQLite connection, migrations/*.sql, one module per entity (Q5)
     config.py                data dir, environment

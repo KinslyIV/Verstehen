@@ -1,6 +1,14 @@
 # Status
 
-> Updated at the end of every piece of work. Last update: 2026-11-21 (Claude Code download removed).
+> Updated at the end of every piece of work. Last update: 2026-11-21 (ChatGPT model list cache).
+
+## ChatGPT model list cache (2026-11-21)
+
+Done on `chatgpt-catalog-cache`: `ChatGPTAccountAdapter` caches each account's model list for the
+sidecar's lifetime (one shared fetch per miss, failures not cached), and the picker, `normalize`,
+and every `resolve()` use it. Sign-in, removal, unavailability, and model-call API errors drop the
+entry; Settings → Models forces one refresh via `GET /api/models?refresh=true`. New session still
+checks the slots with `getModels()` on send (now a cache read, not a ChatGPT call). Next: review and merge.
 
 ## Claude Code download removed (2026-11-21)
 

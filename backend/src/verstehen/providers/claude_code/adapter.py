@@ -137,6 +137,9 @@ class ClaudeCodeAccountAdapter:
             ),
         )
 
+    def forget_models(self) -> None:
+        pass
+
     async def context_limit(self, account: Account, model: str) -> int | None:
         status = await self.status()
         if (
