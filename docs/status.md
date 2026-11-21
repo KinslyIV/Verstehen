@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-21 (decision queue cleared after PR #3–#5 merges).
+> PRs. Last update: 2026-11-21 (worker simplification on `simplify-workers`, PR #7).
 
 ## Where we are
 

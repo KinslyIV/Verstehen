@@ -16,40 +16,6 @@ from verstehen.jobs.workers.common import run_cpu
 from verstehen.jobs.workers.pdf_ops import pdf_extract, pdf_info, pdf_search
 from verstehen.jobs.workers.search import SearchChoice, brave_search, tavily_search
 
-SCHEMAS = [
-    {
-        "name": "web_search",
-        "description": "Search the web. One search per call — use one call per search angle. Returns an array of results with title, url, and snippet.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "The search query (a normal search string, phrases included)",
-                },
-                "count": {
-                    "type": "integer",
-                    "minimum": 1,
-                    "maximum": 10,
-                    "description": "Number of results (default 5, max 10)",
-                },
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "web_fetch",
-        "description": "Fetch a web page and extract its readable content as markdown (Readability). Handles HTML pages and plain text; JS-rendered pages fall back to a reader service.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The URL to fetch"}
-            },
-            "required": ["url"],
-        },
-    },
-]
-
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
 NO_SEARCH = "web_search is not available: no search engine is configured. Set a Tavily, Brave, Exa, Firecrawl, or Ollama search API key in settings. Report in your brief that web search is unavailable."
 
@@ -363,68 +329,3 @@ async def downloaded_pdf_tool(name: str, args: dict[str, Any], directory: Path) 
         }
     except Exception as error:
         return f"{name} failed: {error}"
-
-
-PDF_SCHEMAS = [
-    {
-        "name": "web_fetch_pdf",
-        "description": "Download a PDF from the web and triage it: returns its local path, page count, size class (short ≤10 pages, medium ≤40, long), and flagged (math/image-heavy) pages. Then read it with pdf_extract / pdf_search. Use when web_fetch reports a URL is a PDF.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "url": {"type": "string", "description": "The PDF URL to download"}
-            },
-            "required": ["url"],
-        },
-    },
-    {
-        "name": "pdf_info",
-        "description": "Triage a downloaded PDF: page count plus per-page signals (text_length, image_count, math_density).",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The local PDF path returned by web_fetch_pdf",
-                }
-            },
-            "required": ["path"],
-        },
-    },
-    {
-        "name": "pdf_extract",
-        "description": "Extract text from pages of a downloaded PDF (spec: 'all', '1-5', '1,3,7', '3'). Use pdf_info first; narrow the spec for big documents.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The local PDF path returned by web_fetch_pdf",
-                },
-                "pages": {
-                    "type": "string",
-                    "description": "Pages to extract: 'all', '1-5', '1,3,7', or '3'. Use pdf_info first; narrow the spec for big documents.",
-                },
-            },
-            "required": ["path", "pages"],
-        },
-    },
-    {
-        "name": "pdf_search",
-        "description": "Find text in a downloaded PDF — returns the pages and contexts that hit.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "path": {
-                    "type": "string",
-                    "description": "The local PDF path returned by web_fetch_pdf",
-                },
-                "query": {
-                    "type": "string",
-                    "description": "Text to find (case-insensitive substring)",
-                },
-            },
-            "required": ["path", "query"],
-        },
-    },
-]

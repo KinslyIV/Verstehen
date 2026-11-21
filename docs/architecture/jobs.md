@@ -20,7 +20,7 @@ Backend, `backend/src/verstehen/`:
 | `jobs/workers/pdf.py`, `pdf_ops.py` | the PDF reader on pypdfium2 |
 | `jobs/workers/visual.py` | SVG figures and photo annotation, rendered with resvg and looked at by the model |
 | `jobs/workers/demo.py`, `headless.py`, `browser.py` | the demo builder, its mandatory headless check, and demo-browser discovery and download |
-| `jobs/workers/common.py` | the shared worker loop, CPU work in threads, usage |
+| `jobs/workers/common.py` | `WorkerModel`, typed `worker_tool` schema wrapper, CPU work in threads, usage |
 | `session/delivery.py`, `session/context_updates.py` | `DeliveryService` (wakes) and the context-update step ([session](session.md)) |
 | `session/jobs.py` | `JobService`: `GET /api/jobs` with the recovery sweep, and abort |
 

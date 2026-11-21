@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
 
@@ -58,22 +57,6 @@ KIND_ROLE: dict[JobKind, ModelRole] = {
 }
 ABORTED = "Aborted by learner"
 AbortOutcome = Literal["aborted", "not_found", "not_running"]
-
-
-@dataclass
-class LiveJob:
-    cancellation: asyncio.Event = field(default_factory=asyncio.Event)
-    task: asyncio.Task[None] | None = None
-    writes: set[asyncio.Task[object]] = field(default_factory=set)
-
-    def write(self, operation: Awaitable[object]) -> None:
-        """Run a progress write in the background; `settled` awaits them before finishing."""
-        task = asyncio.ensure_future(operation)
-        self.writes.add(task)
-        task.add_done_callback(self.writes.discard)
-
-    async def settled(self) -> None:
-        await asyncio.gather(*self.writes, return_exceptions=True)
 
 
 def failure_result(kind: JobKind, input: object, reason: str) -> JobResult:
@@ -143,7 +126,8 @@ class JobRunner:
         self.wake_session = wake_session
         self.notify_changed = notify_changed
         self.provider_events = provider_events
-        self.live: dict[str, LiveJob] = {}
+        self.live: dict[str, asyncio.Task[None]] = {}
+        self.aborted: set[str] = set()
         self.closing = False
 
     def is_live(self, job_id: str) -> bool:
@@ -152,15 +136,21 @@ class JobRunner:
     def start(self, job_id: str) -> None:
         if self.closing or job_id in self.live:
             return
-        live = LiveJob()
-        live.task = asyncio.create_task(self.run(job_id, live))
-        self.live[job_id] = live
+        task = asyncio.create_task(self.run(job_id))
+        self.live[job_id] = task
+        task.add_done_callback(lambda done: self.cleanup(job_id, done))
+
+    def cleanup(self, job_id: str, task: asyncio.Task[None]) -> None:
+        if self.live.get(job_id) is task:
+            self.live.pop(job_id, None)
+        self.aborted.discard(job_id)
 
     async def close(self) -> None:
         self.closing = True
-        tasks = [live.task for live in self.live.values() if live.task]
+        tasks = list(self.live.values())
         for task in tasks:
-            task.cancel()
+            if not task.cancelling():
+                task.cancel()
         await asyncio.gather(*tasks, return_exceptions=True)
 
     async def abort(self, job_id: str) -> AbortOutcome:
@@ -177,26 +167,26 @@ class JobRunner:
             job_id, patch, only_if="status = 'running' AND result IS NULL"
         ):
             return "not_running"
-        live = self.live.get(job_id)
-        if live is not None:
-            live.cancellation.set()
-            if live.task is not None:
-                live.task.cancel()
+        task = self.live.get(job_id)
+        if task is not None:
+            self.aborted.add(job_id)
+            if not task.cancelling():
+                task.cancel()
         self.notify_changed(job.session_id)
         await self.wake_session(job.session_id)
         return "aborted"
 
-    async def run(self, job_id: str, live: LiveJob) -> None:
-        job = await self.jobs_store.get(job_id)
+    async def run(self, job_id: str) -> None:
+        job: JobRecord | None = None
         try:
+            job = await self.jobs_store.get(job_id)
             if job is None or job.status != "running":
                 return
-            result = await self.work(job, live)
-            await live.settled()
+            result = await self.work(job)
             if result is not None:
                 await self.finish(job, result)
         except asyncio.CancelledError:
-            if not live.cancellation.is_set() and not self.closing:
+            if job_id not in self.aborted and not self.closing:
                 raise
         except Exception as error:
             logger.exception("Job %s crashed", job_id)
@@ -204,10 +194,8 @@ class JobRunner:
                 await self.finish(
                     job, failure_result(job.kind, job.input, str(error)), str(error)
                 )
-        finally:
-            self.live.pop(job_id, None)
 
-    async def work(self, job: JobRecord, live: LiveJob) -> JobResult | None:
+    async def work(self, job: JobRecord) -> JobResult | None:
         role = KIND_ROLE[job.kind]
         try:
             resolved = await self.resolver_service.resolve(role)
@@ -231,30 +219,29 @@ class JobRunner:
         )
         self.notify_changed(job.session_id)
 
-        async def report(activity: str) -> None:
-            await self.jobs_store.update(
-                job.id, JobPatch(activity=activity), only_if="status = 'running'"
-            )
-            self.notify_changed(job.session_id)
+        async def on_activity(activity: str) -> None:
+            try:
+                updated = await self.jobs_store.update(
+                    job.id, JobPatch(activity=activity), only_if="status = 'running'"
+                )
+            except Exception:
+                logger.exception("Job %s activity write failed", job.id)
+                return
+            if updated:
+                self.notify_changed(job.session_id)
 
-        def on_activity(activity: str) -> None:
-            live.write(report(activity))
-
-        def on_usage(request: RequestUsage) -> None:
+        async def on_usage(request: RequestUsage) -> None:
             add_usage(usage, request)
-            live.write(
-                self.jobs_store.update(
+            try:
+                await self.jobs_store.update(
                     job.id,
                     JobPatch(usage=usage.model_copy()),
                     only_if="status = 'running'",
                 )
-            )
+            except Exception:
+                logger.exception("Job %s usage write failed", job.id)
 
-        callbacks = {
-            "on_activity": on_activity,
-            "on_usage": on_usage,
-            "cancellation": live.cancellation,
-        }
+        callbacks = {"on_activity": on_activity, "on_usage": on_usage}
         settings = await self.settings_store.read()
         match job.kind:
             case "research":
