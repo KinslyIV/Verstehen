@@ -36,6 +36,7 @@ class SessionProposition(Proposition):
     model_config = ConfigDict(strict=True, populate_by_name=True)
     message_id: str = Field(
         alias="messageId",
+        title="Messageid",
         description='The message id of the ONE passage in this stretch that most directly states or explains this proposition — copy it EXACTLY from that passage\'s "TEACHER [id]" label.',
     )
 
@@ -67,6 +68,7 @@ class NotesFindings(BaseModel):
 
 
 class SessionFindings(BaseModel):
+    model_config = ConfigDict(title="SessionSubmit")
     propositions: list[SessionProposition] = Field(description=PROPOSITIONS_DESCRIPTION)
     chains: list[Chain] = Field(description=CHAINS_DESCRIPTION)
 
@@ -74,17 +76,19 @@ class SessionFindings(BaseModel):
 type Findings = NotesFindings | SessionFindings
 
 
-class IdentityLink(BaseModel):
+class Link(BaseModel):
     model_config = ConfigDict(strict=True, populate_by_name=True)
     id: str = Field(description='The proposition id from the findings ("p1", …).')
     link_to: str = Field(
         alias="linkTo",
+        title="Linkto",
         description="The id of the EXISTING graph node this proposition IS — your identity verdict. EQUIVALENCE BIAS (2026-09-27): paraphrases, rewordings, and compressions of the same claim MERGE; only genuinely distinct propositions stay apart.",
     )
 
 
 class AuditVerdicts(BaseModel):
-    links: list[IdentityLink] = Field(
+    model_config = ConfigDict(title="Review")
+    links: list[Link] = Field(
         description="Identity verdicts — which findings propositions ARE existing graph nodes. A proposition absent from here = create a new node. Pass [] when none — never omit the field."
     )
 

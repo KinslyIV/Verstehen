@@ -290,3 +290,49 @@ def test_manual_extract_and_notes_import_use_fake_roles_and_publish_graph_result
         assert len(client.get("/api/graph").json()["propositions"]) == 2
         sources = client.get("/api/graph/sources").json()["sources"]
         assert any(s["kind"] == "notes" for s in sources)
+
+
+def test_session_delete_rolls_back_graph_and_event_when_session_delete_fails(
+    tmp_path: Path, monkeypatch
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        session = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+        changed_events: list[int] = []
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.append(
+                    GraphNode(
+                        id="n_one",
+                        name="Name",
+                        statement="Statement",
+                        provenance=[ProvenancePoint(session_id=session)],
+                    )
+                )
+            original_changed = app.state.graph_service.graph_store.changed
+            monkeypatch.setattr(
+                app.state.graph_service.graph_store,
+                "changed",
+                lambda rev: (changed_events.append(rev), original_changed(rev))[1],
+            )
+            app.state.extraction_service.failure_reasons[session] = "Sign in again."
+            async with app.state.database.transaction() as connection:
+                await connection.execute(
+                    "CREATE TRIGGER fail_session_delete BEFORE DELETE ON sessions "
+                    "BEGIN SELECT RAISE(ABORT, 'session delete failed'); END"
+                )
+
+        client.portal.call(seed)
+
+        async def fail_delete():
+            with pytest.raises(Exception, match="session delete failed"):
+                await app.state.session_service.delete(session, mode="delete-nodes")
+
+        client.portal.call(fail_delete)
+        assert client.get(f"/api/sessions/{session}").status_code == 200
+        assert len(client.get("/api/graph").json()["propositions"]) == 1
+        assert changed_events == []
+        assert app.state.extraction_service.failure_reasons[session] == "Sign in again."
+        assert session not in app.state.extraction_service.deleting

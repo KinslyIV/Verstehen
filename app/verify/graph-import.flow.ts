@@ -1,3 +1,6 @@
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test, expect } from './fixtures';
 import { scriptExtractors, waitForLayout } from './graph';
 
@@ -75,4 +78,50 @@ test('graph-import', async ({ page, request }) => {
 		"Skipped 1 file that isn't text, Markdown, or PDF (.png)."
 	);
 	await page.screenshot({ path: test.info().outputPath('skipped.png'), animations: 'disabled' });
+
+	const settings = await (await request.get('/api/settings')).json();
+	delete settings.file_access_error;
+	const cleared = await request.put('/api/settings', {
+		data: { ...settings, models: { ...settings.models, cheap: null } }
+	});
+	expect(cleared.ok()).toBe(true);
+
+	const folderRoot = await mkdtemp(join(tmpdir(), 'verstehen-unconfigured-'));
+	try {
+		const folder = join(folderRoot, 'unconfigured-notes');
+		await mkdir(join(folder, 'topic'), { recursive: true });
+		await writeFile(join(folder, 'topic', 'draft.md'), '# Draft\n\nNo model configured.\n');
+		await page.getByTestId('import-notes').click();
+		const folderChooser = page.waitForEvent('filechooser');
+		await page.getByRole('button', { name: 'Folder', exact: true }).click();
+		await (await folderChooser).setFiles(folder);
+		await expect(page.getByRole('alert')).toContainText('models_not_configured');
+		await expect(page.getByRole('alert')).toContainText(
+			'No model configured — set up your models first'
+		);
+		await page.screenshot({
+			path: test.info().outputPath('refused-folder.png'),
+			animations: 'disabled'
+		});
+	} finally {
+		await rm(folderRoot, { recursive: true, force: true });
+	}
+
+	await page.getByTestId('open-chain-table').click();
+	const table = page.getByTestId('chain-table');
+	await expect(table).toBeVisible();
+	await expect(table.locator('[data-testid^="folder-row-"]')).toHaveCount(0);
+	await expect(table).not.toContainText('unconfigured-notes');
+	await expect(table).not.toContainText('topic');
+	await expect(table).not.toContainText('draft');
+	const directory = await (await request.get('/api/graph/sources')).json();
+	expect(directory.organization.folders).toEqual([]);
+	expect(directory.sources.map((s: { file_path?: string }) => s.file_path).sort()).toEqual([
+		'limits.md',
+		'mechanics.pdf'
+	]);
+	await page.screenshot({
+		path: test.info().outputPath('refused-chains.png'),
+		animations: 'disabled'
+	});
 });

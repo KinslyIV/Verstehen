@@ -1,0 +1,221 @@
+{
+  "notes": {
+    "$defs": {
+      "Chain": {
+        "properties": {
+          "conclusion": {
+            "description": "The id this conclusion is \u2014 EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim (\"n_\u2026\"), OR the local id of a proposition in this submission (\"p1\", \u2026).",
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "premises": {
+            "description": "Premise ids used TOGETHER: they jointly entail the conclusion; independent reasons are separate chains.",
+            "items": {
+              "description": "The id this premise uses \u2014 EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim (\"n_\u2026\"), OR the local id of a proposition in this submission (\"p1\", \u2026).",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Premises",
+            "type": "array"
+          }
+        },
+        "required": [
+          "premises",
+          "conclusion"
+        ],
+        "title": "Chain",
+        "type": "object"
+      },
+      "Proposition": {
+        "properties": {
+          "aliases": {
+            "description": "Verbatim phrasings the source used for the same proposition, if any.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "id": {
+            "description": "Local id: \"p1\", \"p2\", \u2026 \u2014 referenced by chains in this call.",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "description": "A very short label \u2014 established terminology, the term the discipline itself uses, a glossary headword a textbook would print ('Will to power', 'Divine command theory'). Not a sentence, needn't be unique or self-contained: this becomes the node's global label in the graph.",
+            "title": "Name",
+            "type": "string"
+          },
+          "statement": {
+            "description": "One true, self-contained, world-facing core idea at full precision. Never about the learner, the teacher, or the reading: not \"the learner understands X\" but \"X\". A misconception enters as its TRUE correction.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "statement"
+        ],
+        "title": "Proposition",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "chains": {
+        "description": "Every argument this stretch makes \u2014 including arguments that join new ideas to established ones; conclusions reusable by id as premises of later chains; bare ideas (no argument) ride the propositions list alone; pass [] when none \u2014 never omit the field.",
+        "items": {
+          "$ref": "#/$defs/Chain"
+        },
+        "title": "Chains",
+        "type": "array"
+      },
+      "propositions": {
+        "description": "Only the NEW core ideas this stretch contributes \u2014 ideas the prompt's THE GRAPH SO FAR already holds are referenced by id in chains, never restated here.",
+        "items": {
+          "$ref": "#/$defs/Proposition"
+        },
+        "title": "Propositions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "propositions",
+      "chains"
+    ],
+    "title": "NotesFindings",
+    "type": "object"
+  },
+  "review": {
+    "$defs": {
+      "Link": {
+        "properties": {
+          "id": {
+            "description": "The proposition id from the findings (\"p1\", \u2026).",
+            "title": "Id",
+            "type": "string"
+          },
+          "linkTo": {
+            "description": "The id of the EXISTING graph node this proposition IS \u2014 your identity verdict. EQUIVALENCE BIAS (2026-09-27): paraphrases, rewordings, and compressions of the same claim MERGE; only genuinely distinct propositions stay apart.",
+            "title": "Linkto",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "linkTo"
+        ],
+        "title": "Link",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "links": {
+        "description": "Identity verdicts \u2014 which findings propositions ARE existing graph nodes. A proposition absent from here = create a new node. Pass [] when none \u2014 never omit the field.",
+        "items": {
+          "$ref": "#/$defs/Link"
+        },
+        "title": "Links",
+        "type": "array"
+      }
+    },
+    "required": [
+      "links"
+    ],
+    "title": "Review",
+    "type": "object"
+  },
+  "session": {
+    "$defs": {
+      "Chain": {
+        "properties": {
+          "conclusion": {
+            "description": "The id this conclusion is \u2014 EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim (\"n_\u2026\"), OR the local id of a proposition in this submission (\"p1\", \u2026).",
+            "title": "Conclusion",
+            "type": "string"
+          },
+          "premises": {
+            "description": "Premise ids used TOGETHER: they jointly entail the conclusion; independent reasons are separate chains.",
+            "items": {
+              "description": "The id this premise uses \u2014 EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim (\"n_\u2026\"), OR the local id of a proposition in this submission (\"p1\", \u2026).",
+              "type": "string"
+            },
+            "minItems": 1,
+            "title": "Premises",
+            "type": "array"
+          }
+        },
+        "required": [
+          "premises",
+          "conclusion"
+        ],
+        "title": "Chain",
+        "type": "object"
+      },
+      "SessionProposition": {
+        "properties": {
+          "aliases": {
+            "description": "Verbatim phrasings the source used for the same proposition, if any.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases",
+            "type": "array"
+          },
+          "id": {
+            "description": "Local id: \"p1\", \"p2\", \u2026 \u2014 referenced by chains in this call.",
+            "title": "Id",
+            "type": "string"
+          },
+          "messageId": {
+            "description": "The message id of the ONE passage in this stretch that most directly states or explains this proposition \u2014 copy it EXACTLY from that passage's \"TEACHER [id]\" label.",
+            "title": "Messageid",
+            "type": "string"
+          },
+          "name": {
+            "description": "A very short label \u2014 established terminology, the term the discipline itself uses, a glossary headword a textbook would print ('Will to power', 'Divine command theory'). Not a sentence, needn't be unique or self-contained: this becomes the node's global label in the graph.",
+            "title": "Name",
+            "type": "string"
+          },
+          "statement": {
+            "description": "One true, self-contained, world-facing core idea at full precision. Never about the learner, the teacher, or the reading: not \"the learner understands X\" but \"X\". A misconception enters as its TRUE correction.",
+            "title": "Statement",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "statement",
+          "messageId"
+        ],
+        "title": "SessionProposition",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "chains": {
+        "description": "Every argument this stretch makes \u2014 including arguments that join new ideas to established ones; conclusions reusable by id as premises of later chains; bare ideas (no argument) ride the propositions list alone; pass [] when none \u2014 never omit the field.",
+        "items": {
+          "$ref": "#/$defs/Chain"
+        },
+        "title": "Chains",
+        "type": "array"
+      },
+      "propositions": {
+        "description": "Only the NEW core ideas this stretch contributes \u2014 ideas the prompt's THE GRAPH SO FAR already holds are referenced by id in chains, never restated here.",
+        "items": {
+          "$ref": "#/$defs/SessionProposition"
+        },
+        "title": "Propositions",
+        "type": "array"
+      }
+    },
+    "required": [
+      "propositions",
+      "chains"
+    ],
+    "title": "SessionSubmit",
+    "type": "object"
+  }
+}

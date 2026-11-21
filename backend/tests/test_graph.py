@@ -17,7 +17,7 @@ from verstehen.graph.deletion import delete_node_traces, delete_sources_traces
 from verstehen.graph.merge import (
     AuditVerdicts,
     Chain,
-    IdentityLink,
+    Link,
     NotesFindings,
     Proposition,
     SessionFindings,
@@ -44,7 +44,6 @@ from verstehen.graph.snapshot import (
     format_graph_propositions,
     format_graph_sessions,
     graph_session_index,
-    graph_session_propositions,
     graph_snapshot,
 )
 from verstehen.store.database import open_database
@@ -225,8 +224,6 @@ def test_session_readers_count_births_and_include_missing_sources():
         ("s1", 2, "chat"),
         ("missing", 1, "file"),
     ]
-    assert [p.node_id for p in graph_session_propositions(ledger, "s1")] == ["a", "b"]
-    assert graph_session_propositions(ledger, "s2") == []
 
 
 def test_merge_commits_nodes_chains_and_coverage_together_and_emits_after_commit(
@@ -304,7 +301,7 @@ def test_merge_links_aliases_resolves_digest_endpoints_and_checkpoints_notes(
                 store,
                 "src_notes",
                 proposed,
-                AuditVerdicts(links=[IdentityLink(id="p", link_to="n_known")]),
+                AuditVerdicts(links=[Link(id="p", link_to="n_known")]),
                 NOW,
             )
             ledger = await store.read()
@@ -320,7 +317,7 @@ def test_merge_links_aliases_resolves_digest_endpoints_and_checkpoints_notes(
                 store,
                 "src_notes",
                 proposed,
-                AuditVerdicts(links=[IdentityLink(id="p2", link_to="n_gone")]),
+                AuditVerdicts(links=[Link(id="p2", link_to="n_gone")]),
                 NOW,
             )
             assert stats.nodes == 1 and stats.chains == 1
@@ -849,8 +846,9 @@ def test_graph_formatters_separate_prober_and_auditor_views():
     session = Session(id="s1", title="Live")
     ledger = GraphLedger(
         nodes=[
-            node("n_1", "s1", name="Alpha", statement="Secret alpha statement"),
             node("n_2", "s1", name="Beta", statement="Secret beta statement"),
+            node("n_1", "s1", name="Alpha", statement="Secret alpha statement"),
+            node("n_2", "s2", name="Linked", statement="Linked beta statement"),
         ]
     )
 
@@ -864,9 +862,17 @@ def test_graph_formatters_separate_prober_and_auditor_views():
 
     prober_props = format_graph_propositions(ledger, "s1", auditor=False)
     assert "covered in this session:" in prober_props
-    assert "- Alpha" in prober_props and "- Beta" in prober_props
+    assert prober_props.splitlines()[1:] == ["- Alpha", "- Beta"]
     assert "Secret alpha statement" not in prober_props
 
     auditor_props = format_graph_propositions(ledger, "s1", auditor=True)
     assert "born in this session:" in auditor_props
-    assert "- n_1 :: Alpha\n  statement: Secret alpha statement" in auditor_props
+    assert auditor_props.splitlines()[1:] == [
+        "- n_1 :: Alpha",
+        "  statement: Secret alpha statement",
+        "- n_2 :: Beta",
+        "  statement: Secret beta statement",
+    ]
+    assert 'No propositions born in session "s2"' in format_graph_propositions(
+        ledger, "s2", auditor=True
+    )

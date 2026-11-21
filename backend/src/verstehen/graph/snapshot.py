@@ -34,11 +34,6 @@ class GraphSessionEntry(BaseModel):
     propositions: int
 
 
-class GraphSessionProposition(BaseModel):
-    node_id: str
-    name: str
-
-
 def birth_session(node: GraphNode) -> str | None:
     return node.provenance[0].session_id if node.provenance else None
 
@@ -167,16 +162,6 @@ def graph_session_index(
         key=lambda entry: (entry.updated_at or "", entry.created_at or ""), reverse=True
     )
     return entries
-
-
-def graph_session_propositions(
-    ledger: GraphLedger, session_id: str
-) -> list[GraphSessionProposition]:
-    return [
-        GraphSessionProposition(node_id=node.id, name=node.name)
-        for node in sorted(get_graph(ledger).nodes, key=lambda n: n.id)
-        if birth_session(node) == session_id
-    ]
 
 
 def format_graph_sessions(

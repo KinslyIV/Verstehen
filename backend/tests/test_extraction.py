@@ -1,6 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -8,7 +9,7 @@ from pydantic_ai.messages import ModelResponse, ToolReturnPart
 from pydantic_ai.messages import ToolCallPart as ModelToolCall
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
-from verstehen.graph.auditor import prepare_auditor_review
+from verstehen.graph.auditor import prepare_auditor_review, review_tool
 from verstehen.graph.candidates import CandidateNode
 from verstehen.graph.context import (
     GraphContext,
@@ -33,7 +34,7 @@ from verstehen.graph.extractor import (
 from verstehen.graph.merge import (
     AuditVerdicts,
     EmissionStats,
-    NotesFindings,
+    Link,
     Proposition,
     SessionFindings,
     SessionProposition,
@@ -885,20 +886,27 @@ def test_notes_partial_failure_keeps_successful_chunk_checkpoint(tmp_path):
 
 
 def test_tool_schemas_and_candidate_serialization_use_camel_case_wire_names():
-    notes_prop = NotesFindings.model_json_schema()["$defs"]["Proposition"]
-    assert "messageId" not in notes_prop["properties"]
-    assert "message_id" not in notes_prop["properties"]
-    assert "messageId" not in notes_prop["required"]
-
-    session_prop = SessionFindings.model_json_schema()["$defs"]["SessionProposition"]
-    assert "messageId" in session_prop["properties"]
-    assert "message_id" not in session_prop["properties"]
-    assert "messageId" in session_prop["required"]
-
-    link_schema = AuditVerdicts.model_json_schema()["$defs"]["IdentityLink"]
-    assert "linkTo" in link_schema["properties"]
-    assert "link_to" not in link_schema["properties"]
-    assert "linkTo" in link_schema["required"]
+    expected = json.loads(
+        (Path(__file__).parent / "fixtures/lh-extraction-schemas.json").read_text()
+    )
+    assert (
+        findings_tool(set(), None).definition.parameters_json_schema
+        == expected["notes"]
+    )
+    assert (
+        findings_tool(set(), {"m1"}).definition.parameters_json_schema
+        == expected["session"]
+    )
+    assert review_tool().definition.parameters_json_schema == expected["review"]
+    assert Link.model_validate({"id": "p1", "linkTo": "n_1"}) == Link(
+        id="p1", link_to="n_1"
+    )
+    assert (
+        AuditVerdicts.model_validate({"links": [{"id": "p1", "linkTo": "n_1"}]})
+        .links[0]
+        .link_to
+        == "n_1"
+    )
 
     candidate = CandidateNode(
         id="n_1",
