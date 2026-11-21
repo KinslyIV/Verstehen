@@ -1,8 +1,12 @@
 import asyncio
 import logging
 import time
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import AbstractAsyncContextManager, asynccontextmanager
+from collections.abc import AsyncGenerator, Awaitable, Callable, Iterator
+from contextlib import (
+    AbstractAsyncContextManager,
+    asynccontextmanager,
+    contextmanager,
+)
 from typing import Literal
 
 from pydantic import BaseModel, Field
@@ -130,6 +134,7 @@ class ExtractionService:
         self.failure_reasons: dict[str, str] = {}
         self.audit_lock = asyncio.Lock()
         self.deleting: set[str] = set()
+        self.graph_deletions = 0
         self.closing = False
         self.last_started_at = 0
 
@@ -179,6 +184,8 @@ class ExtractionService:
 
         if self.closing or source in self.deleting:
             raise GraphRefused("Extraction is shutting down", 503)
+        if self.graph_deletions:
+            raise GraphRefused("Graph deletion is in progress", 409, "graph_deleting")
         if self.running(source):
             raise GraphRefused(
                 "An extraction run is already in flight for this session", 409
@@ -216,6 +223,7 @@ class ExtractionService:
             session = await self.sessions_store.get(session_id)
             if (
                 self.closing
+                or self.graph_deletions
                 or self.running(session_id)
                 or session is None
                 or session.kind != "teach"
@@ -474,6 +482,17 @@ class ExtractionService:
                 yield True
         finally:
             self.deleting.discard(source)
+
+    @contextmanager
+    def deleting_graph(self, message: str) -> Iterator[None]:
+        """Refuse if any extraction is running and block new launches while deleting."""
+        if self.running():
+            raise GraphRefused(message, 409, "extraction_running")
+        self.graph_deletions += 1
+        try:
+            yield
+        finally:
+            self.graph_deletions -= 1
 
     def forget_failure(self, session_id: str) -> None:
         self.failure_reasons.pop(session_id, None)

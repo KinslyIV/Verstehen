@@ -7,8 +7,16 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings
+from verstehen.graph.errors import GraphRefused
+from verstehen.graph.merge import EmissionStats
 from verstehen.store.entries import AssistantEntry, TextPart
-from verstehen.store.graph import GraphNode, ProvenancePoint
+from verstehen.store.graph import (
+    GraphNode,
+    NotesSource,
+    ProvenancePoint,
+    SourceFolder,
+    SourcePlacement,
+)
 
 
 @pytest.mark.parametrize("mode", ["preserve-graph", "delete-nodes"])
@@ -371,3 +379,87 @@ def test_chains_table_source_delete_rolls_back_session_when_graph_write_fails(
         assert response.status_code == 500
         assert client.get(f"/api/sessions/{session}").status_code == 200
         assert len(client.get("/api/graph").json()["propositions"]) == 1
+
+
+def test_chains_table_delete_blocks_concurrent_extraction_after_session_delete(
+    tmp_path: Path, monkeypatch
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        s1 = client.post("/api/sessions", json={}).json()["id"]
+        s2 = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+        launch_errors: list[tuple[int, str | None]] = []
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.extend(
+                    [
+                        GraphNode(
+                            id="n_chat",
+                            name="Chat",
+                            statement="Chat claim",
+                            provenance=[ProvenancePoint(session_id=s1)],
+                        ),
+                        GraphNode(
+                            id="n_notes",
+                            name="Notes",
+                            statement="Notes claim",
+                            provenance=[ProvenancePoint(session_id="src_notes")],
+                        ),
+                    ]
+                )
+                ledger.sources.append(
+                    NotesSource(
+                        id="src_notes",
+                        file_path="folder/notes.md",
+                        imported_at="2026-11-21T00:00:00+00:00",
+                    )
+                )
+                ledger.organization.folders.append(
+                    SourceFolder(
+                        id="f1",
+                        name="folder",
+                        parent_id=None,
+                        created_at="2026-11-21T00:00:00+00:00",
+                    )
+                )
+                ledger.organization.placements["src_notes"] = SourcePlacement(
+                    folder_id="f1"
+                )
+
+            original_delete = app.state.graph_service.delete_session
+
+            async def delete_then_try_launch(session_id: str) -> None:
+                await original_delete(session_id)
+
+                async def noop() -> EmissionStats:
+                    return EmissionStats()
+
+                with pytest.raises(GraphRefused) as err:
+                    app.state.extraction_service.launch(s2, noop)
+                launch_errors.append((err.value.status, err.value.code))
+
+            monkeypatch.setattr(
+                app.state.graph_service, "delete_session", delete_then_try_launch
+            )
+
+        client.portal.call(seed)
+        response = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={
+                "source_ids": [s1, "src_notes"],
+                "folder_ids": ["f1"],
+                "delete_sessions": True,
+            },
+        )
+        assert response.status_code == 200
+        assert launch_errors == [(409, "graph_deleting")]
+        assert app.state.extraction_service.graph_deletions == 0
+        assert client.get(f"/api/sessions/{s1}").status_code == 404
+        assert client.get(f"/api/sessions/{s2}").status_code == 200
+        assert client.get("/api/graph").json()["propositions"] == []
+        directory = client.get("/api/graph/sources").json()
+        assert directory["organization"]["folders"] == []
+        assert [s["id"] for s in directory["sources"]] == [s2]

@@ -811,30 +811,65 @@ def test_notes_source_deletion_removes_usage_and_placement_in_the_graph_transact
         assert client.get("/api/graph").json()["propositions"] == []
 
 
-def test_source_deletion_rechecks_extraction_after_acquiring_the_graph_transaction(
+def test_source_deletion_blocks_new_extractions_until_finished(
     tmp_path: Path,
-    monkeypatch,
 ):
+    from verstehen.graph.errors import GraphRefused
+    from verstehen.graph.merge import EmissionStats
+
     app = create_app(Settings(tmp_path))
     with TestClient(app, headers={"host": "localhost"}) as client:
+        launched_during_delete = []
+
+        async def noop():
+            return EmissionStats()
 
         async def seed():
             async with app.state.graph_service.graph_store.transaction() as ledger:
                 ledger.nodes = [node("n_a")]
-            checks = iter([False, True])
-            monkeypatch.setattr(
-                app.state.extraction_service, "running", lambda: next(checks)
-            )
+            blocker = asyncio.Event()
+
+            async def wait():
+                await blocker.wait()
+                return EmissionStats()
+
+            task = app.state.extraction_service.launch("s2", wait)
+            return blocker, task
 
         assert client.portal is not None
-        client.portal.call(seed)
+        blocker, task = client.portal.call(seed)
+        refused = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={"source_ids": ["s1"], "folder_ids": [], "delete_sessions": False},
+        )
+        assert refused.status_code == 409
+        assert client.get("/api/graph").json()["propositions"][0]["id"] == "n_a"
+
+        async def finish_blocker():
+            blocker.set()
+            await task
+
+        client.portal.call(finish_blocker)
+
+        original_delete = app.state.graph_service.graph_store.transaction
+
+        def probe_launch():
+            with pytest.raises(GraphRefused) as err:
+                app.state.extraction_service.launch("s2", noop)
+            launched_during_delete.append((err.value.status, err.value.code))
+            return original_delete()
+
+        app.state.graph_service.graph_store.transaction = probe_launch
         response = client.request(
             "DELETE",
             "/api/graph/sources",
             json={"source_ids": ["s1"], "folder_ids": [], "delete_sessions": False},
         )
-        assert response.status_code == 409
-        assert client.get("/api/graph").json()["propositions"][0]["id"] == "n_a"
+        assert response.status_code == 200
+        assert launched_during_delete == [(409, "graph_deleting")]
+        assert app.state.extraction_service.graph_deletions == 0
+        assert client.get("/api/graph").json()["propositions"] == []
 
 
 def test_graph_formatters_separate_prober_and_auditor_views():
