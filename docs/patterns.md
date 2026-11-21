@@ -8,6 +8,7 @@ is updated in the same commit.
 |---|---|
 | Function docstring | [`request_refusal`](../backend/src/verstehen/api/access.py) |
 | Class responsibility description | [`SessionService`](../backend/src/verstehen/session/sessions.py) (role and API/store/runtime boundary; add only when needed) |
+| Architecture area doc | [`architecture/session.md`](architecture/session.md): what the area owns, a code map, how it works, data and events, collaborators, traps |
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
 | Account adapter | [`providers/accounts.py`](../backend/src/verstehen/providers/accounts.py) (`AccountAdapter`; app-owned adapters discover safe account data, refresh their catalog, build a model, and report runtime context limits; unavailable refresh/build raises `AccountUnavailable(reason, state)`, mapped to `ResolutionError` by resolution or account state/reason by catalog) |

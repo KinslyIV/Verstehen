@@ -143,6 +143,6 @@ Outcomes are recorded in [decisions](../decisions.md) and [architecture](../arch
 - **Most of the side-chat complexity in `chat-handler.ts` is budget enforcement and subscription
   admission** (tentative/admitted id sets). Admission moves behind `ProviderPolicy`, and staging is
   removed: admission is checked before automatic input is added (see
-  [architecture](../architecture.md#subscription-admission-without-staging-decided)).
+  [providers](../architecture/providers.md)).
 - **Segment = "assistant output between learner inputs"** is a derived concept used by both the side
   chat and the UI. It is a named, documented function in the domain layer.

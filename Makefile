@@ -18,6 +18,7 @@ check-backend:
 	uv run --project backend python tools/check_comments.py
 	uv run --project backend python tools/check_migrations.py
 	uv run --project backend python tools/check_versions.py
+	uv run --project backend python tools/check_feature_map.py
 	uv run --project backend pytest -c backend/pyproject.toml -n auto
 
 check-frontend:
