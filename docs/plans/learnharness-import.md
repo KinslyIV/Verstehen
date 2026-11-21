@@ -129,8 +129,8 @@ Feature map entry: **LearnHarness import**.
 ## Checks on real data
 
 - **Dry run and import of the user's copy** (`/home/immata/lh-data/data`, read-only) into a
-  throwaway `VERSTEHEN_DATA_DIR`; the summary must show 2 sessions, 6 jobs, 123 propositions,
-  64 chains, 21 sources, no warnings except expected ones.
+  throwaway `VERSTEHEN_DATA_DIR`; the summary must show 2 sessions, 6 jobs, 123 propositions
+  (145 ledger lines), 63 chains (64 ledger lines), 21 sources, no warnings except expected ones.
 - **One real ChatGPT turn** (approved by the user): continue "Learning SIFT" on `gpt-6-astra` in
   that throwaway data dir and confirm the request with the converted reasoning is accepted. Needs a
   signed-in ChatGPT account; if Pixal has none, ask the user before running it on the laptop.
