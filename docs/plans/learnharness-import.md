@@ -56,7 +56,7 @@ is the LH message id (checked on the user's data: 28 of 28 rows).
 | `ChatRecord` `id`, `title`, `createdAt`, `updatedAt` | `sessions` row; `updated_at` kept from LH, so the sidebar order matches |
 | `kind: "practice"` | skipped and listed (Verstehen has no practice sessions yet) |
 | `settings.model` `{provider: "chatgpt", id}`, `thinkingLevel` | session `model_account` = the ChatGPT account, `model_id`, `thinking_level`. A provider without a Verstehen account leaves the session on the default |
-| `UserMessage` (string or text/image blocks) | `UserEntry` (images as attachments in `images/`, as Verstehen saves learner images) |
+| `UserMessage` (string or text/image blocks) | `UserEntry`; image blocks are dropped with one warning per session (`UserEntry` has no attachments; see decisions) |
 | `AssistantMessage` | `AssistantEntry`; `timestamp` ms → ISO UTC `created_at` |
 | `stopReason` `toolUse` / `stop` / `length` / `error` / `aborted` | `stop` / `stop` / `length` / `error` / `aborted`; `errorMessage` → `error_text` |
 | `provider` `chatgpt` | `openai-chatgpt` (`store/model_identity.py`); others kept as written |
@@ -67,14 +67,14 @@ is the LH message id (checked on the user's data: 28 of 28 rows).
 | `thinking` block, other providers | `ThinkingPart(signature=thinkingSignature)`, `redacted` kept |
 | `toolCall` | `ToolCallPart` (`id`, `name`, `arguments`) |
 | `ToolResultMessage` | `ToolResultEntry`; text blocks joined; image blocks saved to `images/` and referenced as Verstehen's `read` does; `details` converted to Verstehen's model for that tool (question answers → `QuestionAnswer`, `plan_init`, `probe_done`, job dispatch strings, …) and validated |
-| `custom` markers | `MarkerEntry` with the same `marker_type`, `content`, `display`; `details` converted to Verstehen's shape: `subagent-steer`/`subagent-abort` → `job_id`, `kind`, `tool_call_id`, `result`; `side-question*` → `thread_id`, `updates`; `plan-block` → `block`, `plan_call_id`; `probe-handoff` → Verstehen's handoff details |
+| `custom` markers | `MarkerEntry` with the same `marker_type`, `content`, `display`; `details` converted to Verstehen's shape: `subagent-steer`/`subagent-abort` → `job_id`, `kind`, `tool_call_id`, `result`; `side-question*` → `thread_id`, `updates`; `plan-block` and `probe-handoff` keep LH's camelCase keys, which Verstehen's consumers read |
 | `plugin-problem-submission` marker | refused (plugins are out of scope); not expected in practice |
 | job details `ui.inverted` | `artifact_views` row |
 | `tree` | not stored: Verstehen derives the plan from the newest `plan_init` result. Warn when the derived tree differs from LH's `tree` |
 | `sideChats` threads | `side_threads` (anchor `messageId` → `entry_id`, `blockText`) and `side_exchanges`; `open`, `quoteCitations`, `contextSnapshot` dropped |
 | `turns` steps | one `usage` row per step: `request_id` `<turn id>#<n>`, role `prober` before the `probe_done` result else `teacher`, account from the provider, created at the turn's `at` |
 | `extractions` (chat) and `sources.json` `extractions` | `usage` rows with roles `extractor` / `auditor`, `session_id` the chat or source id |
-| `jobs/*.json` | `jobs` rows. Missing `input` (older records) is rebuilt from the arguments of the tool call with that `toolCallId`; missing `delivery` is `result`/`delivered` when a steer marker for the job is in the chat, else pending. A `running` job becomes `error` ("Interrupted by the LearnHarness import"). Job `usage` → the job's usage JSON and its `usage` rows, as Verstehen's jobs record them |
+| `jobs/*.json` | `jobs` rows. Missing `input` (older records) is rebuilt from the arguments of the tool call with that `toolCallId`; a steer/abort marker for the job settles delivery as `delivered`; a real LH `pending` without a marker stays pending; no `delivery` and no marker leaves delivery unset. A `running` job becomes `error` ("Interrupted by the LearnHarness import"). Job `usage` → the job's usage JSON and its `usage` rows, as Verstehen's jobs record them |
 | `graph/nodes.jsonl` | `graph_nodes` (first line per id) and `graph_node_links` (later lines), order kept; `chatId` → `session_id` in provenance |
 | `graph/chains.jsonl`, `coverage.jsonl`, `sessions.jsonl` | `graph_chains`, `graph_coverage`, `graph_checkpoints` (`chatId` → `session_id`) |
 | `graph/sources.json` (map) | `graph_sources` (`filePath`, `importedAt`) |
