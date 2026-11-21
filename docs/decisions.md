@@ -5,6 +5,7 @@
 | Date | Decision | Reason |
 |---|---|---|
 | 2026-11-21 | **Orchestrator decision, for user review (reasoning resend, merge with dev):** The side-chat context budget check (`side_context_fits`) also estimates with the current model, so the same-model ChatGPT output floor applies there. | LH passes the same estimate model to its side-context budget (`chat-handler.ts:368,382`); the M6 decision keeps reasoning always counted. |
+| 2026-11-21 | **User decision (supersedes "open PRs against `main`"):** Task branches start from `dev` and open PRs into `dev`, where the user reviews the work and asks questions before merging. The user later merges `dev` into `main`. CI stays on `main` only (PRs into and pushes to `main`); `dev` has no CI and no branch protection. | PRs into `dev` exist for review, not gating; the `ci` check guards `main`. |
 | 2026-11-21 | **Orchestrator decision, for user review (review round 2):** Only catalog fetches are tied to the account's current fetch identity (a stale fetch's late failure has no side effects); model calls through `AccountModel` keep their existing behaviour with no credential-revision tracking. | Model calls already map a 401/403 to "needs sign-in" without checking which credentials were used; changing that is outside this change. A superseded catalog fetch reports a neutral "The ChatGPT model list changed. Try again." and leaves auth classification to the current fetch. |
 | 2026-11-21 | **Orchestrator decision, for user review (review round 1):** Extract now reports why a run failed. A refused start shows the response's `reason` under the button, and a batch that fails after launch with an account or resolution reason is kept in memory per session and returned as `failure_reason` in the session coverage until the next successful start. | The reason only reached the log, so a later refused start showed a generic "Try again.". Coverage already reloads on extraction changes, so no new status shape or endpoint is needed. |
 | 2026-11-21 | **User decision (ChatGPT model cache; supersedes LearnHarness's per-turn catalog refresh, `refreshConnectionCatalog`, chat-handler.ts:305):** Each ChatGPT account's model list is cached in memory in `ChatGPTAccountAdapter` for the sidecar's lifetime, with no TTL, and used everywhere: the picker, settings saves, `normalize`, `catalog_model`, and per-turn `resolve()`. Only a cache miss fetches; concurrent misses for one account share one fetch; only successful fetches are cached. An account's entry is dropped when it signs in again, is removed, is marked unavailable or needing sign-in, or a model call fails with an API/HTTP error. Opening Settings → Models forces one refresh (`GET /api/models?refresh=true`). | Each uncached fetch was a ChatGPT round trip (picker lag, about 4 calls to start a session, one per turn and per background role). Thinking levels are local anyway, and auth failures still surface on the model call through `AccountModel`. |
@@ -617,3 +618,17 @@ Probe, plan, teach, as in LH.
 - **Orchestrator decision, for user review:** browser download progress exposes the bundled
   driver's latest output line (bounded to 500 characters) and its percentage when available,
   rather than inventing byte counts the driver does not report.
+
+## Faster checks and linked environments (2026-11-21)
+
+- **User decision:** Makefile pytest commands use pytest-xdist `-n auto`; pytest `addopts` stays
+  unchanged so single-file runs do not spawn workers. ESLint uses its content cache and Prettier
+  uses its cache under `app/node_modules/.cache`. Pixal measurements: pytest 141s → 73s (757 tests,
+  all passing in parallel), ESLint ~90s → ~2s, and Prettier ~10s → ~2s for unchanged files.
+  Trade-off: type-aware ESLint rules (`svelte/no-unused-props`,
+  `svelte/require-store-reactive-access`) can miss a new error in an unchanged file caused by a
+  type change elsewhere. CI runs without a restored lint cache and is the backstop; deleting
+  `app/node_modules/.cache/eslint` forces a full lint.
+- **User decision:** Agents may run on the user's Arch laptop through a T3 linked environment
+  when Pixal is busy. The laptop's `~/.local/share/verstehen` holds real user data, so
+  `VERSTEHEN_DATA_DIR` must always point elsewhere.

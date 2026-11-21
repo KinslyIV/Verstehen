@@ -13,9 +13,10 @@ The port has two goals:
    can open, read, and understand.
 2. **Understand how LearnHarness works.** The docs in `docs/learnharness/` explain it.
 
-**You work on Pixal** (an Ubuntu home server). The app itself runs on the user's Arch laptop: you
-build it with `make app` (inside an `archlinux` container) and the user installs it there. Use
-Playwright's own Chromium for `make verify`.
+**You usually work on Pixal** (an Ubuntu home server); when it is busy, agents may use the user's
+Arch laptop through a T3 linked environment. Always set `VERSTEHEN_DATA_DIR` elsewhere: the laptop's
+`~/.local/share/verstehen` holds real user data. Build the app with `make app` (inside an `archlinux`
+container); the user installs it on the laptop. Use Playwright's own Chromium for `make verify`.
 
 Read [`docs/status.md`](docs/status.md) first: it says where the project is and what's next. Then
 follow the reading order in the [README](README.md).
@@ -163,8 +164,8 @@ Every change comes with a way to prove it works, and you run it before you say i
 - **Never read, print, or commit credentials**: `credentials.json`, the Claude Code login, the
   ChatGPT tokens.
 - **Git during a run:** work on the task's own branch; commit with `make check` passing, push the
-  branch, and open a PR against `main`. Never commit or push to `main`, force-push, or merge. The
-  user merges.
+  branch, and open a PR against `dev`. Never commit or push to `dev` or `main`, force-push, or
+  merge. The user reviews and merges into `dev`, and later merges `dev` into `main`.
 
 ## When you finish a piece of work
 

@@ -1,6 +1,8 @@
 # Development workflow
 
-How work goes from an idea to merged code. Agents run on Pixal, the user works in T3 Code.
+How work goes from an idea to merged code. Agents usually run on Pixal, or on the user's Arch
+laptop through a T3 linked environment when Pixal is busy; the user works in T3 Code. Always point
+`VERSTEHEN_DATA_DIR` elsewhere: the laptop's `~/.local/share/verstehen` holds real user data.
 
 ## Roles
 
@@ -24,7 +26,7 @@ service tier. The parent model settings are unchanged.
 
 ## 2. Implement (autonomous, no questions to the user)
 
-- **Each task runs on its own branch** off `main`, in its own T3 worktree. The implementer commits
+- **Each task runs on its own branch** off `dev`, in its own T3 worktree. The implementer commits
   as it goes, and `make check` must pass before every commit.
 - While editing, run `make check-backend` or `make check-frontend` for the affected area and batch
   affected UI flows with `make verify FLOW='flow-a flow-b'`. `make verify-run FLOW='flow-a flow-b'`
@@ -42,8 +44,8 @@ service tier. The parent model settings are unchanged.
   and the docs most closely, and the most cautious option when unsure. Each decision goes into
   [decisions](decisions.md) marked **"orchestrator decision, for user review"**, and into the final
   report.
-- Agents may push the task branch and open a PR against `main`. Never commit or push to `main`,
-  force-push, or merge; the user merges. No real-model calls (the user's subscriptions) except
+- Agents may push the task branch and open a PR against `dev`. Never commit or push to `dev` or
+  `main`, force-push, or merge; the user merges. No real-model calls (the user's subscriptions) except
   `make verify-live`, no touching the user's real data, no credentials. Anything that would need
   one of these is skipped and reported.
 
@@ -74,9 +76,11 @@ service tier. The parent model settings are unchanged.
 
 ## 4. Report (in the T3 Code thread)
 
-Push the task branch and open a PR against `main`, linking it in the report. The `ci` check
-(`make check` and `make verify` on GitHub-hosted runners) must be green before the user merges.
-`make verify-live` still runs locally before every merge because it needs the user's Claude login.
+Push the task branch and open a PR against `dev`, linking it in the report. The PR is for the
+user's review and questions; it has no CI, so the local checks above are the evidence. The user
+merges into `dev`, and later opens `dev` → `main`, where the `ci` check (`make check` and
+`make verify` on GitHub-hosted runners) must be green. `make verify-live` still runs locally
+before every merge because it needs the user's Claude login.
 
 When the run ends, the orchestrator posts one report in the thread. It is a **compact, meaningful
 summary of what the user needs to know, not a log** of what the agents did:

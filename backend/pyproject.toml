@@ -27,6 +27,7 @@ build-backend = "uv_build"
 [dependency-groups]
 dev = [
     "pytest",
+    "pytest-xdist",
     "ruff",
     "pyrefly",
     "import-linter",
