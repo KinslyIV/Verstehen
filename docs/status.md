@@ -1,35 +1,28 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-21 (reasoning resend, slim verification integration).
+> PRs. Last update: 2026-11-21 (decision queue cleared after PR #3–#5 merges).
 
 ## Where we are
 
 M1–M9 are merged into `main`: the teaching loop, real providers, question tools, compaction,
 background jobs, side chat, and the knowledge graph, plus CI and tag-driven Arch releases. `dev`
-also holds the ChatGPT model-list cache, docs redesign, and slim verification (PR #5). See the
-[roadmap](roadmap.md).
+also holds the ChatGPT model-list cache, docs redesign (PR #4), slim verification (PR #5), and
+ChatGPT reasoning resend (PR #3). See the [roadmap](roadmap.md).
 
-On `reasoning-resend` (PR #3), saved thinking keeps its Responses item id and requested provider
-and model. Thinking is replayed only to the same model; signed ChatGPT reasoning gets the saved
-output-token floor in compaction and side-chat delivery estimates. The docs-redesign merge is
-resolved into the area docs, grouped feature map, and decision review queue. Full fake-model
-verification passes all 72 cases after fixing the rename/delete fixture race. Live Claude
-verification was rejected by the five-hour subscription quota (reset: 17:00 UTC, 2026-11-21);
-live ChatGPT reasoning acceptance passes after using a medium-effort, multi-step fixture. Verification evidence is in the PR.
+Full 72-case fake-model verification and live ChatGPT reasoning acceptance passed on PR #3. Live
+Claude verification (`make verify-live`) was blocked by the five-hour subscription quota (reset at
+17:00 UTC on 2026-11-21) and still needs to be rerun. All six orchestrator decisions from PR #3 and
+PR #5 were reviewed and kept on 2026-11-21.
 
 ## Next
 
-1. Rerun `make verify-live` once the Claude subscription quota resets.
-2. The user reviews the reasoning-resend decisions and merges PR #3 into `dev`, then `dev` into
-   `main`. Fix the [known flaky flows](roadmap.md#known-gaps) before merge.
+1. Rerun `make verify-live` now that the Claude subscription quota has reset.
+2. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
+   zero-retry CI).
 3. Plan M10 (practice sessions).
 
 ## Open questions
 
-Reasoning-resend and slimmer-verification orchestrator decisions await
-[your review](decisions.md#waiting-for-your-review):
-requested-provider stamping, the side-chat reasoning floor, the install-link assertion, and
-the shared verification worker policy. The rename/delete fixture also now waits for a settled
-opening reply before testing deletion, and the live reasoning fixture uses a medium-effort
-multi-step problem. The M1–M9 queue was reviewed on 2026-11-21.
+_None._ The M1–M9, slim-verification, and reasoning-resend decision queues were reviewed and
+cleared on 2026-11-21.
