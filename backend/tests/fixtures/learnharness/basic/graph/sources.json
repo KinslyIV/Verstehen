@@ -1,0 +1,44 @@
+{
+ "src_fx": {
+  "id": "src_fx",
+  "filePath": "notes/gradients.md",
+  "importedAt": "2026-09-21T14:32:20.000Z",
+  "extractions": [
+   {
+    "startedAt": 1790001140000,
+    "at": "2026-09-21T14:32:20.000Z",
+    "durationMs": 3000,
+    "stats": {
+     "nodes": 1,
+     "chains": 0
+    },
+    "stages": {
+     "extractor": {
+      "model": "chatgpt:gpt-6-luna",
+      "steps": [
+       {
+        "inputTokens": 60,
+        "outputTokens": 6,
+        "cacheReadTokens": 5,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 1
+       }
+      ]
+     },
+     "auditor": {
+      "model": "chatgpt:gpt-6-luna",
+      "steps": [
+       {
+        "inputTokens": 30,
+        "outputTokens": 3,
+        "cacheReadTokens": 5,
+        "cacheWriteTokens": 0,
+        "reasoningTokens": 1
+       }
+      ]
+     }
+    }
+   }
+  ]
+ }
+}

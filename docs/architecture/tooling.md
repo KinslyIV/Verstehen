@@ -19,7 +19,7 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
 | `tools/` | custom checks, each tested in `tools/tests/`: `check_comments.py` (≤ 3 lines per comment block), `check_migrations.py` (migration lock), `check_versions.py` (the three app versions agree), `check_feature_map.py` (every verify flow is in the feature map), `api_types.py` (generated types are fresh), `verify_build.py` (the SPA build guard), `dev.py` (`make dev`) |
 | `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | lint, banned APIs per package, types, import-linter layers, pytest (xdist `-n auto` from the Makefile) |
 | `app/eslint.config.*`, Prettier, Vitest | frontend lint with boundaries, format, unit and browser-mode component tests |
-| `backend/src/verstehen/cli.py`, `config.py` | the sidecar entry point (`serve`, logging, the port handshake) and environment settings |
+| `backend/src/verstehen/cli.py`, `config.py` | the sidecar entry point (`serve`, logging, the port handshake), the `import-learnharness` subcommand, and environment settings |
 | `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, Playwright and an offline headless page, the Claude CLI |
 | `backend/src/verstehen/providers/fake.py`, `app/verify/scripts/*.json` | the scripted fake model and its reply scripts |
 | `app/verify/*.flow.ts`, `fixtures.ts`, helpers | fake-model Playwright flows; `playwright.config.ts` |

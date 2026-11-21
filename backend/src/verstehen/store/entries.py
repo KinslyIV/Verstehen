@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 from typing import Annotated, List, Literal
 from uuid import uuid4
 
+from aiosqlite import Connection
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from verstehen.store.database import Database
@@ -125,6 +126,27 @@ def delivered_job_id(entry: Entry) -> str | None:
     return None
 
 
+async def insert_entry(connection: Connection, session_id: str, entry: Entry) -> bool:
+    """Append the entry at the session's next sequence number; false when its id exists."""
+    cursor = await connection.execute(
+        "INSERT INTO entries (session_id, seq, entry_id, kind, payload, created_at) "
+        "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ? "
+        "FROM entries WHERE session_id = ? "
+        "ON CONFLICT(entry_id) DO NOTHING",
+        (
+            session_id,
+            entry.entry_id,
+            entry.kind,
+            ENTRY.dump_json(entry).decode(),
+            entry.created_at.isoformat(),
+            session_id,
+        ),
+    )
+    inserted = cursor.rowcount > 0
+    await cursor.close()
+    return inserted
+
+
 class EntriesStore:
     """Append validated entries in session order; repeated entry ids are harmless."""
 
@@ -144,22 +166,7 @@ class EntriesStore:
         async with self.database.transaction() as connection:
             inserted = False
             for entry in validated:
-                cursor = await connection.execute(
-                    "INSERT INTO entries (session_id, seq, entry_id, kind, payload, created_at) "
-                    "SELECT ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ? "
-                    "FROM entries WHERE session_id = ? "
-                    "ON CONFLICT(entry_id) DO NOTHING",
-                    (
-                        session_id,
-                        entry.entry_id,
-                        entry.kind,
-                        ENTRY.dump_json(entry).decode(),
-                        entry.created_at.isoformat(),
-                        session_id,
-                    ),
-                )
-                inserted = inserted or cursor.rowcount > 0
-                await cursor.close()
+                inserted = await insert_entry(connection, session_id, entry) or inserted
                 job_id = delivered_job_id(entry)
                 if job_id is not None:
                     await mark_delivered(connection, job_id)

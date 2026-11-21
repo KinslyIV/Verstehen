@@ -1,0 +1,10 @@
+{
+ "id": "job_fx_pdf",
+ "kind": "pdf",
+ "chatId": "chat_fx_teach",
+ "toolCallId": "call_pdf",
+ "status": "running",
+ "createdAt": "2026-09-21T14:23:20.000Z",
+ "updatedAt": "2026-09-21T14:28:20.000Z",
+ "activity": "reading page 2"
+}

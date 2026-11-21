@@ -22,6 +22,11 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md).
 | `side_chats.py` | `SideChatsStore`: threads and exchanges |
 | `graph.py` | `GraphStore`: the graph ledgers; every mutation advances the revision and notifies after commit |
 | `usage.py` | `UsageStore`: one row per billed call |
+| `replace.py`, `backup.py` | `replace_contents` (delete every session, usage row, and graph row, then write a whole `StoreContents`, in one transaction) and `backup_database` (SQLite's backup API); used only by the LearnHarness import |
+
+The insert statements shared with the LearnHarness import live in each store module as functions
+over a connection (`insert_entry`, `insert_session`, `insert_job`, `insert_side_thread`,
+`insert_side_exchange`, `set_inverted`, `insert_usage`); the stores call the same functions.
 
 ## Tables
 
@@ -52,7 +57,78 @@ browsers in `<data dir>/browsers/`.
   acknowledgement.
 - **Applied migrations never change.** Add a new numbered file and run `make lock-migrations`.
 - **A setting is never stored as `null`;** a missing setting reads as its typed default.
-- **No LearnHarness data import.** Verstehen starts empty, so formats need not match LH's.
+
+## Importing from LearnHarness
+
+`verstehen-sidecar import-learnharness <folder> [--dry-run]` (the installed binary is
+`/usr/lib/verstehen/verstehen-sidecar`; in development `verstehen import-learnharness`) replaces
+Verstehen's sessions and graph with a LearnHarness data folder. It is one-way, runs while the app
+is closed, and uses the data directory from `VERSTEHEN_DATA_DIR` or the default. The code is
+`backend/src/verstehen/lh_import/`: `records.py` (strict Pydantic models of LH's files; any unknown
+field is refused), `reader.py` (reads the folder; names the file in every refusal), `entries.py`
+and `convert.py` (LH to Verstehen), `run.py` (summary, confirmation, backup, replace, report).
+
+**Run sequence.**
+
+1. **Read and validate everything.** An unknown shape, a chat `version` above 2, or a graph
+   `format.json` above 1 stops the run with the file name; nothing is written. Corrupt JSONL
+   lines are skipped (as LH does) and listed.
+2. **Print a summary:** sessions, messages, jobs, side-chat threads, propositions, chains,
+   sources, coverage rows, usage rows, and what is skipped and any warnings. `--dry-run` stops here.
+3. **Confirm.** The prompt says to close Verstehen first and how many existing sessions and
+   propositions will be deleted; only the typed word `replace` continues.
+4. **Back up** to `<data dir>/backups/before-learnharness-import-<UTC time>/`: the database (a
+   consistent copy through SQLite's backup API) and `images/`. A failed backup aborts. Backups are
+   never deleted automatically.
+5. **Replace in one transaction:** every session (with its entries, jobs, side chats, and artifact
+   views), the usage table, and every graph table are deleted and rewritten; settings, provider
+   settings, and ChatGPT accounts stay. Image files are written before the commit; they are
+   content-addressed, so an aborted run leaves only harmless extra files.
+6. **Report** what was imported, the backup path, and the restore commands.
+
+**What is imported.** Ids are kept as LH wrote them (sessions, messages as entry ids, jobs, side
+threads, nodes, chains, sources), so graph provenance and coverage stay valid: Verstehen's
+coverage fingerprint equals LH's when the entry id is the LH message id, so imported messages are
+not extracted again. `updated_at` is kept, so the sidebar order matches.
+
+- **Messages** become entries: `toolUse` becomes `stop`; provider `chatgpt` becomes
+  `openai-chatgpt`; text signatures are dropped. ChatGPT thinking (`thinkingSignature` is a JSON
+  reasoning item) becomes `ThinkingPart(id, signature=encrypted_content)`, which Verstehen replays
+  to the same provider and model; a reasoning item without encrypted content is kept as text only.
+- **Tool results** use Verstehen's shapes: question answers become `QuestionAnswer` (snake_case,
+  validated; `optionOrder` and answer `images` are dropped), `plan_init` keeps its validated tree,
+  job tool results carry no details, `show_image` and `read` images are saved to `images/` and
+  referenced as Verstehen's tools do. Markers use Verstehen's keys (`job_id`, `tool_call_id`,
+  `thread_id`, compaction ids); a plan block keeps its `planCallId` and `block`.
+- **Jobs** keep their ids. A missing `input` is rebuilt from the tool call's arguments; a missing
+  `delivery` is `result`/`delivered` when the chat holds the job's steer marker, otherwise
+  `result`/`pending` for a finished job. A job still `running` becomes `error` ("Interrupted by
+  the LearnHarness import"), or `done` if it already has a result. An invert switch becomes an
+  artifact view.
+- **Usage rows** come from the chat's `turns` (role `prober` before the `probe_done` result, else
+  `teacher`), its `extractions` and the sources' `extractions` (roles `extractor` and `auditor`),
+  and job usage (one row per recorded call, or one total row). The account is the one signed-in
+  ChatGPT account, `chatgpt:learnharness-import` when there is none, `claude_code`, or the
+  provider name as written.
+- **The session's model** follows LH's chat settings when the provider is `chatgpt` and exactly
+  one ChatGPT account is signed in; otherwise the session uses the default and a warning says so.
+- **The graph**: nodes (later lines become links), chains, coverage, checkpoints, sources, source
+  folders and placements, and positions, written through `write_ledger`; the revision is 1.
+- **Warnings** also cover learner-message images (Verstehen has no learner attachments), a derived
+  plan that differs from LH's saved `tree`, jobs of sessions that were not imported, and graph
+  rows that name sessions that were not imported.
+
+**Skipped:** practice sessions (listed by title), `settings.json`, `graph/render-settings.json`,
+`prompts/`, `themes/`, `plugins/`, `core-plugin-data/`, `debug/`, and `auth.json` (never read).
+Plugin problem submissions and plugin jobs are refused.
+
+**Restore.** Close Verstehen, then copy the backup back; the command prints the exact lines:
+
+```
+cp <backup>/verstehen.db <data dir>/verstehen.db
+rm -f <data dir>/verstehen.db-wal <data dir>/verstehen.db-shm
+cp -r <backup>/images/. <data dir>/images/
+```
 
 ## Traps found in M1–M9
 

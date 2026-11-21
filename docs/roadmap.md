@@ -16,7 +16,7 @@ step and its open questions are in [status](status.md); how each area works is i
 - **Deferred:** the plugin API (plugin questions, problems, workers, jobs, the knowledge picker) and
   flashcards.
 - **Excluded:** dictation (speech to text).
-- **No LearnHarness data import.** Verstehen starts with an empty graph and no sessions.
+- **LearnHarness data import** is a one-way command-line replace; see [store](architecture/store.md#importing-from-learnharness).
 
 ## Done
 
@@ -50,6 +50,9 @@ All of this is merged into `main`.
 - **M9 Knowledge graph.** Graph ledgers and read-time merging, the extractor → auditor → merge
   pipeline, coverage, notes imports, deletion modes, the `/graph` page with LH's canvas renderer,
   the chains table, picks, the coverage ring, and Settings → Graph.
+- **LearnHarness import.** `verstehen-sidecar import-learnharness <folder> [--dry-run]` replaces
+  every session, job, usage row, and graph table with a LearnHarness data folder, after a backup
+  and a typed `replace`; ChatGPT reasoning is converted so it can be replayed.
 - **Since M9:** CI on GitHub-hosted runners and tag-driven Arch releases (AGPL-3.0-only), the
   Claude Code download removed in favour of an install link, faster checks, and the
   docs redesign.

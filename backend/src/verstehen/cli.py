@@ -7,6 +7,7 @@ import socket
 import sys
 import threading
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import uvicorn
 
@@ -78,10 +79,29 @@ def main() -> None:
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-check", action="store_true")
-    if parser.parse_args().self_check:
+    commands = parser.add_subparsers(dest="command")
+    importing = commands.add_parser(
+        "import-learnharness",
+        help="replace all sessions and the graph with a LearnHarness data folder",
+    )
+    importing.add_argument("folder", type=Path)
+    importing.add_argument("--dry-run", action="store_true")
+    arguments = parser.parse_args()
+    if arguments.self_check:
         from verstehen.self_check import run_self_check
 
         raise SystemExit(0 if run_self_check() else 1)
+    if arguments.command == "import-learnharness":
+        from verstehen.lh_import.run import import_learnharness
+
+        try:
+            settings = load_settings()
+        except (ValueError, OSError) as error:
+            print(str(error), file=sys.stderr)
+            raise SystemExit(1) from None
+        raise SystemExit(
+            import_learnharness(arguments.folder, settings, dry_run=arguments.dry_run)
+        )
     try:
         settings = load_settings()
         configure_logging(settings)

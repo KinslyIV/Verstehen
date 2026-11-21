@@ -3,6 +3,7 @@ from datetime import UTC, datetime
 from typing import List, Literal
 from uuid import uuid4
 
+from aiosqlite import Connection
 from pydantic import BaseModel, Field
 
 from verstehen.store.database import Database
@@ -34,6 +35,22 @@ class Session(BaseModel):
 IMAGE_HASH = re.compile(r"[0-9a-f]{64}")
 
 
+async def insert_session(connection: Connection, session: Session) -> None:
+    await connection.execute(
+        "INSERT INTO sessions (id, title, kind, created_at, updated_at, model_account, model_id, thinking_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            session.id,
+            session.title,
+            session.kind,
+            session.created_at.isoformat(),
+            session.updated_at.isoformat(),
+            session.model_account,
+            session.model_id,
+            session.thinking_level,
+        ),
+    )
+
+
 class SessionsStore:
     def __init__(self, database: Database):
         self.database = database
@@ -46,19 +63,7 @@ class SessionsStore:
             thinking_level=pick.thinking_level if pick else None,
         )
         async with self.database.transaction() as connection:
-            await connection.execute(
-                "INSERT INTO sessions (id, title, kind, created_at, updated_at, model_account, model_id, thinking_level) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                (
-                    session.id,
-                    session.title,
-                    session.kind,
-                    session.created_at.isoformat(),
-                    session.updated_at.isoformat(),
-                    session.model_account,
-                    session.model_id,
-                    session.thinking_level,
-                ),
-            )
+            await insert_session(connection, session)
         return session
 
     async def get(self, session_id: str) -> Session | None:
