@@ -1700,6 +1700,8 @@ export interface components {
 			running: boolean;
 			/** Last Folded At */
 			last_folded_at: string | null;
+			/** Failure Reason */
+			failure_reason?: string | null;
 		};
 		/** SessionDetail */
 		SessionDetail: {
@@ -4196,7 +4198,9 @@ export interface operations {
 	};
 	get_models_api_models_get: {
 		parameters: {
-			query?: never;
+			query?: {
+				refresh?: boolean;
+			};
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -4219,6 +4223,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 			/** @description Service Unavailable */

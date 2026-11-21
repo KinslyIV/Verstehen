@@ -44,8 +44,9 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
 - **Data and secrets.** Never touch the user's real data in `~/.local/share/verstehen`: always set
   `VERSTEHEN_DATA_DIR` elsewhere. Never read, print, or commit credentials (`credentials.json`, the
   Claude Code login, the ChatGPT tokens).
-- **Git.** Work on the task's branch; commit with `make check` passing; push the branch and open a
-  PR against `main`. Never commit or push to `main`, force-push, or merge: the user merges.
+- **Git.** Work on the task's branch, started from `dev`; commit with `make check` passing; push the
+  branch and open a PR into `dev`. Never commit or push to `dev` or `main`, force-push, or merge:
+  the user merges into `dev`, and later merges `dev` into `main`.
 - **Real models use the user's subscriptions.** The only standing exception is `make verify-live`
   (Claude Code, `haiku`). Run any other real-model call only when the user asks.
 

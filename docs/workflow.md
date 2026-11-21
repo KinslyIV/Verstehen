@@ -36,7 +36,7 @@ place that names the roles and models; AGENTS.md and plans link here.
 
 ## 2. Implement (autonomous, no questions to the user)
 
-- **Branches.** One branch per milestone, off `main`, with its tasks stacked on it in order.
+- **Branches.** One branch per milestone, off `dev`, with its tasks stacked on it in order.
   Concurrent independent tasks each get their own branch and T3-bound worktree. Delete a branch
   after it merges.
 - **Worktrees.** Bind threads through T3: `t3_thread_launch` with an explicit `workspaceStrategy`
@@ -52,7 +52,7 @@ place that names the roles and models; AGENTS.md and plans link here.
 - **A flake is a bug.** A test or flow that fails and then passes on rerun is recorded in the
   [roadmap](roadmap.md#known-gaps) and fixed before merge. Never pass a change on a rerun, and
   never weaken an assertion or timeout to make it pass.
-- **Not allowed during a run:** pushing to `main`, force-pushing, merging, real-model calls other
+- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging, real-model calls other
   than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
   and reported.
 
@@ -72,10 +72,12 @@ place that names the roles and models; AGENTS.md and plans link here.
 
 ## 4. Report and merge
 
-- Push the branch and open a PR against `main`. **Evidence goes in the PR**: the commands, the
+- Push the branch and open a PR into `dev`. **Evidence goes in the PR**: the commands, the
   revision, the flows, and the screenshots and traces looked at. Docs hold only the current state.
-- The `ci` check (`make check` and `make verify` on GitHub) must be green. `make verify-live`, when
-  the verify skill requires it, runs locally because it needs the user's Claude login.
+- PRs into `dev` are for the user's review and questions; `dev` has no CI, so the local checks are
+  the evidence. The user merges into `dev`, and later opens `dev` → `main`, where the `ci` check
+  (`make check` and `make verify` on GitHub) must be green. `make verify-live`, when the verify
+  skill requires it, runs locally because it needs the user's Claude login.
 - **The user reviews the milestone's orchestrator decisions before merging**, from the review
   queue in [decisions](decisions.md#waiting-for-your-review).
 - The report in the T3 thread is a compact summary, not a log:

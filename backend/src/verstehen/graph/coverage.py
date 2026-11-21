@@ -45,6 +45,7 @@ class SessionCoverage(BaseModel):
     uncovered_tokens: int
     running: bool
     last_folded_at: str | None
+    failure_reason: str | None = None
 
 
 def coverage_of(

@@ -6,7 +6,8 @@
 ## Where we are
 
 M1–M9 are merged into `main`: the full teaching loop, real providers, question tools, compaction,
-background jobs, side chat, and the knowledge graph, plus CI and tag-driven Arch releases. See the
+background jobs, side chat, and the knowledge graph, plus CI and tag-driven Arch releases. `dev`
+also holds the ChatGPT model-list cache. See the
 [roadmap](roadmap.md) for what each milestone built and what is left.
 
 The docs were redesigned on `docs-redesign`: the architecture is written from the current code with
@@ -17,7 +18,8 @@ the same areas and checked by `make check`, and the workflow has the new roles a
 
 1. **Review the decision queue** in [decisions](decisions.md#waiting-for-your-review): the real
    choices, the bulk-accept list, and the proposed removals.
-2. **Merge `chatgpt-catalog-cache` and `reasoning-resend`** through `dev`, adapting their doc edits.
+2. **Merge `reasoning-resend` into `dev`** (`chatgpt-catalog-cache` is already in `dev`), then
+   `dev` into `main`.
 3. **Plan M10** (practice sessions).
 
 ## Open questions

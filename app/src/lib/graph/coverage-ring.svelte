@@ -112,6 +112,7 @@
 					busy={coverage.running}
 					complete={coverage.uncovered_tokens === 0 && coverage.uncovered_count === 0}
 					testid="coverage-extract"
+					failure={coverage.failure_reason}
 					class="mt-3 w-full"
 					onstarted={onextract}
 				/>

@@ -347,6 +347,7 @@ export class SessionController {
 			this.automaticContinuationBlocked = false;
 		const text = this.draft;
 		if (input.type === 'text') this.draft = '';
+		const failureBeforeRetry = input.type === 'retry' ? this.error : null;
 		this.error = null;
 		this.notice = null;
 		this.busy = true;
@@ -387,9 +388,11 @@ export class SessionController {
 		} catch (error) {
 			if (!accepted && input.type === 'text') this.draft = text;
 			this.automaticContinuationBlocked = true;
-			if (error instanceof ApiError && error.code === 'models_not_configured')
+			if (error instanceof ApiError && error.code === 'models_not_configured') {
 				this.setupOpen = true;
-			else if (error instanceof ApiError && error.code === 'model_unavailable') {
+				this.error = failureBeforeRetry;
+			} else if (error instanceof ApiError && error.code === 'model_unavailable') {
+				this.error = failureBeforeRetry;
 				this.notice = error.reason ?? error.message;
 				this.modelMenuOpen = true;
 			} else this.fail(error);

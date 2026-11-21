@@ -56,9 +56,9 @@ All of this is merged into `main`.
 
 ## Next
 
-1. **Merge the two waiting branches.** `chatgpt-catalog-cache` (ChatGPT model lists cached per
-   account) and `reasoning-resend` (ChatGPT encrypted reasoning resent to the same model) go
-   through a `dev` branch first and adapt their doc edits to this structure.
+1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account)
+   is in `dev`; `reasoning-resend` (ChatGPT encrypted reasoning resent to the same model) still has
+   to merge into `dev`. Then `dev` merges into `main`.
 2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
    sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
    lesson document.

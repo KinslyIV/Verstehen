@@ -19,7 +19,7 @@ Backend, `backend/src/verstehen/providers/`:
 | `service.py` | `ProviderService`: settings, the model catalog, Set as default |
 | `usage.py` | `UsageModel`: wraps every request, saves a `usage` row per call through `UsageStore` |
 | `claude_code/` | `ClaudeCodeAccountAdapter` and binary discovery (`binary.py`), plus the vendored `ClaudeCodeModel` (`model.py`, `_transport.py`, `_request.py`; see `VENDORED.md`) |
-| `chatgpt/` | `ChatGPTAccountAdapter`, the browser sign-in (`ChatGPTSignInService`), the credential source |
+| `chatgpt/` | `ChatGPTAccountAdapter` (with each account's model list cached for the sidecar's lifetime), the browser sign-in (`ChatGPTSignInService`), the credential source |
 | `credentials.py` | `CredentialsStore`: the private atomic `<data dir>/credentials.json` (0600) for ChatGPT tokens and search keys |
 | `search_keys.py` | Tavily and Brave key status and storage |
 | `fake.py` | `FakeAccountAdapter` and the scripted streaming model, enabled only by `VERSTEHEN_FAKE_MODEL_SCRIPT` |
@@ -59,7 +59,10 @@ shortcuts, which target a pick writes), `models/picks.ts` (pure selection rules)
   login is personal use only; Verstehen is never distributed with it.
 - **ChatGPT** uses Pydantic AI's `openai-chatgpt` provider: browser OAuth on the loopback port
   1455, one pending sign-in at a time, five-minute expiry. Models come from the account's
-  `/v1/models`, kept only when Pydantic AI's model data knows them. Each account has its own
+  `/v1/models`, kept only when Pydantic AI's model data knows them. The list is cached per account
+  (one shared fetch per miss, failures not cached) and used by the picker and every resolution;
+  sign-in, removal, unavailability, or a model-call API error drops it, and opening Settings →
+  Models forces one refresh (`GET /api/models?refresh=true`). Each account has its own
   refresh lock; the dispatch hook checks the account still exists, has consent, and wasn't
   replaced.
 - **Context limit:** the runtime report, then Pydantic AI's model data, else unknown. The user never
