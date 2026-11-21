@@ -20,8 +20,9 @@ When to run what:
   fake-model flows batched in one `make verify FLOW='…'` (or `make verify-run` after an unchanged
   build).
 - **Before every commit:** full `make check`.
-- **Before merging UI or runtime work, and after shared UI or runtime changes:** full `make verify`
-  and `make verify-live`.
+- **Once per milestone, at its end, before the milestone's PR into `dev`:** full `make verify` and
+  `make verify-live`. Not per task, not per merge into `dev`.
+- **On `dev` → `main`:** CI runs `make check` and `make verify`.
 - **Docs-only and offline tooling work:** `make check`; no UI flows (CI still runs `make verify`).
 - **Packaging changes:** `make app`; other changes don't need it.
 

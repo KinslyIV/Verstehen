@@ -28,8 +28,4 @@ the same areas and checked by `make check`, and the workflow has the new roles a
   to zero and fix the flaky flows first? (User decision; see the [roadmap](roadmap.md#known-gaps).)
 - **Automatic input is saved before dispatch**, unlike the 2026-11-18 "no subscription staging"
   decision says. Change the code or the decision? ([roadmap](roadmap.md#known-gaps))
-- **When must UI verification run?** The 2026-11-19 validation decision asks for full `make verify`
-  before merging *UI work* and after shared UI or runtime changes; the 2026-11-20 live-test
-  decision asks for `make verify` and `make verify-live` *before every merge*. The verify skill
-  follows the narrower reading for docs-only and offline tooling work. Which one holds?
 - **Merged local branches:** about 40 are merged into `main`. Delete them? (Waiting for the user.)
