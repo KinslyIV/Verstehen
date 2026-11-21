@@ -24,4 +24,4 @@ the same areas and checked by `make check`, and the workflow has the new roles a
 
 ## Open questions
 
-- **Merged local branches:** about 40 are merged into `main`. Delete them? (Waiting for the user.)
+_None besides the decision review queue._
