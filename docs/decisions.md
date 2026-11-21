@@ -21,6 +21,13 @@ _Nothing is waiting._
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
 - **Compaction is always Verstehen's own**, never provider-native.
 
+## Decided, not yet implemented
+
+- **LearnHarness import** ([plan](plans/learnharness-import.md)): a command-line import that replaces
+  all Verstehen sessions, jobs, usage, and graph data with a LearnHarness data folder, after a
+  backup kept forever and a typed `replace`. LH ids are kept. Practice sessions, settings, prompt
+  overrides, themes, and plugins are skipped. ChatGPT reasoning is converted so it can be replayed.
+
 ## Deliberate differences from LearnHarness
 
 ### Session and turns
