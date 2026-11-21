@@ -1,4 +1,7 @@
+import sqlite3
+from contextlib import closing
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from verstehen.store.artifact_views import set_inverted
 from verstehen.store.database import Database
@@ -52,13 +55,29 @@ class ContentCounts:
     propositions: int
 
 
-async def count_contents(database: Database) -> ContentCounts:
-    async with database.read() as connection:
-        async with connection.execute("SELECT COUNT(*) FROM sessions") as cursor:
-            sessions = (await cursor.fetchone() or (0,))[0]
-        async with connection.execute("SELECT COUNT(*) FROM graph_nodes") as cursor:
-            propositions = (await cursor.fetchone() or (0,))[0]
-    return ContentCounts(sessions, propositions)
+def count_contents(database_path: Path) -> ContentCounts:
+    """Count what a replacement would delete, reading the file as it is: no migration, no writes."""
+    if not database_path.is_file():
+        return ContentCounts(0, 0)
+    try:
+        with closing(
+            sqlite3.connect(f"{database_path.resolve().as_uri()}?mode=ro", uri=True)
+        ) as connection:
+            tables = {
+                row[0]
+                for row in connection.execute(
+                    "SELECT name FROM sqlite_master WHERE type = 'table'"
+                )
+            }
+            counts = [
+                connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
+                if table in tables
+                else 0
+                for table in ("sessions", "graph_nodes")
+            ]
+    except sqlite3.Error as error:
+        raise OSError(f"Could not read {database_path}: {error}") from error
+    return ContentCounts(*counts)
 
 
 async def replace_contents(database: Database, contents: StoreContents) -> None:

@@ -70,17 +70,20 @@ and `convert.py` (LH to Verstehen), `run.py` (summary, confirmation, backup, rep
 
 **Run sequence.**
 
-1. **Read and validate everything.** An unknown shape, a chat `version` above 2, or a graph
-   `format.json` above 1 stops the run with the file name; nothing is written. Corrupt JSONL
-   lines are skipped (as LH does) and listed.
+1. **Read and validate everything.** An unknown shape (including the plan `tree`), a time without
+   a zone, a chat `version` above 2, or a graph `format.json` above 1 stops the run with the file
+   and field; nothing is written. JSONL files are split on line feeds only, and corrupt lines
+   are skipped (as LH does) and listed.
 2. **Print a summary:** sessions, messages, jobs, side-chat threads, propositions, chains,
    sources, coverage rows, usage rows, and what is skipped and any warnings. `--dry-run` stops here.
 3. **Confirm.** The prompt says to close Verstehen first and how many existing sessions and
-   propositions will be deleted; only the typed word `replace` continues.
-4. **Back up** to `<data dir>/backups/before-learnharness-import-<UTC time>/`: the database (a
-   consistent copy through SQLite's backup API) and `images/`. A failed backup aborts. Backups are
-   never deleted automatically.
-5. **Replace in one transaction:** every session (with its entries, jobs, side chats, and artifact
+   propositions will be deleted; only the typed word `replace` continues. Until the backup is
+   written the destination is only read: no directory, database, or migration is created, and the
+   counts come from a read-only look at the file as it is.
+4. **Back up** to `<data dir>/backups/before-learnharness-import-<UTC time>/`: the database as it
+   was before any migration (a consistent copy through SQLite's backup API; none when there is no
+   database yet) and `images/`. A failed backup aborts. Backups are never deleted automatically.
+5. **Replace in one transaction** (after migrating an older database): every session (with its entries, jobs, side chats, and artifact
    views), the usage table, and every graph table are deleted and rewritten; settings, provider
    settings, and ChatGPT accounts stay. Image files are written before the commit; they are
    content-addressed, so an aborted run leaves only harmless extra files.
@@ -92,29 +95,39 @@ coverage fingerprint equals LH's when the entry id is the LH message id, so impo
 not extracted again. `updated_at` is kept, so the sidebar order matches.
 
 - **Messages** become entries: `toolUse` becomes `stop`; provider `chatgpt` becomes
-  `openai-chatgpt`; text signatures are dropped. ChatGPT thinking (`thinkingSignature` is a JSON
-  reasoning item) becomes `ThinkingPart(id, signature=encrypted_content)`, which Verstehen replays
-  to the same provider and model; a reasoning item without encrypted content is kept as text only.
+  `openai-chatgpt`; text signatures are dropped. ChatGPT thinking (provider `chatgpt`;
+  `thinkingSignature` is a JSON reasoning item) becomes `ThinkingPart(id, signature=encrypted_content)`,
+  which Verstehen replays to the same provider and model; a reasoning item without encrypted
+  content is kept as text only. Other providers' signatures are kept verbatim.
 - **Tool results** use Verstehen's shapes: question answers become `QuestionAnswer` (snake_case,
   validated; `optionOrder` and answer `images` are dropped), `plan_init` keeps its validated tree,
   job tool results carry no details, `show_image` and `read` images are saved to `images/` and
   referenced as Verstehen's tools do. Markers use Verstehen's keys (`job_id`, `tool_call_id`,
   `thread_id`, compaction ids); a plan block keeps its `planCallId` and `block`.
-- **Jobs** keep their ids. A missing `input` is rebuilt from the tool call's arguments; a missing
-  `delivery` is `result`/`delivered` when the chat holds the job's steer marker, otherwise
-  `result`/`pending` for a finished job. A job still `running` becomes `error` ("Interrupted by
-  the LearnHarness import"), or `done` if it already has a result. An invert switch becomes an
-  artifact view.
-- **Usage rows** come from the chat's `turns` (role `prober` before the `probe_done` result, else
-  `teacher`), its `extractions` and the sources' `extractions` (roles `extractor` and `auditor`),
-  and job usage (one row per recorded call, or one total row). The account is the one signed-in
-  ChatGPT account, `chatgpt:learnharness-import` when there is none, `claude_code`, or the
-  provider name as written.
+- **Jobs** keep their ids. A missing `input` is rebuilt from the tool call's arguments. A saved
+  steer or abort marker settles delivery as `delivered` (even where LH says `pending`); a real LH
+  `pending` without a marker stays pending; a job with neither `delivery` nor marker has no
+  delivery, so old results are never replayed. A job still `running` becomes `error`
+  ("Interrupted by the LearnHarness import"), or `done` if it already has a result. An invert
+  switch becomes an artifact view.
+- **Side chats** keep their thread ids and exchanges. The anchor moves to the first assistant entry
+  of the teaching segment that holds LH's anchor message (`sidechat/segments.py`), which is how
+  the Side chat tab finds a thread; threads that cannot be placed are imported and listed in a
+  warning.
+- **Usage rows** come from the chat's `turns` (role `sideQuestion` for a side reply, `compaction`
+  for a compaction marker, `prober` before the `probe_done` result, else `teacher`), its
+  `extractions` and the sources' `extractions` (roles `extractor` and `auditor`), and job usage
+  (one row per recorded call, or one total row). The account is always `chatgpt:learnharness-import`
+  for ChatGPT models (history never claims a local account), `claude_code`, or the provider name
+  as written.
 - **The session's model** follows LH's chat settings when the provider is `chatgpt` and exactly
   one ChatGPT account is signed in; otherwise the session uses the default and a warning says so.
 - **The graph**: nodes (later lines become links), chains, coverage, checkpoints, sources, source
-  folders and placements, and positions, written through `write_ledger`; the revision is 1.
-- **Warnings** also cover learner-message images (Verstehen has no learner attachments), a derived
+  folders and placements, and positions, written through `write_ledger`; the revision is 1. The
+  summary counts propositions and chains as the graph derives them (`get_graph`), with the ledger
+  line counts beside them.
+- **Warnings** also cover learner-message images (counted per session; Verstehen has no learner
+  attachments), a derived
   plan that differs from LH's saved `tree`, jobs of sessions that were not imported, and graph
   rows that name sessions that were not imported.
 
@@ -122,13 +135,16 @@ not extracted again. `updated_at` is kept, so the sidebar order matches.
 `prompts/`, `themes/`, `plugins/`, `core-plugin-data/`, `debug/`, and `auth.json` (never read).
 Plugin problem submissions and plugin jobs are refused.
 
-**Restore.** Close Verstehen, then copy the backup back; the command prints the exact lines:
+**Restore.** Close Verstehen, then copy the backup back; the command prints the exact, shell-quoted
+lines:
 
 ```
 cp <backup>/verstehen.db <data dir>/verstehen.db
 rm -f <data dir>/verstehen.db-wal <data dir>/verstehen.db-shm
 cp -r <backup>/images/. <data dir>/images/
 ```
+
+The images copy only adds the backed-up files; images saved after the import stay.
 
 ## Traps found in M1–M9
 

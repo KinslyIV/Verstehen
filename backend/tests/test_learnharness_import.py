@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -32,10 +33,11 @@ from verstehen.store.entries import (
     MarkerEntry,
     ThinkingPart,
     ToolResultEntry,
+    UserEntry,
 )
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
-from verstehen.store.migrate import migrate
+from verstehen.store.migrate import MIGRATIONS, migrate
 from verstehen.store.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import Settings as StoredSettings
@@ -100,7 +102,6 @@ def run(
     answer: str = "replace",
 ) -> list[str]:
     lines: list[str] = []
-    data_dir.mkdir(exist_ok=True)
     asyncio.run(
         run_import(
             folder,
@@ -313,31 +314,50 @@ def test_job_without_input_takes_tool_call_arguments():
     assert jobs["job_fx_research"].input == {"question": "What is slope?"}
 
 
+def job_deliveries(folder: Path):
+    return {job.id: job.delivery for job in teach_entries(converted(folder)).jobs}
+
+
+def without_message(message_id: str) -> Callable[[Path], None]:
+    def edit(folder: Path):
+        def change(chat: dict):
+            chat["messages"] = [m for m in chat["messages"] if m["id"] != message_id]
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    return edit
+
+
 def test_job_delivery_follows_steer_marker(tmp_path: Path):
-    jobs = {job.id: job for job in teach_entries(converted()).jobs}
-    visual = jobs["job_fx_visual"].delivery
+    visual = job_deliveries(FIXTURE)["job_fx_visual"]
     assert visual is not None and (visual.kind, visual.status) == (
         "result",
         "delivered",
     )
 
-    def edit(folder: Path):
-        def change(chat: dict):
-            chat["messages"] = [
-                m for m in chat["messages"] if m["id"] != "steer_job_fx_visual"
-            ]
+    def explicit_pending(folder: Path):
+        edit_json(
+            folder / "jobs" / "job_fx_research.json",
+            lambda job: job.update(delivery={"kind": "result", "status": "pending"}),
+        )
 
-        edit_json(folder / "chats" / f"{CHAT}.json", change)
+    with_marker = job_deliveries(fixture_copy(tmp_path, explicit_pending))
+    research = with_marker["job_fx_research"]
+    assert research is not None and research.status == "delivered"
 
-    jobs = {
-        job.id: job
-        for job in teach_entries(converted(fixture_copy(tmp_path, edit))).jobs
-    }
-    pending = jobs["job_fx_visual"].delivery
-    assert pending is not None and (pending.kind, pending.status) == (
-        "result",
-        "pending",
-    )
+    def pending_without_marker(folder: Path):
+        explicit_pending(folder)
+        without_message("steer_job_fx_research")(folder)
+
+    still_pending = job_deliveries(
+        fixture_copy(tmp_path / "second", pending_without_marker)
+    )["job_fx_research"]
+    assert still_pending is not None and still_pending.status == "pending"
+
+
+def test_legacy_job_without_delivery_or_marker_gets_no_delivery(tmp_path: Path):
+    folder = fixture_copy(tmp_path, without_message("steer_job_fx_visual"))
+    assert job_deliveries(folder)["job_fx_visual"] is None
 
 
 def test_running_job_becomes_error():
@@ -354,7 +374,7 @@ def test_running_job_becomes_error():
 def test_side_chat_threads_and_exchanges_are_imported():
     item = teach_entries(converted())
     [thread] = item.side_threads
-    assert (thread.id, thread.anchor.entry_id) == ("side_fx1", "a6")
+    assert (thread.id, thread.anchor.entry_id) == ("side_fx1", "a2")
     assert thread.anchor.block_text == "The slope is rise over run."
     assert [(m.id, m.role, m.quotes) for m in thread.messages] == [
         ("ask_fx1", "user", ["rise over run"]),
@@ -369,7 +389,7 @@ def test_usage_rows_from_turns_extractions_and_jobs():
     assert len(usage) == 11
     assert [usage[f"turn_1#{n}"].role for n in (1, 2)] == ["prober", "prober"]
     assert usage["turn_2#1"].role == "teacher"
-    assert usage["turn_1#1"].account == ACCOUNT
+    assert usage["turn_1#1"].account == "chatgpt:learnharness-import"
     assert usage["turn_1#1"].model == "gpt-6-astra"
     started = 1_790_000_000_000 + 18 * 60_000
     assert usage[f"{CHAT}:{started}:auditor#2"].role == "auditor"
@@ -382,9 +402,11 @@ def test_usage_rows_from_turns_extractions_and_jobs():
     assert usage["job_fx_visual#1"].input_tokens == 70
 
 
-def test_usage_account_without_a_chatgpt_account_is_marked_imported():
-    usage = {row.request_id: row for row in converted(account=None).contents.usage}
-    assert usage["turn_1#1"].account == "chatgpt:learnharness-import"
+def test_historical_usage_never_claims_a_local_chatgpt_account():
+    for account in (ACCOUNT, None):
+        usage = converted(account=account).contents.usage
+        chatgpt = [row for row in usage if row.request_id.startswith("turn_")]
+        assert {row.account for row in chatgpt} == {"chatgpt:learnharness-import"}
 
 
 def test_session_model_pick_from_chatgpt_settings():
@@ -464,23 +486,38 @@ def test_dry_run_writes_nothing(tmp_path: Path):
     lines = run(FIXTURE, data_dir, dry_run=True)
     assert "Dry run: nothing was written." in lines
     assert "Sessions: 1 (19 messages)" in lines
-    assert list(data_dir.iterdir()) == []
+    assert "Propositions: 3 (4 ledger lines)" in lines
+    assert "Chains: 1 (1 ledger lines)" in lines
+    assert not data_dir.exists()
 
 
-def seeded_data_dir(tmp_path: Path) -> Path:
+def seeded_data_dir(tmp_path: Path, *, migrations: int | None = None) -> Path:
+    """A data directory holding one session; with `migrations`, a database that old."""
     data_dir = tmp_path / "data"
     data_dir.mkdir()
     (data_dir / "images").mkdir()
     (data_dir / "images" / "keep.png").write_bytes(b"old image")
+    older = tmp_path / "older-migrations"
+    older.mkdir()
+    for path in sorted(MIGRATIONS.glob("*.sql"))[:migrations]:
+        shutil.copy(path, older)
 
     async def seed(database):
-        await migrate(database)
+        await migrate(database, older if migrations is not None else MIGRATIONS)
         await SessionsStore(database).create("Existing session")
         await SettingsStore(database).write(StoredSettings(quizzing="free"))
 
     asyncio.run(with_database(data_dir, seed))
     (data_dir / "credentials.json").write_text('{"accounts": []}')
     return data_dir
+
+
+async def migration_count(database) -> int:
+    async with database.read() as connection:
+        async with connection.execute(
+            "SELECT COUNT(*) FROM schema_migrations"
+        ) as cursor:
+            return (await cursor.fetchone())[0]
 
 
 async def session_titles(database) -> list[str]:
@@ -640,7 +677,7 @@ def test_sidecar_command_imports_after_typed_confirmation(tmp_path: Path):
     data_dir = tmp_path / "data"
     dry = sidecar_import(data_dir, str(FIXTURE), "--dry-run")
     assert dry.returncode == 0 and "Sessions: 1 (19 messages)" in dry.stdout
-    assert not (data_dir / "verstehen.db").exists()
+    assert not data_dir.exists()
     done = sidecar_import(data_dir, str(FIXTURE), stdin="replace\n")
     assert done.returncode == 0 and "Imported." in done.stdout
     assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
@@ -650,3 +687,224 @@ def test_sidecar_command_prints_refusals(tmp_path: Path):
     refused = sidecar_import(tmp_path / "data", str(tmp_path))
     assert refused.returncode == 1
     assert "not a LearnHarness data folder" in refused.stderr
+
+
+def test_cancelling_into_a_missing_directory_creates_nothing(tmp_path: Path):
+    data_dir = tmp_path / "data"
+    run(FIXTURE, data_dir, answer="no")
+    assert not data_dir.exists()
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    run(FIXTURE, empty, answer="no")
+    assert list(empty.iterdir()) == []
+
+
+def test_cancelling_leaves_an_older_database_byte_identical(tmp_path: Path):
+    data_dir = seeded_data_dir(tmp_path, migrations=3)
+    before = (data_dir / "verstehen.db").read_bytes()
+    lines = run(FIXTURE, data_dir, answer="no")
+    assert "1 existing session(s)" in lines[-2]
+    assert (data_dir / "verstehen.db").read_bytes() == before
+    assert not (data_dir / "backups").exists()
+
+
+def test_backup_holds_the_database_before_migration(tmp_path: Path):
+    data_dir = seeded_data_dir(tmp_path, migrations=3)
+    run(FIXTURE, data_dir)
+    [backup] = (data_dir / "backups").iterdir()
+    assert asyncio.run(with_database(backup, migration_count)) == 3
+    assert asyncio.run(with_database(backup, session_titles)) == ["Existing session"]
+    assert asyncio.run(with_database(data_dir, migration_count)) == len(
+        list(MIGRATIONS.glob("*.sql"))
+    )
+    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+
+
+def test_importing_into_a_fresh_directory_needs_no_database_backup(tmp_path: Path):
+    data_dir = tmp_path / "fresh"
+    lines = run(FIXTURE, data_dir)
+    [backup] = (data_dir / "backups").iterdir()
+    assert not (backup / "verstehen.db").exists()
+    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+    assert any("rm -f" in line and "no database before" in line for line in lines)
+
+
+def test_restore_commands_quote_paths_and_describe_the_image_overlay(tmp_path: Path):
+    spaced = tmp_path / "with space"
+    spaced.mkdir()
+    data_dir = seeded_data_dir(spaced)
+    lines = run(FIXTURE, data_dir)
+    [backup] = (data_dir / "backups").iterdir()
+    quoted = shlex.quote(str(data_dir / "verstehen.db"))
+    assert f"  cp {shlex.quote(str(backup / 'verstehen.db'))} {quoted}" in lines
+    assert any(line.startswith("  cp -r '") and "images" in line for line in lines)
+    assert any("only adds the backed-up files" in line for line in lines)
+
+
+def test_reasoning_is_converted_only_for_chatgpt(tmp_path: Path):
+    def edit(folder: Path):
+        def change(chat: dict):
+            for message in chat["messages"]:
+                if message["role"] == "assistant":
+                    message["provider"] = "openai"
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    entries = teach_entries(converted(fixture_copy(tmp_path, edit))).entries
+    first = next(e for e in entries if isinstance(e, AssistantEntry))
+    thinking = first.parts[0]
+    assert isinstance(thinking, ThinkingPart) and thinking.id is None
+    assert thinking.signature is not None and thinking.signature.startswith("{")
+    assert first.provider == "openai"
+
+
+def test_dropped_learner_images_are_counted_in_a_session_warning(tmp_path: Path):
+    def edit(folder: Path):
+        def change(chat: dict):
+            image = {"type": "image", "data": "AAAA", "mimeType": "image/png"}
+            chat["messages"][0]["content"] = [
+                {"type": "text", "text": "Look"},
+                image,
+                image,
+            ]
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    conversion = converted(fixture_copy(tmp_path, edit))
+    [warning] = [w for w in conversion.summary.warnings if "learner messages" in w]
+    assert f"Slopes ({CHAT})" in warning and "2 image(s)" in warning
+    first = teach_entries(conversion).entries[0]
+    assert isinstance(first, UserEntry) and first.text == "Look"
+
+
+def test_side_usage_and_compaction_usage_use_verstehen_roles(tmp_path: Path):
+    def edit(folder: Path):
+        def change(chat: dict):
+            chat["messages"].append(
+                {
+                    "id": "cmp1",
+                    "role": "custom",
+                    "customType": "compaction",
+                    "content": "[SESSION HISTORY COMPACTED]",
+                    "display": True,
+                    "details": {
+                        "firstKeptMessageId": "a6",
+                        "tokensBefore": 10,
+                        "at": "2026-11-16T16:00:00.000Z",
+                    },
+                    "timestamp": 1_790_001_200_000,
+                }
+            )
+            step = {"inputTokens": 1, "outputTokens": 1}
+            at = "2026-11-16T16:00:00.000Z"
+            chat["turns"] += [
+                {
+                    "id": "t_side",
+                    "messageId": "ans_fx1",
+                    "at": at,
+                    "model": "chatgpt:m",
+                    "steps": [step],
+                },
+                {
+                    "id": "t_cmp",
+                    "messageId": "cmp1",
+                    "at": at,
+                    "model": "chatgpt:m",
+                    "steps": [step],
+                },
+            ]
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    usage = {
+        r.request_id: r for r in converted(fixture_copy(tmp_path, edit)).contents.usage
+    }
+    assert usage["t_side#1"].role == "sideQuestion"
+    assert usage["t_cmp#1"].role == "compaction"
+    assert usage["turn_2#1"].role == "teacher"
+
+
+def test_side_thread_anchors_on_the_first_entry_of_its_segment(tmp_path: Path):
+    [thread] = teach_entries(converted()).side_threads
+    assert thread.anchor.entry_id == "a2"
+
+    def edit(folder: Path):
+        edit_json(
+            folder / "chats" / f"{CHAT}.json",
+            lambda chat: chat["sideChats"][0]["anchor"].update(messageId="u1"),
+        )
+
+    conversion = converted(fixture_copy(tmp_path, edit))
+    assert teach_entries(conversion).side_threads[0].anchor.entry_id == "u1"
+    assert any("outside any teaching segment" in w for w in conversion.summary.warnings)
+
+
+def test_ledger_lines_split_only_on_line_feeds(tmp_path: Path):
+    def edit(folder: Path):
+        line = json.dumps(
+            {
+                "id": "n_sep",
+                "name": "Separator",
+                "statement": "A line\u2028separator stays inside one string.",
+                "aliases": [],
+                "createdAt": "2026-11-16T16:00:00.000Z",
+                "provenance": [],
+            },
+            ensure_ascii=False,
+        )
+        with (folder / "graph" / "nodes.jsonl").open("a", encoding="utf-8") as stream:
+            stream.write(line + "\n")
+
+    data = read_folder(fixture_copy(tmp_path, edit))
+    assert data.corrupt_lines == []
+    assert data.nodes[-1].statement == "A line\u2028separator stays inside one string."
+
+
+def test_plan_tree_with_an_extra_field_is_refused(tmp_path: Path):
+    def edit(folder: Path):
+        edit_json(
+            folder / "chats" / f"{CHAT}.json",
+            lambda chat: chat["tree"]["nodes"][0].update(surprise=1),
+        )
+
+    with pytest.raises(
+        ImportRefused, match=r"chat_fx_teach\.json: tree\.nodes\.0\.surprise"
+    ):
+        read_folder(fixture_copy(tmp_path, edit))
+
+
+def test_bad_time_names_the_file_and_field(tmp_path: Path):
+    def edit(folder: Path):
+        edit_json(
+            folder / "jobs" / "job_fx_pdf.json",
+            lambda job: job.update(createdAt="soon"),
+        )
+
+    with pytest.raises(ImportRefused, match=r"job_fx_pdf\.json: createdAt"):
+        read_folder(fixture_copy(tmp_path, edit))
+
+    def naive(folder: Path):
+        edit_json(
+            folder / "chats" / f"{CHAT}.json",
+            lambda chat: chat.update(updatedAt="2026-11-16T16:00:00"),
+        )
+
+    with pytest.raises(ImportRefused, match=r"chat_fx_teach\.json: updatedAt"):
+        read_folder(fixture_copy(tmp_path / "naive", naive))
+
+
+def test_summary_counts_match_the_derived_graph(tmp_path: Path):
+    def edit(folder: Path):
+        chain = {
+            "id": "arg_again",
+            "premises": ["n_fx1"],
+            "conclusion": "n_fx2",
+            "provenance": [{"chatId": "src_fx", "messageId": ""}],
+            "createdAt": "2026-11-16T16:00:00.000Z",
+        }
+        with (folder / "graph" / "chains.jsonl").open("a") as stream:
+            stream.write(json.dumps(chain) + "\n")
+
+    summary = converted(fixture_copy(tmp_path, edit)).summary
+    assert (summary.chains, summary.chain_lines) == (1, 2)
+    assert (summary.propositions, summary.proposition_lines) == (3, 4)

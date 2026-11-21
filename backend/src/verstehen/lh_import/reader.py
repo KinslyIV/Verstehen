@@ -1,4 +1,6 @@
 import json
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TypeVar
@@ -68,6 +70,17 @@ def parse(model: type[Record], value: object, name: str) -> Record:
         raise ImportRefused(f"{name}: {describe(error)}") from None
 
 
+@contextmanager
+def refusing(where: str) -> Iterator[None]:
+    """Turn a validation failure in the block into a refusal that names `where`."""
+    try:
+        yield
+    except ValidationError as error:
+        raise ImportRefused(f"{where}: {describe(error)}") from None
+    except ValueError as error:
+        raise ImportRefused(f"{where}: {error}") from None
+
+
 def read_json(path: Path, name: str) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
@@ -81,7 +94,8 @@ def read_jsonl(
     if not path.exists():
         return []
     records: list[Record] = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+    text = path.read_text(encoding="utf-8", newline="")
+    for number, line in enumerate(text.split("\n"), 1):
         if not line.strip():
             continue
         try:

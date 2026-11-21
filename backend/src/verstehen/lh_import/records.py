@@ -1,12 +1,21 @@
+from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, JsonValue
 from pydantic.alias_generators import to_camel
-
-from verstehen.teaching.plan.tree import PlanTree
 
 CHAT_VERSION = 2
 GRAPH_FORMAT_VERSION = 1
+
+
+def zoned_iso_time(value: str) -> str:
+    if datetime.fromisoformat(value).tzinfo is None:
+        raise ValueError("a time needs a time zone, like 2026-11-16T16:14:26.721Z")
+    return value
+
+
+IsoTime = Annotated[str, AfterValidator(zoned_iso_time)]
+Milliseconds = Annotated[int, Field(ge=0, le=253_402_300_799_999)]
 
 
 class LhRecord(BaseModel):
@@ -59,7 +68,7 @@ class UserMessage(LhRecord):
     id: str
     role: Literal["user"]
     content: str | list[Annotated[TextBlock | ImageBlock, Field(discriminator="type")]]
-    timestamp: int
+    timestamp: Milliseconds
     cli_context_window: int | None = None
 
 
@@ -81,7 +90,7 @@ class AssistantMessage(LhRecord):
     error_message: str | None = None
     duration_ms: float | None = None
     thinking_level: str | None = None
-    timestamp: int
+    timestamp: Milliseconds
     cli_context_window: int | None = None
 
 
@@ -94,7 +103,7 @@ class ToolResultMessage(LhRecord):
     details: JsonValue = None
     is_error: bool
     duration_ms: float | None = None
-    timestamp: int
+    timestamp: Milliseconds
     cli_context_window: int | None = None
 
 
@@ -121,7 +130,7 @@ class MarkerMessage(LhRecord):
     content: str
     display: bool
     details: JsonValue = None
-    timestamp: int
+    timestamp: Milliseconds
     cli_context_window: int | None = None
 
 
@@ -143,7 +152,7 @@ class CallUsage(LhRecord):
 class TurnUsage(LhRecord):
     id: str
     message_id: str
-    at: str
+    at: IsoTime
     model: str
     steps: list[CallUsage]
 
@@ -167,7 +176,7 @@ class EmissionStats(LhRecord):
 
 class ExtractionRunUsage(LhRecord):
     started_at: float
-    at: str
+    at: IsoTime
     duration_ms: float
     stats: EmissionStats | None = None
     stages: ExtractionStages
@@ -196,7 +205,7 @@ class SideChatMessage(LhRecord):
     text: str
     quotes: list[str] | None = None
     quote_citations: list[str] | None = None
-    at: str
+    at: IsoTime
     model: str | None = None
     request_id: str | None = None
     stopped: bool | None = None
@@ -208,7 +217,7 @@ class SideChatThread(LhRecord):
     id: str
     anchor: SideChatAnchor
     open: bool
-    created_at: str
+    created_at: IsoTime
     messages: list[SideChatMessage]
     context_snapshot: list[SideChatMessage] | None = None
 
@@ -220,11 +229,28 @@ class ImageSnapshot(LhRecord):
     height: int
 
 
+class PlanNode(LhRecord):
+    id: str
+    title: str
+    summary: str | None = None
+
+
+class PlanEdge(LhRecord):
+    from_id: str = Field(alias="from")
+    to: str
+
+
+class PlanTree(LhRecord):
+    nodes: list[PlanNode]
+    edges: list[PlanEdge]
+    version: int
+
+
 class ChatRecord(LhRecord):
     id: str
     title: str
-    created_at: str
-    updated_at: str
+    created_at: IsoTime
+    updated_at: IsoTime
     messages: list[Message]
     image_snapshots: dict[str, ImageSnapshot] | None = None
     kind: Literal["teach", "practice"] | None = None
@@ -263,8 +289,8 @@ class JobRecord(LhRecord):
     delivery: JobDelivery | None = None
     status: Literal["running", "done", "error"]
     activity: str
-    created_at: str
-    updated_at: str
+    created_at: IsoTime
+    updated_at: IsoTime
     result: JsonValue = None
     error: str | None = None
     usage: JobUsage | None = None
@@ -280,7 +306,7 @@ class NodeLine(LhRecord):
     name: str
     statement: str
     aliases: list[str]
-    created_at: str
+    created_at: IsoTime
     provenance: list[ProvenancePoint]
 
 
@@ -289,25 +315,25 @@ class ChainLine(LhRecord):
     premises: Annotated[list[str], Field(min_length=1)]
     conclusion: str
     provenance: list[ProvenancePoint]
-    created_at: str
+    created_at: IsoTime
 
 
 class CheckpointLine(LhRecord):
     chat_id: str
-    folded_at: str
+    folded_at: IsoTime
 
 
 class CoverageLine(LhRecord):
     chat_id: str
     fp: str
     tokens: float
-    folded_at: str
+    folded_at: IsoTime
 
 
 class NotesSource(LhRecord):
     id: str
     file_path: str
-    imported_at: str
+    imported_at: IsoTime
     content_fp: str | None = None
     extractions: list[ExtractionRunUsage] | None = None
 
@@ -319,14 +345,14 @@ class PositionPoint(LhRecord):
 
 class PositionsFile(LhRecord):
     positions: dict[str, PositionPoint]
-    updated_at: str | None = None
+    updated_at: IsoTime | None = None
 
 
 class SourceFolder(LhRecord):
     id: str
     name: str
     parent_id: str | None
-    created_at: str
+    created_at: IsoTime
     import_path: str | None = None
 
 
@@ -407,7 +433,7 @@ class CompactionDetails(LhRecord):
     first_kept_message_id: str
     tokens_before: float
     model: str | None = None
-    at: str
+    at: IsoTime
 
 
 class SideQuestionDetails(LhRecord):

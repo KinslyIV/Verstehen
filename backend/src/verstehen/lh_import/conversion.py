@@ -57,8 +57,8 @@ def split_model(model: str) -> tuple[str, str]:
     return (provider, model_id) if model_id else ("unknown", model)
 
 
-def usage_account(provider: str, chatgpt_account: str | None) -> str:
-    """The account string Verstehen's usage rows carry for a LearnHarness provider."""
+def usage_account(provider: str) -> str:
+    """The account string an imported usage row carries; history never claims a local account."""
     if provider == "chatgpt":
-        return chatgpt_account or IMPORTED_CHATGPT_ACCOUNT
+        return IMPORTED_CHATGPT_ACCOUNT
     return CLAUDE_CODE_ACCOUNT if provider == CLAUDE_CODE_PROVIDER else provider

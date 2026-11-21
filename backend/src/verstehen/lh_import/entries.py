@@ -59,6 +59,10 @@ ANSWER_KEYS = {
 DROPPED_ANSWER_KEYS = ("optionOrder", "images")
 
 
+def session_label(chat: lh.ChatRecord) -> str:
+    return f"{chat.title} ({chat.id})"
+
+
 def decode_image(block: lh.ImageBlock, where: str) -> tuple[bytes, str] | None:
     """The block's bytes and Verstehen extension, or None for a format Verstehen cannot show."""
     extension = IMAGE_EXTENSIONS.get(block.mime_type)
@@ -79,9 +83,9 @@ def reasoning_item(signature: str | None) -> dict[str, JsonValue] | None:
     return item if isinstance(item, dict) and item.get("type") == "reasoning" else None
 
 
-def convert_thinking(block: lh.ThinkingBlock) -> ThinkingPart:
-    """A reasoning item becomes id plus encrypted content; other signatures are kept as written."""
-    item = reasoning_item(block.thinking_signature)
+def convert_thinking(block: lh.ThinkingBlock, provider: str) -> ThinkingPart:
+    """ChatGPT's reasoning item becomes id plus encrypted content; other signatures stay as written."""
+    item = reasoning_item(block.thinking_signature) if provider == "chatgpt" else None
     if item is None:
         return ThinkingPart(
             thinking=block.thinking,
@@ -115,7 +119,7 @@ def convert_assistant(message: lh.AssistantMessage) -> AssistantEntry:
         if isinstance(block, lh.TextBlock):
             parts.append(TextPart(text=block.text))
         elif isinstance(block, lh.ThinkingBlock):
-            parts.append(convert_thinking(block))
+            parts.append(convert_thinking(block, message.provider))
         else:
             parts.append(
                 ToolCallPart(
@@ -182,12 +186,13 @@ class ChatEntries:
         self.images = images
         self.warnings = warnings
         self.inverted_artifacts: dict[str, bool] = {}
+        self.dropped_learner_images = 0
 
     def where(self, message: lh.Message) -> str:
         return f"chats/{self.chat.id}.json message {message.id}"
 
     def warn(self, text: str) -> None:
-        self.warnings.append(f"{self.chat.title}: {text}")
+        self.warnings.append(f"{session_label(self.chat)}: {text}")
 
     def store_image(self, data: bytes, extension: str) -> str:
         digest = sha256(data).hexdigest()
@@ -207,6 +212,10 @@ class ChatEntries:
                 previous = self.chat.messages[index - 1].id if index else None
                 entries.append(self.marker(message, previous))
         self.store_snapshots()
+        if self.dropped_learner_images:
+            self.warn(
+                f"{self.dropped_learner_images} image(s) in learner messages were not imported (Verstehen has no learner attachments)"
+            )
         return entries
 
     def store_snapshots(self) -> None:
@@ -226,8 +235,9 @@ class ChatEntries:
             text = "\n".join(
                 block.text for block in content if isinstance(block, lh.TextBlock)
             )
-            if dropped := sum(isinstance(block, lh.ImageBlock) for block in content):
-                self.warn(f"{dropped} image(s) in a learner message were not imported")
+            self.dropped_learner_images += sum(
+                isinstance(block, lh.ImageBlock) for block in content
+            )
         return UserEntry(
             entry_id=message.id, created_at=timestamp_of(message.timestamp), text=text
         )
@@ -291,12 +301,8 @@ class ChatEntries:
         return answer.model_dump(mode="json", exclude_none=True)
 
     def plan_details(self, details: dict, where: str) -> JsonValue:
-        try:
-            tree = PlanTree.model_validate(details.get("tree"))
-        except ValidationError:
-            raise ImportRefused(
-                f"{where}: the plan_init tree is not a plan tree"
-            ) from None
+        record = parse(lh.PlanTree, details.get("tree"), f"{where} plan_init tree")
+        tree = PlanTree.model_validate(record.model_dump(by_alias=True))
         return {
             "ok": True,
             "tree": tree.model_dump(mode="json", by_alias=True, exclude_none=True),

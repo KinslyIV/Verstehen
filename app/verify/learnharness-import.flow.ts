@@ -1,5 +1,6 @@
 import { test, expect, learnHarnessFixture } from './fixtures';
 import { camera, waitForLayout } from './graph';
+import { openSideChatTab, sideThread } from './side-chat';
 
 test.use({ script: 'verify/scripts/health.json' });
 
@@ -24,6 +25,15 @@ test('learnharness-import', async ({ page, request, importLearnHarness }) => {
 	await page.screenshot({ path: test.info().outputPath('session.png'), animations: 'disabled' });
 	await answered.scrollIntoViewIfNeeded();
 	await page.screenshot({ path: test.info().outputPath('question.png'), animations: 'disabled' });
+
+	await openSideChatTab(page);
+	await expect(sideThread(page).getByTestId('side-learner-message')).toContainText(
+		'Why rise over run?'
+	);
+	await expect(sideThread(page).getByTestId('side-helper-message')).toContainText(
+		'Because slope compares vertical to horizontal change.'
+	);
+	await page.screenshot({ path: test.info().outputPath('side-chat.png'), animations: 'disabled' });
 
 	const { sessions } = await (await request.get('/api/sessions')).json();
 	expect(sessions).toHaveLength(1);

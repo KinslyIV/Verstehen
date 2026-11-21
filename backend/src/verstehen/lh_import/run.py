@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 import shutil
 import sys
 from collections.abc import Callable
@@ -64,14 +65,26 @@ def confirmation_prompt(existing: ContentCounts) -> str:
 
 
 def restore_lines(data_dir: Path, backup: Path) -> list[str]:
+    quote = shlex.quote
     lines = [
         f"Backup: {backup}",
         "To go back: close Verstehen, then run",
-        f"  cp {backup}/verstehen.db {data_dir}/verstehen.db",
-        f"  rm -f {data_dir}/verstehen.db-wal {data_dir}/verstehen.db-shm",
     ]
+    if (backup / "verstehen.db").is_file():
+        lines += [
+            f"  cp {quote(str(backup / 'verstehen.db'))} {quote(str(data_dir / 'verstehen.db'))}",
+            f"  rm -f {quote(str(data_dir / 'verstehen.db-wal'))} {quote(str(data_dir / 'verstehen.db-shm'))}",
+        ]
+    else:
+        lines.append(
+            f"  rm -f {quote(str(data_dir / 'verstehen.db'))} {quote(str(data_dir / 'verstehen.db-wal'))} {quote(str(data_dir / 'verstehen.db-shm'))}"
+            "   (there was no database before the import)"
+        )
     if (backup / "images").is_dir():
-        lines.append(f"  cp -r {backup}/images/. {data_dir}/images/")
+        lines += [
+            f"  cp -r {quote(str(backup / 'images') + '/.')} {quote(str(data_dir / 'images') + '/')}",
+            "The images copy only adds the backed-up files; images saved after the import stay.",
+        ]
     return lines
 
 
@@ -84,7 +97,8 @@ def back_up(data_dir: Path) -> Path:
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     backup = data_dir / "backups" / f"before-learnharness-import-{stamp}"
     backup.mkdir(parents=True)
-    backup_database(data_dir / "verstehen.db", backup / "verstehen.db")
+    if (data_dir / "verstehen.db").is_file():
+        backup_database(data_dir / "verstehen.db", backup / "verstehen.db")
     if (data_dir / "images").is_dir():
         shutil.copytree(data_dir / "images", backup / "images")
     return backup
@@ -98,7 +112,9 @@ async def run_import(
     confirm: Callable[[str], str] = input,
     say: Callable[[str], None] = print,
 ) -> bool:
-    """Read, convert, and replace this data directory's contents; false when nothing was changed."""
+    """Read, convert, and replace this data directory's contents; false when nothing was changed.
+    Until the confirmed backup is written, the destination is only read.
+    """
     data = read_folder(folder)
     conversion = convert(data, chatgpt_account_id(settings.data_dir))
     for line in summary_lines(
@@ -108,16 +124,15 @@ async def run_import(
     if dry_run:
         say("Dry run: nothing was written.")
         return False
-    async with open_database(settings.data_dir / "verstehen.db") as database:
+    database_path = settings.data_dir / "verstehen.db"
+    existing = await asyncio.to_thread(count_contents, database_path)
+    if confirm(confirmation_prompt(existing)).strip() != CONFIRMATION:
+        say("Aborted: nothing was changed.")
+        return False
+    backup = await asyncio.to_thread(back_up, settings.data_dir)
+    await asyncio.to_thread(write_images, conversion, settings.data_dir)
+    async with open_database(database_path) as database:
         await migrate(database)
-        if (
-            confirm(confirmation_prompt(await count_contents(database))).strip()
-            != CONFIRMATION
-        ):
-            say("Aborted: nothing was changed.")
-            return False
-        backup = await asyncio.to_thread(back_up, settings.data_dir)
-        await asyncio.to_thread(write_images, conversion, settings.data_dir)
         await replace_contents(database, conversion.contents)
     say("Imported.")
     for line in restore_lines(settings.data_dir, backup):

@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 
 from pydantic import JsonValue
 
+from verstehen.graph.model import get_graph
 from verstehen.jobs.contracts import DemoInput, PdfInput, ResearchInput, VisualInput
 from verstehen.lh_import import records as lh
 from verstehen.lh_import.conversion import (
@@ -16,9 +17,11 @@ from verstehen.lh_import.conversion import (
 from verstehen.lh_import.entries import (
     ChatEntries,
     convert_result,
+    session_label,
     side_exchange,
 )
-from verstehen.lh_import.reader import ImportRefused, LearnHarnessData
+from verstehen.lh_import.reader import ImportRefused, LearnHarnessData, refusing
+from verstehen.sidechat.segments import scan_side_segments
 from verstehen.store.entries import Entry, EntryUsage
 from verstehen.store.graph import (
     CoverageEntry,
@@ -81,7 +84,6 @@ def usage_record(
     session_id: str,
     role: str,
     model: str,
-    chatgpt_account: str | None,
     usage: lh.CallUsage,
     at: str,
 ) -> UsageRecord:
@@ -90,7 +92,7 @@ def usage_record(
         request_id=request_id,
         session_id=session_id,
         role=role,
-        account=usage_account(provider, chatgpt_account),
+        account=usage_account(provider),
         model=model_id,
         created_at=parse_time(at),
         **converted_usage(usage).model_dump(),
@@ -114,7 +116,7 @@ def session_for(chat: lh.ChatRecord, chatgpt_account: str | None) -> Session:
     return session
 
 
-def plan_signature(tree: PlanTree | None) -> object:
+def plan_signature(tree: PlanTree | lh.PlanTree | None) -> object:
     return None if tree is None else tree.model_dump(mode="json", by_alias=True)
 
 
@@ -140,19 +142,18 @@ def marker_for_job(chat: lh.ChatRecord, job_id: str) -> lh.MarkerMessage | None:
 
 
 def delivery_for(job: lh.JobRecord, chat: lh.ChatRecord) -> JobDelivery | None:
-    if job.delivery is not None:
-        return JobDelivery(kind=job.delivery.kind, status=job.delivery.status)
+    """A saved steer or abort marker settles delivery; otherwise LH's own record decides."""
     marker = marker_for_job(chat, job.id)
-    if marker is None:
-        return (
-            None if job.result is None else JobDelivery(kind="result", status="pending")
-        )
-    details = marker.details if isinstance(marker.details, dict) else {}
-    if marker.custom_type == "subagent-steer":
-        kind = "result"
-    else:
-        kind = "failure" if "failure" in details else "abort"
-    return JobDelivery(kind=kind, status="delivered")
+    if marker is not None:
+        details = marker.details if isinstance(marker.details, dict) else {}
+        if marker.custom_type == "subagent-steer":
+            kind = "result"
+        else:
+            kind = "failure" if "failure" in details else "abort"
+        return JobDelivery(kind=kind, status="delivered")
+    if job.delivery is None:
+        return None
+    return JobDelivery(kind=job.delivery.kind, status=job.delivery.status)
 
 
 def job_usage(usage: lh.JobUsage) -> JobUsage:
@@ -211,9 +212,11 @@ class Importer:
             if chat.kind == "practice":
                 self.summary.practice_titles.append(chat.title)
             else:
-                self.conversion.contents.sessions.append(self.session(chat))
+                with refusing(f"chats/{chat.id}.json"):
+                    self.conversion.contents.sessions.append(self.session(chat))
         self.jobs(imported)
-        self.graph(imported)
+        with refusing("graph"):
+            self.graph(imported)
         self.summary.sessions = len(self.conversion.contents.sessions)
         self.summary.usage_rows = len(self.conversion.contents.usage)
         return self.conversion
@@ -229,10 +232,10 @@ class Importer:
         session = session_for(chat, self.chatgpt_account)
         if chat.settings and chat.settings.model and session.model_id is None:
             self.warn(
-                f"{chat.title}: its {chat.settings.model.provider} model was not carried over; it uses the default"
+                f"{session_label(chat)}: its {chat.settings.model.provider} model was not carried over; it uses the default"
             )
         self.check_plan(chat, entries)
-        threads = self.side_threads(chat)
+        threads = self.side_threads(chat, entries)
         self.summary.side_threads += len(threads)
         self.turn_usage(chat, entries)
         self.extraction_usage(chat.id, chat.extractions)
@@ -254,38 +257,67 @@ class Importer:
     def check_plan(self, chat: lh.ChatRecord, entries: list[Entry]) -> None:
         if plan_signature(current_plan(entries)) != plan_signature(chat.tree):
             self.warn(
-                f"{chat.title}: the plan derived from its plan_init results differs from LearnHarness's saved plan tree"
+                f"{session_label(chat)}: the plan derived from its plan_init results differs from LearnHarness's saved plan tree"
             )
 
-    def side_threads(self, chat: lh.ChatRecord) -> list[SideThread]:
-        return [
-            SideThread(
-                id=thread.id,
-                anchor=SideAnchor(
-                    entry_id=thread.anchor.message_id,
-                    block_text=thread.anchor.block_text,
-                ),
-                created_at=parse_time(thread.created_at),
-                messages=[side_exchange(message) for message in thread.messages],
+    def side_threads(
+        self, chat: lh.ChatRecord, entries: list[Entry]
+    ) -> list[SideThread]:
+        """Anchor each thread on the first assistant entry of its teaching segment, as the UI finds it."""
+        segments, _ = scan_side_segments(entries)
+        threads: list[SideThread] = []
+        unplaced = shared = 0
+        for thread in chat.side_chats or []:
+            segment = segments.get(thread.anchor.message_id)
+            unplaced += segment is None
+            shared += segment is not None and any(
+                other.anchor.entry_id == segment for other in threads
             )
-            for thread in chat.side_chats or []
-        ]
+            threads.append(
+                SideThread(
+                    id=thread.id,
+                    anchor=SideAnchor(
+                        entry_id=segment or thread.anchor.message_id,
+                        block_text=thread.anchor.block_text,
+                    ),
+                    created_at=parse_time(thread.created_at),
+                    messages=[side_exchange(message) for message in thread.messages],
+                )
+            )
+        if unplaced:
+            self.warn(
+                f"{session_label(chat)}: {unplaced} side thread(s) sit on messages outside any teaching segment; they are imported but the Side chat tab will not show them"
+            )
+        if shared:
+            self.warn(
+                f"{session_label(chat)}: {shared} side thread(s) share a teaching segment with another; the Side chat tab shows only one per segment"
+            )
+        return threads
 
     def turn_usage(self, chat: lh.ChatRecord, entries: list[Entry]) -> None:
         position = {entry.entry_id: index for index, entry in enumerate(entries)}
+        side_replies = {
+            message.id
+            for thread in chat.side_chats or []
+            for message in thread.messages
+        }
+        compactions = {
+            entry.entry_id
+            for entry in entries
+            if entry.kind == "marker" and entry.marker_type == "compaction"
+        }
         for turn in chat.turns or []:
-            index = position.get(turn.message_id, len(entries))
-            role = "teacher" if has_probe_done(entries[:index]) else "prober"
+            if turn.message_id in side_replies:
+                role = "sideQuestion"
+            elif turn.message_id in compactions:
+                role = "compaction"
+            else:
+                index = position.get(turn.message_id, len(entries))
+                role = "teacher" if has_probe_done(entries[:index]) else "prober"
             for number, step in enumerate(turn.steps, 1):
                 self.conversion.contents.usage.append(
                     usage_record(
-                        f"{turn.id}#{number}",
-                        chat.id,
-                        role,
-                        turn.model,
-                        self.chatgpt_account,
-                        step,
-                        turn.at,
+                        f"{turn.id}#{number}", chat.id, role, turn.model, step, turn.at
                     )
                 )
 
@@ -304,7 +336,6 @@ class Importer:
                             owner_id,
                             role,
                             stage.model,
-                            self.chatgpt_account,
                             step,
                             run.at,
                         )
@@ -318,7 +349,8 @@ class Importer:
             if job.chat_id not in imported:
                 skipped += 1
                 continue
-            sessions[job.chat_id].jobs.append(self.job(job, chats[job.chat_id]))
+            with refusing(f"jobs/{job.id}.json"):
+                sessions[job.chat_id].jobs.append(self.job(job, chats[job.chat_id]))
             self.summary.jobs += 1
         if skipped:
             self.warn(f"{skipped} job(s) belong to sessions that were not imported")
@@ -369,7 +401,6 @@ class Importer:
                     job.chat_id,
                     JOB_ROLES[job.kind],
                     usage.model,
-                    self.chatgpt_account,
                     call,
                     job.updated_at,
                 )
@@ -446,9 +477,10 @@ class Importer:
                 id: Position(x=value.x, y=value.y)
                 for id, value in data.positions.positions.items()
             }
-        self.summary.propositions = len({node.id for node in data.nodes})
+        derived = get_graph(ledger)
+        self.summary.propositions = len(derived.nodes)
         self.summary.proposition_lines = len(data.nodes)
-        self.summary.chains = len({chain.id for chain in data.chains})
+        self.summary.chains = len(derived.chains)
         self.summary.chain_lines = len(data.chains)
         self.summary.sources = len(data.sources)
         self.summary.coverage_rows = len(data.coverage)

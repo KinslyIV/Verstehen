@@ -95,7 +95,7 @@ def main() -> None:
         from verstehen.lh_import.run import import_learnharness
 
         try:
-            settings = load_settings()
+            settings = load_settings(create_data_dir=False)
         except (ValueError, OSError) as error:
             print(str(error), file=sys.stderr)
             raise SystemExit(1) from None
