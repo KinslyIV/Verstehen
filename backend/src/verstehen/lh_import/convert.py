@@ -3,7 +3,14 @@ from dataclasses import dataclass, field
 from pydantic import JsonValue
 
 from verstehen.graph.model import get_graph
-from verstehen.jobs.contracts import DemoInput, PdfInput, ResearchInput, VisualInput
+from verstehen.jobs.contracts import (
+    DemoInput,
+    PdfInput,
+    ResearchInput,
+    VisualInput,
+    is_failure,
+)
+from verstehen.jobs.runner import failure_reason
 from verstehen.lh_import import records as lh
 from verstehen.lh_import.conversion import (
     CLAUDE_CODE_ACCOUNT,
@@ -16,7 +23,7 @@ from verstehen.lh_import.conversion import (
 )
 from verstehen.lh_import.entries import (
     ChatEntries,
-    convert_result,
+    parse_job_result,
     session_label,
     side_exchange,
 )
@@ -357,14 +364,26 @@ class Importer:
 
     def job(self, job: lh.JobRecord, chat: lh.ChatRecord) -> JobRecord:
         where = f"jobs/{job.id}.json"
-        result = (
-            None if job.result is None else convert_result(job.kind, job.result, where)
+        parsed = (
+            None
+            if job.result is None
+            else parse_job_result(job.kind, job.result, where)
         )
+        result = None if parsed is None else parsed.model_dump(mode="json")
         status, activity, error = job.status, job.activity, job.error
+        delivery = delivery_for(job, chat)
         if status == "running":
-            status = "done" if result is not None else "error"
-            activity = "finished" if result is not None else "failed"
-            error = None if result is not None else INTERRUPTED
+            if parsed is None:
+                status, activity, error = "error", "failed", INTERRUPTED
+            elif is_failure(job.kind, parsed):
+                status, activity = "error", "failed"
+                error = error or failure_reason(parsed)
+                if delivery is None:
+                    delivery = JobDelivery(kind="result", status="pending")
+            else:
+                status, activity, error = "done", "finished", None
+                if delivery is None:
+                    delivery = JobDelivery(kind="result", status="pending")
         record = JobRecord(
             id=job.id,
             session_id=job.chat_id,
@@ -375,7 +394,7 @@ class Importer:
             activity=activity,
             result=result,
             error=error,
-            delivery=delivery_for(job, chat),
+            delivery=delivery,
             usage=None if job.usage is None else job_usage(job.usage),
             created_at=parse_time(job.created_at),
             updated_at=parse_time(job.updated_at),

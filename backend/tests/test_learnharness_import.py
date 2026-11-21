@@ -36,7 +36,7 @@ from verstehen.store.entries import (
     UserEntry,
 )
 from verstehen.store.graph import GraphStore
-from verstehen.store.jobs import JobsStore
+from verstehen.store.jobs import JobDelivery, JobsStore
 from verstehen.store.migrate import MIGRATIONS, migrate
 from verstehen.store.model_identity import CHATGPT_PROVIDER, ModelIdentity
 from verstehen.store.sessions import SessionsStore
@@ -371,6 +371,75 @@ def test_running_job_becomes_error():
     assert job.error == "Interrupted by the LearnHarness import"
 
 
+def test_running_job_with_saved_result_classifies_outcome_and_pending_delivery(
+    tmp_path: Path,
+):
+    def edit_research(
+        folder: Path,
+        *,
+        result: dict | None = None,
+        keep_steer: bool = False,
+    ):
+        def change(job: dict):
+            job["status"] = "running"
+            job["activity"] = "searching"
+            job.pop("delivery", None)
+            if result is not None:
+                job["result"] = result
+
+        edit_json(folder / "jobs" / "job_fx_research.json", change)
+        if not keep_steer:
+            without_message("steer_job_fx_research")(folder)
+
+    failed_folder = fixture_copy(
+        tmp_path / "failed",
+        lambda folder: edit_research(
+            folder,
+            result={"brief": "Research failed: timeout", "sources": []},
+        ),
+    )
+    failed_job = next(
+        j
+        for j in teach_entries(converted(failed_folder)).jobs
+        if j.id == "job_fx_research"
+    )
+    assert (
+        failed_job.status,
+        failed_job.activity,
+        failed_job.error,
+        failed_job.delivery,
+    ) == (
+        "error",
+        "failed",
+        "Research failed: timeout",
+        JobDelivery(kind="result", status="pending"),
+    )
+
+    done_folder = fixture_copy(tmp_path / "done", edit_research)
+    done_job = next(
+        j
+        for j in teach_entries(converted(done_folder)).jobs
+        if j.id == "job_fx_research"
+    )
+    assert (done_job.status, done_job.activity, done_job.error, done_job.delivery) == (
+        "done",
+        "finished",
+        None,
+        JobDelivery(kind="result", status="pending"),
+    )
+
+    delivered_folder = fixture_copy(
+        tmp_path / "delivered",
+        lambda folder: edit_research(folder, keep_steer=True),
+    )
+    delivered_job = next(
+        j
+        for j in teach_entries(converted(delivered_folder)).jobs
+        if j.id == "job_fx_research"
+    )
+    assert delivered_job.delivery == JobDelivery(kind="result", status="delivered")
+
+
 def test_side_chat_threads_and_exchanges_are_imported():
     item = teach_entries(converted())
     [thread] = item.side_threads
@@ -634,6 +703,18 @@ def test_positions_are_unwrapped(tmp_path: Path):
         "n_fx2": (400, 160),
         "n_fx3": (-280, 320),
     }
+
+
+def test_non_finite_graph_positions_are_refused(tmp_path: Path):
+    def edit(folder: Path):
+        (folder / "graph" / "positions.json").write_text(
+            '{"positions": {"n_fx1": {"x": 1e999, "y": 0}}}'
+        )
+
+    with pytest.raises(
+        ImportRefused, match=r"graph/positions\.json: positions\.n_fx1\.x"
+    ):
+        read_folder(fixture_copy(tmp_path, edit))
 
 
 def test_source_organization_is_copied():
@@ -1181,3 +1262,51 @@ def test_summary_counts_match_the_derived_graph(tmp_path: Path):
     summary = converted(fixture_copy(tmp_path, edit)).summary
     assert (summary.chains, summary.chain_lines) == (1, 2)
     assert (summary.propositions, summary.proposition_lines) == (3, 4)
+
+
+def test_show_image_engine_errors_preserve_text_and_status(tmp_path: Path):
+    for label, empty_details in (("empty-dict", {}), ("null", None)):
+
+        def edit(folder: Path, d=empty_details):
+            def change(chat: dict):
+                chat["messages"].append(
+                    {
+                        "id": "r_show_err",
+                        "role": "toolResult",
+                        "toolCallId": "call_show_err",
+                        "toolName": "show_image",
+                        "content": [{"type": "text", "text": "File not found"}],
+                        "details": d,
+                        "isError": True,
+                        "timestamp": 1790000490000,
+                    }
+                )
+
+            edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+        folder = fixture_copy(tmp_path / label, edit)
+        entry = entry_named(teach_entries(converted(folder)).entries, "r_show_err")
+        assert isinstance(entry, ToolResultEntry)
+        assert entry.is_error is True
+        assert entry.text == "File not found"
+        assert entry.details == empty_details
+
+    def bad_ok(folder: Path):
+        def change(chat: dict):
+            chat["messages"].append(
+                {
+                    "id": "r_show_bad",
+                    "role": "toolResult",
+                    "toolCallId": "call_show_bad",
+                    "toolName": "show_image",
+                    "content": [{"type": "text", "text": "ok"}],
+                    "details": {},
+                    "isError": False,
+                    "timestamp": 1790000490000,
+                }
+            )
+
+        edit_json(folder / "chats" / f"{CHAT}.json", change)
+
+    with pytest.raises(ImportRefused, match=r"chat_fx_teach\.json message r_show_bad"):
+        converted(fixture_copy(tmp_path / "bad-ok", bad_ok))

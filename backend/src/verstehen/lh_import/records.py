@@ -22,7 +22,11 @@ class LhRecord(BaseModel):
     """A LearnHarness JSON shape: camelCase on disk, and any unknown field is refused."""
 
     model_config = ConfigDict(
-        alias_generator=to_camel, populate_by_name=True, extra="forbid", strict=True
+        alias_generator=to_camel,
+        populate_by_name=True,
+        extra="forbid",
+        strict=True,
+        allow_inf_nan=False,
     )
 
 

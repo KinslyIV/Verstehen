@@ -20,10 +20,13 @@ alternative, and the consequence, until the user reviews them at the end of the 
   attachments. Alternative: refuse the import. Consequence: such images are lost (the user's data has none).
 - **Plan-block and probe-handoff details keep LH's camelCase keys.** Verstehen's consumers read them.
   Alternative: the plan's snake_case, which would break plan blocks.
-- **Job delivery:** a steer/abort marker settles delivery; a real LH `pending` stays pending; a job
-  with no delivery and no marker gets none. Alternative: pending, which would replay old results.
-- **Running jobs** become `error` ("Interrupted by the LearnHarness import"); one with a result
-  becomes `done`. Alternative: keep running, which nothing could finish.
+- **Job delivery:** a steer/abort marker settles delivery; a real LH `pending` stays pending; a
+  terminal job with no delivery and no marker gets none. Legacy `running` jobs with a saved result
+  and no delivery or marker get pending result delivery, matching LH's `normalizeLegacyResult`.
+  Alternative: pending for all jobs, which would replay old results.
+- **Running jobs** without a result become `error` ("Interrupted by the LearnHarness import"); one
+  still `running` with a saved result is classified as `error` or `done` by `is_failure` (matching
+  LH's `normalizeLegacyResult`). Alternative: mark all with results `done` or leave `running`.
 - **ChatGPT account:** exactly one ChatGPT account sets the session's model pick; none or several
   leave the default, with a warning. Historical usage always uses `chatgpt:learnharness-import`.
   Alternative: pick the first account, which could bill the wrong one.

@@ -106,10 +106,12 @@ not extracted again. `updated_at` is kept, so the sidebar order matches.
   `thread_id`, compaction ids); a plan block keeps its `planCallId` and `block`.
 - **Jobs** keep their ids. A missing `input` is rebuilt from the tool call's arguments. A saved
   steer or abort marker settles delivery as `delivered` (even where LH says `pending`); a real LH
-  `pending` without a marker stays pending; a job with neither `delivery` nor marker has no
-  delivery, so old results are never replayed. A job still `running` becomes `error`
-  ("Interrupted by the LearnHarness import"), or `done` if it already has a result. An invert
-  switch becomes an artifact view.
+  `pending` without a marker stays pending; a terminal job with neither `delivery` nor marker has
+  no delivery, so old results are never replayed. A job still `running` without a result becomes
+  `error` ("Interrupted by the LearnHarness import"); one still `running` with a saved result is
+  classified into `error` or `done` (`is_failure`) and gets pending result delivery when it has no
+  delivery or marker yet, matching LH's `normalizeLegacyResult`. An invert switch becomes an
+  artifact view.
 - **Side chats** keep their thread ids and exchanges. The anchor moves to the first assistant entry
   of the teaching segment that holds LH's anchor message (`sidechat/segments.py`), which is how
   the Side chat tab finds a thread; threads that cannot be placed are imported and listed in a

@@ -8,6 +8,7 @@ from pydantic import JsonValue, ValidationError
 
 from verstehen.jobs.contracts import (
     DemoResult,
+    JobResult,
     PdfResult,
     ResearchResult,
     Source,
@@ -145,37 +146,40 @@ def convert_assistant(message: lh.AssistantMessage) -> AssistantEntry:
     )
 
 
-def convert_result(kind: JobKind, raw: JsonValue, where: str) -> dict[str, JsonValue]:
-    """A job result in Verstehen's snake_case shape, validated by Verstehen's own model."""
+def parse_job_result(kind: JobKind, raw: JsonValue, where: str) -> JobResult:
+    """Parse and validate a LearnHarness job result into Verstehen's typed result model."""
     if kind == "research":
         research = parse(lh.ResearchResult, raw, where)
-        result = ResearchResult(
+        return ResearchResult(
             brief=research.brief,
             sources=[Source(title=s.title, url=s.url) for s in research.sources],
         )
-    elif kind == "demo":
+    if kind == "demo":
         demo = parse(lh.DemoResult, raw, where)
-        result = DemoResult(title=demo.title, html=demo.html, notes=demo.notes)
-    elif kind == "visual":
+        return DemoResult(title=demo.title, html=demo.html, notes=demo.notes)
+    if kind == "visual":
         visual = parse(lh.VisualResult, raw, where)
         image = visual.image
-        result = VisualResult(
+        return VisualResult(
             svg=visual.svg,
             notes=visual.notes,
             image=None
             if image is None
             else VisualImage(path=image.path, snapshot_id=image.snapshot_id),
         )
-    else:
-        pdf = parse(lh.PdfResult, raw, where)
-        result = PdfResult(
-            path=pdf.path,
-            question=pdf.question,
-            brief=pdf.brief,
-            pages_read=pdf.pages_read,
-            pages_consulted=pdf.pages_consulted,
-        )
-    return result.model_dump(mode="json")
+    pdf = parse(lh.PdfResult, raw, where)
+    return PdfResult(
+        path=pdf.path,
+        question=pdf.question,
+        brief=pdf.brief,
+        pages_read=pdf.pages_read,
+        pages_consulted=pdf.pages_consulted,
+    )
+
+
+def convert_result(kind: JobKind, raw: JsonValue, where: str) -> dict[str, JsonValue]:
+    """A job result in Verstehen's snake_case shape, validated by Verstehen's own model."""
+    return parse_job_result(kind, raw, where).model_dump(mode="json")
 
 
 class ChatEntries:
@@ -288,8 +292,11 @@ class ChatEntries:
             return self.plan_details(details, where, is_error=message.is_error)
         if name in JOB_TOOLS:
             return None
-        if name == "show_image" and isinstance(details, dict):
-            return self.shown_image_details(details, where)
+        if name == "show_image":
+            if message.is_error and (details is None or details == {}):
+                return details
+            if isinstance(details, dict):
+                return self.shown_image_details(details, where)
         if name == "read" and images:
             return self.read_image_details(images, where)
         return details
