@@ -271,14 +271,17 @@ def test_short_options_are_refused_with_the_long_form_hint(
 
 @pytest.mark.parametrize("target", ["verify", "verify-run"])
 @pytest.mark.parametrize(
-    "flow",
+    ("flow", "source"),
     [
-        "settings --grep=settings$ --grep-invert='a b' --list",
-        "settings\n'--grep=a\nb'",
+        ("settings --grep=settings$ --grep-invert='a b' --list", "argument"),
+        ("settings\n'--grep=a\nb'", "argument"),
+        ("settings --grep=settings$ --list", "environment"),
+        ("", "argument"),
+        ("", "unset"),
     ],
 )
 def test_make_passes_flow_to_the_runner_unchanged(
-    tmp_path: Path, target: str, flow: str
+    tmp_path: Path, target: str, flow: str, source: str
 ):
     calls = tmp_path / "calls"
     calls.mkdir()
@@ -288,12 +291,19 @@ def test_make_passes_flow_to_the_runner_unchanged(
         '#!/bin/sh\nprintf "%s\\0" "$@" > "$CALLS/$(ls "$CALLS" | wc -l)"\n'
     )
     stub.chmod(0o755)
-    env = {k: v for k, v in os.environ.items() if not k.startswith("MAKE")}
+    env = {
+        k: v for k, v in os.environ.items() if not k.startswith("MAKE") and k != "FLOW"
+    }
+    env |= {"PATH": f"{stub.parent}:{env['PATH']}", "CALLS": str(calls)}
+    if source == "environment":
+        env["FLOW"] = flow
+    flow_argument = [f"FLOW={flow}"] if source == "argument" else []
     subprocess.run(
-        ["make", "--no-print-directory", "-s", target, "AREA=shell", f"FLOW={flow}"],
+        ["make", "--no-print-directory", "-s", target, "AREA=shell", *flow_argument],
         cwd=Path(__file__).resolve().parents[2],
-        env={**env, "PATH": f"{stub.parent}:{env['PATH']}", "CALLS": str(calls)},
+        env=env,
         check=True,
     )
     runner = (calls / "1").read_text().split("\0")[:-1]
-    assert runner[5:] == ["verify", "--area", "shell", f"--flow={flow}"]
+    expected_flow = [f"--flow={flow}"] if flow else []
+    assert runner[5:] == ["verify", "--area", "shell", *expected_flow]
