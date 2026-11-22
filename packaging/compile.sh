@@ -10,6 +10,10 @@ uv run pyinstaller --noconfirm packaging/verstehen-sidecar.spec
 cd ..
 test ! -e backend/dist/verstehen-sidecar/_internal/claude_agent_sdk/_bundled/claude || { echo "The frozen sidecar must not bundle the Claude Code CLI; filter it in verstehen-sidecar.spec"; exit 1; }
 uv run --project backend python packaging/smoke.py backend/dist/verstehen-sidecar/verstehen-sidecar
+rm -rf backend/dist/server-bundle
+mkdir -p backend/dist/server-bundle
+uv build --wheel --out-dir backend/dist/server-bundle backend
+uv export --project backend --frozen --no-dev --no-emit-project --format requirements-txt -o backend/dist/server-bundle/requirements.txt
 mkdir -p app/src-tauri/binaries
 cp backend/dist/verstehen-sidecar/verstehen-sidecar app/src-tauri/binaries/verstehen-sidecar-x86_64-unknown-linux-gnu
 cd app

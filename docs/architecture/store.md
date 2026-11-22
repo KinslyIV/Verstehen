@@ -42,7 +42,12 @@ over a connection (`insert_entry`, `insert_session`, `insert_job`, `insert_side_
 | `schema_migrations` | created by the runner | applied migration numbers |
 | `graph_nodes`, `graph_node_links`, `graph_chains`, `graph_coverage`, `graph_checkpoints`, `graph_sources`, `graph_source_folders`, `graph_source_placements`, `graph_positions`, `graph_revision` | 0006 | the graph ledgers, organization, positions, and the monotonic revision |
 | `devices` | 0007 | paired devices (`id`, `name`, `token_hash`, `created_at`, `last_seen_at`, `revoked_at`) |
-| `sync_state`, `sync_log`, `sync_tombstones`, `sync_versions`, `sync_prompt_state` | 0008 | two-way sync bookmarks, changelog, delete tombstones, `server_seq` LWW versions, prompt override hashes; adds `sync_id` to graph ledger tables, `updated_at` to mutable tables, and `owner_device_id` to `jobs` |
+| `sync_state`, `sync_log`, `sync_tombstones`, `sync_versions`, `sync_prompt_state` | 0008, 0009 | two-way sync bookmarks (`ssh_user`, `ssh_port`, `server_device_id` added in 0009), changelog, delete tombstones, `server_seq` LWW versions, prompt override hashes; adds `sync_id` to graph ledger tables, `updated_at` to mutable tables, and `owner_device_id` to `jobs` |
+
+`SyncStore.configure` to a different URL, and `clear_config` (disconnect), reset all server-specific
+sync metadata (cursors, `sync_versions`, baselines, `sync_prompt_state` so prompt overrides are re-emitted, `last_sync_at`, `pushed` flags; `clear_config` also
+the URL, SSH meta and `server_device_id`). Local data stays and is pushed to the next server;
+`sync_tombstones` are kept.
 
 Files outside SQLite: learner images at `<data dir>/images/<sha256>.<ext>` (`show_image` stores PNG
 or JPEG; a `read` attachment can also be GIF or WebP), credentials in

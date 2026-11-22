@@ -71,6 +71,9 @@ class SyncState(BaseModel):
     status: SyncStatus = "disabled"
     last_error: str | None = None
     last_sync_at: datetime | None = None
+    ssh_user: str | None = None
+    ssh_port: int | None = None
+    server_device_id: str | None = None
 
 
 class SyncChange(BaseModel):
@@ -1242,11 +1245,24 @@ PromptApplyHook = Callable[[list[SyncChange]], Awaitable[dict[str, str | None]]]
 PromptRollbackHook = Callable[[], Awaitable[None]]
 
 
+async def _reset_server_sync_metadata(connection: Connection) -> None:
+    """Drop cursors, per-entity server versions, and pushed flags tied to one server."""
+    await connection.execute(
+        "UPDATE sync_state SET last_pushed_seq = 0, last_pulled_seq = 0, "
+        "last_sync_at = NULL WHERE id = 1"
+    )
+    await connection.execute("DELETE FROM sync_versions")
+    await connection.execute("DELETE FROM sync_session_baseline")
+    await connection.execute("DELETE FROM sync_prompt_state")
+    await connection.execute("UPDATE sync_log SET pushed = 0")
+
+
 class SyncStore:
     """Own sync state, changelog queries, tombstones, and idempotent remote apply."""
 
     def __init__(self, database: Database):
         self.database = database
+        self.configure_committed = False
 
     async def schema_version(self) -> int:
         async with self.database.read() as connection:
@@ -1260,7 +1276,8 @@ class SyncStore:
         async with self.database.read() as connection:
             async with connection.execute(
                 "SELECT device_id, server_url, last_pushed_seq, last_pulled_seq, "
-                "status, last_error, last_sync_at FROM sync_state WHERE id = 1"
+                "status, last_error, last_sync_at, ssh_user, ssh_port, server_device_id "
+                "FROM sync_state WHERE id = 1"
             ) as cursor:
                 row = await cursor.fetchone()
                 assert row is not None
@@ -1272,25 +1289,73 @@ class SyncStore:
             status=row[4],
             last_error=row[5],
             last_sync_at=row[6],
+            ssh_user=row[7],
+            ssh_port=None if row[8] is None else int(row[8]),
+            server_device_id=row[9],
         )
 
-    async def configure(self, server_url: str) -> SyncState:
+    async def configure(
+        self,
+        server_url: str,
+        *,
+        ssh_user: str | None = None,
+        ssh_port: int | None = None,
+        server_device_id: str | None = None,
+    ) -> SyncState:
+        """Save the server; a different server starts from clean sync metadata."""
         cleaned = server_url.strip().rstrip("/")
+        cleaned_user = ssh_user.strip() if ssh_user and ssh_user.strip() else None
+        cleaned_device_id = (
+            server_device_id.strip()
+            if server_device_id and server_device_id.strip()
+            else None
+        )
+        entered = False
+        try:
+            async with self.database.transaction() as connection:
+                entered = True
+                async with connection.execute(
+                    "SELECT server_url FROM sync_state WHERE id = 1"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    assert row is not None
+                if row[0] != cleaned:
+                    await _reset_server_sync_metadata(connection)
+                await connection.execute(
+                    "UPDATE sync_state SET server_url = ?, status = 'idle', last_error = NULL, "
+                    "ssh_user = ?, ssh_port = ?, server_device_id = ? "
+                    "WHERE id = 1",
+                    (cleaned, cleaned_user, ssh_port, cleaned_device_id),
+                )
+        finally:
+            self.configure_committed = entered and self.database.last_tx_committed
+        return await self.read_state()
+
+    async def update_ssh_meta(
+        self,
+        ssh_user: str | None,
+        ssh_port: int | None,
+        server_device_id: str | None = None,
+    ) -> SyncState:
+        """Save SSH details; a given server_device_id replaces the stored one."""
+        cleaned_user = ssh_user.strip() if ssh_user and ssh_user.strip() else None
         async with self.database.transaction() as connection:
             await connection.execute(
-                "UPDATE sync_state SET server_url = ?, status = 'idle', last_error = NULL "
-                "WHERE id = 1",
-                (cleaned,),
+                "UPDATE sync_state SET ssh_user = ?, ssh_port = ?, "
+                "server_device_id = COALESCE(?, server_device_id) WHERE id = 1",
+                (cleaned_user, ssh_port, server_device_id),
             )
         return await self.read_state()
 
     async def clear_config(self) -> SyncState:
+        """Forget the server and everything learned from it; local data stays."""
         async with self.database.transaction() as connection:
+            await _reset_server_sync_metadata(connection)
             await connection.execute(
                 "UPDATE sync_state SET server_url = NULL, status = 'disabled', "
-                "last_error = NULL, last_pushed_seq = 0, last_pulled_seq = 0 WHERE id = 1"
+                "last_error = NULL, ssh_user = NULL, ssh_port = NULL, "
+                "server_device_id = NULL WHERE id = 1"
             )
-            await connection.execute("UPDATE sync_log SET pushed = 0")
         return await self.read_state()
 
     async def update_state(

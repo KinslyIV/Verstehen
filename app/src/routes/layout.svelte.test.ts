@@ -7,6 +7,7 @@ import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
 import appHtml from '../app.html?raw';
 
+vi.mock('$app/navigation', () => ({ goto: async () => {} }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
 	getSession: async () => ({
@@ -32,6 +33,31 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
+	getSyncStatus: async () => ({
+		enabled: false,
+		device_id: 'dev-1',
+		server_url: null,
+		status: 'disabled',
+		last_pushed_seq: 0,
+		last_pulled_seq: 0,
+		last_error: null,
+		last_sync_at: null,
+		pending_changes: 0,
+		deferred_sessions: [],
+		ssh_user: null,
+		ssh_port: null,
+		server_device_id: null,
+		device_identity_missing: false
+	}),
+	getServerInstallStatus: async () => ({
+		state: 'idle',
+		mode: 'install',
+		steps: [],
+		logs: [],
+		host_key: null,
+		error: null,
+		error_code: null
+	}),
 	listSessions: async () => [],
 	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
 		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))

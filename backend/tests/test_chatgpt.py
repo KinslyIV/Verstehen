@@ -1395,3 +1395,42 @@ def test_chatgpt_reasoning_is_saved_and_resent_as_a_reasoning_item(tmp_path: Pat
     assert [(item["id"], item["encrypted_content"]) for item in resent] == [
         ("rs_1", "ENC")
     ]
+
+
+def test_removing_one_account_keeps_another_accounts_pending_sign_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    async def callback(self):
+        await asyncio.Event().wait()
+
+    monkeypatch.setattr(OpenAIChatGPTOAuthFlow, "exchange_code_from_callback", callback)
+
+    async def scenario():
+        app = create_app(Settings(data_dir=tmp_path, server=True, host="127.0.0.1"))
+        async with app.router.lifespan_context(app):
+            store = app.state.chatgpt_sign_in_service.adapter.credentials_store
+            first, second = (
+                store.sign_in(credentials()),
+                store.sign_in(credentials("two")),
+            )
+            _, token = await app.state.devices_store.create("Laptop")
+            async with httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app=app),
+                base_url="http://127.0.0.1",
+                headers={"Authorization": f"Bearer {token}"},
+            ) as client:
+                started = await client.post(f"/api/accounts/chatgpt/{first.id}/sign-in")
+                assert started.status_code == 200
+                status_url = f"/api/accounts/chatgpt/sign-in/{started.json()['id']}"
+
+                assert (
+                    await client.delete(f"/api/accounts/chatgpt/{second.id}")
+                ).status_code == 204
+                assert (await client.get(status_url)).json()["state"] == "pending"
+
+                assert (
+                    await client.delete(f"/api/accounts/chatgpt/{first.id}")
+                ).status_code == 204
+                assert (await client.get(status_url)).json()["state"] == "failed"
+
+    asyncio.run(scenario())

@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx2
+from pydantic import BaseModel, Field
 
 from verstehen.providers.credentials import CredentialsStore
 from verstehen.session.events import Notification, Notifications
@@ -15,6 +16,7 @@ from verstehen.store.sync import (
     ApplySummary,
     SyncChange,
     SyncState,
+    SyncStatus,
     SyncStore,
 )
 from verstehen.sync.images import (
@@ -34,6 +36,16 @@ logger = logging.getLogger(__name__)
 DEFAULT_DEBOUNCE_SECONDS = 0.3
 DEFAULT_FALLBACK_SECONDS = 60.0
 DEFAULT_BACKOFF_SCHEDULE = (5.0, 15.0, 30.0, 60.0)
+
+
+class ConnectionSnapshot(BaseModel):
+    """The server URL, token and connection generation captured together under the lock."""
+
+    server_url: str | None
+    token: str | None = Field(repr=False)
+    generation: int
+    ssh_user: str | None = None
+    ssh_port: int | None = None
 
 
 class SyncService:
@@ -66,6 +78,8 @@ class SyncService:
         self._fallback_seconds = fallback_seconds
         self._backoff_schedule = backoff_schedule
 
+        self.lifecycle_lock = asyncio.Lock()
+        self.connection_generation = 0
         self._sync_lock = asyncio.Lock()
         self._deferred: dict[str, list[SyncChange]] = {}
         self._seen_seq: int = 0
@@ -93,15 +107,157 @@ class SyncService:
         if self._fallback_task is None or self._fallback_task.done():
             self._fallback_task = asyncio.create_task(self._fallback_loop())
 
-    async def configure(self, server_url: str, token: str) -> SyncState:
+    def publish_status_changed(self) -> None:
+        self.notifications.publish(Notification(type="sync-status-changed"))
+
+    async def _update_state(
+        self,
+        *,
+        status: SyncStatus | None = None,
+        last_error: str | None = None,
+        clear_error: bool = False,
+        last_sync_at: datetime | None = None,
+        last_pushed_seq: int | None = None,
+        last_pulled_seq: int | None = None,
+    ) -> None:
+        await self.sync_store.update_state(
+            status=status,
+            last_error=last_error,
+            clear_error=clear_error,
+            last_sync_at=last_sync_at,
+            last_pushed_seq=last_pushed_seq,
+            last_pulled_seq=last_pulled_seq,
+        )
+        self.publish_status_changed()
+
+    async def configure(
+        self,
+        server_url: str,
+        token: str,
+        *,
+        ssh_user: str | None = None,
+        ssh_port: int | None = None,
+        server_device_id: str | None = None,
+    ) -> SyncState:
         """Save server URL and bearer token, seed pre-existing local data, and enable sync."""
-        self.credentials_store.set_sync_token(token)
-        state = await self.sync_store.configure(server_url)
-        await self.sync_store.seed_initial_snapshot()
-        await self._scan_local_prompts()
-        self._seen_seq = state.last_pulled_seq
-        self._ensure_remote_loops()
+        async with self.lifecycle_lock:
+            return await self.configure_locked(
+                server_url,
+                token,
+                ssh_user=ssh_user,
+                ssh_port=ssh_port,
+                server_device_id=server_device_id,
+            )
+
+    async def configure_locked(
+        self,
+        server_url: str,
+        token: str,
+        *,
+        ssh_user: str | None = None,
+        ssh_port: int | None = None,
+        server_device_id: str | None = None,
+    ) -> SyncState:
+        """Run configure() for a caller that already holds lifecycle_lock."""
+        cleaned_url = server_url.strip().rstrip("/")
+        self.connection_generation += 1
+        previous = await self.sync_store.read_state()
+        switching = previous.server_url != cleaned_url
+        self.sync_store.configure_committed = False
+        try:
+            if switching:
+                await self._stop_remote_loops()
+            async with self._sync_lock:
+                previous_token = self.credentials_store.sync_token()
+                self.credentials_store.set_sync_token(token)
+                try:
+                    state = await self.sync_store.configure(
+                        cleaned_url,
+                        ssh_user=ssh_user,
+                        ssh_port=ssh_port,
+                        server_device_id=server_device_id,
+                    )
+                except BaseException:
+                    if not self.sync_store.configure_committed:
+                        self.credentials_store.set_sync_token(previous_token)
+                    raise
+                finally:
+                    if switching and self.sync_store.configure_committed:
+                        self._deferred.clear()
+                        self._seen_seq = 0
+                await self.sync_store.seed_initial_snapshot()
+                await self._scan_local_prompts()
+                self._seen_seq = state.last_pulled_seq
+        finally:
+            if self.sync_store.configure_committed or previous.server_url:
+                self._ensure_remote_loops()
+                self.notify_local_change()
+        self.publish_status_changed()
         return await self.sync_store.read_state()
+
+    async def capture_connection(self) -> ConnectionSnapshot:
+        """Read URL, token and generation atomically; compare the generation later under the lock."""
+        async with self.lifecycle_lock:
+            state = await self.sync_store.read_state()
+            return ConnectionSnapshot(
+                server_url=state.server_url,
+                token=self.credentials_store.sync_token(),
+                generation=self.connection_generation,
+                ssh_user=state.ssh_user,
+                ssh_port=state.ssh_port,
+            )
+
+    async def update_ssh_meta(
+        self,
+        ssh_user: str | None,
+        ssh_port: int | None,
+        server_device_id: str | None = None,
+    ) -> SyncState:
+        state = await self.sync_store.update_ssh_meta(
+            ssh_user, ssh_port, server_device_id
+        )
+        self.publish_status_changed()
+        return state
+
+    async def _stop_remote_loops(self) -> None:
+        if self._debounce_handle is not None:
+            self._debounce_handle.cancel()
+            self._debounce_handle = None
+        current = asyncio.current_task()
+        remote_tasks = [
+            task
+            for task in (self._push_task, self._sse_task, self._fallback_task)
+            if task is not None and not task.done() and task is not current
+        ]
+        for task in remote_tasks:
+            task.cancel()
+        if remote_tasks:
+            await asyncio.gather(*remote_tasks, return_exceptions=True)
+
+    async def disconnect(self) -> SyncState:
+        """Stop remote sync loops, best-effort revoke server device, and clear sync config."""
+        async with self.lifecycle_lock:
+            self.connection_generation += 1
+            await self._stop_remote_loops()
+            async with self._sync_lock:
+                state = await self.sync_store.read_state()
+                token = self.credentials_store.sync_token()
+                if state.server_url and state.server_device_id and token:
+                    try:
+                        async with self._client_factory() as client:
+                            await client.delete(
+                                f"{state.server_url}/api/auth/devices/{state.server_device_id}",
+                                headers={"Authorization": f"Bearer {token}"},
+                                timeout=5.0,
+                            )
+                    except Exception:
+                        pass
+                self.credentials_store.set_sync_token(None)
+                self._deferred.clear()
+                self._seen_seq = 0
+                cleared = await self.sync_store.clear_config()
+                self.publish_status_changed()
+                return cleared
 
     def notify_local_change(self) -> None:
         """Schedule a debounced sync after a local SQLite commit settles."""
@@ -327,7 +483,7 @@ class SyncService:
         if response.status_code == 409:
             body = response.json()
             if body.get("code") == "schema_mismatch":
-                await self.sync_store.update_state(
+                await self._update_state(
                     status="update_required",
                     last_error=body.get(
                         "error", "Schema version mismatch; update Verstehen."
@@ -335,7 +491,7 @@ class SyncService:
                 )
                 return True
             if body.get("code") == "missing_images":
-                await self.sync_store.update_state(
+                await self._update_state(
                     status="error",
                     last_error=body.get(
                         "error", "Referenced image blobs missing on server."
@@ -343,7 +499,7 @@ class SyncService:
                 )
                 return True
         if response.status_code == 401:
-            await self.sync_store.update_state(
+            await self._update_state(
                 status="error",
                 last_error="Device token was rejected or revoked.",
             )
@@ -362,7 +518,7 @@ class SyncService:
             headers = {"Authorization": f"Bearer {token}"}
             schema = await self.sync_store.schema_version()
             self._seen_seq = max(self._seen_seq, state.last_pulled_seq)
-            await self.sync_store.update_state(status="syncing")
+            await self._update_state(status="syncing")
 
             try:
                 for sid in list(self._deferred):
@@ -385,18 +541,14 @@ class SyncService:
                     ):
                         return await self.sync_store.read_state()
             except httpx2.HTTPError as error:
-                await self.sync_store.update_state(
-                    status="offline", last_error=str(error)
-                )
+                await self._update_state(status="offline", last_error=str(error))
                 return await self.sync_store.read_state()
             except Exception as error:
                 logger.exception("Sync failed")
-                await self.sync_store.update_state(
-                    status="error", last_error=str(error)
-                )
+                await self._update_state(status="error", last_error=str(error))
                 return await self.sync_store.read_state()
 
-            await self.sync_store.update_state(
+            await self._update_state(
                 status="idle", clear_error=True, last_sync_at=datetime.now(UTC)
             )
             return await self.sync_store.read_state()
@@ -419,7 +571,7 @@ class SyncService:
             data = response.json()
             server_schema = int(data["schema_version"])
             if server_schema != schema:
-                await self.sync_store.update_state(
+                await self._update_state(
                     status="update_required",
                     last_error=f"Schema mismatch: local {schema}, server {server_schema}.",
                 )
