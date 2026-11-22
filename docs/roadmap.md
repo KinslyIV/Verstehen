@@ -62,9 +62,11 @@ All of this is merged into `main`.
    <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
    LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
    it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
-2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
-   sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
-   lesson document.
+2. **M10 Practice sessions** (built on `m10-practice`, awaiting review). The practitioner agent
+   with `problem` and `conclude`, practice sessions (`0010_practice_sessions.sql`), the practice
+   graph tools and problem targets, practice blocks in the side chat's lesson document, the
+   practice dock, `Next problem →`, sidebar and graph creation flows, and LearnHarness import of
+   practice sessions.
 3. **M11 Smaller features and later providers.** LH's stats bar below the composer (context against
    the model's limit, session cost, per-turn usage); session search (SQLite FTS5); the activity
    dock (the right panel's Activity tab is a placeholder until then); themes as shadcn theme
@@ -93,18 +95,19 @@ merges.
 
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,
-  the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
-  `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
+  `right_panel_open_state_and_width_are_remembered`,
+  `teaching-handoff`, `job-recovery-reload`,
   `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
   and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
   are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
   `reasoning-resend`: its initial Send assertion could match before the opening turn started,
   so deletion returned 409 during the turn. It now waits for the completed reply's thinking
-  button before Send confirms settlement; the full 72-case verification suite passes. The other timing
+  button before Send confirms settlement; the full 49-flow verification suite passes. The other timing
   bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
-  Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
-  (2026-11-21).
+  Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
+  (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
+  and `make check` ran together on Pixal (2026-11-22).
 - **Duplicate probe handoff under load.** The frontend sometimes sends `handoff` twice (400 "No
   probe handoff is owed", seen in `teach-predict-check`).
 - **Long single paragraphs stream slowly.** One huge paragraph re-parses as one block, as in LH;

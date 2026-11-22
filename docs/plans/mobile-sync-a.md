@@ -77,7 +77,7 @@ a short-lived single-use 8-character pairing code.
     `https://tauri.localhost`) allowing `authorization`, `x-verstehen-token`, and `content-type`.
 
 ### 4. Tests, generated types & docs
-- Add `backend/tests/test_server_auth.py` (plus config/CLI tests) covering:
+- Add `backend/tests/sync/test_server_auth.py` (plus config/CLI tests) covering:
   - Config validation and defaults (`127.0.0.1:8420`, mutual exclusivity, non-loopback refusal).
   - `verstehen mint-token` success and empty-name refusal.
   - Server mode binding and no exit on stdin EOF.

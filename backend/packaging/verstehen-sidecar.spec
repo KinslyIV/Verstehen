@@ -8,7 +8,15 @@ datas = collect_data_files(
 )
 datas += copy_metadata("verstehen", recursive=True)
 hiddenimports = collect_submodules("uvicorn")
-for package in ("playwright", "claude_agent_sdk", "pypdfium2", "pypdfium2_raw", "resvg_py"):
+for package in (
+    "asyncssh",
+    "cryptography",
+    "playwright",
+    "claude_agent_sdk",
+    "pypdfium2",
+    "pypdfium2_raw",
+    "resvg_py",
+):
     data, binary, hidden = collect_all(package)
     datas += [entry for entry in data if not entry[0].endswith("_bundled/claude")]
     binaries += [entry for entry in binary if not entry[0].endswith("_bundled/claude")]

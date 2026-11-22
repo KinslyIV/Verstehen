@@ -1,0 +1,56 @@
+[
+	{
+		"text": "## Warm-up 1\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 2\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 3\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 4\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 5\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 6\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 7\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. \n\n## Warm-up 8\n\nPolynomials are sums of powers of $x$ with constant coefficients. Differentiating a power lowers its exponent by one and multiplies by the old exponent, which is the idea behind the rule you are about to use. ",
+		"tool_calls": [
+			{
+				"name": "problem",
+				"arguments": {
+					"statement": "Differentiate $f(x) = x^3$ and say which rule you used.",
+					"mode": "recall",
+					"modelSolution": "$f'(x) = 3x^2$, by the power rule: bring the exponent down and lower it by one."
+				}
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "conclude",
+				"arguments": {
+					"outcome": "solved",
+					"verdict": "You named the power rule and applied it cleanly.",
+					"rung": null,
+					"missClass": null,
+					"retest": false
+				}
+			}
+		]
+	},
+	{
+		"text": "Nicely done. Say the word when you want another."
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "problem",
+				"arguments": {
+					"statement": "Differentiate $g(x) = 5x^4$.",
+					"mode": "composition",
+					"modelSolution": "$g'(x) = 20x^3$: the constant factor stays and the power rule handles $x^4$."
+				}
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "problem",
+				"arguments": {
+					"statement": "Differentiate $h(x) = x^2 + x$.",
+					"mode": "discrimination",
+					"modelSolution": "$h'(x) = 2x + 1$, termwise."
+				}
+			}
+		]
+	}
+]

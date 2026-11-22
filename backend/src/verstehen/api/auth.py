@@ -143,6 +143,7 @@ class PairResponse(BaseModel):
 
 class DeviceList(BaseModel):
     devices: list[Device]
+    current_device_id: str | None = None
 
 
 @router.post(
@@ -213,9 +214,13 @@ async def pair_device(
     responses={401: {"model": ApiError}},
 )
 async def list_devices(
+    request: Request,
     devices_store: DevicesStoreDependency,
 ):
-    return DeviceList(devices=await devices_store.list())
+    return DeviceList(
+        devices=await devices_store.list(),
+        current_device_id=getattr(request.state, "device_id", None),
+    )
 
 
 @router.delete(

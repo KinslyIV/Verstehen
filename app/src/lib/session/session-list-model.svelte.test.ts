@@ -1,0 +1,48 @@
+import { beforeEach, expect, test } from 'vitest';
+import type { SessionItem } from '#lib/api/client.js';
+import {
+	readKindFilter,
+	saveKindFilter,
+	sessionMeta,
+	visibleSessions
+} from './session-list-model.js';
+
+const now = new Date('2026-01-01T01:00:00Z');
+const session = (patch: Partial<SessionItem> = {}): SessionItem => ({
+	id: 's',
+	title: 'T',
+	kind: 'teach',
+	updated_at: '2026-01-01T00:00:00Z',
+	busy: false,
+	...patch
+});
+
+beforeEach(() => localStorage.clear());
+
+test('the_kind_filter_keeps_all_sessions_or_only_one_kind', () => {
+	const sessions = [session({ id: 'a' }), session({ id: 'b', kind: 'practice' })];
+	expect(visibleSessions(sessions, 'all')).toHaveLength(2);
+	expect(visibleSessions(sessions, 'teach').map(({ id }) => id)).toEqual(['a']);
+	expect(visibleSessions(sessions, 'practice').map(({ id }) => id)).toEqual(['b']);
+});
+
+test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
+	expect(readKindFilter()).toBe('all');
+	saveKindFilter('practice');
+	expect(readKindFilter()).toBe('practice');
+	localStorage.setItem('verstehen-session-kind-filter', 'nonsense');
+	expect(readKindFilter()).toBe('all');
+});
+
+test('the_row_meta_names_what_the_session_waits_on', () => {
+	expect(sessionMeta(session(), now)).toBe('1h ago');
+	expect(sessionMeta(session({ busy: true }), now)).toBe('Working…');
+	expect(sessionMeta(session({ pending_question: true }), now)).toBe('Waiting for input · 1h ago');
+	const practice = session({ kind: 'practice', pending_problem: true });
+	expect(sessionMeta(practice, now)).toBe('Problem waiting · 1h ago');
+	expect(sessionMeta(session({ pending_problem: true }), now)).toBe('1h ago');
+	expect(sessionMeta({ ...practice, pending_question: true }, now)).toBe(
+		'Waiting for input · 1h ago'
+	);
+	expect(sessionMeta({ ...practice, compacting: true }, now)).toBe('Compacting context');
+});

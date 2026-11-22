@@ -11,6 +11,8 @@ options=('!strip' '!debug')
 package() {
   install -Dm755 /cache/target/release/verstehen "$pkgdir/usr/lib/verstehen/verstehen"
   cp -a "$startdir/../backend/dist/verstehen-sidecar/." "$pkgdir/usr/lib/verstehen/"
+  install -d "$pkgdir/usr/lib/verstehen/server-bundle"
+  cp -a "$startdir/../backend/dist/server-bundle/." "$pkgdir/usr/lib/verstehen/server-bundle/"
   install -d "$pkgdir/usr/bin"
   ln -s /usr/lib/verstehen/verstehen "$pkgdir/usr/bin/verstehen"
   install -Dm644 "$startdir/verstehen.desktop" "$pkgdir/usr/share/applications/verstehen.desktop"

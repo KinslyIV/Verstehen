@@ -13,9 +13,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | Path | What it holds |
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell (declares the favicon); the root layout holds CSS and theme only |
-| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar with the session list, header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
+| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
-| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Graph, Tools |
+| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Graph, Tools, Sync (`?section=sync` deep-links; the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
 | `src/routes/lesson-test-harness.svelte`, `session-thread-test-page.svelte` | wrappers for component tests |
 | `src/lib/markdown/` | assistant markdown: Streamdown-style top-level blocks, each parsed by LH's unified/remark stack and sanitized; math, Shiki code, app-owned Mermaid; learner text stays plain |
 | `src/lib/components/ui/` | shadcn-svelte components, generated with its CLI (excluded from the comment check) |
@@ -24,11 +24,18 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 
 ## How it works
 
+- **Sync settings:** Disconnect invalidates in-flight install polls. A terminal `oauth_cancelled`
+  response ends browser sign-in and re-enables account actions; transient poll errors still retry.
 - **SvelteKit SPA** with `adapter-static`; no server rendering. Svelte 5 runes only; shared state in
   `.svelte.ts` modules; `$effect` only for real side effects.
 - **Look:** sleek and minimal, modeled on T3 Code. Tailwind v4, shadcn-svelte on bits-ui,
   tailwind-variants, `@lucide/svelte`. Dark by default; Dark / Light / System through mode-watcher,
   saved in localStorage and applied before first paint.
+- **New sessions:** `/session/new` is the teaching screen and `/session/new?mode=practice` the
+  practice one; the `Teach | Practice` toggle navigates between them without remounting, so the
+  draft and the picked nodes stay. The kind filter is remembered in `localStorage`.
+- **Sidebar refresh:** session notifications update the list and its pending practice indicators.
+  Sync-status notifications refresh the badge and Settings → Sync.
 - **Layout state:** the sidebar collapses with Ctrl+B and remembers its state; the right panel
   starts closed; toggling it remembers its visibility, and it remembers its width (default 25%,
   20–40%). Opening it from code (a new plan, a plan block, Ctrl+J) changes only the live state.

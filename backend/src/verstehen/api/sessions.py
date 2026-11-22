@@ -17,7 +17,7 @@ from verstehen.session.sessions import SessionService
 from verstehen.session.turns import TurnInput, TurnService
 from verstehen.sidechat.segments import SideSegments
 from verstehen.store.entries import Entry
-from verstehen.store.sessions import Session
+from verstehen.store.sessions import Session, SessionKind
 from verstehen.store.settings import ModelPick, SlotName
 from verstehen.teaching.questions.inputs import DismissInput
 
@@ -62,6 +62,7 @@ class TitleInput(BaseModel):
 
 
 class SessionInput(TitleInput):
+    kind: SessionKind = "teach"
     model: ModelPick | None = None
     graph_context: GraphContext | None = None
 
@@ -69,10 +70,12 @@ class SessionInput(TitleInput):
 class SessionItem(BaseModel):
     id: str
     title: str
-    kind: Literal["teach"]
+    kind: SessionKind
     updated_at: datetime
     busy: bool
     compacting: bool = Field(default_factory=lambda: False)
+    pending_question: bool = Field(default_factory=lambda: False)
+    pending_problem: bool = Field(default_factory=lambda: False)
 
 
 class SessionList(BaseModel):
@@ -120,7 +123,11 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     return SessionList(
         sessions=[
             SessionItem(
-                **item.session.model_dump(), busy=item.busy, compacting=item.compacting
+                **item.session.model_dump(),
+                busy=item.busy,
+                compacting=item.compacting,
+                pending_question=item.pending_question,
+                pending_problem=item.pending_problem,
             )
             for item in result
         ]
@@ -133,7 +140,9 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     responses={503: {"model": ModelUnavailable}},
 )
 async def create_session(body: SessionInput, session_service: SessionServiceDependency):
-    session = await session_service.create(body.title, body.model, body.graph_context)
+    session = await session_service.create(
+        body.title, body.model, body.graph_context, kind=body.kind
+    )
     if isinstance(session, Refused):
         return JSONResponse(session.reason, status_code=session.status)
     return Created(id=session.id)

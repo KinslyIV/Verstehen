@@ -10,8 +10,8 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md#ev
 ## Code map
 
 Backend, `backend/src/verstehen/api/`: one router per area (`auth.py`, `sync.py`, `sync_status.py`,
-`sessions.py`, `jobs.py`, `side_chats.py`, `graph.py`, `providers.py`, `chatgpt.py`,
-`claude_code.py`, `tools.py`, `images.py`, `health.py`), `access.py`
+`server_setup.py`, `sessions.py`, `jobs.py`, `side_chats.py`, `graph.py`, `providers.py`,
+`chatgpt.py`, `claude_code.py`, `tools.py`, `images.py`, `health.py`), `access.py`
 (`authenticate_server_request`, `request_refusal`), and `deps.py` (services from `app.state`, wired
 in `app.py`).
 
@@ -23,7 +23,7 @@ types stay behind the client.
 
 | Area | Routes |
 |---|---|
-| Sessions | `GET POST /api/sessions`; `GET PATCH DELETE /api/sessions/{id}`; `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
+| Sessions | `GET POST /api/sessions` (`POST` takes `kind`: `teach` or `practice`; list items carry `kind`, `pending_question`, `pending_problem`); `GET PATCH DELETE /api/sessions/{id}`; `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
 | Events | `GET /api/events` (SSE) |
 | Jobs | `GET /api/jobs?session=…` (also runs the recovery sweep); `POST /api/jobs/{id}/abort` |
 | Side chat | `GET POST /api/sessions/{id}/side-chats`; `GET …/side-chats/{thread}/stream` (SSE); `POST …/side-chats/{thread}/stop` |
@@ -32,6 +32,7 @@ types stay behind the client.
 | Accounts | `GET /api/accounts/claude-code`; `GET POST /api/accounts/chatgpt`; `GET /api/accounts/chatgpt/sign-in/{id}`; `POST /api/accounts/chatgpt/{account}/sign-in`; `DELETE /api/accounts/chatgpt/{account}` |
 | Auth | `POST /api/auth/pairing-code`; `POST /api/auth/pair`; `GET /api/auth/devices`; `DELETE /api/auth/devices/{id}` (server mode only; `404` otherwise) |
 | Sync | `POST /api/sync/push`; `GET /api/sync/pull`; `POST /api/sync/images/{sha256}.{ext}` (server mode only; `404` otherwise); `GET /api/sync/status`; `POST /api/sync/now` (laptop mode; `404` in server mode) |
+| Server setup | `GET POST /api/server/install`; `POST /api/server/trust-host`; `POST /api/server/connect`; `POST /api/server/disconnect`; `GET /api/server/accounts/claude-code`; `GET POST /api/server/accounts/chatgpt`; `GET /api/server/accounts/chatgpt/sign-in/{id}`; `DELETE /api/server/accounts/chatgpt/{id}`; `GET /api/server/devices`; `POST /api/server/pairing-code`; `DELETE /api/server/devices/{id}` (laptop mode only; `404` in server mode) |
 | Tools | `GET /api/search-keys`; `PUT DELETE /api/search-keys/{engine}`; `GET /api/demo-browser`; `GET POST /api/demo-browser/download` |
 | Other | `GET /api/images/{sha256}.{ext}`; `GET /api/health` |
 
@@ -48,7 +49,17 @@ LearnHarness's two-stream model is kept:
   then `data: [DONE]`.
 - **Notifications** (`GET /api/events`): "something changed, refetch". Types: `turn-started`,
   `turn-settled`, `chats-changed`, `compaction-changed`, `jobs-changed`, `side-chats-changed`,
-  `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`.
+  `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`, `sync-status-changed`.
+
+Server setup notes: `POST /api/server/accounts/chatgpt` returns a `state`-discriminated union
+(`started`, `host_key_required`, `ssh_password_required`); it and the local ChatGPT sign-in share
+one reservation of port 1455 and answer `409` when the other holds it. `GET /api/auth/devices`
+returns `current_device_id`, which a bearer-token connect stores as `server_device_id`. `GET /api/sync/status` adds `device_identity_missing` (connected to a server that cannot identify this
+laptop). Disconnect
+cancels a starting server sign-in and runs under the sync lifecycle lock.
+A cancelled server switch restarts the sync loops for the pairing that survived the attempt.
+In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation` and
+`X-Verstehen-Schema` headers so the provisioner can verify the responding deployment.
 
 ## Access
 

@@ -5,8 +5,15 @@ import Root from './(lesson)/+page.svelte';
 import Lesson from './lesson-test-harness.svelte';
 import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
+import type { Notification } from '#lib/api/client.js';
 import appHtml from '../app.html?raw';
 
+const { sessionRequests, subscribers } = vi.hoisted(() => ({
+	sessionRequests: vi.fn(async () => []),
+	subscribers: new Set<(event: Notification) => void>()
+}));
+
+vi.mock('$app/navigation', () => ({ goto: async () => {} }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
 	getSession: async () => ({
@@ -32,9 +39,40 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
-	listSessions: async () => [],
-	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
-		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+	getSyncStatus: async () => ({
+		enabled: false,
+		device_id: 'dev-1',
+		server_url: null,
+		status: 'disabled',
+		last_pushed_seq: 0,
+		last_pulled_seq: 0,
+		last_error: null,
+		last_sync_at: null,
+		pending_changes: 0,
+		deferred_sessions: [],
+		ssh_user: null,
+		ssh_port: null,
+		server_device_id: null,
+		device_identity_missing: false
+	}),
+	getServerInstallStatus: async () => ({
+		state: 'idle',
+		mode: 'install',
+		steps: [],
+		logs: [],
+		host_key: null,
+		error: null,
+		error_code: null
+	}),
+	listSessions: sessionRequests,
+	streamNotifications: (receive: (event: Notification) => void, signal: AbortSignal) =>
+		new Promise<void>((resolve) => {
+			subscribers.add(receive);
+			signal.addEventListener('abort', () => {
+				subscribers.delete(receive);
+				resolve();
+			});
+		})
 }));
 
 declare module 'vitest/browser' {
@@ -44,16 +82,31 @@ declare module 'vitest/browser' {
 }
 
 beforeEach(() => {
+	sessionRequests.mockClear();
 	localStorage.clear();
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
 });
 
-test('new_session_button_opens_new_session_screen', async () => {
+test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 	const screen = await render(Lesson);
 	await expect
-		.element(screen.getByRole('link', { name: 'New session' }))
+		.element(screen.getByRole('link', { name: 'Teaching', exact: true }))
 		.toHaveAttribute('href', '/session/new');
+	await expect
+		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
+		.toHaveAttribute('href', '/session/new?mode=practice');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('sync_status_does_not_refresh_the_sidebar_session_list', async () => {
+	await render(Lesson);
+	await expect.poll(() => sessionRequests.mock.calls.length).toBe(1);
+
+	for (const receive of subscribers) receive({ type: 'sync-status-changed', session_id: '' });
+	expect(sessionRequests).toHaveBeenCalledTimes(1);
+
+	for (const receive of subscribers) receive({ type: 'chats-changed', session_id: 'one' });
+	expect(sessionRequests).toHaveBeenCalledTimes(2);
 });
 
 test('root_shows_new_session_screen', async () => {

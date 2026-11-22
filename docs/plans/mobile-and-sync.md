@@ -245,7 +245,7 @@ safety rules plus fork-on-conflict and active-turn queueing.*
   - Verify synced writes do **not** trigger double graph extraction, auto-titling, or wakes, and
     never leak `credentials.json` or `file_access`.
 
-### Milestone C — Desktop UI for Server SSH Install, Server Accounts & Device Pairing
+### Milestone C — Desktop UI for Server SSH Install, Server Accounts & Device Pairing *(implemented on `mobile-sync-c`; see [mobile-sync-c.md](mobile-sync-c.md))*
 
 *Goal: Install and manage the server, its ChatGPT sign-in, and paired devices entirely from the
 laptop's Settings UI.*

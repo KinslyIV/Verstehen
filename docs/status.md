@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-22 (Mobile & sync Milestone B on `mobile-sync-b`).
+> PRs. Last update: 2026-11-22 (test organization, Mobile & sync Milestone C, and M10 integration).
 
 ## Where we are
 
@@ -19,21 +19,29 @@ The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `l
 and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
 confirm that converted reasoning is accepted.
 
-Mobile & sync Milestone A (`--server` mode, per-device SHA-256 token auth, `verstehen mint-token`,
-and short-code device pairing) is merged into `dev`. Milestone B (two-way Laptop ↔ Server sync
-engine, `verstehen.sync`, `0008_sync.sql`, fork-on-conflict, active-turn deferral, image/prompt
-sync; see [plan](plans/mobile-sync-b.md)) is built on `mobile-sync-b` and waits for review.
+Mobile & sync Milestones A and B are merged into `dev`. The combined integration branch adds:
+
+- **Mobile & sync Milestone C** ([plan](plans/mobile-sync-c.md)): Settings → Sync and the sidebar
+  badge, SSH install and update with host trust and health-gated rollback, server ChatGPT account
+  sign-in, and device pairing and revocation. The server-side install lock serializes deployment
+  and recovery. Updates verify the responding systemd invocation and schema. Rollback retains
+  recovery files when the previous wheel cannot read the upgraded database.
+  Two UI races are deferred: a delayed poll from a replaced sign-in on the same
+  pairing, and a stale password prompt after reopening Settings and reconnecting during an update.
+- **M10 practice sessions** ([plan](plans/m10.md)): the practitioner, practice dock and cards,
+  LearnHarness practice import, solution-safe side chat, and practice entry points in the sidebar
+  and graph. Migration `0010` follows Milestone C's `0009`. Sync pauses until both backends run
+  the same schema version. LearnHarness replacement requires an unpaired local data directory.
+- **Test organization:** backend pytest files, frontend Vitest globs, and browser flows are
+  organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
+  49. Milestone C and M10 bring the total to 52.
 
 ## Next
 
-1. Review and merge `mobile-sync-b` into `dev`, then proceed to Milestone C (desktop Settings UI
-   for server SSH install, server accounts, and device pairing).
-2. Rerun `make verify-live` now that the Claude subscription quota has reset.
-3. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
-   zero-retry CI).
-4. Plan M10 (practice sessions).
+1. Review the integration PR into `dev`.
+2. Continue to Mobile & sync Milestone D (responsive UI, `/pair`, and SSE recovery) and M11.
+3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
 
-_None._ The M1–M9, slim-verification, and reasoning-resend decision queues were reviewed and
-cleared on 2026-11-21.
+Review the [implementation decisions](decisions.md#waiting-for-your-review) in the integration PR.

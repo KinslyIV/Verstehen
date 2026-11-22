@@ -3,14 +3,24 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { LoaderCircle } from '@lucide/svelte';
+	import { Dumbbell, LoaderCircle } from '@lucide/svelte';
 	import { listSessions, streamNotifications, type SessionItem } from '#lib/api/client.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
 	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
 	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
 	import RenameSession from './rename-session.svelte';
-	import { timeAgo } from '#lib/session/time-ago.js';
+	import {
+		kindFilters,
+		readKindFilter,
+		saveKindFilter,
+		sessionMeta,
+		visibleSessions,
+		type KindFilter
+	} from '#lib/session/session-list-model.js';
+	import { cn } from '#lib/utils.js';
 	let sessions = $state<SessionItem[]>([]);
+	let filter = $state<KindFilter>(readKindFilter());
+	const shown = $derived(visibleSessions(sessions, filter));
 	let error = $state<string | null>(null);
 	let deleting = $state<SessionItem | null>(null);
 	let renaming = $state<string | null>(null);
@@ -58,6 +68,13 @@
 							);
 							return;
 						}
+						if (
+							event.type !== 'chats-changed' &&
+							event.type !== 'turn-started' &&
+							event.type !== 'turn-settled' &&
+							event.type !== 'compaction-changed'
+						)
+							return;
 						void refresh(lifetime.signal);
 						if (!deletedIds.includes(event.session_id) && deleting?.id !== event.session_id)
 							window.dispatchEvent(
@@ -92,10 +109,36 @@
 </script>
 
 {#if error}<p role="alert" class="px-3 text-xs text-destructive">{error}</p>{/if}
-{#if !sessions.length && !error}<p class="px-3 text-xs text-muted-foreground">
-		No sessions yet
+<div
+	role="group"
+	aria-label="Session kind"
+	data-testid="session-kind-filter"
+	class="mb-1 flex items-center gap-0.5 rounded-md border bg-background p-0.5"
+>
+	{#each kindFilters as option (option.value)}
+		<button
+			type="button"
+			aria-pressed={filter === option.value}
+			data-testid={`kind-filter-${option.value}`}
+			class={cn(
+				'flex-1 rounded-sm px-2 py-1 text-xs transition-colors',
+				filter === option.value
+					? 'bg-accent text-foreground'
+					: 'text-muted-foreground hover:text-foreground'
+			)}
+			onclick={() => {
+				filter = option.value;
+				saveKindFilter(option.value);
+			}}
+		>
+			{option.label}
+		</button>
+	{/each}
+</div>
+{#if !shown.length && !error}<p class="px-3 text-xs text-muted-foreground">
+		{sessions.length ? 'No sessions of this kind' : 'No sessions yet'}
 	</p>{/if}
-{#each sessions as session (session.id)}
+{#each shown as session (session.id)}
 	<ContextMenu.Root>
 		<ContextMenu.Trigger class="block rounded-lg hover:bg-sidebar-accent">
 			{#if renaming === session.id}
@@ -121,16 +164,16 @@
 						<span class="block truncate text-sm">{session.title}</span><span
 							class="block text-xs text-muted-foreground"
 						>
-							{session.compacting
-								? 'Compacting context'
-								: session.busy
-									? 'Working…'
-									: timeAgo(session.updated_at, now)}
+							{sessionMeta(session, now)}
 						</span>
 					</div>
 					{#if session.busy || session.compacting}<LoaderCircle
 							aria-label={session.compacting ? 'Compacting context' : 'Working'}
 							class="size-3 animate-spin text-muted-foreground"
+						/>{/if}
+					{#if session.kind === 'practice'}<Dumbbell
+							aria-label="Practice session"
+							class="size-3.5 shrink-0 text-muted-foreground/70"
 						/>{/if}
 				</a>
 			{/if}
@@ -150,8 +193,10 @@
 			>
 				Delete
 			</ContextMenu.Item>
-			<ContextMenu.Separator />
-			<CoverageMenuBlock sessionId={session.id} />
+			{#if session.kind === 'teach'}
+				<ContextMenu.Separator />
+				<CoverageMenuBlock sessionId={session.id} />
+			{/if}
 		</ContextMenu.Content>
 	</ContextMenu.Root>
 {/each}

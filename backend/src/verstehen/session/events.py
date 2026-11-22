@@ -38,6 +38,7 @@ class Notification(BaseModel):
         "graph-changed",
         "extractions-changed",
         "sync-changed",
+        "sync-status-changed",
     ]
     session_id: str = ""
     revision: int | None = None

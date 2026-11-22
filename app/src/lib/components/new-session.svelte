@@ -1,6 +1,10 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
+	import { page } from '$app/state';
+	import { Dumbbell } from '@lucide/svelte';
+	import { Button } from '#lib/components/ui/button/index.js';
+	import { cn } from '#lib/utils.js';
 	import { ApiError, getModels, type ModelPick, createSession } from '#lib/api/client.js';
 	import ChainTable from '#lib/graph/chain-table.svelte';
 	import NodePicker from '#lib/graph/node-picker.svelte';
@@ -10,6 +14,12 @@
 	import ModelControls from './model-controls.svelte';
 	import SetupDialog from './setup-dialog.svelte';
 	import { slotsComplete } from '#lib/models/picks.js';
+	const toggleClass = (active: boolean) =>
+		cn(
+			'rounded-sm px-3',
+			active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+		);
+	const kind = $derived(page.url.searchParams.get('mode') === 'practice' ? 'practice' : 'teach');
 	let pick = $state<ModelPick | null>(null);
 	let setup = $state(false);
 	let menu = $state(false);
@@ -18,7 +28,7 @@
 	let picking = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	let created: { text: string; id: string } | undefined;
+	let created: { text: string; id: string; kind: typeof kind } | undefined;
 	async function start() {
 		if (!draft.trim() || busy) return;
 		busy = true;
@@ -29,9 +39,9 @@
 				setup = true;
 				return;
 			}
-			if (created?.text !== draft) {
+			if (created?.text !== draft || created.kind !== kind) {
 				const graphContext = picks.items.length ? { propositions: picks.items } : undefined;
-				created = { text: draft, ...(await createSession(draft, pick, graphContext)) };
+				created = { text: draft, kind, ...(await createSession(draft, pick, graphContext, kind)) };
 			}
 			stashOpening(created.id, draft);
 			picks.clear();
@@ -51,9 +61,40 @@
 <section class="relative flex h-full min-w-0 flex-col" aria-label="Lesson">
 	<div class="flex flex-1 flex-col items-center justify-center px-6 pb-10 text-center">
 		<h1 class="text-2xl font-semibold tracking-tight">New session</h1>
-		<p class="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
-			The teacher will open by probing what you already know.
+		<p class="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
+			{kind === 'practice'
+				? 'The practitioner will pose problems on what you want to practice.'
+				: 'The teacher will open by probing what you already know.'}
 		</p>
+		<div
+			role="group"
+			aria-label="Session kind"
+			data-testid="session-kind-toggle"
+			class="mt-5 flex items-center gap-0.5 rounded-md border bg-background p-0.5"
+		>
+			<Button
+				href={resolve('/(lesson)/session/new')}
+				variant="ghost"
+				size="xs"
+				data-sveltekit-replacestate
+				aria-current={kind === 'teach' ? 'page' : undefined}
+				data-testid="kind-teach"
+				class={toggleClass(kind === 'teach')}
+			>
+				Teach
+			</Button>
+			<Button
+				href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+				variant="ghost"
+				size="xs"
+				data-sveltekit-replacestate
+				aria-current={kind === 'practice' ? 'page' : undefined}
+				data-testid="kind-practice"
+				class={toggleClass(kind === 'practice')}
+			>
+				<Dumbbell class="size-3" aria-hidden="true" /> Practice
+			</Button>
+		</div>
 	</div>
 	{#if error}<p role="alert" class="mx-auto max-w-3xl px-6 text-sm text-destructive">
 			{error}
@@ -68,7 +109,14 @@
 			}}
 		/>
 	</div>
-	<Composer bind:draft disabled={busy} onsend={() => void start()}>
+	<Composer
+		bind:draft
+		disabled={busy}
+		placeholder={kind === 'practice'
+			? 'What do you want to practice?'
+			: 'What do you want to learn?'}
+		onsend={() => void start()}
+	>
 		{#snippet models()}<ModelControls
 				{pick}
 				onpick={(value) => {

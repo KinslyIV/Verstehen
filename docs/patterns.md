@@ -27,12 +27,12 @@ is updated in the same commit.
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
 | API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `SessionService` in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
-| Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
+| Backend test | [`test_health_ok_with_token`](../backend/tests/shell/test_api.py) |
 | Component test (Vitest browser mode) | [`enter_sends_but_shift_enter_keeps_a_newline`](../app/src/lib/components/composer.svelte.test.ts) |
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
-| Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
-| Fake-model script | [`model-title.json`](../app/verify/scripts/model-title.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
+| Verify flow | [`shell-layout.flow.ts`](../app/verify/shell/shell-layout.flow.ts) |
+| Fake-model script | [`session-new-and-stream.json`](../app/verify/scripts/session-new-and-stream.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
 | API client function | [`getSession`](../app/src/lib/api/client.ts) (generated types stay behind the client; JSON and SSE use token headers) |
 | Assistant markdown | [`assistant-message.svelte`](../app/src/lib/markdown/assistant-message.svelte): Streamdown top-level blocks with stable child props; each block uses the unified pipeline, sanitized HAST nodes, and app-owned controls inside official Message. |
 | Renderer browser evidence | [`markdown.svelte.test.ts`](../app/src/routes/markdown.svelte.test.ts): complete and streaming fixtures, dark/light screenshots in `app/markdown-output/`; T4 adds real-thread verification. |

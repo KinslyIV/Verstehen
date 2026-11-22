@@ -8,6 +8,7 @@ from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+from verstehen.providers.chatgpt.callback_port import CallbackPort, CallbackPortBusy
 
 
 class SignInStatus(BaseModel):
@@ -31,33 +32,51 @@ class ChatGPTSignInService:
     Port 1455 admits one flow at a time; shutdown and removal cancel pending work.
     """
 
-    def __init__(self, adapter: ChatGPTAccountAdapter):
+    def __init__(
+        self,
+        adapter: ChatGPTAccountAdapter,
+        callback_port: CallbackPort | None = None,
+    ):
         self.adapter = adapter
+        self.callback_port = callback_port or CallbackPort()
         self.status: SignInStatus | None = None
         self.task: asyncio.Task[None] | None = None
+        self.pending_account_id: str | None = None
 
     async def start(self, account_id: str | None = None) -> SignInStarted:
-        if self.task is not None and not self.task.done():
-            raise SignInBusy("A ChatGPT sign-in is already pending.")
-        credentials_store = self.adapter.credentials_store
-        previous = credentials_store.get(account_id) if account_id else None
-        credentials = previous.credentials() if previous else None
-        flow = OpenAIChatGPTOAuthFlow(
-            app_name="Verstehen",
-            host_id=credentials_store.host_id(),
-            client_id=credentials.client_id if credentials else None,
-            id_token_hint=credentials.id_token if credentials else None,
-        )
-        params = (
-            {"prompt": "consent"}
-            if credentials and not credentials.plan_usage_granted
-            else None
-        )
-        started = SignInStarted(
-            id=uuid4().hex, url=flow.authorization_url(extra_params=params)
-        )
-        self.status = SignInStatus(id=started.id)
-        self.task = asyncio.create_task(self.complete(flow, self.status))
+        try:
+            self.callback_port.reserve("local")
+        except CallbackPortBusy as error:
+            raise SignInBusy(
+                "A ChatGPT sign-in is already pending."
+                if error.owner == "local"
+                else "A server ChatGPT sign-in is using the sign-in port."
+            ) from error
+        try:
+            credentials_store = self.adapter.credentials_store
+            previous = credentials_store.get(account_id) if account_id else None
+            credentials = previous.credentials() if previous else None
+            flow = OpenAIChatGPTOAuthFlow(
+                app_name="Verstehen",
+                host_id=credentials_store.host_id(),
+                client_id=credentials.client_id if credentials else None,
+                id_token_hint=credentials.id_token if credentials else None,
+            )
+            params = (
+                {"prompt": "consent"}
+                if credentials and not credentials.plan_usage_granted
+                else None
+            )
+            started = SignInStarted(
+                id=uuid4().hex, url=flow.authorization_url(extra_params=params)
+            )
+            self.status = SignInStatus(id=started.id)
+            self.task = asyncio.create_task(self.complete(flow, self.status))
+            self.pending_account_id = account_id
+        except BaseException:
+            self.callback_port.release("local")
+            raise
+        self.task.add_done_callback(lambda _: self.callback_port.release("local"))
         await asyncio.sleep(0)
         return started
 
@@ -89,7 +108,8 @@ class ChatGPTSignInService:
 
     async def remove(self, account_id: str) -> None:
         self.adapter.credentials_store.get(account_id)
-        await self.close()
+        if self.pending_account_id == account_id:
+            await self.close()
         self.adapter.credentials_store.remove(account_id)
         self.adapter.invalidate(account_id)
 

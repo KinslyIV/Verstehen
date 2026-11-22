@@ -50,7 +50,7 @@ export function sourceNodeSets(
 	return membership;
 }
 
-/** The source groups for the table: chains grouped by their conclusion's birth, searched and sorted. */
+/** The source groups for the table: chains grouped by their conclusion's birth, searched and sorted; practice sessions are left out. */
 export function buildGroups(input: {
 	nodes: GraphNode[];
 	storedChains: GraphChain[];
@@ -61,7 +61,12 @@ export function buildGroups(input: {
 	const { nodes, storedChains, directory, query, sort } = input;
 	const byId = new Map(nodes.map((node) => [node.id, node]));
 	const sources = new Map(directory.sources.map((source) => [source.id, source]));
-	const chains = chainsForSelection(nodes, storedChains);
+	const practiceSources = new Set(
+		directory.sources.filter((source) => source.session_kind === 'practice').map(({ id }) => id)
+	);
+	const chains = chainsForSelection(nodes, storedChains).filter(
+		(chain) => !practiceSources.has(birthOf(byId.get(chain.conclusion)) ?? '')
+	);
 	const searching = query.trim() !== '';
 	const matchesSource = (birth: string) =>
 		sourceNameMatches(directory, birth, sources.get(birth)?.label ?? null, query);
@@ -87,7 +92,7 @@ export function buildGroups(input: {
 
 	const map = new Map<string, ClusterGroup>();
 	for (const source of directory.sources) {
-		if (searching && !matchesSource(source.id)) continue;
+		if (practiceSources.has(source.id) || (searching && !matchesSource(source.id))) continue;
 		map.set(source.id, {
 			key: source.id,
 			birth: source.id,

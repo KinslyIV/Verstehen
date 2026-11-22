@@ -129,6 +129,38 @@ test('compacting_session_shows_the_indicator_and_disables_send_and_submit', asyn
 	await expect.element(screen.getByRole('button', { name: 'Submit answer' })).toBeDisabled();
 });
 
+test('failed_compaction_clears_indicator_without_markers_and_re_enables_answering', async () => {
+	const session = {
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach' as const,
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [questionBatch('one')]
+	};
+	vi.mocked(api.getSession).mockResolvedValue({ ...session, compacting: true });
+	vi.mocked(api.postInput).mockResolvedValue();
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByTestId('compacting-indicator')).toBeVisible();
+	await screen.getByRole('radio', { name: 'Two' }).click();
+	const submit = screen.getByRole('button', { name: 'Submit answer' });
+	await expect.element(submit).toBeDisabled();
+
+	vi.mocked(api.getSession).mockResolvedValue({ ...session, compacting: false });
+	window.dispatchEvent(new CustomEvent('verstehen:sessions-changed', { detail: 'one' }));
+	await expect.element(screen.getByTestId('compacting-indicator')).not.toBeInTheDocument();
+	await expect.element(screen.getByTestId('compaction-moment')).not.toBeInTheDocument();
+	await expect.element(screen.getByTestId('compaction-cut-divider')).not.toBeInTheDocument();
+	await expect.element(submit).toBeEnabled();
+	await submit.click();
+	expect(api.postInput).toHaveBeenCalledWith(
+		'one',
+		expect.objectContaining({ type: 'answer', tool_call_id: 'one' }),
+		expect.any(AbortSignal)
+	);
+});
+
 test('saved_compaction_draws_the_moment_line_and_the_cut_divider', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
 		side_segments: { by_entry: {}, entry_points: {}, current: null },

@@ -16,6 +16,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 **LearnHarness import:**
 
+- **Replacement requires an unpaired local data directory.** Dry runs still work. Replacing a
+  synced dataset would leave remote copies and the outbox inconsistent. The alternative needs an
+  explicit distributed replace operation with its own confirmation and recovery rules.
 - **Learner-message images are dropped**, with one warning per session. `UserEntry` has no
   attachments. Alternative: refuse the import. Consequence: such images are lost (the user's data has none).
 - **Plan-block and probe-handoff details keep LH's camelCase keys.** Verstehen's consumers read them.
@@ -36,8 +39,63 @@ alternative, and the consequence, until the user reviews them at the end of the 
   a time zone) refuses the import; only unparsable JSONL lines are skipped. LH skips both.
 - **Orphans:** jobs of skipped or missing chats are skipped; graph rows naming non-imported
   sessions are kept; unplaceable or shared-segment side threads are imported with a warning.
-- **Running the flow alone** needs `FLOW='learnharness-import.flow'`: the worktree path contains
-  the flow name, so the bare name matches every flow.
+
+**Mobile & Sync C:**
+
+- **Kit 3 navigation:** the settings section updates the URL with `goto(..., { replace: true, reset: false })`,
+  the replacement for the removed `noScroll`/`keepFocus`.
+- **known_hosts matching** uses AsyncSSH. A portless entry also matches a non-default port (as the real connect
+  does). The preflight probe offers only the signature algorithms of the trusted keys for the host
+  (the real connect's behavior) and matches the host name plus every resolved peer address, so a pinned RSA
+  key does not look like a mismatch and an IP-keyed revoked entry applies. AsyncSSH does not match a
+  bracketed `[ip]:port` revoked entry, so revoke IP-keyed hosts with a portless entry. Alternative: do the trust
+  check inside the real connect with a callback (more code, one handshake fewer).
+- **`python -m verstehen`** (`__main__.py`) runs the service and mint-token, because console-script shebangs
+  break when the venv is renamed. The smoke check imports `verstehen.cli` and `verstehen.app`.
+- **Linger** is attempted (non-fatal) in the environment check before the user-manager check; a failure is a
+  warning on the systemd step. Alternative: fail the install.
+- **Connection generation:** `SyncService.connection_generation` bumps on every configure and disconnect. An
+  install or update captures URL, token and generation together under the lifecycle lock, sends the captured
+  token only to the captured URL, and refuses to change pairing or SSH state if the generation moved
+  (disconnect plus reconnect to the same URL included). Alternative: compare URLs only (misses the same-URL
+  reconnect).
+- **Update rollback** keeps `venv.prev` and `unit.prev` until the new service is healthy. On a failed start,
+  failed health check, SSH failure after the swap or cancellation it restores both, runs daemon-reload,
+  restarts and waits for health. If the SSH transport dropped, it retries (2 attempts, about 30 s each) over a
+  new connection with the same known_hosts checks and the run's in-memory password. The restore is retryable:
+  a `rollback.pending` marker is touched first, `unit.prev` is copied (not consumed), and the backups are
+  removed only after the restarted service is healthy, so a retry that finds them already restored still
+  reloads, restarts and health-checks. If rollback fails, the error says a manual restore may be needed.
+  A later install or update refuses to swap if any recovery artifact remains, rather than discarding
+  the only known-good backup or attempting an automatic recovery from a previous run.
+  A remote `install.lock` serializes staging, swaps and rollback across desktops using the same SSH
+  account. It survives an uncertain interruption or failed rollback so another install cannot race
+  lingering remote work; clear it manually only after confirming setup has stopped and recovering.
+  Alternative: restore the venv only (leaves a unit the old venv may not run).
+- **Update health checks** verify the systemd invocation and schema before removing backups.
+  An SSH disconnect triggers a fresh verification before rollback. Rollback refuses to restore
+  the old wheel if the database has applied migrations absent from it. Recovery files stay in
+  place until the restored process owns the listener and is healthy.
+- **One snapshot per server operation:** `ServerProxy` and server OAuth take URL, token, generation and SSH
+  details from `capture_connection()` (under the lifecycle lock, released before any request). The sign-in
+  tunnel, its request and its watcher use that snapshot; a stale generation before the request or the SSH
+  metadata write closes the tunnel and returns `oauth_cancelled`. The URL (SQLite) and token (credentials
+  file) cannot share a transaction, so `configure` writes both under the lifecycle and sync locks and
+  restores the previous token only if the URL did not commit (`SyncStore.configure_committed`, set from the
+  shielded transaction outcome), also on cancellation. Server OAuth keeps the last 8 issued sign-in ids with
+  their snapshot; polling an id from a replaced server returns a local `oauth_cancelled` (unknown id: 404)
+  and is never forwarded.
+- **Token checks:** only an explicit 401 or 403 means the server rejected a token and an update mints a new
+  device. A timeout, connection error or 5xx is retried with backoff; if it persists the update fails and the
+  existing pairing is left unchanged.
+- **Reset on server change:** any configure to a different URL or disconnect resets server sync metadata,
+  including `sync_prompt_state`, so the next scan re-emits the current prompt overrides to the new server.
+  `sync_tombstones` are kept. Alternative: keep cursors per server (more state).
+- **Older servers without `current_device_id`:** the status carries `device_identity_missing` and Settings shows
+  "This server can't identify this laptop; update the server to enable self-revoke on disconnect". An update
+  that verifies the existing token stores `current_device_id` when the server returns it. No name matching.
+- **Removing a server ChatGPT account** cancels a pending sign-in only when that sign-in is a re-sign-in of
+  the same account (this also applies to the local flow).
 
 **Mobile & sync (Milestone A):**
 
@@ -150,8 +208,26 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Nodes can also be deleted from the detail card**, besides right-click.
 - **Smaller differences:** the chains table is an overlay under the app header, without LH's guide
   lines, drag preview, or find shortcut; card session links open the session, not the message
-  (planned: message anchors); the summary view has no practice row until M10; two texts that point
-  to LH features we don't have are reworded.
+  (planned: message anchors); two texts that point to LH features we don't have are reworded.
+
+### Practice sessions
+
+- **Creation UI:** the sidebar has `+ Teaching` and `Practice`, `/session/new` adds a
+  `Teach | Practice` toggle (preserving draft and picked nodes), and `/graph` offers both
+  `Start teaching` and `Start practice` when nodes are picked. LH uses `/chat/new?kind=practice` and
+  only `Start practicing` on `/graph`.
+- **Context menu & Delete dialog:** practice session context menus omit `CoverageMenuBlock`, and
+  `DeleteSessionDialog` hides the graph-traces option and sends `mode=preserve-graph`. LH leaves the
+  delete dialog unchanged.
+- **The `Teach | Practice` toggle sits above the composer** on `/session/new` (LH puts it in the
+  stats bar under the composer); the mode lives in the URL (`?mode=practice`).
+- **The practice dock's submit waits for the agent's reply** to the previous thinking (LH only
+  blocks it during compaction); a window-level Enter with an empty draft focuses the field instead
+  of doing nothing.
+- **A dismissed problem pauses job wakes** like a dismissed question: LH's wake pipeline checks
+  `endsInDismissal`, which misses the `problem-dismissed` marker, so a job result can wake the
+  practitioner and pose a new problem before the dismissal's `conclude` pair is saved. Verstehen
+  holds the delivered results until the learner's next input, which carries the pair and the results.
 
 ### Providers and models
 

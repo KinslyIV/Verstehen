@@ -1,7 +1,8 @@
 from collections.abc import Sequence
 from typing import Literal
 
-from verstehen.store.entries import Entry
+from verstehen.store.entries import AssistantEntry, Entry, ToolCallPart
+from verstehen.teaching.practice.schemas import PRACTICE_CONCLUDE_TOOL
 from verstehen.teaching.questions.inputs import QUESTION_KINDS
 
 Cause = Literal["learner", "automatic", "neutral"]
@@ -26,6 +27,18 @@ def input_cause(entry: Entry) -> Cause:
     return "neutral"
 
 
+def _is_synthetic_dismissal_conclude(entry: AssistantEntry) -> bool:
+    if entry.provider != "synthetic" or entry.model != "synthetic-conclude":
+        return False
+    return any(
+        isinstance(part, ToolCallPart)
+        and part.tool_name == PRACTICE_CONCLUDE_TOOL
+        and isinstance(part.arguments, dict)
+        and part.arguments.get("outcome") == "dismissed"
+        for part in entry.parts
+    )
+
+
 def is_background_cause(entries: Sequence[Entry]) -> bool:
     """Whether the request a continuation makes was caused by automatic input (LH reconstructRequestCause)."""
     inherited = "ambiguous"
@@ -44,6 +57,8 @@ def is_background_cause(entries: Sequence[Entry]) -> bool:
 
     for entry in entries:
         if entry.kind == "assistant":
+            if _is_synthetic_dismissal_conclude(entry):
+                continue
             inherited, triggers = resolve(), []
         elif (cause := input_cause(entry)) != "neutral":
             triggers.append(cause)

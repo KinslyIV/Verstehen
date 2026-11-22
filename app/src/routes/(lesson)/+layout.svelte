@@ -1,9 +1,10 @@
 <script lang="ts">
 	import SessionList from '#lib/components/session-list.svelte';
+	import SyncBadge from '#lib/components/sync-badge.svelte';
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { PanelRight, Plus, Settings, Waypoints } from '@lucide/svelte';
+	import { Dumbbell, PanelRight, Plus, Settings, Waypoints } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Sidebar from '#lib/components/ui/sidebar/index.js';
 	import * as Resizable from '#lib/components/ui/resizable/index.js';
@@ -82,9 +83,22 @@
 	<Sidebar.Root collapsible="offcanvas">
 		<Sidebar.Header class="gap-5 p-4">
 			<span class="px-2 text-sm font-semibold tracking-tight">Verstehen</span>
-			<Button href={resolve('/(lesson)/session/new')} variant="outline" class="justify-start gap-2">
-				<Plus class="size-4" /> New session
-			</Button>
+			<div class="grid grid-cols-2 gap-2">
+				<Button
+					href={resolve('/(lesson)/session/new')}
+					variant="outline"
+					class="justify-start gap-2"
+				>
+					<Plus class="size-4" /> Teaching
+				</Button>
+				<Button
+					href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+					variant="outline"
+					class="justify-start gap-2"
+				>
+					<Dumbbell class="size-4" /> Practice
+				</Button>
+			</div>
 			<Button
 				href={resolve('/(lesson)/graph')}
 				variant="ghost"
@@ -98,6 +112,7 @@
 			<SessionList />
 		</Sidebar.Content>
 		<Sidebar.Footer class="border-t p-3">
+			<SyncBadge />
 			<Button
 				href={resolve('/settings')}
 				variant="ghost"

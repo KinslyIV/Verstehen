@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
 from verstehen.graph.extraction_service import ExtractionService
+from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
 from verstehen.providers.events import log_provider_event
@@ -48,8 +49,8 @@ from verstehen.store.entries import (
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.model_identity import ModelIdentity
-from verstehen.store.sessions import SessionsStore
-from verstehen.store.settings import SettingsStore
+from verstehen.store.sessions import SessionKind, SessionsStore
+from verstehen.store.settings import SettingsStore, ToolSettings
 from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
@@ -62,6 +63,18 @@ from verstehen.teaching.phases import handoff_owed, has_probe_done
 from verstehen.teaching.plan.history import current_plan, plan_blocks_for
 from verstehen.teaching.plan.tool import plan_tool
 from verstehen.teaching.plan.tree import PlanTree
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
+from verstehen.teaching.practice.state import (
+    active_problem_of,
+    concluded_by_dismissal_pair,
+    new_next_message,
+    new_thinking_message,
+    pending_problem_dismissal_of,
+)
+from verstehen.teaching.practice.tools import build_practitioner, create_practice_gate
 from verstehen.teaching.prober import build_prober
 from verstehen.teaching.prompts import compose_instructions
 from verstehen.teaching.questions.inputs import (
@@ -86,6 +99,8 @@ STREAMED_RESULT_TOOLS = (
     "probe_done",
     "plan_init",
     "send_to_user",
+    PRACTICE_PROBLEM_TOOL,
+    PRACTICE_CONCLUDE_TOOL,
     *ACKNOWLEDGEMENTS,
 )
 logger = logging.getLogger(__name__)
@@ -93,13 +108,22 @@ logger = logging.getLogger(__name__)
 
 class TurnInput(BaseModel):
     type: Literal[
-        "text", "retry", "answer", "continue", "retry-question", "handoff", "steers"
+        "text",
+        "retry",
+        "answer",
+        "continue",
+        "retry-question",
+        "handoff",
+        "steers",
+        "thinking",
+        "next",
     ]
     text: str | None = None
     tool_call_id: str | None = None
     answer: QuestionAnswer | None = None
     message_id: str | None = None
     content_index: int | None = None
+    problem_call_id: str | None = None
 
 
 @dataclass
@@ -112,6 +136,7 @@ class TurnState:
     input: TurnInput
     runtime: SessionRuntime
     entries: list[Entry]
+    session_kind: SessionKind = "teach"
     resolved: ResolvedModel | None = None
     run: TurnRun | None = None
     agent: QuestionAgent | None = None
@@ -122,7 +147,9 @@ class TurnState:
     dropped: set[str] = field(default_factory=set)
 
     @property
-    def role(self) -> Literal["teacher", "prober"]:
+    def role(self) -> Literal["teacher", "prober", "practice"]:
+        if self.session_kind == "practice":
+            return "practice"
         return "teacher" if has_probe_done(self.entries) else "prober"
 
 
@@ -212,11 +239,35 @@ class TurnService:
     @staticmethod
     def input_appends(state: TurnState) -> list[Entry]:
         input = state.input
+        dismissed_id = pending_problem_dismissal_of(state.entries)
+        dismissal: list[Entry] = []
+        if dismissed_id:
+            dismissal.extend(concluded_by_dismissal_pair(dismissed_id))
         match input.type:
             case "text":
                 if not input.text or not input.text.strip():
                     raise ValueError("text input requires non-empty text")
-                return [UserEntry(text=input.text)]
+                return [*dismissal, UserEntry(text=input.text)]
+            case "continue":
+                return dismissal
+            case "thinking":
+                if not input.problem_call_id or not input.problem_call_id.strip():
+                    raise ValueError("thinking input requires problemCallId")
+                if not input.text or not input.text.strip():
+                    raise ValueError("thinking input requires non-empty text")
+                active = active_problem_of(state.entries)
+                if active is None or active.tool_call_id != input.problem_call_id:
+                    raise ValueError("thinking input targets no active problem")
+                return [
+                    *dismissal,
+                    new_thinking_message(input.problem_call_id, input.text),
+                ]
+            case "next":
+                if state.session_kind != "practice":
+                    raise ValueError("next input is a practice-session affordance")
+                if active_problem_of(state.entries) is not None:
+                    raise ValueError("next input requires no active problem")
+                return [*dismissal, new_next_message()]
             case "handoff":
                 if not handoff_owed(state.entries):
                     raise ValueError("No probe handoff is owed")
@@ -237,6 +288,7 @@ class TurnService:
                 if (
                     has_unresolved_question(state.entries)
                     or ends_in_dismissal(state.entries)
+                    or dismissed_id is not None
                     or ends_in_question_recovery(state.entries)
                 ):
                     raise ValueError("The session is waiting for the learner")
@@ -264,7 +316,7 @@ class TurnService:
     async def save_without_turn(
         self, state: TurnState, appends: list[Entry]
     ) -> Continue:
-        if appends:
+        if appends and state.input.type != "continue":
             await self.entries_store.append(state.session_id, appends)
             self.notify_changed(state.session_id)
         state.saved_without_turn = True
@@ -272,8 +324,10 @@ class TurnService:
 
     async def validate(self, state: TurnState) -> Refused | Continue:
         async with state.runtime.lock:
-            if await self.sessions_store.get(state.session_id) is None:
+            session = await self.sessions_store.get(state.session_id)
+            if session is None:
                 return Refused(404, {"error": "Unknown session"})
+            state.session_kind = session.kind
             state.entries = await self.entries_store.list(state.session_id)
             try:
                 appends = self.input_appends(state)
@@ -461,7 +515,37 @@ class TurnService:
             self.data_dir,
         )
         updates = ContextUpdates(lambda: self.take_context_updates(state))
-        if role == "prober":
+        if role == "practice":
+
+            async def list_sessions() -> str:
+                return format_graph_sessions(
+                    await self.graph_store.read(), await self.sessions_store.list()
+                )
+
+            async def list_propositions(session: str) -> str:
+                return format_graph_propositions(await self.graph_store.read(), session)
+
+            async def graph_nodes():
+                return get_graph(await self.graph_store.read()).nodes
+
+            state.agent = build_practitioner(
+                model,
+                instructions,
+                state.resolved.settings,
+                gate=create_practice_gate(state.entries),
+                graph_nodes=graph_nodes,
+                extra_tools=(
+                    *files,
+                    *(
+                        prober_graph_tools(list_sessions, list_propositions)
+                        if settings.graph.enabled and settings.agent.graph_tools
+                        else ()
+                    ),
+                    *job_tools(dispatcher, ToolSettings(), prober=True),
+                ),
+                extra_capabilities=(updates,),
+            )
+        elif role == "prober":
 
             def question_pending() -> bool:
                 return has_unresolved_question(state.entries) or (
@@ -622,6 +706,7 @@ class TurnService:
                                     result = saved_tool_result(event.part)
                                     if result is not None:
                                         results.append(result)
+                        update_response(reply, node.model_response, model)
         except asyncio.CancelledError:
             task = asyncio.current_task()
             if task is not None:

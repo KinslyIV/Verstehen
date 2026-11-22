@@ -1,7 +1,7 @@
 # Teaching and questions
 
-Owns what the tutor is: the prober and teacher agents, their prompts, the question tools and
-answers, the phase and plan rules, `send_to_user`, the learner-file and image tools, and the
+Owns what the tutor is: the prober, teacher, and practitioner agents, their prompts, the question
+and practice tools and answers, the phase and plan rules, `send_to_user`, the learner-file and image tools, and the
 pure compaction logic. It knows nothing about HTTP or SQLite: it gets what it needs as arguments
 and callbacks from `session/`.
 
@@ -17,6 +17,7 @@ Backend, `backend/src/verstehen/teaching/`:
 | `prober.py`, `teacher.py` | `build_prober` (with `probe_done` and its assessment) and `build_teacher`; both use `build_question_agent` |
 | `prompts.py`, `prompts/` | `compose_instructions` and override reading (`fragment_text`, `join_fragments`); LH's prompt tree, copied (`system-prompt.md`, `prober/`, `teacher/`, `shared/`, `side-chat/`, `practice/`) |
 | `questions/` | `tools.py` (`QuestionTools`: validation and the retry limit, `defer_question`), `schemas.py`, `validation.py`, `pending.py` (pending detection, dismissal and recovery tails, `needs_continuation`), `inputs.py` (answers, dismissals, recovery, the model-facing compact answer) |
+| `practice/` | the practitioner: `schemas.py` (`problem` and `conclude` inputs, ack texts), `healing.py` (weak-model argument healing, target id resolution against the whole graph), `state.py` (derived folds: active problem, pending dismissal, model solution), `tools.py` (`PracticeGate`, both tools, `build_practitioner`) |
 | `phases.py` | `has_probe_done`, `phase_at`, `handoff_owed`, tagged plan nodes |
 | `handoff.py` | `HANDOFF_TEXT`, the probe-handoff marker's model text |
 | `plan/` | `plan_init` (`tool.py`), the tree and statuses (`tree.py`), Mermaid parsing, `current_plan` and plan blocks (`history.py`) |
@@ -34,6 +35,7 @@ Frontend, `app/src/lib/`:
 
 | Folder | What it holds |
 |---|---|
+| `practice/` | `state.ts` (mirrors `practice/state.py`), `practice-dock.svelte` (statement and YOUR THINKING field, replaces the composer while a problem is active), `problem-card.svelte`, `thinking-card.svelte`, `conclude-card.svelte` with `metadata-popover.svelte` |
 | `questions/` | `question-dock.svelte` (replaces the composer while a question is pending), `answered-card.svelte`, `question-core.ts` (LH's `buildAnswer`, grading, shuffle, pending detection), keyboard rules, confidence inputs, the Esc dialogs, `tool-content.svelte` |
 | `teaching/` | phases and dividers, the probe assessment, the plan diagram (`plan-diagram.svelte`, `plan-layout.ts`), `send_to_user` prose (`delivery.ts`), live tool results (`response-prose.ts`), image card, file-access helpers |
 
@@ -45,10 +47,32 @@ Frontend, `app/src/lib/`:
   `shared/`. An override in `<data dir>/prompts/<segment>.md` applies only while its switch
   `agent.prompts[<segment>]` is on and the file is readable. The only deliberate prompt change
   from LH is the 5–15 node plan size in `teacher/10-planning.md`.
+- **Practice sessions** (`kind = "practice"`) skip probing, planning, extraction, and graph
+  mastery writes and run the practitioner: `practice/*.md` plus the allowlisted `shared/` fragments
+  (voice, accuracy, mental model, side conversations, formatting), `problem` and `conclude`, the
+  learner-file tools, `research` and `pdf` (always armed, regardless of Settings → Tools, still
+  behind background consent and File access), and `list_sessions` and `list_propositions` when
+  `graph.enabled` and `agent.graph_tools` are on. `problem` validates, canonicalizes target names
+  to node ids, and saves a clean acknowledgement. A response with one or more problem calls ends
+  the turn if every pose succeeds. Sibling tools still run and keep their results, as in LH's
+  `makeQuestionStopper`. The learner's `thinking` and `next` inputs arrive as `practice-thinking`
+  and `practice-next` markers. `conclude` needs an
+  active problem (the `PracticeGate`, seeded from the entries), and the turn goes on for closing
+  words. The model solution is committed in the `problem` call and shown verbatim by the UI when
+  the problem ends. Legacy conclusions can carry their own `solutionReveal`, which the card uses
+  when the pose has no solution. Side-chat prompts hide the solution while the problem is open.
+  Once a practice session has any recorded problem call, the idle composer offers **Next problem**
+  whenever no problem is active. A dismissal (Esc) saves a
+  `problem-dismissed` marker and no turn; the next input is preceded by a synthetic
+  `conclude(outcome="dismissed")` pair. A clean `problem` acknowledgement never owes a continue
+  turn, so reloading an open problem starts nothing (`needs_continuation`, mirrored in
+  `questions/pending.ts`).
 - **Questions** (`probe`, `recall`, `quiz`, `explain`, `ask_user_question`) defer: a valid call
   ends the run with the question pending, and the answer arrives as the tool result in a later
   run. Invalid arguments go back to the model at most 10 times per tool per turn
   (`QUESTION_RETRY_LIMIT`). Other calls in the same response still run first (mixed batches).
+- **Truncated output** makes the prober, teacher, and practitioner return tool errors before any
+  tool in the response executes.
 - **Quizzing** (`settings.quizzing`: `choice` or `free`) picks `probe` or `recall` and the teach
   tool variants, read fresh every turn.
 - **The handoff.** After `probe_done`, the session saves the `probe-handoff` marker
@@ -64,7 +88,8 @@ Frontend, `app/src/lib/`:
 ## Data and events
 
 - Entries: question calls in `assistant` entries, answers in `tool_result.details`, markers
-  `probe-handoff`, `plan-block`, `graph-context`.
+  `probe-handoff`, `plan-block`, `graph-context`, and for practice `practice-thinking`,
+  `practice-next`, `problem-dismissed`.
 - Settings: `quizzing`, `file_access`, `compaction_limit`, `agent.prompts`, `agent.graph_tools`.
 
 ## Collaborators
@@ -78,6 +103,9 @@ Frontend, `app/src/lib/`:
 
 - **Plans misread LH more than once** (the compaction gate counting the incoming input, summary
   hoisting, the busy Send/Stop button). LH's code is the specification; check it, not the plan.
+- **The practice dock replaces the composer** the same way, and between problems the composer
+  morphs into **Next problem →** (empty Enter sends `next`). Nothing may offer extraction for a
+  practice session; the API answers 400.
 - **The question dock replaces the composer.** Anything the composer offers while a question
   waits (the model pill, the keyboard hint) has to be added to the dock explicitly.
 - **Question actions come from the saved record**, not the live stream: the stream shows a

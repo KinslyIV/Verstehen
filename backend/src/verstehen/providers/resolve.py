@@ -18,6 +18,7 @@ from verstehen.store.settings import ModelPick, SettingsStore, SlotName
 ModelRole = Literal[
     "prober",
     "teacher",
+    "practice",
     "sideQuestion",
     "researcher",
     "demoBuilder",
@@ -30,6 +31,7 @@ ModelRole = Literal[
 ROLE_SLOT: dict[ModelRole, SlotName] = {
     "prober": "strong",
     "teacher": "strong",
+    "practice": "strong",
     "sideQuestion": "strong",
     "researcher": "cheap",
     "demoBuilder": "cheap",

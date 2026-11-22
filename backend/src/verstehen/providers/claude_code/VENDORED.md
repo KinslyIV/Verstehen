@@ -40,7 +40,7 @@ Offline verification: `make check` (live tests excluded by default).
 To opt in on the laptop with an installed, signed-in `claude`, from the repository root:
 
 ```sh
-uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/test_claude_code_live.py
+uv run --project backend pytest -c backend/pyproject.toml -m live -s backend/tests/providers/test_claude_code_live.py
 ```
 
 This sends one short Haiku request using the user's subscription and prints the discovered

@@ -102,8 +102,17 @@ test('space_activates_the_submit_button_after_walking_the_rows', async () => {
 });
 
 test('escape_prioritizes_an_open_overlay_then_the_pending_question_then_the_turn', () => {
-	expect(escAbortTarget({ overlay: true, pending: true, busy: true })).toBeNull();
-	expect(escAbortTarget({ overlay: false, pending: true, busy: true })).toBe('question');
-	expect(escAbortTarget({ overlay: false, pending: false, busy: true })).toBe('turn');
-	expect(escAbortTarget({ overlay: false, pending: false, busy: false })).toBeNull();
+	expect(escAbortTarget({ overlay: true, pending: true, problem: true, busy: true })).toBeNull();
+	expect(escAbortTarget({ overlay: false, pending: true, problem: true, busy: true })).toBe(
+		'question'
+	);
+	expect(escAbortTarget({ overlay: false, pending: false, problem: false, busy: true })).toBe(
+		'turn'
+	);
+	expect(escAbortTarget({ overlay: false, pending: false, problem: true, busy: true })).toBe(
+		'problem'
+	);
+	expect(
+		escAbortTarget({ overlay: false, pending: false, problem: false, busy: false })
+	).toBeNull();
 });

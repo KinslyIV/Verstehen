@@ -51,17 +51,37 @@ export function questionShortcut(
 	}
 }
 
+/** A bare Enter pressed outside any text field, button, link, or open overlay. */
+export function isPlainEnterOutsideFields(event: KeyboardEvent): boolean {
+	const target = event.target as HTMLElement | null;
+	return (
+		event.key === 'Enter' &&
+		!event.defaultPrevented &&
+		!event.isComposing &&
+		!event.altKey &&
+		!event.shiftKey &&
+		!event.ctrlKey &&
+		!event.metaKey &&
+		!isTypingSurface(target) &&
+		!target?.closest('button, a') &&
+		!hasOpenOverlay()
+	);
+}
+
 export function escAbortTarget({
 	overlay,
 	pending,
+	problem,
 	busy
 }: {
 	overlay: boolean;
 	pending: boolean;
+	problem: boolean;
 	busy: boolean;
-}): 'question' | 'turn' | null {
+}): 'question' | 'problem' | 'turn' | null {
 	if (overlay) return null;
 	if (pending) return 'question';
+	if (problem) return 'problem';
 	return busy ? 'turn' : null;
 }
 

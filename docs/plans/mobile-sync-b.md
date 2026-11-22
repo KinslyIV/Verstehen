@@ -71,7 +71,7 @@ commit, and prompt-override sync.
   - `GET /api/sync/status`
   - `POST /api/sync/now`
 - Wire in `backend/src/verstehen/app.py` and run `make api-types`.
-- Add `backend/tests/test_sync.py` two-backend integration test suite covering all 8 safety rules,
+- Add `backend/tests/sync/test_sync.py` two-backend integration test suite covering all 8 safety rules,
   initial backfill, offline catch-up, duplicate push idempotency, `schema_version` mismatch, image
   ordering, tombstones, active-turn/compaction deferral (laptop pull & server push),
   fork-on-conflict, prompt overrides, settings allowlist, and no double extraction/titling/wakes.

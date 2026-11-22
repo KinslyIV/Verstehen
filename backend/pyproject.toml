@@ -5,8 +5,10 @@ license = "AGPL-3.0-only"
 requires-python = "==3.14.*"
 dependencies = [
     "aiosqlite>=0.22.1",
+    "asyncssh>=2.19.0",
     "claude-agent-sdk>=0.2.185",
     "fastapi>=0.165.0",
+    "httpx2>=2.0.0",
     "pillow>=13.0.0",
     "playwright>=1.65.2",
     "pydantic>=2.14.3",
@@ -31,7 +33,6 @@ dev = [
     "ruff",
     "pyrefly",
     "import-linter",
-    "httpx2>=2.0.0",
     "pyinstaller>=6.22,<7",
 ]
 
@@ -40,7 +41,10 @@ testpaths = ["tests", "../tools/tests"]
 pythonpath = [".."]
 filterwarnings = ["error"]
 addopts = "-m 'not live'"
-markers = ["live: opt-in requests using the installed provider and user subscription"]
+markers = [
+    "live: opt-in requests using the installed provider and user subscription",
+    "slow: real CLI subprocess or headless Chromium tests skipped in area-scoped runs",
+]
 
 [tool.importlinter]
 root_package = "verstehen"

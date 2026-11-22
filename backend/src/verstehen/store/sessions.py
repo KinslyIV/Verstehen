@@ -12,11 +12,13 @@ from verstehen.store.graph import GraphLedger, GraphStore, read_ledger, write_le
 from verstehen.store.settings import ModelPick, ThinkingLevel
 from verstehen.store.sync_log import append_sync_log, record_tombstone
 
+SessionKind = Literal["teach", "practice"]
+
 
 class Session(BaseModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     title: str
-    kind: Literal["teach"] = "teach"
+    kind: SessionKind = "teach"
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -78,9 +80,15 @@ class SessionsStore:
     def __init__(self, database: Database):
         self.database = database
 
-    async def create(self, title: str, pick: ModelPick | None = None) -> Session:
+    async def create(
+        self,
+        title: str,
+        pick: ModelPick | None = None,
+        kind: SessionKind = "teach",
+    ) -> Session:
         session = Session(
             title=title,
+            kind=kind,
             model_account=pick.account if pick else None,
             model_id=pick.model if pick else None,
             thinking_level=pick.thinking_level if pick else None,

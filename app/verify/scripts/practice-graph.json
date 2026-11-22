@@ -1,0 +1,32 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "problem",
+				"arguments": {
+					"statement": "Is $f(x)=|x|$ continuous at $0$? Justify with limits.",
+					"mode": "recall",
+					"target": ["n_d3"],
+					"modelSolution": "Yes: both one-sided limits are $0$, which equals $f(0)$."
+				}
+			}
+		]
+	},
+	{
+		"tool_calls": [
+			{
+				"name": "conclude",
+				"arguments": {
+					"outcome": "solvedWithHints",
+					"verdict": "The limits were right once you split the sides.",
+					"rung": "R2",
+					"missClass": "discrimination",
+					"retest": true
+				}
+			}
+		]
+	},
+	{
+		"text": "Good. We can come back to this one."
+	}
+]
