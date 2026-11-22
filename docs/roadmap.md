@@ -62,9 +62,11 @@ All of this is merged into `main`.
    <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
    LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
    it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
-2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
-   sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
-   lesson document.
+2. **M10 Practice sessions** (built on `m10-practice`, awaiting review). The practitioner agent
+   with `problem` and `conclude`, practice sessions (`0010_practice_sessions.sql`), the practice
+   graph tools and problem targets, practice blocks in the side chat's lesson document, the
+   practice dock, `Next problem →`, sidebar and graph creation flows, and LearnHarness import of
+   practice sessions.
 3. **M11 Smaller features and later providers.** LH's stats bar below the composer (context against
    the model's limit, session cost, per-turn usage); session search (SQLite FTS5); the activity
    dock (the right panel's Activity tab is a placeholder until then); themes as shadcn theme

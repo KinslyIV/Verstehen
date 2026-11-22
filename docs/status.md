@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-22 (Mobile & sync Milestone B on `mobile-sync-b`).
+> PRs. Last update: 2026-11-22 (M10 practice sessions on `m10-practice`).
 
 ## Where we are
 
@@ -24,6 +24,11 @@ and short-code device pairing) is merged into `dev`. Milestone B (two-way Laptop
 engine, `verstehen.sync`, `0008_sync.sql`, fork-on-conflict, active-turn deferral, image/prompt
 sync; see [plan](plans/mobile-sync-b.md)) is built on `mobile-sync-b` and waits for review.
 
+M10 practice sessions (plan: [m10](plans/m10.md)) are built on `m10-practice`: migration `0010`,
+the practitioner and its `problem` / `conclude` tools, practice turns and side chat, LearnHarness
+import of practice chats, and the practice dock, cards, sidebar filter, and creation flows. It
+waits for review; the verify flows are `practice-session` and `practice-graph-and-sidebar`.
+
 ## Next
 
 1. Review and merge `mobile-sync-b` into `dev`, then proceed to Milestone C (desktop Settings UI
@@ -31,7 +36,7 @@ sync; see [plan](plans/mobile-sync-b.md)) is built on `mobile-sync-b` and waits 
 2. Rerun `make verify-live` now that the Claude subscription quota has reset.
 3. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
    zero-retry CI).
-4. Plan M10 (practice sessions).
+4. Review and merge `m10-practice` into `dev`; run full `make verify` and `make verify-live` for it.
 
 ## Open questions
 

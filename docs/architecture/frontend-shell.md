@@ -13,7 +13,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | Path | What it holds |
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell (declares the favicon); the root layout holds CSS and theme only |
-| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar with the session list, header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
+| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter and session list), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
 | `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Graph, Tools |
 | `src/routes/lesson-test-harness.svelte`, `session-thread-test-page.svelte` | wrappers for component tests |
@@ -29,6 +29,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **Look:** sleek and minimal, modeled on T3 Code. Tailwind v4, shadcn-svelte on bits-ui,
   tailwind-variants, `@lucide/svelte`. Dark by default; Dark / Light / System through mode-watcher,
   saved in localStorage and applied before first paint.
+- **New sessions:** `/session/new` is the teaching screen and `/session/new?mode=practice` the
+  practice one; the `Teach | Practice` toggle navigates between them without remounting, so the
+  draft and the picked nodes stay. The kind filter is remembered in `localStorage`.
 - **Layout state:** the sidebar collapses with Ctrl+B and remembers its state; the right panel
   starts closed; toggling it remembers its visibility, and it remembers its width (default 25%,
   20–40%). Opening it from code (a new plan, a plan block, Ctrl+J) changes only the live state.

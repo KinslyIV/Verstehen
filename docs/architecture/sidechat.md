@@ -27,6 +27,10 @@ message), `selection-ask.svelte` and `selection.ts` (select text → Ask, with a
 
 - **Segments.** A segment is the assistant output between learner inputs: a learner message or a
   successful question answer ends it, and its first assistant entry's id is the segment id.
+- **Practice sessions:** `practice-thinking` and `practice-next` markers end a segment like a
+  learner message, and a `problem` call is a visible entry point. The document shows the open
+  problem without its model solution, even when it was posed before a compaction; past problems
+  show their thinking traces, revealed solution, and conclusion.
 - **The lesson document** starts at the active compaction's kept entry and leaves out the private
   summary; an open question from before the cut stays in it.
 - **One thread per segment**, stored in `side_threads` and `side_exchanges`. With no thread

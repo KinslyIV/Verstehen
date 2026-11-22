@@ -161,6 +161,11 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Context menu & Delete dialog:** practice session context menus omit `CoverageMenuBlock`, and
   `DeleteSessionDialog` hides the graph-traces option and sends `mode=preserve-graph`. LH leaves the
   delete dialog unchanged.
+- **The `Teach | Practice` toggle sits above the composer** on `/session/new` (LH puts it in the
+  stats bar under the composer); the mode lives in the URL (`?mode=practice`).
+- **The practice dock's submit waits for the agent's reply** to the previous thinking (LH only
+  blocks it during compaction); a window-level Enter with an empty draft focuses the field instead
+  of doing nothing.
 
 ### Providers and models
 

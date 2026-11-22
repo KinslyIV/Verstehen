@@ -35,7 +35,7 @@ over a connection (`insert_entry`, `insert_session`, `insert_job`, `insert_side_
 | Table | Migration | Holds |
 |---|---|---|
 | `settings` | 0001 | key → JSON value, one row per top-level settings field |
-| `sessions`, `entries` | 0002 (model columns added in 0003) | sessions with their model pick; the entry log (sequence, entry id, kind, JSON payload), deleted with its session |
+| `sessions`, `entries` | 0002 (model columns added in 0003; `sessions.kind` widened to `teach` or `practice` in 0010) | sessions with their model pick; the entry log (sequence, entry id, kind, JSON payload), deleted with its session |
 | `usage` | 0003, rebuilt in 0006 | per-call usage by request id, role, and source id; a trigger removes a deleted session's rows |
 | `jobs`, `artifact_views` | 0004 | kind, status, input, result, delivery state, usage; demo/figure inversion |
 | `side_threads`, `side_exchanges` | 0005 | side-chat threads per segment and their exchanges |
@@ -59,6 +59,10 @@ browsers in `<data dir>/browsers/`.
 - **Multi-step writes are one transaction:** a job result with its delivery flag, a graph merge
   with its coverage, a compaction marker with its usage, saved markers with their job's
   acknowledgement.
+- **Rebuilding a table that others reference** (0010 rebuilt `sessions`) needs a leading
+  `-- foreign_keys: off` line: `Database.transaction(foreign_keys=False)` turns the pragma off before
+  `BEGIN`, runs `PRAGMA foreign_key_check` before commit, and always turns it back on. The
+  `delete_session_usage` trigger is recreated by the rebuild.
 - **Applied migrations never change.** Add a new numbered file and run `make lock-migrations`.
 - **A setting is never stored as `null`;** a missing setting reads as its typed default.
 
@@ -70,7 +74,8 @@ Verstehen's sessions and graph with a LearnHarness data folder. It is one-way, r
 is closed, and uses the data directory from `VERSTEHEN_DATA_DIR` or the default. The code is
 `backend/src/verstehen/lh_import/`: `records.py` (strict Pydantic models of LH's files; any unknown
 field is refused), `reader.py` (reads the folder; names the file in every refusal), `entries.py`
-and `convert.py` (LH to Verstehen), `run.py` (summary, confirmation, backup, replace, report).
+and `convert.py` (LH to Verstehen; practice chats are imported too, with their markers and
+`conclude` details remapped and usage role `practice`), `run.py` (summary, confirmation, backup, replace, report).
 
 **Run sequence.**
 
