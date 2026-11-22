@@ -1,5 +1,6 @@
 <script lang="ts">
 	import SessionList from '#lib/components/session-list.svelte';
+	import SyncBadge from '#lib/components/sync-badge.svelte';
 	import type { Snippet } from 'svelte';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -98,6 +99,7 @@
 			<SessionList />
 		</Sidebar.Content>
 		<Sidebar.Footer class="border-t p-3">
+			<SyncBadge />
 			<Button
 				href={resolve('/settings')}
 				variant="ghost"

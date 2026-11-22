@@ -51,11 +51,18 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   `make verify-run` reuses an unchanged SPA build behind the build guard.
 - **Live verification.** `make verify-live` runs `lesson-first-turn` with the logged-in Claude Code
   on Haiku at low thinking; evidence in `app/verify-live-output/`. It never runs in CI.
-- **Packaging.** `make app` builds the PyInstaller onedir sidecar and the Tauri shell inside the
-  prepared Arch image (Docker volumes cache Cargo, npm, and uv), runs the frozen self-check and
-  smoke tests (handshake, token refusal, migrations, shutdown), and writes
-  `dist/verstehen-<version>-1-x86_64.pkg.tar.zst`. Neither Chromium nor the Claude Code CLI is
-  bundled. `make app-image` refreshes the image.
+- **Packaging.** `make app` builds the PyInstaller onedir sidecar, the pure-Python server bundle
+  (`/usr/lib/verstehen/server-bundle/`: wheel + locked `requirements.txt` for SSH server
+  provisioning), and the Tauri shell inside the prepared Arch image (Docker volumes cache Cargo,
+  npm, and uv), runs the frozen self-check and smoke tests (handshake, token refusal, migrations,
+  shutdown), and writes `dist/verstehen-<version>-1-x86_64.pkg.tar.zst`. Neither Chromium nor the
+  Claude Code CLI is bundled. `make app-image` refreshes the image.
+- **Server provisioning.** The desktop SSH provisioner acquires an exclusive `install.lock`
+  for the remote account before staging a new venv beside the live one. The lock stays held
+  through deploy and recovery, including SSH reconnects. After an interrupted install that
+  cannot safely release it, confirm the install has stopped and recover before removing it.
+  Before swapping the venv and service unit, it refuses to proceed if `venv.prev`, `unit.prev`,
+  or `rollback.pending` remains. Recovery files are left intact for manual intervention.
 - **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
   uploads `app/verify-output` on failure. Flows never retry, in CI or locally.
 - **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,

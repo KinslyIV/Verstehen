@@ -35,15 +35,20 @@ class SyncStatusResponse(BaseModel):
     last_sync_at: datetime | None
     pending_changes: int
     deferred_sessions: list[str]
+    ssh_user: str | None = None
+    ssh_port: int | None = None
+    server_device_id: str | None = None
+    device_identity_missing: bool = False
 
 
-async def _build_status(
+async def build_sync_status(
     sync_store: SyncStore, sync_service: SyncService
 ) -> SyncStatusResponse:
     state = await sync_store.read_state()
     pending = await sync_store.count_pending_push()
+    enabled = bool(state.server_url and sync_service.credentials_store.sync_token())
     return SyncStatusResponse(
-        enabled=bool(state.server_url and sync_service.credentials_store.sync_token()),
+        enabled=enabled,
         device_id=state.device_id,
         server_url=state.server_url,
         status=state.status,
@@ -53,6 +58,10 @@ async def _build_status(
         last_sync_at=state.last_sync_at,
         pending_changes=pending,
         deferred_sessions=sync_service.deferred_sessions,
+        ssh_user=state.ssh_user,
+        ssh_port=state.ssh_port,
+        server_device_id=state.server_device_id,
+        device_identity_missing=enabled and state.server_device_id is None,
     )
 
 
@@ -61,7 +70,7 @@ async def get_sync_status(
     sync_store: SyncStoreDependency,
     sync_service: SyncServiceDependency,
 ) -> SyncStatusResponse:
-    return await _build_status(sync_store, sync_service)
+    return await build_sync_status(sync_store, sync_service)
 
 
 @router.post("/api/sync/now", response_model=SyncStatusResponse)
@@ -76,4 +85,4 @@ async def trigger_sync_now(
             status_code=400,
         )
     await sync_service.sync_now()
-    return await _build_status(sync_store, sync_service)
+    return await build_sync_status(sync_store, sync_service)

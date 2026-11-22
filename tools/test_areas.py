@@ -52,10 +52,14 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
         "src/lib/components/settings-accounts.svelte.test.ts",
     ),
     "store": (),
-    "sync": (),
+    "sync": (
+        "src/lib/components/settings-sync.svelte.test.ts",
+        "src/lib/components/sync-badge.svelte.test.ts",
+    ),
     "shell": (
         "src/lib/api/*.test.ts",
         "src/lib/markdown/*.test.ts",
+        "src/lib/components/settings.svelte.test.ts",
         "src/routes/*.test.ts",
     ),
 }

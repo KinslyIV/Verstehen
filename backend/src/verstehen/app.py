@@ -17,6 +17,7 @@ from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
 from verstehen.api.providers import router as providers_router
+from verstehen.api.server_setup import router as server_setup_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.api.side_chats import router as side_chats_router
 from verstehen.api.sync import router as sync_router
@@ -31,6 +32,7 @@ from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.jobs.workers.browser import BrowserDownloadService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+from verstehen.providers.chatgpt.callback_port import CallbackPort
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
 from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter
 from verstehen.providers.credentials import CredentialsStore
@@ -58,6 +60,11 @@ from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
 from verstehen.store.sync import SyncStore
 from verstehen.store.usage import UsageStore
+from verstehen.sync.provision import (
+    ServerInstallService,
+    ServerOAuthService,
+    ServerProxy,
+)
 from verstehen.sync.service import SyncService
 
 
@@ -88,7 +95,10 @@ def create_app(settings: Settings) -> FastAPI:
             chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
             browser_download_service = BrowserDownloadService(settings.data_dir)
             app.state.browser_download_service = browser_download_service
-            chatgpt_sign_in_service = ChatGPTSignInService(chatgpt_adapter)
+            callback_port = CallbackPort()
+            chatgpt_sign_in_service = ChatGPTSignInService(
+                chatgpt_adapter, callback_port
+            )
             app.state.claude_code_adapter = claude_code_adapter
             app.state.chatgpt_sign_in_service = chatgpt_sign_in_service
             adapters: list[AccountAdapter] = (
@@ -268,6 +278,16 @@ def create_app(settings: Settings) -> FastAPI:
                 prompt_lock=prompt_lock,
             )
             app.state.sync_service = sync_service
+            server_proxy = ServerProxy(sync_service)
+            server_install_service = ServerInstallService(
+                sync_store, credentials_store, sync_service
+            )
+            server_oauth_service = ServerOAuthService(
+                sync_store, server_proxy, callback_port
+            )
+            app.state.server_proxy = server_proxy
+            app.state.server_install_service = server_install_service
+            app.state.server_oauth_service = server_oauth_service
             if settings.server:
                 database.on_sync_write = lambda: notifications.publish(
                     Notification(type="sync-changed")
@@ -279,6 +299,8 @@ def create_app(settings: Settings) -> FastAPI:
             try:
                 yield
             finally:
+                await server_oauth_service.close()
+                await server_install_service.close()
                 await sync_service.close()
                 await turn_service.delivery_service.close()
                 await extraction_service.close()
@@ -318,7 +340,11 @@ def create_app(settings: Settings) -> FastAPI:
                 )
                 if denied is not None:
                     return denied
-                if path == "/api/sync/now":
+                if (
+                    path == "/api/sync/now"
+                    or path == "/api/server"
+                    or path.startswith("/api/server/")
+                ):
                     return JSONResponse(
                         {"error": "Sync client is not enabled in server mode."},
                         status_code=404,
@@ -365,6 +391,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(auth_router)
     app.include_router(sync_router)
     app.include_router(sync_status_router)
+    app.include_router(server_setup_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
     app.include_router(router)

@@ -37,6 +37,21 @@ export type SourceOrganization = components['schemas']['SourceOrganization'];
 export type SourcePlacement = components['schemas']['SourcePlacement'];
 export type SessionCoverage = components['schemas']['SessionCoverage'];
 export type GraphContext = components['schemas']['GraphContext'];
+export type SyncStatusResponse = components['schemas']['SyncStatusResponse'];
+export type ServerInstallStatus = components['schemas']['ServerInstallStatus'];
+export type InstallStep = components['schemas']['InstallStep'];
+export type HostKeyChallenge = components['schemas']['HostKeyChallenge'];
+export type ServerSignInStarted = components['schemas']['ServerSignInStarted'];
+export type ServerSignInHostKeyRequired = components['schemas']['ServerSignInHostKeyRequired'];
+export type ServerSignInPasswordRequired = components['schemas']['ServerSignInPasswordRequired'];
+export type ServerSignInResponse =
+	ServerSignInStarted | ServerSignInHostKeyRequired | ServerSignInPasswordRequired;
+export type ServerInstallInput = components['schemas']['ServerInstallInput'];
+export type TrustHostInput = components['schemas']['TrustHostInput'];
+export type ServerConnectInput = components['schemas']['ServerConnectInput'];
+export type ServerChatGPTSignInInput = components['schemas']['ServerChatGPTSignInInput'];
+export type Device = components['schemas']['Device'];
+export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
 let token: string | undefined;
 let connection: Promise<string> | undefined;
@@ -417,4 +432,61 @@ export async function extractCoverage(sessionId: string): Promise<void> {
 }
 export async function abortExtraction(source: string): Promise<void> {
 	await request(`/api/graph/extractions/${encodeURIComponent(source)}/abort`, { method: 'POST' });
+}
+
+export async function getSyncStatus(signal?: AbortSignal): Promise<SyncStatusResponse> {
+	return (await request('/api/sync/status', { signal })).json();
+}
+export async function syncNow(): Promise<SyncStatusResponse> {
+	return (await request('/api/sync/now', { method: 'POST' })).json();
+}
+export async function startServerInstall(body: ServerInstallInput): Promise<ServerInstallStatus> {
+	return (
+		await request('/api/server/install', { method: 'POST', body: JSON.stringify(body) })
+	).json();
+}
+export async function getServerInstallStatus(signal?: AbortSignal): Promise<ServerInstallStatus> {
+	return (await request('/api/server/install', { signal })).json();
+}
+export async function trustServerHost(body: TrustHostInput): Promise<void> {
+	await request('/api/server/trust-host', { method: 'POST', body: JSON.stringify(body) });
+}
+export async function connectServer(body: ServerConnectInput): Promise<SyncStatusResponse> {
+	return (
+		await request('/api/server/connect', { method: 'POST', body: JSON.stringify(body) })
+	).json();
+}
+export async function disconnectServer(): Promise<SyncStatusResponse> {
+	return (await request('/api/server/disconnect', { method: 'POST' })).json();
+}
+export async function getServerClaudeCode(): Promise<BinaryStatus> {
+	return (await request('/api/server/accounts/claude-code')).json();
+}
+export async function listServerChatGPTAccounts(): Promise<Account[]> {
+	return (await request('/api/server/accounts/chatgpt')).json();
+}
+export async function startServerChatGPTSignIn(
+	body?: ServerChatGPTSignInInput
+): Promise<ServerSignInResponse> {
+	return (
+		await request('/api/server/accounts/chatgpt', {
+			method: 'POST',
+			...(body ? { body: JSON.stringify(body) } : {})
+		})
+	).json();
+}
+export async function getServerChatGPTSignIn(id: string): Promise<SignInStatus> {
+	return (await request(`/api/server/accounts/chatgpt/sign-in/${encodeURIComponent(id)}`)).json();
+}
+export async function removeServerChatGPTAccount(id: string): Promise<void> {
+	await request(`/api/server/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+export async function listServerDevices(): Promise<Device[]> {
+	return (await (await request('/api/server/devices')).json()).devices;
+}
+export async function createServerPairingCode(): Promise<PairingCodeResponse> {
+	return (await request('/api/server/pairing-code', { method: 'POST' })).json();
+}
+export async function revokeServerDevice(id: string): Promise<void> {
+	await request(`/api/server/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
