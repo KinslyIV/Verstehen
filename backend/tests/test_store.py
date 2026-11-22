@@ -6,7 +6,7 @@ from typing import cast
 import pytest
 from pydantic import JsonValue, ValidationError
 
-from verstehen.store.database import open_database
+from verstehen.store.database import Database, open_database
 from verstehen.store.migrate import MIGRATIONS, migrate
 from verstehen.store.settings import SettingsStore
 
@@ -423,43 +423,77 @@ def test_migration_0010_keeps_sync_state_and_outbox(tmp_path: Path):
     asyncio.run(run())
 
 
-def test_cancelled_while_foreign_keys_pragma_runs_still_restores_them(tmp_path: Path):
+def test_cancelled_inside_foreign_keys_off_transaction_restores_them(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            entered = asyncio.Event()
+            inside = asyncio.Event()
+
+            async def rebuild():
+                async with database.transaction(foreign_keys=False):
+                    inside.set()
+                    await asyncio.sleep(60)
+
+            task = asyncio.create_task(rebuild())
+            await inside.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            async with database.read() as conn:
+                async with conn.execute("PRAGMA foreign_keys") as cur:
+                    assert await cur.fetchone() == (1,)
+
+    asyncio.run(run())
+
+
+def test_repeated_cancellation_while_restoring_foreign_keys_still_restores_them(
+    tmp_path: Path,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            inside = asyncio.Event()
+            restoring = asyncio.Event()
             release = asyncio.Event()
             real_execute = database._connection.execute
 
-            def slow_foreign_keys_off(sql, *args):
-                if sql != "PRAGMA foreign_keys=OFF":
+            def slow_foreign_keys_on(sql, *args):
+                if sql != "PRAGMA foreign_keys=ON":
                     return real_execute(sql, *args)
 
                 async def delayed():
-                    entered.set()
+                    restoring.set()
                     await release.wait()
                     return await real_execute(sql, *args)
 
                 return delayed()
 
-            database._connection.execute = slow_foreign_keys_off  # type: ignore[method-assign]
+            database._connection.execute = slow_foreign_keys_on  # type: ignore[method-assign]
 
             async def rebuild():
                 async with database.transaction(foreign_keys=False):
-                    pass
+                    inside.set()
+                    await asyncio.sleep(60)
 
             task = asyncio.create_task(rebuild())
-            await entered.wait()
+            await inside.wait()
+            task.cancel()
+            await restoring.wait()
             task.cancel()
             await asyncio.sleep(0)
             task.cancel()
-            await asyncio.sleep(0)
+            reader = asyncio.create_task(read_foreign_keys(database))
+            await asyncio.sleep(0.01)
+            assert not reader.done()
             release.set()
             with pytest.raises(asyncio.CancelledError):
                 await task
             database._connection.execute = real_execute  # type: ignore[method-assign]
-            async with database.read() as conn:
-                async with conn.execute("PRAGMA foreign_keys") as cur:
-                    assert await cur.fetchone() == (1,)
+            assert await reader == (1,)
+
+    async def read_foreign_keys(database: Database):
+        async with database.read() as conn:
+            async with conn.execute("PRAGMA foreign_keys") as cur:
+                return await cur.fetchone()
 
     asyncio.run(run())

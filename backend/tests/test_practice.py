@@ -360,21 +360,21 @@ def test_problem_alone_ends_the_turn(tmp_path: Path):
     asyncio.run(scenario())
 
 
-def test_problem_in_a_mixed_batch_continues_the_turn_with_every_result(tmp_path: Path):
+def test_problem_with_sibling_tools_ends_the_turn_and_keeps_every_result(
+    tmp_path: Path,
+):
     async def scenario():
         model, requests = scripted_stream(
             calls(("ls", {"path": "."}, "ls1"), ("problem", PROBLEM, "p1")),
-            "Take your time.",
         )
         async with turn_service_context(tmp_path, model) as (service, _):
             session_id = await practice_session(service)
             await run_turn(service, session_id, text_input())
             entries = await service.entries_store.list(session_id)
-            assert len(requests) == 2
+            assert len(requests) == 1
             assert [
                 e.tool_call_id for e in entries if isinstance(e, ToolResultEntry)
             ] == ["ls1", "p1"]
-            assert kinds(entries)[-1] == "assistant"
             assert active_problem_of(entries) is not None
             assert not needs_continuation(entries)
 
@@ -389,6 +389,7 @@ def test_truncated_response_fails_every_call_before_any_runs(tmp_path: Path):
                 {
                     "tool_calls": [
                         {"name": "research", "arguments": {"question": "chain rule"}},
+                        {"name": "unfinished_tool", "arguments": {}},
                         {"name": "problem", "arguments": PROBLEM},
                     ],
                     "stop_reason": "length",
@@ -401,10 +402,37 @@ def test_truncated_response_fails_every_call_before_any_runs(tmp_path: Path):
             await run_turn(service, session_id, text_input())
             entries = await service.entries_store.list(session_id)
             results = [e for e in entries if isinstance(e, ToolResultEntry)]
-            assert len(results) == 2 and all(r.is_error for r in results)
+            assert len(results) == 3 and all(r.is_error for r in results)
             assert all("output token limit" in r.text for r in results)
             assert await service.jobs_store.list(session_id) == []
             assert active_problem_of(entries) is None
+
+    asyncio.run(scenario())
+
+
+def test_truncated_and_schema_invalid_research_share_the_retry_limit(tmp_path: Path):
+    async def scenario():
+        invalid = {"tool_calls": [{"name": "research", "arguments": {}}]}
+        truncated = {
+            "tool_calls": [{"name": "research", "arguments": {"question": "Why?"}}],
+            "stop_reason": "length",
+        }
+        replies = [invalid, truncated] * 5 + [invalid, {"text": "Too many retries"}]
+        async with turn_service_context(tmp_path, scripted(tmp_path, replies)) as (
+            service,
+            _,
+        ):
+            session_id = await practice_session(service)
+            await run_turn(service, session_id, text_input())
+            entries = await service.entries_store.list(session_id)
+            failures = [
+                entry for entry in entries if isinstance(entry, ToolResultEntry)
+            ]
+            assert len(failures) == 10 and all(entry.is_error for entry in failures)
+            last = entries[-1]
+            assert isinstance(last, AssistantEntry) and last.stop_reason == "error"
+            assert "exceeded max retries count of 10" in (last.error_text or "")
+            assert await service.jobs_store.list(session_id) == []
 
     asyncio.run(scenario())
 

@@ -21,7 +21,7 @@ test('problem_and_thinking_cards_show_their_text', async () => {
 
 test('a_conclusion_shows_outcome_verdict_and_the_verbatim_model_solution', async () => {
 	const screen = await render(ConcludeCard, {
-		args: concludeArguments,
+		args: { ...concludeArguments, solutionReveal: 'A different legacy solution.' },
 		problemInput: problemArguments,
 		reveal: 'Exactly this solution.'
 	});
@@ -29,6 +29,16 @@ test('a_conclusion_shows_outcome_verdict_and_the_verbatim_model_solution', async
 	await expect.element(screen.getByText('Credited the power rule.')).toBeVisible();
 	await expect.element(screen.getByText('Model solution')).toBeVisible();
 	await expect.element(screen.getByText('Exactly this solution.')).toBeVisible();
+	await expect.element(screen.getByText('A different legacy solution.')).not.toBeInTheDocument();
+});
+
+test('a_legacy_conclusion_reveals_the_solution_saved_in_its_arguments', async () => {
+	const screen = await render(ConcludeCard, {
+		args: { ...concludeArguments, solutionReveal: 'The saved solution.' }
+	});
+	await expect
+		.element(screen.getByTestId('model-solution').getByText('The saved solution.', { exact: true }))
+		.toBeVisible();
 });
 
 test('a_dismissal_conclusion_is_one_muted_line', async () => {

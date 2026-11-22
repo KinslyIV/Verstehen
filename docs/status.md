@@ -22,21 +22,21 @@ confirm that converted reasoning is accepted.
 Mobile & sync Milestone A (`--server` mode, per-device SHA-256 token auth, `verstehen mint-token`,
 and short-code device pairing) is merged into `dev`. Milestone B (two-way Laptop ↔ Server sync
 engine, `verstehen.sync`, `0008_sync.sql`, fork-on-conflict, active-turn deferral, image/prompt
-sync; see [plan](plans/mobile-sync-b.md)) is built on `mobile-sync-b` and waits for review.
+sync; see [plan](plans/mobile-sync-b.md)) is merged into `dev` (PR #13).
 
 M10 practice sessions (plan: [m10](plans/m10.md)) are built on `m10-practice`: migration `0010`,
 the practitioner and its `problem` / `conclude` tools, practice turns and side chat, LearnHarness
-import of practice chats, and the practice dock, cards, sidebar filter, and creation flows. It
-waits for review; the verify flows are `practice-session` and `practice-graph-and-sidebar`.
+import of practice chats, and the practice dock, cards, sidebar filter, and creation flows. The
+verify flows are `practice-session` and `practice-graph-and-sidebar`. It joins `organize-tests`
+and `mobile-sync-c` on one integration branch for review and a shared PR into `dev`.
 
 ## Next
 
-1. Review and merge `mobile-sync-b` into `dev`, then proceed to Milestone C (desktop Settings UI
-   for server SSH install, server accounts, and device pairing).
-2. Rerun `make verify-live` now that the Claude subscription quota has reset.
+1. Integrate the test reorganization, Mobile & sync Milestone C, and M10. Run full `make verify`
+   and `make verify-live` on the integration branch before opening the shared PR.
+2. Review and merge the integration PR into `dev`.
 3. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
    zero-retry CI).
-4. Review and merge `m10-practice` into `dev`; run full `make verify` and `make verify-live` for it.
 
 ## Open questions
 

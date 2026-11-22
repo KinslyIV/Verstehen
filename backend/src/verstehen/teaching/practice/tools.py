@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import inspect
 import json
-from collections import Counter
 from collections.abc import (
     AsyncIterable,
     AsyncIterator,
@@ -17,7 +16,6 @@ from pydantic import ValidationError
 from pydantic_ai import Agent, CallDeferred, ModelRetry, RunContext, Tool
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.capabilities.abstract import ValidatedToolArgs
-from pydantic_ai.exceptions import ToolFailed, UnexpectedModelBehavior
 from pydantic_ai.messages import (
     AgentStreamEvent,
     FunctionToolResultEvent,
@@ -51,9 +49,9 @@ from verstehen.teaching.practice.schemas import (
 from verstehen.teaching.practice.state import active_problem_of
 from verstehen.teaching.questions.tools import (
     QUESTION_RETRY_LIMIT,
+    ConversationToolErrors,
     QuestionAgent,
     invalid_input_text,
-    truncated_call_text,
 )
 from verstehen.teaching.tool_schema import ToolInputShape
 
@@ -175,25 +173,25 @@ def _format_validation_error(
     return f'Validation failed for tool "{name}":\n{lines}\n\nReceived arguments:\n{raw_json}'
 
 
-def only_clean_problem_calls(
+def all_problem_calls_posed(
     response: ModelResponse, requests: DeferredToolRequests
 ) -> bool:
-    """True when every tool call in the response is a posed problem, the batch that ends the turn."""
+    """True when the batch has a problem call and each one posed cleanly: the turn then ends."""
     called = {
-        part.tool_call_id for part in response.parts if isinstance(part, ToolCallPart)
+        part.tool_call_id
+        for part in response.parts
+        if isinstance(part, ToolCallPart) and part.tool_name == PRACTICE_PROBLEM_TOOL
     }
-    posed = {call.tool_call_id for call in requests.calls}
-    return bool(called) and called <= posed
+    return bool(called) and called <= {call.tool_call_id for call in requests.calls}
 
 
-class PracticeTools(AbstractCapability[None]):
+class PracticeTools(ConversationToolErrors):
     """Own practice argument healing, target canonicalization, gate enforcement, and turn stop."""
 
     def __init__(self, gate: PracticeGate, graph_nodes: GraphNodesLookup | None = None):
+        super().__init__()
         self.gate = gate
         self.graph_nodes = graph_nodes
-        self.invalid_calls: Counter[str] = Counter()
-        self.problems: dict[str, list[str]] = {}
         self.stopped_problems: list[str] = []
 
     async def for_run(self, ctx: RunContext[None]) -> PracticeTools:
@@ -207,12 +205,7 @@ class PracticeTools(AbstractCapability[None]):
         tool_def: ToolDefinition,
         args: str | dict[str, object],
     ) -> str | dict[str, object]:
-        response = ctx.messages[-1]
-        assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            message = truncated_call_text(tool_def.name)
-            self.count_invalid_call(tool_def.name, message)
-            raise ToolFailed(message)
+        self.reject_truncated_call(ctx, tool_def.name)
         if tool_def.name in (PRACTICE_PROBLEM_TOOL, PRACTICE_CONCLUDE_TOOL):
             return {}
         if isinstance(args, dict):
@@ -283,30 +276,11 @@ class PracticeTools(AbstractCapability[None]):
             raise ModelRetry(message)
         self.gate.problem_active = False
 
-    def count_invalid_call(self, name: str, message: str) -> None:
-        self.invalid_calls[name] += 1
-        if self.invalid_calls[name] > QUESTION_RETRY_LIMIT:
-            raise UnexpectedModelBehavior(
-                f"Tool '{name}' exceeded max retries count of {QUESTION_RETRY_LIMIT}.\n{message}"
-            )
-
     async def wrap_run_event_stream(
         self, ctx: RunContext[None], *, stream: AsyncIterable[AgentStreamEvent]
     ) -> AsyncIterator[AgentStreamEvent]:
         self.stopped_problems = []
-        async for event in stream:
-            if isinstance(event, FunctionToolResultEvent):
-                problems = self.problems.pop(event.tool_call_id, None)
-                if problems is not None:
-                    event.part.metadata = {
-                        "tool": event.part.tool_name,
-                        "problems": problems,
-                    }
-                elif (
-                    event.part.outcome in ("retried", "failed")
-                    and event.part.metadata is None
-                ):
-                    event.part.metadata = {}
+        async for event in super().wrap_run_event_stream(ctx, stream=stream):
             yield event
         for tool_call_id in self.stopped_problems:
             yield FunctionToolResultEvent(
@@ -322,7 +296,7 @@ class PracticeTools(AbstractCapability[None]):
     ) -> DeferredToolResults | None:
         response = ctx.messages[-1]
         assert isinstance(response, ModelResponse)
-        if only_clean_problem_calls(response, requests):
+        if all_problem_calls_posed(response, requests):
             self.stopped_problems = [
                 call.tool_call_id
                 for call in requests.calls

@@ -25,6 +25,7 @@
 	const text = (value: unknown) => (typeof value === 'string' && value ? value : undefined);
 	const outcome = $derived(text(conclusion.outcome));
 	const verdict = $derived(text(conclusion.verdict));
+	const solution = $derived(reveal ?? text(conclusion.solutionReveal));
 	const mode = $derived(text(problemInput?.mode));
 	const rung = $derived(text(conclusion.rung));
 	const missClass = $derived(text(conclusion.missClass));
@@ -60,13 +61,13 @@
 				</span>{/if}
 		</div>
 		{#if verdict}<ToolContent content={verdict} class="mt-1 text-muted-foreground" />{/if}
-		{#if reveal}
+		{#if solution}
 			<div class="my-3 border-t"></div>
 			<div data-testid="model-solution">
 				<div class="mb-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase">
 					Model solution
 				</div>
-				<ToolContent content={reveal} />
+				<ToolContent content={solution} />
 			</div>
 		{/if}
 		{#if mode || targets.length || rung || missClass || retest !== undefined}<MetadataPopover

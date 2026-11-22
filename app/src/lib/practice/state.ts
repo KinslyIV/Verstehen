@@ -102,10 +102,6 @@ export function hasProblemPose(results: Entry[]): boolean {
 	);
 }
 
-/** Whether any problem was ever cleanly posed, so the move-on to a next problem applies. */
-export function hasPosedProblem(entries: Entry[]): boolean {
-	const clean = cleanResultIds(entries);
-	return entries.some((entry) =>
-		calls(entry).some((part) => part.tool_name === PROBLEM_TOOL && clean.has(part.tool_call_id))
-	);
+export function hasProblemCall(entries: Entry[]): boolean {
+	return entries.some((entry) => calls(entry).some((part) => part.tool_name === PROBLEM_TOOL));
 }

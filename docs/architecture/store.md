@@ -61,8 +61,9 @@ browsers in `<data dir>/browsers/`.
   acknowledgement.
 - **Rebuilding a table that others reference** (0010 rebuilt `sessions`) needs a leading
   `-- foreign_keys: off` line: `Database.transaction(foreign_keys=False)` turns the pragma off before
-  `BEGIN`, runs `PRAGMA foreign_key_check` before commit, and always turns it back on. The
-  `delete_session_usage` trigger is recreated by the rebuild.
+  `BEGIN`, runs `PRAGMA foreign_key_check` before commit, and always turns it back on. It keeps the
+  lock through pragma changes and rollback, then propagates any cancellation. The rebuild
+  recreates the `delete_session_usage` trigger.
 - **Applied migrations never change.** Add a new numbered file and run `make lock-migrations`.
 - **A setting is never stored as `null`;** a missing setting reads as its typed default.
 

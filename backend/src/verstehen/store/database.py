@@ -34,9 +34,11 @@ class Database:
         async with self._lock:
             self._sync_dirty = False
             self.last_tx_committed = False
-            if not foreign_keys:
-                await self._connection.execute("PRAGMA foreign_keys=OFF")
             try:
+                if not foreign_keys:
+                    await self._complete(
+                        self._connection.execute("PRAGMA foreign_keys=OFF")
+                    )
                 if script is None:
                     await self._connection.execute("BEGIN")
                 else:
@@ -50,15 +52,8 @@ class Database:
                             raise RuntimeError(
                                 f"Foreign key check failed: {violations}"
                             )
-                commit_task = asyncio.create_task(self._connection.commit())
-                cancelled = False
-                while not commit_task.done():
-                    try:
-                        await asyncio.shield(commit_task)
-                    except asyncio.CancelledError:
-                        cancelled = True
-                    except Exception:
-                        pass
+                commit_task = asyncio.ensure_future(self._connection.commit())
+                cancelled = await self._wait(commit_task)
                 commit_error = commit_task.exception()
                 if commit_error is None:
                     self.last_tx_committed = True
@@ -69,16 +64,37 @@ class Database:
                 notify = self._sync_dirty
             except BaseException:
                 if not self.last_tx_committed:
-                    await self._connection.rollback()
+                    await self._complete(self._connection.rollback())
                 raise
             finally:
                 self._sync_dirty = False
                 if not foreign_keys:
-                    await asyncio.shield(
+                    await self._complete(
                         self._connection.execute("PRAGMA foreign_keys=ON")
                     )
         if notify and self.on_sync_write is not None:
             self.on_sync_write()
+
+    @staticmethod
+    async def _wait(task: asyncio.Future) -> bool:
+        """Wait for the task however often we are cancelled; report whether we were."""
+        cancelled = False
+        while not task.done():
+            try:
+                await asyncio.shield(task)
+            except asyncio.CancelledError:
+                cancelled = True
+            except Exception:
+                pass
+        return cancelled
+
+    async def _complete(self, work) -> None:
+        """Run work to the end, then raise its error or any cancellation received."""
+        task = asyncio.ensure_future(work)
+        if await self._wait(task):
+            task.exception()
+            raise asyncio.CancelledError
+        task.result()
 
     async def check_health(self) -> None:
         async with self.read() as connection:

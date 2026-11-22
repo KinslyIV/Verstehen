@@ -81,6 +81,42 @@ def probe_assessment() -> list[Entry]:
     ]
 
 
+def test_truncated_teacher_response_does_not_dispatch_research(tmp_path: Path):
+    async def scenario():
+        model = scripted(
+            tmp_path,
+            [
+                {
+                    "tool_calls": [
+                        call("research", {"question": "Why?"}, "research-1")
+                    ],
+                    "stop_reason": "length",
+                },
+                {"text": "I will try again."},
+            ],
+        )
+        async with turn_service_context(tmp_path, model) as (service, session):
+            await service.entries_store.append(
+                session,
+                [
+                    *probe_assessment(),
+                    MarkerEntry(marker_type="probe-handoff", content=HANDOFF_TEXT),
+                ],
+            )
+            await completed(await start(service, session))
+            entries = await service.entries_store.list(session)
+            result = next(
+                entry
+                for entry in entries
+                if isinstance(entry, ToolResultEntry)
+                and entry.tool_call_id == "research-1"
+            )
+            assert result.is_error and "output token limit" in result.text
+            assert await service.jobs_store.list(session) == []
+
+    asyncio.run(scenario())
+
+
 def tagged(node_id: str, tool_name: str = "quiz") -> AssistantEntry:
     return AssistantEntry(
         parts=[

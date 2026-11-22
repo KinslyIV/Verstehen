@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import type { Entry } from '#lib/api/client.js';
 import {
 	activeProblemOf,
-	hasPosedProblem,
+	hasProblemCall,
 	hasProblemPose,
 	modelSolutionForConclude,
 	pendingProblemDismissalOf,
@@ -54,6 +54,6 @@ test('only_a_clean_pose_ack_counts_as_a_pose', () => {
 	expect(hasProblemPose([ack('p1', 'problem')])).toBe(true);
 	expect(hasProblemPose([ack('p1', 'problem', { details: { x: 1 } })])).toBe(false);
 	expect(hasProblemPose([ack('p1', 'problem', { is_error: true })])).toBe(false);
-	expect(hasPosedProblem(pose())).toBe(true);
-	expect(hasPosedProblem([])).toBe(false);
+	expect(hasProblemCall(pose())).toBe(true);
+	expect(hasProblemCall([])).toBe(false);
 });

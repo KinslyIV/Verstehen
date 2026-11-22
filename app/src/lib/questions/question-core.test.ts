@@ -12,7 +12,7 @@ import { parseQuestionInput, questionNeedsReveal } from './question-input.js';
 import { answerForPresentation } from './answer-presentation.js';
 import { needsContinuation, pendingQuestionOf, questionCallsOf } from './pending.js';
 import { probeArguments, questionBatch, questionResult } from './question-fixtures.js';
-import { pose } from '#lib/practice/practice-fixtures.js';
+import { ack, pose } from '#lib/practice/practice-fixtures.js';
 
 test('shuffle_matches_learnharness_for_known_ids', () => {
 	const options = Array.from({ length: 6 }, (_, i) => ({
@@ -189,6 +189,18 @@ test('continuation_waits_for_the_whole_batch_and_respects_dismissal_and_recovery
 test('a_clean_problem_ack_never_owes_a_continuation', () => {
 	expect(needsContinuation(pose())).toBe(false);
 	expect(needsContinuation([{ kind: 'user', text: 'x' }, ...pose()])).toBe(false);
+});
+
+test('a_problem_pose_with_sibling_results_never_owes_a_continuation', () => {
+	const [poseCall, poseAck] = pose();
+	const batch = {
+		...poseCall,
+		parts: [
+			{ type: 'tool_call' as const, tool_call_id: 'ls1', tool_name: 'ls', arguments: {} },
+			...poseCall.parts
+		]
+	};
+	expect(needsContinuation([batch, ack('ls1', 'ls'), poseAck])).toBe(false);
 });
 
 test('presentation_recovers_model_text_without_reordering_or_regrading_saved_answers', () => {

@@ -53,12 +53,16 @@ Frontend, `app/src/lib/`:
   learner-file tools, `research` and `pdf` (always armed, regardless of Settings → Tools, still
   behind background consent and File access), and `list_sessions` and `list_propositions` when
   `graph.enabled` and `agent.graph_tools` are on. `problem` validates, canonicalizes target names
-  to node ids, saves a clean acknowledgement, and ends the turn when every call in the response is a clean pose (a
-  mixed batch goes on, as in LH's loop; a truncated response fails every call unrun); the learner's `thinking` and
-  `next` inputs arrive as `practice-thinking` and `practice-next` markers. `conclude` needs an
+  to node ids, and saves a clean acknowledgement. A response with one or more problem calls ends
+  the turn if every pose succeeds. Sibling tools still run and keep their results, as in LH's
+  `makeQuestionStopper`. The learner's `thinking` and `next` inputs arrive as `practice-thinking`
+  and `practice-next` markers. `conclude` needs an
   active problem (the `PracticeGate`, seeded from the entries), and the turn goes on for closing
   words. The model solution is committed in the `problem` call and shown verbatim by the UI when
-  the problem ends; side-chat prompts hide it while the problem is open. A dismissal (Esc) saves a
+  the problem ends. Legacy conclusions can carry their own `solutionReveal`, which the card uses
+  when the pose has no solution. Side-chat prompts hide the solution while the problem is open.
+  Once a practice session has any recorded problem call, the idle composer offers **Next problem**
+  whenever no problem is active. A dismissal (Esc) saves a
   `problem-dismissed` marker and no turn; the next input is preceded by a synthetic
   `conclude(outcome="dismissed")` pair. A clean `problem` acknowledgement never owes a continue
   turn, so reloading an open problem starts nothing (`needs_continuation`, mirrored in
@@ -67,6 +71,8 @@ Frontend, `app/src/lib/`:
   ends the run with the question pending, and the answer arrives as the tool result in a later
   run. Invalid arguments go back to the model at most 10 times per tool per turn
   (`QUESTION_RETRY_LIMIT`). Other calls in the same response still run first (mixed batches).
+- **Truncated output** makes the prober, teacher, and practitioner return tool errors before any
+  tool in the response executes.
 - **Quizzing** (`settings.quizzing`: `choice` or `free`) picks `probe` or `recall` and the teach
   tool variants, read fresh every turn.
 - **The handoff.** After `probe_done`, the session saves the `probe-handoff` marker

@@ -35,7 +35,10 @@ export const ack = (id: string, name: string, patch: Partial<Result> = {}): Resu
 	...patch
 });
 
-export const pose = (id = 'p1') => [call(id, 'problem', problemArguments), ack(id, 'problem')];
+export const pose = (id = 'p1'): [Assistant, Result] => [
+	call(id, 'problem', problemArguments),
+	ack(id, 'problem')
+];
 export const conclude = (id = 'c1') => [
 	call(id, 'conclude', concludeArguments),
 	ack(id, 'conclude')

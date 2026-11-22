@@ -105,8 +105,9 @@ merges.
   button before Send confirms settlement; the full 72-case verification suite passes. The other timing
   bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
-  Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
-  (2026-11-21).
+  Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
+  (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
+  and `make check` ran together on Pixal (2026-11-22).
 - **Duplicate probe handoff under load.** The frontend sometimes sends `handoff` twice (400 "No
   probe handoff is owed", seen in `teach-predict-check`).
 - **Long single paragraphs stream slowly.** One huge paragraph re-parses as one block, as in LH;

@@ -920,7 +920,7 @@ def test_dry_run_writes_nothing(tmp_path: Path):
     data_dir = tmp_path / "data"
     lines = run(FIXTURE, data_dir, dry_run=True)
     assert "Dry run: nothing was written." in lines
-    assert "Sessions: 2 (19 messages)" in lines
+    assert "Sessions: 2 (25 messages)" in lines
     assert "Propositions: 3 (4 ledger lines)" in lines
     assert "Chains: 1 (1 ledger lines)" in lines
     assert not data_dir.exists()
@@ -1140,7 +1140,7 @@ def sidecar_import(
 def test_sidecar_command_imports_after_typed_confirmation(tmp_path: Path):
     data_dir = tmp_path / "data"
     dry = sidecar_import(data_dir, str(FIXTURE), "--dry-run")
-    assert dry.returncode == 0 and "Sessions: 2 (19 messages)" in dry.stdout
+    assert dry.returncode == 0 and "Sessions: 2 (25 messages)" in dry.stdout
     assert not data_dir.exists()
     done = sidecar_import(data_dir, str(FIXTURE), stdin="replace\n")
     assert done.returncode == 0 and "Imported." in done.stdout

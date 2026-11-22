@@ -23,7 +23,7 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
-import { activeProblemOf, hasPosedProblem, type ActiveProblem } from '#lib/practice/state.js';
+import { activeProblemOf, hasProblemCall, type ActiveProblem } from '#lib/practice/state.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
@@ -69,7 +69,7 @@ export class SessionController {
 			!this.activeProblem &&
 			!this.compacting &&
 			!this.busy &&
-			hasPosedProblem(this.entries)
+			hasProblemCall(this.entries)
 	);
 	private thinkingDrafts = new SvelteMap<string, string>();
 	/** The active problem's unsent thinking, kept per problem and restored when its send is refused. */
@@ -349,7 +349,6 @@ export class SessionController {
 
 	async dismissProblem(problem: ActiveProblem): Promise<void> {
 		if (problem.toolCallId !== this.activeProblem?.toolCallId) return;
-		this.thinkingDrafts.delete(problem.toolCallId);
 		await this.dismiss({ problem_call_id: problem.toolCallId });
 	}
 
@@ -357,7 +356,6 @@ export class SessionController {
 		const problem = this.activeProblem;
 		const text = this.thinkingDraft.trim();
 		if (!problem || !text || this.loading || this.busy || this.compacting) return;
-		this.thinkingDrafts.delete(problem.toolCallId);
 		await this.submit({ type: 'thinking', text, problem_call_id: problem.toolCallId });
 	}
 
@@ -371,6 +369,7 @@ export class SessionController {
 		this.error = null;
 		try {
 			const parked = await dismissQuestion(this.id, input, this.lifetime.signal);
+			if (input.problem_call_id) this.thinkingDrafts.delete(input.problem_call_id);
 			if (parked) {
 				try {
 					await abortSession(this.id);
@@ -391,6 +390,8 @@ export class SessionController {
 		if (input.type !== 'continue' && input.type !== 'handoff')
 			this.automaticContinuationBlocked = false;
 		const text = this.draft;
+		const thinkingId = input.type === 'thinking' ? input.problem_call_id : undefined;
+		const thinking = thinkingId ? this.thinkingDrafts.get(thinkingId) : undefined;
 		if (input.type === 'text') this.draft = '';
 		const failureBeforeRetry = input.type === 'retry' ? this.error : null;
 		this.error = null;
@@ -419,6 +420,8 @@ export class SessionController {
 				}
 			}
 			accepted = true;
+			if (thinkingId && this.thinkingDrafts.get(thinkingId) === thinking)
+				this.thinkingDrafts.delete(thinkingId);
 			try {
 				sessionStorage.removeItem(`verstehen.opening.${this.id}`);
 			} catch {
@@ -432,8 +435,6 @@ export class SessionController {
 			}
 		} catch (error) {
 			if (!accepted && input.type === 'text') this.draft = text;
-			if (!accepted && input.type === 'thinking' && input.problem_call_id)
-				this.thinkingDrafts.set(input.problem_call_id, input.text ?? '');
 			this.automaticContinuationBlocked = true;
 			if (error instanceof ApiError && error.code === 'models_not_configured') {
 				this.setupOpen = true;

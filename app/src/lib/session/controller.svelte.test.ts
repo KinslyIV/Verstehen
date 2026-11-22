@@ -516,7 +516,27 @@ test('thinking_targets_the_active_problem_and_a_refusal_restores_the_draft', asy
 		{ type: 'thinking', text: '2x, by the power rule', problem_call_id: 'p1' },
 		expect.anything()
 	);
-	expect(controller.thinkingDraft).toBe('2x, by the power rule');
+	expect(controller.thinkingDraft).toBe('  2x, by the power rule  ');
+});
+
+test('refused_thinking_preserves_edits_made_while_sending', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	controller.thinkingDraft = '2x';
+	vi.mocked(api.postInput).mockImplementationOnce(async () => {
+		controller.thinkingDraft += ' by the power rule';
+		throw new api.ApiError(400, undefined, 'refused');
+	});
+	await controller.sendThinking();
+	expect(controller.thinkingDraft).toBe('2x by the power rule');
+});
+
+test('accepted_thinking_clears_the_submitted_draft', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	controller.thinkingDraft = '2x';
+	await controller.sendThinking();
+	expect(controller.thinkingDraft).toBe('');
 });
 
 test('next_is_offered_between_problems_and_sends_the_next_input', async () => {
@@ -539,6 +559,15 @@ test('a_fresh_practice_session_and_a_teaching_session_never_offer_next', async (
 	expect(controller.activeProblem).toBeUndefined();
 });
 
+test('a_failed_first_pose_still_offers_the_next_problem', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([pose()[0], ack('p1', 'problem', { is_error: true })], false, 'practice')
+	);
+	await controller.load();
+	expect(controller.activeProblem).toBeUndefined();
+	expect(controller.nextReady).toBe(true);
+});
+
 test('discarding_a_problem_sends_its_call_id_and_aborts_a_parked_turn', async () => {
 	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
 	vi.mocked(api.dismissQuestion).mockResolvedValue(true);
@@ -558,7 +587,18 @@ test('discarding_a_problem_sends_its_call_id_and_aborts_a_parked_turn', async ()
 	expect(controller.activeProblem).toBeUndefined();
 	expect(controller.nextReady).toBe(true);
 });
+
+test('a_refused_problem_discard_keeps_the_draft', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	vi.mocked(api.dismissQuestion).mockRejectedValueOnce(new api.ApiError(400, undefined, 'refused'));
+	await controller.load();
+	controller.thinkingDraft = 'half done';
+	await controller.dismissProblem(controller.activeProblem!);
+	expect(controller.thinkingDraft).toBe('half done');
+});
+
 test('a_streamed_pose_is_the_active_problem_before_it_is_saved', async () => {
+	let liveCallId: string | undefined;
 	vi.mocked(api.getSession).mockResolvedValue(
 		record([{ kind: 'user', entry_id: 'u', text: 'Practice' }], true, 'practice')
 	);
@@ -572,12 +612,13 @@ test('a_streamed_pose_is_the_active_problem_before_it_is_saved', async () => {
 			type: 'message_update',
 			message: { kind: 'assistant', entry_id: 'next', parts: [], stop_reason: 'stop' }
 		});
-		expect(controller.activeProblem?.toolCallId).toBe('p1');
+		liveCallId = controller.activeProblem?.toolCallId;
 		vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
 		return true;
 	});
 	await controller.load();
 	await expect.poll(() => controller.busy).toBe(false);
+	expect(liveCallId).toBe('p1');
 });
 test('a_replacement_problem_is_not_discarded_by_a_dismissal_confirmed_for_the_old_one', async () => {
 	vi.mocked(api.getSession).mockResolvedValue(record(pose('p1'), false, 'practice'));
