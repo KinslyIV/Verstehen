@@ -675,6 +675,16 @@ for descriptor in (process / "fd").iterdir():
         continue
 raise SystemExit(1)
 """
+DEPLOYMENT_RUNNING_CHECK = """import sys
+from pathlib import Path
+
+pid, deployment_id = sys.argv[1:]
+if int(pid) <= 0:
+    raise SystemExit(1)
+environ = (Path("/proc") / pid / "environ").read_bytes().split(b"\\0")
+expected = f"VERSTEHEN_DEPLOYMENT_ID={deployment_id}".encode()
+raise SystemExit(0 if expected in environ else 1)
+"""
 ROLLBACK_COMMAND = (
     f'cd "{SERVER_DIR}" && if [ -d venv.prev ] || [ -f unit.prev ] || [ -f rollback.pending ]; then '
     f"touch rollback.pending && {USER_MANAGER_ENV} && "
@@ -684,7 +694,9 @@ ROLLBACK_COMMAND = (
     "} && previous=venv && { [ ! -d venv.prev ] || previous=venv.prev; } && "
     "check_schema && "
     "systemctl --user stop verstehen-server.service && "
-    '{ check_schema || { status=$?; systemctl --user start verstehen-server.service || true; exit "$status"; }; } && '
+    "{ check_schema || { status=$?; "
+    'if systemctl --user start verstehen-server.service; then exit "$status"; fi; '
+    '[ "$status" -eq 78 ] && exit 79; exit "$status"; }; } && '
     "{ [ ! -d venv.prev ] || { rm -rf venv && mv venv.prev venv; }; } && "
     f'{{ [ ! -f unit.prev ] || cp -p unit.prev "{UNIT_PATH}"; }} && '
     "systemctl --user daemon-reload && "
@@ -1239,6 +1251,11 @@ class ServerInstallService:
                     return (
                         "The previous server version cannot read the upgraded database."
                     )
+                if result.exit_status == 79:
+                    return (
+                        "The previous server version cannot read the upgraded database, "
+                        "and restarting the installed server version also failed."
+                    )
                 if result.exit_status != 0:
                     return "Rollback command failed on the server."
                 if "NOTHING_TO_ROLL_BACK" in result.stdout:
@@ -1265,8 +1282,11 @@ class ServerInstallService:
                         await self._owns_listener(candidate, server_url) == restored_pid
                     )
 
-                if not await self._wait_healthy(
-                    server_url, verify_restored, ready=listener_ready
+                if (
+                    await self._wait_healthy(
+                        server_url, verify_restored, ready=listener_ready
+                    )
+                    != "healthy"
                 ):
                     return "The previous server version did not become healthy."
                 with suppress(Exception):
@@ -1390,13 +1410,28 @@ class ServerInstallService:
         pid = result.stdout.strip()
         return pid if result.exit_status == 0 and pid else None
 
+    async def _deployment_is_running_on_host(
+        self, session: SshSession, deployment_id: str
+    ) -> bool:
+        result = await session.run(
+            f"{USER_MANAGER_ENV} && "
+            'state="$(systemctl --user show --property=ActiveState --value verstehen-server.service)" && '
+            '[ "$state" = active ] && '
+            'pid="$(systemctl --user show --property=MainPID --value verstehen-server.service)" && '
+            f'"{SERVER_DIR}/venv/bin/python" -c {shlex.quote(DEPLOYMENT_RUNNING_CHECK)} '
+            f'"$pid" {shlex.quote(deployment_id)}',
+            timeout=5.0,
+        )
+        return result.exit_status == 0
+
     async def _wait_healthy(
         self,
         server_url: str,
         verify: Callable[[httpx2.Response], Awaitable[bool]],
         *,
         ready: Callable[[], Awaitable[bool]] | None = None,
-    ) -> bool:
+    ) -> Literal["healthy", "unhealthy", "unreachable"]:
+        saw_response = False
         async with self._client_factory() as client:
             for _ in range(self._health_attempts):
                 if ready is None or await ready():
@@ -1404,6 +1439,7 @@ class ServerInstallService:
                         response = await client.get(
                             f"{server_url}/api/health", timeout=3.0
                         )
+                        saw_response = True
                         if (
                             response.status_code != 200
                             or response.json().get("status") != "ok"
@@ -1412,14 +1448,14 @@ class ServerInstallService:
                     except httpx2.HTTPError, OSError, ValueError, AttributeError:
                         response = None
                     if response is not None and await verify(response):
-                        return True
+                        return "healthy"
                 if self._health_interval > 0:
                     await asyncio.sleep(self._health_interval)
-        return False
+        return "unhealthy" if saw_response else "unreachable"
 
     async def _deployment_is_healthy(
         self, session: SshSession, server_url: str, deployment_id: str
-    ) -> bool:
+    ) -> Literal["healthy", "unhealthy", "unreachable"]:
         expected_schema = str(await self.sync_store.schema_version())
 
         async def verify_invocation(response: httpx2.Response) -> bool:
@@ -1447,9 +1483,10 @@ class ServerInstallService:
         self._set_step("health_check", "running")
         if not reconnect_first:
             try:
-                return session, await self._deployment_is_healthy(
+                health = await self._deployment_is_healthy(
                     session, server_url, deployment_id
                 )
+                return session, health == "healthy"
             except asyncssh.Error, OSError, SshUnreachableError:
                 self._append_log(
                     "SSH connection lost during verification. Reconnecting."
@@ -1457,9 +1494,25 @@ class ServerInstallService:
         recovered = None
         try:
             recovered = await asyncio.wait_for(self._reconnect(), ROLLBACK_TIMEOUT)
-            healthy = await self._deployment_is_healthy(
+            health = await self._deployment_is_healthy(
                 recovered, server_url, deployment_id
             )
+            if (
+                reconnect_first
+                and health == "unreachable"
+                and await self._deployment_is_running_on_host(recovered, deployment_id)
+            ):
+                with suppress(Exception):
+                    await recovered.close()
+                self._retain_install_lock = True
+                self._rollback_pending = False
+                self._fail(
+                    "health_check",
+                    "install_failed",
+                    "Could not reach the installed service over HTTP while it is running on the server. "
+                    "The service and recovery files were left in place. Check the server before retrying.",
+                )
+                return None
         except BaseException as error:
             if recovered is not None:
                 with suppress(Exception):
@@ -1477,7 +1530,7 @@ class ServerInstallService:
             return None
         with suppress(Exception):
             await session.close()
-        return recovered, healthy
+        return recovered, health == "healthy"
 
     async def _check_health(
         self, session: SshSession, server_url: str, healthy: bool

@@ -1700,20 +1700,47 @@ def test_health_verification_reconnects_before_rollback(
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("outcome", ["healthy", "cannot_reconnect", "previous_service"])
+@pytest.mark.parametrize(
+    "outcome",
+    [
+        "healthy",
+        "cannot_reconnect",
+        "previous_service",
+        "http_unreachable_running",
+        "http_unreachable_stopped",
+    ],
+)
 def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
     tmp_path: Path, outcome: str
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            command_results = (
+                {"--property=ActiveState": SshCommandResult(exit_status=1)}
+                if outcome == "http_unreachable_stopped"
+                else None
+            )
             ssh = FakeSshBackend(
                 raise_once={"mv venv.new venv": SshUnreachableError("connection lost")},
                 fail_reconnect=outcome == "cannot_reconnect",
+                command_results=command_results,
                 mint_callback=minting(apps["server"], []),
             )
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
             if outcome == "previous_service":
                 service._deployment_id_factory = lambda: "e" * 32
+            elif outcome in ("http_unreachable_running", "http_unreachable_stopped"):
+
+                def unreachable_until_rolled_back(
+                    request: httpx2.Request,
+                ) -> httpx2.Response:
+                    if any("mv venv.prev venv" in c for c in ssh.commands):
+                        return httpx2.Response(200, json={"status": "ok"})
+                    raise httpx2.ConnectError("tailscale temporarily unavailable")
+
+                service._client_factory = lambda: httpx2.AsyncClient(
+                    transport=httpx2.MockTransport(unreachable_until_rolled_back)
+                )
             async with laptop_client(laptop_app) as client:
                 status = await run_install(client, service)
             steps = {step["id"]: step for step in status["steps"]}
@@ -1722,7 +1749,7 @@ def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
                 assert steps["configure_systemd"]["status"] == "done"
                 assert ssh.connections == 2
                 assert not any("mv venv.prev venv" in c for c in ssh.commands)
-            elif outcome == "cannot_reconnect":
+            elif outcome in ("cannot_reconnect", "http_unreachable_running"):
                 assert status["state"] == "failed"
                 assert steps["configure_systemd"]["status"] == "failed"
                 assert "left in place" in status["error"]
@@ -2236,8 +2263,9 @@ def test_rollback_command_retried_after_a_partial_restore_still_restarts(
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("restart_fails", [False, True])
 def test_rollback_restarts_installed_service_if_migration_commits_between_schema_checks(
-    tmp_path: Path,
+    tmp_path: Path, restart_fails: bool
 ):
     from verstehen.sync.provision import ROLLBACK_COMMAND
 
@@ -2267,6 +2295,7 @@ def test_rollback_restarts_installed_service_if_migration_commits_between_schema
     bin_dir.mkdir()
     calls = tmp_path / "calls"
     stub = bin_dir / "systemctl"
+    fail_start = 'if [ "$2" = start ]; then exit 1; fi\n' if restart_fails else ""
     stub.write_text(
         f'#!/bin/sh\necho "$@" >> {calls}\n'
         f'if [ "$2" = stop ]; then\n'
@@ -2274,13 +2303,14 @@ def test_rollback_restarts_installed_service_if_migration_commits_between_schema
         f"c.execute('INSERT INTO schema_migrations VALUES ({SUPPORTED_SCHEMA + 1}, \\'late.sql\\', \\'today\\')'); "
         f'c.commit(); c.close()"\n'
         "fi\n"
+        f"{fail_start}"
     )
     stub.chmod(0o755)
     env = {**os.environ, "HOME": str(home), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
     result = subprocess.run(
         ["bash", "-c", ROLLBACK_COMMAND], env=env, capture_output=True, text=True
     )
-    assert result.returncode == 78, result.stderr
+    assert result.returncode == (79 if restart_fails else 78), result.stderr
     recorded = calls.read_text().splitlines()
     assert "--user stop verstehen-server.service" in recorded
     assert "--user start verstehen-server.service" in recorded
@@ -2291,6 +2321,30 @@ def test_rollback_restarts_installed_service_if_migration_commits_between_schema
     assert (server_dir / "venv.prev/marker").read_text() == "old"
     assert (server_dir / "unit.prev").exists()
     assert (server_dir / "rollback.pending").exists()
+
+
+def test_rollback_surfaces_restart_failure_when_post_stop_schema_blocks_rollback(
+    tmp_path: Path,
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                command_results={
+                    "NOTHING_TO_ROLL_BACK": SshCommandResult(exit_status=79)
+                }
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            unhealthy_until_rolled_back(service, ssh, recovers=False)
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert "cannot read the upgraded database" in status["error"]
+            assert (
+                "restarting the installed server version also failed" in status["error"]
+            )
+            assert any("install lock was retained" in line for line in status["logs"])
+
+    asyncio.run(run())
 
 
 @pytest.mark.parametrize("commit_first", [False, True])
