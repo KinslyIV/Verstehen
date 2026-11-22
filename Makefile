@@ -45,11 +45,11 @@ dev:
 
 verify:
 	uv run --project backend python tools/verify_build.py build
-	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(FLOW),--flow "$(FLOW)")
+	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(FLOW),--flow="$(FLOW)")
 
 verify-run:
 	uv run --project backend python tools/verify_build.py check
-	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(FLOW),--flow "$(FLOW)")
+	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(FLOW),--flow="$(FLOW)")
 
 verify-live:
 	@command -v claude >/dev/null 2>&1 || { echo "make verify-live requires Claude Code (claude) on PATH." >&2; exit 1; }

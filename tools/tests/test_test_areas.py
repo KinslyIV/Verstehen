@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -127,12 +128,13 @@ def test_vitest_and_verify_plans_expand_area_targets(tmp_path: Path):
         ["npx", "vitest", "--run", "src/lib/session/opening.test.ts"],
         tmp_path / "app",
     )
+    abort = r"verify/session/session\-abort\.flow\.ts$"
     assert verify_plan(tmp_path, ["session"], []) == (
-        ["npx", "playwright", "test", "verify/session"],
+        ["npx", "playwright", "test", abort],
         tmp_path / "app",
     )
     assert verify_plan(tmp_path, ["session"], ["session-abort"]) == (
-        ["npx", "playwright", "test", "verify/session/session-abort.flow.ts"],
+        ["npx", "playwright", "test", abort],
         tmp_path / "app",
     )
 
@@ -166,6 +168,9 @@ def test_suffix_named_backend_tests_in_an_area_are_accepted(tmp_path: Path):
         (["--area", "session", "--flow", "session-abort misspelled"], "misspelled"),
         (["--area", "sync", "--flow", "session-abort"], "session-abort"),
         (["--flow", "session-abort misspelled"], "misspelled"),
+        (["--area", "session", "--flow", "session"], "session"),
+        (["--flow", "abort"], "abort"),
+        (["--flow=session-abort --workers 1"], "1"),
     ],
 )
 def test_unmatched_explicit_flows_exit_with_an_error(
@@ -179,9 +184,50 @@ def test_unmatched_explicit_flows_exit_with_an_error(
     assert unmatched in capsys.readouterr().err
 
 
-def test_matched_flows_are_passed_through_with_flags(tmp_path: Path):
+def test_matched_flows_are_passed_as_anchored_paths_with_options(tmp_path: Path):
     make_valid_tree(tmp_path)
-    assert verify_plan(tmp_path, [], ["session-abort", "--headed"]) == (
-        ["npx", "playwright", "test", "session-abort", "--headed"],
-        tmp_path / "app",
+    abort = r"verify/session/session\-abort\.flow\.ts$"
+    for name in (
+        "session-abort",
+        "verify/session/session-abort.flow.ts",
+        "app/verify/session/session-abort.flow.ts",
+    ):
+        assert verify_plan(tmp_path, [], [name, "--headed", "--workers=1"]) == (
+            ["npx", "playwright", "test", abort, "--headed", "--workers=1"],
+            tmp_path / "app",
+        )
+
+
+def test_option_only_flow_runs_the_area_with_those_options(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    make_valid_tree(tmp_path)
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        "tools.test_areas.subprocess.run",
+        lambda command, **_: (
+            commands.append(command) or subprocess.CompletedProcess(command, 0)
+        ),
+    )
+    assert main(["verify", "--area", "session", "--flow=--headed"], root=tmp_path) == 0
+    assert commands == [
+        [
+            "npx",
+            "playwright",
+            "test",
+            r"verify/session/session\-abort\.flow\.ts$",
+            "--headed",
+        ]
+    ]
+    assert main(["verify", "--area", "sync", "--flow=--headed"], root=tmp_path) == 0
+    assert len(commands) == 1
+
+
+def test_check_catches_nested_tooling_tests(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "tools/tests/new_area").mkdir(parents=True)
+    (tmp_path / "tools/tests/new_area/extra_test.py").write_text("")
+    errors = check(tmp_path)
+    assert any(
+        "tools/tests/new_area/extra_test.py: move tooling test" in e for e in errors
     )

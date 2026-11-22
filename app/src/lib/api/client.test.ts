@@ -128,3 +128,17 @@ test('desktop_sign_in_opens_the_system_browser_through_the_existing_shell', asyn
 		path: 'https://auth.openai.com/authorize'
 	});
 });
+
+test('browser_sign_in_opens_a_new_tab_without_an_opener', async () => {
+	const { openExternal } = await import('./client');
+	vi.mocked(invoke).mockClear();
+	const open = vi.fn();
+	vi.stubGlobal('window', { open });
+	await openExternal('https://auth.openai.com/authorize');
+	expect(open).toHaveBeenCalledExactlyOnceWith(
+		'https://auth.openai.com/authorize',
+		'_blank',
+		'noopener,noreferrer'
+	);
+	expect(invoke).not.toHaveBeenCalled();
+});

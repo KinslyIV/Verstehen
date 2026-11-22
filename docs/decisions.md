@@ -36,8 +36,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   a time zone) refuses the import; only unparsable JSONL lines are skipped. LH skips both.
 - **Orphans:** jobs of skipped or missing chats are skipped; graph rows naming non-imported
   sessions are kept; unplaceable or shared-segment side threads are imported with a warning.
-- **Running the flow alone** needs `FLOW='learnharness-import.flow'`: the worktree path contains
-  the flow name, so the bare name matches every flow.
 
 **Mobile & sync (Milestone A):**
 

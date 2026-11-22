@@ -106,6 +106,15 @@ def check(root: Path) -> list[str]:
                     f"{path.relative_to(root).as_posix()}: move backend test directly into "
                     f"backend/tests/<area>/ ({valid_list})."
                 )
+    tools_root = root / "tools/tests"
+    for path in sorted(
+        {*tools_root.rglob("test_*.py"), *tools_root.rglob("*_test.py")}
+    ):
+        if len(path.relative_to(tools_root).parts) != 1:
+            errors.append(
+                f"{path.relative_to(root).as_posix()}: move tooling test directly into "
+                "tools/tests/ (shell area)."
+            )
     app_root = root / "app"
     src_root = app_root / "src"
     if src_root.is_dir():
@@ -211,62 +220,56 @@ def vitest_plan(root: Path, areas: list[str]) -> tuple[list[str], Path] | str:
     return ["npx", "vitest", "--run", *files], app_root
 
 
+def flow_candidates(verify_root: Path, areas: list[str]) -> list[Path]:
+    if areas:
+        return sorted(
+            path for area in areas for path in (verify_root / area).glob("*.flow.ts")
+        )
+    return sorted(
+        path
+        for path in verify_root.rglob("*.flow.ts")
+        if "node_modules" not in path.parts
+    )
+
+
+def flow_names(app_root: Path, path: Path) -> set[str]:
+    """A flow answers to its bare name and its path from `app/` or the repository root."""
+    relative = path.relative_to(app_root).as_posix()
+    return {path.name.removesuffix(".flow.ts"), relative, f"app/{relative}"}
+
+
 def verify_plan(
     root: Path, areas: list[str], flows: list[str]
 ) -> tuple[list[str], Path] | str:
-    """Build the Playwright command; unmatched flow tokens raise ValueError."""
+    """Build the Playwright command; flow names that match no flow raise ValueError."""
     app_root = root / "app"
-    verify_root = app_root / "verify"
     command = ["npx", "playwright", "test"]
-    tokens = [token for token in flows if not token.startswith("-")]
-    if not areas and not flows:
-        return command, app_root
-    if areas:
-        candidates = sorted(
-            path
-            for area in areas
-            if (verify_root / area).is_dir()
-            for path in (verify_root / area).glob("*.flow.ts")
-        )
-    else:
-        candidates = sorted(
-            path
-            for path in verify_root.rglob("*.flow.ts")
-            if "node_modules" not in path.parts
-        )
-    if not tokens:
+    options = [token for token in flows if token.startswith("-")]
+    names = [token for token in flows if not token.startswith("-")]
+    candidates = flow_candidates(app_root / "verify", areas)
+    if not names:
         if not areas:
-            return [*command, *flows], app_root
+            return [*command, *options], app_root
         if not candidates:
             return f"No verify flows in area(s): {', '.join(areas)}"
-        dirs = sorted(
-            {path.parent.relative_to(app_root).as_posix() for path in candidates}
-        )
-        return [*command, *dirs, *flows], app_root
-
-    def matches(token: str, path: Path) -> bool:
-        return token in path.relative_to(
-            app_root
-        ).as_posix() or token == path.name.removesuffix(".flow.ts")
-
+        names = [path.name.removesuffix(".flow.ts") for path in candidates]
     unmatched = [
-        token
-        for token in tokens
-        if not any(matches(token, path) for path in candidates)
+        name
+        for name in names
+        if not any(name in flow_names(app_root, path) for path in candidates)
     ]
     if unmatched:
         scope = f" in area(s): {', '.join(areas)}" if areas else ""
-        raise ValueError(f"No verify flow matches: {', '.join(unmatched)}{scope}.")
-    if not areas:
-        return [*command, *flows], app_root
-    selected = sorted(
-        {
-            path.relative_to(app_root).as_posix()
-            for path in candidates
-            if any(matches(token, path) for token in tokens)
-        }
-    )
-    return [*command, *selected, *[f for f in flows if f.startswith("-")]], app_root
+        raise ValueError(
+            f"No verify flow matches: {', '.join(unmatched)}{scope}. Use exact flow names "
+            "such as session-abort, and pass Playwright options as --option=value."
+        )
+    selected = [
+        path.relative_to(app_root).as_posix()
+        for path in candidates
+        if any(name in flow_names(app_root, path) for name in names)
+    ]
+    return [*command, *(f"{re.escape(path)}$" for path in selected), *options], app_root
 
 
 def run_plan(plan: tuple[list[str], Path] | str) -> int:

@@ -9,6 +9,7 @@ Run from the repository root after `make setup`:
 - `make verify AREA=graph` or `make verify AREA='session teaching'` builds and runs all flows in the named architecture area(s) (`session`, `teaching`, `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`).
 - `make verify FLOW=shell-layout` builds and runs a single flow.
 - Batch affected flows in one invocation: `make verify FLOW='shell-layout settings'`.
+- `FLOW` names must be exact flow names (`session-abort`) or paths (`verify/session/session-abort.flow.ts`); an unmatched name fails. Pass Playwright options as `--option=value`, e.g. `FLOW='settings --repeat-each=3'`.
 - `make verify-run AREA=graph` or `make verify-run FLOW='shell-layout settings'` reruns selected areas or flows without rebuilding, only if the build guard passes. Omit `AREA` and `FLOW` to rerun all flows.
 - Screenshots and always-on traces land in `app/verify-output/<flow>/` (Playwright may append a project or retry suffix).
 - Open a trace with `cd app && npx playwright show-trace verify-output/<flow>/trace.zip`.
@@ -65,7 +66,7 @@ and learner controls because provider wording varies.
 
 A flow that fails and then passes on rerun is a flake, and a flake is a bug: record it in
 `docs/roadmap.md` (Known gaps) and fix it before merge. Never weaken an assertion or timeout to pass.
-Every flow file must live in `app/verify/<area>/` and appear in a Verify flow column of
+Every fake-model flow file must live in `app/verify/<area>/` and appear in a Verify flow column of
 `docs/feature-map.md` (`make check` enforces both).
 
 - **User decisions (2026-11-22), 9-area test separation and 49-flow verification suite:**
