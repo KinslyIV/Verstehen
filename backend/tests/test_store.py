@@ -238,7 +238,7 @@ def test_invalid_migration_files_fail_before_database_changes(tmp_path: Path):
     asyncio.run(run())
 
 
-def test_migration_0009_rebuilds_sessions_with_fk_off_and_preserves_children_and_triggers(
+def test_migration_0010_rebuilds_sessions_with_fk_off_and_preserves_children_and_triggers(
     tmp_path: Path,
 ):
     through_0008 = tmp_path / "migrations_0008"
@@ -353,5 +353,71 @@ def test_migration_0009_rebuilds_sessions_with_fk_off_and_preserves_children_and
                 async with conn.execute("SELECT COUNT(*) FROM artifact_views") as cur:
                     row = await cur.fetchone()
                     assert row is not None and row[0] == 0
+
+    asyncio.run(run())
+
+
+def test_migration_0010_keeps_sync_state_and_outbox(tmp_path: Path):
+    before_0010 = tmp_path / "migrations_before_0010"
+    before_0010.mkdir()
+    for path in sorted(MIGRATIONS.glob("*.sql")):
+        if int(path.name.split("_", 1)[0]) < 10:
+            shutil.copy(path, before_0010 / path.name)
+    sync_tables = (
+        "sync_state",
+        "sync_log",
+        "sync_tombstones",
+        "sync_versions",
+        "sync_session_baseline",
+    )
+
+    async def snapshot(database) -> dict[str, list]:
+        rows = {}
+        async with database.read() as conn:
+            for table in sync_tables:
+                async with conn.execute(f"SELECT * FROM {table} ORDER BY 1") as cur:
+                    rows[table] = list(await cur.fetchall())
+        return rows
+
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database, before_0010)
+            now = "2026-11-22T00:00:00+00:00"
+            async with database.transaction() as conn:
+                await conn.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                    "VALUES ('s_1', 'Teach Session', 'teach', ?, ?)",
+                    (now, now),
+                )
+                await conn.execute(
+                    "UPDATE sync_state SET server_url = 'http://srv', last_pushed_seq = 3, "
+                    "last_pulled_seq = 7, status = 'idle' WHERE id = 1"
+                )
+                await conn.execute(
+                    "INSERT INTO sync_log (entity, op, entity_id, session_id, payload, "
+                    "origin_device_id, origin_seq, created_at) "
+                    "VALUES ('session', 'upsert', 's_1', 's_1', '{\"kind\":\"teach\"}', "
+                    "'dev_a', 1, ?)",
+                    (now,),
+                )
+                await conn.execute(
+                    "INSERT INTO sync_tombstones (entity, entity_id, deleted_at, "
+                    "origin_device_id) VALUES ('session', 's_gone', ?, 'dev_a')",
+                    (now,),
+                )
+                await conn.execute(
+                    "INSERT INTO sync_versions (entity, entity_id, server_seq) "
+                    "VALUES ('session', 's_1', 5)"
+                )
+                await conn.execute(
+                    "INSERT INTO sync_session_baseline (session_id, payload) "
+                    "VALUES ('s_1', '{\"title\":\"Teach Session\"}')"
+                )
+            before = await snapshot(database)
+
+            await migrate(database, MIGRATIONS)
+
+            assert await snapshot(database) == before
+            assert all(before[table] for table in sync_tables)
 
     asyncio.run(run())
