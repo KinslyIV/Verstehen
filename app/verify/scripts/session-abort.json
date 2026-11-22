@@ -1,10 +1,10 @@
 [
 	{
 		"text": "A derivative describes how quickly a quantity changes. What do you already know about slope?",
-		"delay_ms": 900
+		"delay_ms": 1500
 	},
 	{
 		"text": "An integral accumulates small quantities across an interval to find the total change.",
-		"delay_ms": 900
+		"delay_ms": 1500
 	}
 ]

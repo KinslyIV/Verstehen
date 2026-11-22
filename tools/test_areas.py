@@ -97,7 +97,9 @@ def check(root: Path) -> list[str]:
                     f"{child.relative_to(root).as_posix()}: unknown backend test folder; "
                     f"use one of: {valid_list}."
                 )
-        for path in sorted(backend_root.rglob("test_*.py")):
+        for path in sorted(
+            {*backend_root.rglob("test_*.py"), *backend_root.rglob("*_test.py")}
+        ):
             rel = path.relative_to(backend_root)
             if len(rel.parts) != 2 or rel.parts[0] not in AREAS:
                 errors.append(
@@ -119,6 +121,8 @@ def check(root: Path) -> list[str]:
             {
                 *src_root.rglob("*.test.ts"),
                 *src_root.rglob("*.spec.ts"),
+                *src_root.rglob("*.test.js"),
+                *src_root.rglob("*.spec.js"),
             }
         )
         for path in discovered:
@@ -179,7 +183,8 @@ def pytest_plan(
         rel
         for area in areas
         for rel in BACKEND_AREAS[area]
-        if (root / rel).is_dir() and any((root / rel).glob("test_*.py"))
+        if (root / rel).is_dir()
+        and (any((root / rel).glob("test_*.py")) or any((root / rel).glob("*_test.py")))
     ]
     if not dirs:
         return f"No backend tests in area(s): {', '.join(areas)}"
@@ -209,39 +214,59 @@ def vitest_plan(root: Path, areas: list[str]) -> tuple[list[str], Path] | str:
 def verify_plan(
     root: Path, areas: list[str], flows: list[str]
 ) -> tuple[list[str], Path] | str:
-    """Build the Playwright command and working directory, or a skip message when empty."""
+    """Build the Playwright command; unmatched flow tokens raise ValueError."""
     app_root = root / "app"
-    if not areas and not flows:
-        return ["npx", "playwright", "test"], app_root
-    if not areas:
-        return ["npx", "playwright", "test", *flows], app_root
     verify_root = app_root / "verify"
-    if not flows:
-        dirs = [
-            f"verify/{area}"
-            for area in areas
-            if (verify_root / area).is_dir()
-            and any((verify_root / area).glob("*.flow.ts"))
-        ]
-        if not dirs:
-            return f"No verify flows in area(s): {', '.join(areas)}"
-        return ["npx", "playwright", "test", *dirs], app_root
-    matched = sorted(
-        {
-            path.relative_to(app_root).as_posix()
+    command = ["npx", "playwright", "test"]
+    tokens = [token for token in flows if not token.startswith("-")]
+    if not areas and not flows:
+        return command, app_root
+    if areas:
+        candidates = sorted(
+            path
             for area in areas
             if (verify_root / area).is_dir()
             for path in (verify_root / area).glob("*.flow.ts")
-            if any(
-                token in path.relative_to(app_root).as_posix()
-                or token == path.name.removesuffix(".flow.ts")
-                for token in flows
-            )
+        )
+    else:
+        candidates = sorted(
+            path
+            for path in verify_root.rglob("*.flow.ts")
+            if "node_modules" not in path.parts
+        )
+    if not tokens:
+        if not areas:
+            return [*command, *flows], app_root
+        if not candidates:
+            return f"No verify flows in area(s): {', '.join(areas)}"
+        dirs = sorted(
+            {path.parent.relative_to(app_root).as_posix() for path in candidates}
+        )
+        return [*command, *dirs, *flows], app_root
+
+    def matches(token: str, path: Path) -> bool:
+        return token in path.relative_to(
+            app_root
+        ).as_posix() or token == path.name.removesuffix(".flow.ts")
+
+    unmatched = [
+        token
+        for token in tokens
+        if not any(matches(token, path) for path in candidates)
+    ]
+    if unmatched:
+        scope = f" in area(s): {', '.join(areas)}" if areas else ""
+        raise ValueError(f"No verify flow matches: {', '.join(unmatched)}{scope}.")
+    if not areas:
+        return [*command, *flows], app_root
+    selected = sorted(
+        {
+            path.relative_to(app_root).as_posix()
+            for path in candidates
+            if any(matches(token, path) for token in tokens)
         }
     )
-    if not matched:
-        return f"No verify flows in area(s): {', '.join(areas)}"
-    return ["npx", "playwright", "test", *matched], app_root
+    return [*command, *selected, *[f for f in flows if f.startswith("-")]], app_root
 
 
 def run_plan(plan: tuple[list[str], Path] | str) -> int:
@@ -290,7 +315,12 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
     if args.runner == "vitest":
         return run_plan(vitest_plan(workspace, areas))
     if args.runner == "verify":
-        return run_plan(verify_plan(workspace, areas, parse_tokens(args.flow)))
+        try:
+            plan = verify_plan(workspace, areas, parse_tokens(args.flow))
+        except ValueError as error:
+            print(error, file=sys.stderr)
+            return 2
+        return run_plan(plan)
     parser.print_help()
     return 2
 

@@ -20,7 +20,7 @@ check-backend:
 	uv run --project backend python tools/check_versions.py
 	uv run --project backend python tools/check_feature_map.py
 	uv run --project backend python tools/test_areas.py --check
-	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(SLOW),--slow)
+	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(filter 1,$(SLOW)),--slow)
 
 check-frontend:
 	npm run check --prefix app
@@ -29,7 +29,7 @@ check-frontend:
 	uv run --project backend python tools/test_areas.py vitest $(if $(AREA),--area "$(AREA)")
 
 test:
-	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(SLOW),--slow)
+	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(filter 1,$(SLOW)),--slow)
 	uv run --project backend python tools/test_areas.py vitest $(if $(AREA),--area "$(AREA)")
 
 fmt:

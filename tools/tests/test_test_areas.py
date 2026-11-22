@@ -135,3 +135,53 @@ def test_vitest_and_verify_plans_expand_area_targets(tmp_path: Path):
         ["npx", "playwright", "test", "verify/session/session-abort.flow.ts"],
         tmp_path / "app",
     )
+
+
+def test_check_catches_pytest_and_vitest_files_the_runners_would_discover(
+    tmp_path: Path,
+):
+    make_valid_tree(tmp_path)
+    (tmp_path / "backend/tests/stray_test.py").write_text("")
+    (tmp_path / "app/src/lib/unmapped").mkdir(parents=True)
+    (tmp_path / "app/src/lib/unmapped/stray.test.js").write_text("")
+    (tmp_path / "app/src/lib/unmapped/stray.spec.js").write_text("")
+    errors = check(tmp_path)
+    assert any("backend/tests/stray_test.py: move backend test" in e for e in errors)
+    assert any("unmapped/stray.test.js: unmapped frontend test" in e for e in errors)
+    assert any("unmapped/stray.spec.js: unmapped frontend test" in e for e in errors)
+
+
+def test_suffix_named_backend_tests_in_an_area_are_accepted(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "backend/tests/session/extra_test.py").write_text("")
+    assert check(tmp_path) == []
+    (tmp_path / "backend/tests/session/test_turns.py").unlink()
+    assert pytest_plan(tmp_path, ["session"])[0][-1] == "backend/tests/session"
+
+
+@pytest.mark.parametrize(
+    ("argv", "unmatched"),
+    [
+        (["--area", "session", "--flow", "misspelled"], "misspelled"),
+        (["--area", "session", "--flow", "session-abort misspelled"], "misspelled"),
+        (["--area", "sync", "--flow", "session-abort"], "session-abort"),
+        (["--flow", "session-abort misspelled"], "misspelled"),
+    ],
+)
+def test_unmatched_explicit_flows_exit_with_an_error(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    argv: list[str],
+    unmatched: str,
+):
+    make_valid_tree(tmp_path)
+    assert main(["verify", *argv], root=tmp_path) == 2
+    assert unmatched in capsys.readouterr().err
+
+
+def test_matched_flows_are_passed_through_with_flags(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    assert verify_plan(tmp_path, [], ["session-abort", "--headed"]) == (
+        ["npx", "playwright", "test", "session-abort", "--headed"],
+        tmp_path / "app",
+    )

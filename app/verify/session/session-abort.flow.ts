@@ -11,6 +11,8 @@ test('session-abort', async ({ page }) => {
 	await page.getByRole('button', { name: 'Stop', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
 	const firstText = await page.locator('.markdown').first().innerText();
+	expect(firstText).toContain('A derivative describes');
+	expect(firstText).not.toContain('about slope?');
 	await page.reload();
 	await expect(page.locator('.markdown').first()).toHaveText(firstText);
 
@@ -23,6 +25,8 @@ test('session-abort', async ({ page }) => {
 	await dialog.getByRole('button', { name: 'Abort', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
 	const secondText = await page.locator('.markdown').nth(1).innerText();
+	expect(secondText).toContain('An integral accumulates');
+	expect(secondText).not.toContain('total change.');
 	await page.reload();
 	await expect(page.locator('.markdown').nth(1)).toHaveText(secondText);
 });
