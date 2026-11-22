@@ -9,6 +9,10 @@
 		"delay_ms": 200
 	},
 	{
+		"role": "sideQuestion",
+		"text": "It is how much the output changes per unit of the input at that point."
+	},
+	{
 		"role": "teacher",
 		"text": "Good: that tangent slope is exactly where we go next. Let us compute one."
 	}

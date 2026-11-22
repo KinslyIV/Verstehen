@@ -141,3 +141,15 @@ def test_separator_must_match_the_header_width(tmp_path: Path):
     write_flow(tmp_path, "app/verify", "some-flow")
     write_map(tmp_path, "| Feature | Verify flow |\n|---|\n| A | `some-flow` |\n")
     assert len(check(tmp_path)) == 1
+
+
+def test_nested_area_flow_is_checked(tmp_path: Path):
+    write_flow(tmp_path, "app/verify/graph", "graph-delete")
+    write_map(tmp_path, HEADER)
+    assert check(tmp_path) == [
+        "app/verify/graph/graph-delete.flow.ts is not in docs/feature-map.md: add "
+        "`graph-delete` to the Verify flow column of its feature's row "
+        "(group it under its area)."
+    ]
+    write_map(tmp_path, HEADER + "| Delete | `graph-delete` |\n")
+    assert check(tmp_path) == []

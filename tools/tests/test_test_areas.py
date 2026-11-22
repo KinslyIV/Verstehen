@@ -1,0 +1,137 @@
+from pathlib import Path
+
+import pytest
+
+from tools.test_areas import (
+    AREAS,
+    check,
+    main,
+    parse_areas,
+    pytest_plan,
+    verify_plan,
+    vitest_plan,
+)
+
+
+def make_valid_tree(root: Path) -> None:
+    (root / "backend/tests/session").mkdir(parents=True)
+    (root / "backend/tests/session/test_turns.py").write_text("")
+    (root / "backend/tests/fixtures").mkdir(parents=True)
+    (root / "app/src/lib/session").mkdir(parents=True)
+    (root / "app/src/lib/session/opening.test.ts").write_text("")
+    (root / "app/verify/session").mkdir(parents=True)
+    (root / "app/verify/session/session-abort.flow.ts").write_text("")
+    (root / "app/verify/scripts").mkdir(parents=True)
+
+
+def test_parse_areas_supports_single_spaces_and_commas():
+    assert parse_areas(None) == []
+    assert parse_areas("  ") == []
+    assert parse_areas("graph") == ["graph"]
+    assert parse_areas("session teaching") == ["session", "teaching"]
+    assert parse_areas("session, teaching,session") == ["session", "teaching"]
+
+
+def test_parse_areas_rejects_unknown_area(capsys: pytest.CaptureFixture[str]):
+    with pytest.raises(ValueError, match="Unknown area\\(s\\): bogus"):
+        parse_areas("graph bogus")
+    assert main(["pytest", "--area", "bogus"]) == 2
+    assert "Valid areas:" in capsys.readouterr().err
+
+
+def test_list_prints_all_areas(capsys: pytest.CaptureFixture[str]):
+    assert main(["--list"]) == 0
+    assert capsys.readouterr().out.splitlines() == list(AREAS)
+
+
+def test_check_passes_on_valid_tree(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    assert check(tmp_path) == []
+    assert main(["--check"], root=tmp_path) == 0
+
+
+def test_check_catches_stray_backend_tests_and_unknown_subfolders(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "backend/tests/test_stray.py").write_text("")
+    (tmp_path / "backend/tests/unknown").mkdir()
+    (tmp_path / "backend/tests/unknown/test_bad.py").write_text("")
+    errors = check(tmp_path)
+    assert any(
+        "backend/tests/unknown: unknown backend test folder" in e for e in errors
+    )
+    assert any("backend/tests/test_stray.py: move backend test" in e for e in errors)
+    assert any(
+        "backend/tests/unknown/test_bad.py: move backend test" in e for e in errors
+    )
+
+
+def test_check_catches_unmapped_frontend_tests(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "app/src/lib/unmapped").mkdir(parents=True)
+    (tmp_path / "app/src/lib/unmapped/stray.test.ts").write_text("")
+    errors = check(tmp_path)
+    assert errors == [
+        "app/src/lib/unmapped/stray.test.ts: unmapped frontend test; "
+        f"add its pattern to VITEST_GLOBS in tools/test_areas.py ({', '.join(AREAS)})."
+    ]
+
+
+def test_check_catches_stray_verify_flows_and_unknown_subfolders(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "app/verify/stray.flow.ts").write_text("")
+    (tmp_path / "app/verify/unknown").mkdir()
+    errors = check(tmp_path)
+    assert any("app/verify/unknown: unknown verify folder" in e for e in errors)
+    assert any("app/verify/stray.flow.ts: move verify flow" in e for e in errors)
+
+
+def test_empty_area_exits_cleanly_for_vitest_and_verify(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+    make_valid_tree(tmp_path)
+    assert vitest_plan(tmp_path, ["sync"]) == "No frontend tests in area(s): sync"
+    assert verify_plan(tmp_path, ["sync"], []) == "No verify flows in area(s): sync"
+    assert pytest_plan(tmp_path, ["sync"]) == "No backend tests in area(s): sync"
+    assert main(["vitest", "--area", "sync"], root=tmp_path) == 0
+    assert "No frontend tests in area(s): sync" in capsys.readouterr().out
+    assert main(["verify", "--area", "sync"], root=tmp_path) == 0
+    assert "No verify flows in area(s): sync" in capsys.readouterr().out
+
+
+def test_pytest_plan_selects_markers_and_shell_tools_tests(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    (tmp_path / "backend/tests/shell").mkdir(parents=True)
+    (tmp_path / "backend/tests/shell/test_api.py").write_text("")
+    (tmp_path / "tools/tests").mkdir(parents=True)
+    (tmp_path / "tools/tests/test_sample.py").write_text("")
+
+    full_cmd, _ = pytest_plan(tmp_path, [])
+    assert "-m" not in full_cmd
+
+    scoped_cmd, _ = pytest_plan(tmp_path, ["session", "shell"])
+    assert scoped_cmd[-5:] == [
+        "-m",
+        "not live and not slow",
+        "backend/tests/session",
+        "backend/tests/shell",
+        "tools/tests",
+    ]
+
+    slow_cmd, _ = pytest_plan(tmp_path, ["session"], slow=True)
+    assert slow_cmd[-3:] == ["-m", "not live", "backend/tests/session"]
+
+
+def test_vitest_and_verify_plans_expand_area_targets(tmp_path: Path):
+    make_valid_tree(tmp_path)
+    assert vitest_plan(tmp_path, ["session"]) == (
+        ["npx", "vitest", "--run", "src/lib/session/opening.test.ts"],
+        tmp_path / "app",
+    )
+    assert verify_plan(tmp_path, ["session"], []) == (
+        ["npx", "playwright", "test", "verify/session"],
+        tmp_path / "app",
+    )
+    assert verify_plan(tmp_path, ["session"], ["session-abort"]) == (
+        ["npx", "playwright", "test", "verify/session/session-abort.flow.ts"],
+        tmp_path / "app",
+    )

@@ -44,9 +44,10 @@ place that names the roles and models; AGENTS.md and plans link here.
   for a new thread, or `t3_worktree_handoff` to move the current thread. `git worktree add` or `cd`
   alone does not update T3's binding. Never switch a shared checkout's branch for another task.
   Before editing, check that the T3 binding, the working directory, and the branch agree.
-- **Commits.** `make check` passes before every commit. Which checks and flows to run while
-  editing and before merge, and when earlier results may be reused, is in the verify skill
-  (`.claude/skills/verify/SKILL.md`).
+- **Commits.** `make check AREA='...'` for the touched areas passes before every commit; full
+  `make check` and `make verify` pass before opening a PR into `dev`. Which checks and flows to
+  run while editing and before merge, and when earlier results may be reused, is in the verify
+  skill (`.claude/skills/verify/SKILL.md`).
 - **The orchestrator decides** what the implementer asks: what fits the plan and the docs most
   closely, and the most cautious option when unsure. Each decision goes into the review queue in
   [decisions](decisions.md) with **what was decided, the alternative, and the consequence**.
@@ -57,11 +58,17 @@ place that names the roles and models; AGENTS.md and plans link here.
   than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
   and reported.
 
-- **User decisions (2026-11-21), slimmer verification:** flows run once in the default dark
-  theme; only `layout-lesson-dark` and `settings-appearance-light` explicitly test a theme.
-  Settings account states (not installed, too old, untested, tested) and tool download states
-  (idle, downloading, failed, found) belong in Vitest. Accounts keeps one `tested` browser case;
-  Tools keeps one `found` browser case. Session-performance flows stay in the full suite.
+- **User decisions (2026-11-22), 9-area test separation and 49-flow verification suite:**
+  backend pytest files (`backend/tests/<area>/`), frontend Vitest globs, and Playwright verify
+  flows (`app/verify/<area>/`) are separated into the 9 architecture areas (`session`, `teaching`,
+  `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`), enforced by
+  `tools/test_areas.py --check`. `AREA='...'` scopes `make check`, `make test`, `make verify`, and
+  `make verify-run` to one or more areas. Area-scoped pytest runs skip `@pytest.mark.slow` (real
+  CLI subprocess and headless Chromium tests) unless `SLOW=1` is passed; full `make check` runs
+  all areas including `slow`. The Playwright suite is trimmed from 72 to 49 flows: flows run once
+  in the default dark theme (only `shell-layout` and `settings` check themes), redundant layout
+  and settings flows are consolidated into `shell-layout` and `settings` while component and error
+  permutations live in Vitest, and `session-performance*` flows are removed from the suite.
 - **User decision (2026-11-21), workers:** locally, Playwright uses 1 worker on machines with
   4 or fewer CPU threads (Pixal), and at most 3 elsewhere; CI uses Playwright's default.
   Six local workers on the laptop made `composer-steer`, `session-rename-delete`, and

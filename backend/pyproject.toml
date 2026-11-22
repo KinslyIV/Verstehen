@@ -40,7 +40,10 @@ testpaths = ["tests", "../tools/tests"]
 pythonpath = [".."]
 filterwarnings = ["error"]
 addopts = "-m 'not live'"
-markers = ["live: opt-in requests using the installed provider and user subscription"]
+markers = [
+    "live: opt-in requests using the installed provider and user subscription",
+    "slow: real CLI subprocess or headless Chromium tests skipped in area-scoped runs",
+]
 
 [tool.importlinter]
 root_package = "verstehen"

@@ -8,6 +8,9 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getSettings: vi.fn(),
 	saveSettings: vi.fn(),
 	listChatGPTAccounts: vi.fn(),
+	startChatGPTSignIn: vi.fn(),
+	getSignIn: vi.fn(),
+	removeChatGPTAccount: vi.fn(),
 	getClaudeCode: vi.fn(),
 	openExternal: vi.fn()
 }));
@@ -93,3 +96,79 @@ test.each(claudeStates)(
 		expect(api.openExternal).toHaveBeenCalledWith('https://code.claude.com/docs/en/setup');
 	}
 );
+
+test('background_switches_sign_in_again_remove_and_add_account_update_state', async () => {
+	let currentSettings: api.Settings = {
+		background: { chatgpt: true, claude_code: true }
+	};
+	let currentAccounts: api.Account[] = [
+		{ id: 'one', kind: 'chatgpt', label: 'learner@example.com', state: 'ready' },
+		{
+			id: 'two',
+			kind: 'chatgpt',
+			label: 'second@example.com',
+			state: 'needs_sign_in',
+			reason: 'Sign in again to use this account.'
+		}
+	];
+	vi.mocked(api.getSettings).mockImplementation(async () => currentSettings);
+	vi.mocked(api.saveSettings).mockImplementation(async (next) => {
+		currentSettings = next;
+		return next;
+	});
+	vi.mocked(api.listChatGPTAccounts).mockImplementation(async () => currentAccounts);
+	vi.mocked(api.getClaudeCode).mockResolvedValue({
+		state: 'tested',
+		version: '2.1.327',
+		minimum_version: '2.1.259',
+		tested_version: '2.1.327',
+		reason: null
+	});
+	let signInState: 'pending' | 'connected' = 'pending';
+	vi.mocked(api.startChatGPTSignIn).mockResolvedValue({
+		id: 'signin-1',
+		url: 'https://chatgpt.test/sign-in'
+	});
+	vi.mocked(api.getSignIn).mockImplementation(async () => ({
+		id: 'signin-1',
+		state: signInState
+	}));
+	vi.mocked(api.removeChatGPTAccount).mockImplementation(async (id) => {
+		currentAccounts = currentAccounts.filter((account) => account.id !== id);
+	});
+
+	const screen = await render(SettingsAccounts);
+	const chatgpt = screen.getByRole('region', { name: 'ChatGPT accounts' });
+	const cli = screen.getByRole('region', { name: 'Claude Code account' });
+
+	await chatgpt.getByRole('switch', { name: 'Allow background use' }).click();
+	await expect
+		.poll(() => vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].background)
+		.toEqual({ chatgpt: false, claude_code: true });
+
+	await cli.getByRole('switch', { name: 'Allow background use' }).click();
+	await expect
+		.poll(() => vi.mocked(api.saveSettings).mock.calls.at(-1)?.[0].background)
+		.toEqual({ chatgpt: false, claude_code: false });
+
+	await chatgpt.getByRole('button', { name: 'Sign in again' }).nth(1).click();
+	expect(api.startChatGPTSignIn).toHaveBeenCalledWith('two');
+	expect(api.openExternal).toHaveBeenCalledWith('https://chatgpt.test/sign-in');
+	await expect
+		.element(chatgpt.getByRole('status'))
+		.toHaveTextContent('Waiting for browser sign-in… Open sign-in page');
+
+	currentAccounts = [
+		{ id: 'one', kind: 'chatgpt', label: 'learner@example.com', state: 'ready' },
+		{ id: 'two', kind: 'chatgpt', label: 'second@example.com', state: 'ready' }
+	];
+	signInState = 'connected';
+	await expect.element(chatgpt.getByText('Needs sign-in', { exact: true })).not.toBeInTheDocument();
+
+	await chatgpt.getByRole('button', { name: 'Remove' }).nth(1).click();
+	expect(api.removeChatGPTAccount).toHaveBeenCalledWith('two');
+	await expect.element(chatgpt.getByText('second@example.com')).not.toBeInTheDocument();
+
+	await chatgpt.getByRole('button', { name: 'Add account' }).click();
+	expect(api.startChatGPTSignIn).toHaveBeenLastCalledWith(undefined);
+});

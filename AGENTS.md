@@ -46,9 +46,10 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
 - **Data and secrets.** Never touch the user's real data in `~/.local/share/verstehen`: always set
   `VERSTEHEN_DATA_DIR` elsewhere. Never read, print, or commit credentials (`credentials.json`, the
   Claude Code login, the ChatGPT tokens).
-- **Git.** Work on the task's branch, started from `dev`; commit with `make check` passing; push the
-  branch and open a PR into `dev`. Never commit or push to `dev` or `main`, force-push, or merge:
-  the user merges into `dev`, and later merges `dev` into `main`.
+- **Git.** Work on the task's branch, started from `dev`; commit with `make check AREA='...'`
+  passing for the touched areas, and run full `make check` and `make verify` before opening a PR
+  into `dev`. Push the branch and open a PR into `dev`. Never commit or push to `dev` or `main`,
+  force-push, or merge: the user merges into `dev`, and later merges `dev` into `main`.
 - **Real models use the user's subscriptions.** The only standing exception is `make verify-live`
   (Claude Code, `haiku`). Run any other real-model call only when the user asks.
 
@@ -91,11 +92,11 @@ Every change comes with a way to prove it works, and you run it before you say i
 
 | Command | What it does |
 |---|---|
-| `make check` | lint, format, types, code rules, and all tests; run before every commit |
-| `make check-backend`, `make check-frontend` | the backend or frontend half, while editing |
-| `make test` | only the tests |
-| `make verify` | the app with the fake model in headless Chromium: flows that save screenshots and traces |
-| `make verify-run FLOW='a b'` | rerun flows against an unchanged verified build |
+| `make check` | lint, format, types, code rules, and all tests (`AREA='a b'` scopes tests to touched areas and skips `@pytest.mark.slow`; `SLOW=1` includes slow tests; run `make check AREA='...'` on commits and full `make check` before a PR into `dev`) |
+| `make check-backend`, `make check-frontend` | the backend or frontend half, while editing (`AREA='...'` scopes tests) |
+| `make test` | only the tests (`AREA='...'`, `SLOW=1`) |
+| `make verify` | the app with the fake model in headless Chromium: flows that save screenshots and traces (`AREA='...'` or `FLOW='a b'`; run full `make verify` before a PR into `dev`) |
+| `make verify-run FLOW='a b'` | rerun flows against an unchanged verified build (`AREA='...'` or `FLOW='a b'`) |
 | `make verify-live` | one lesson turn with real Claude Code (`haiku`) |
 | `make fmt` | fix formatting |
 | `make app`, `make app-image` | build the Arch package; refresh its build image |

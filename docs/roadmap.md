@@ -93,14 +93,14 @@ merges.
 
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,
-  the brief Stop-button state in the performance flows, `right_panel_open_state_and_width_are_remembered`,
-  `teaching-handoff`, `question-probe-answer-light` (viewport ratio), `job-recovery-reload`,
+  `right_panel_open_state_and_width_are_remembered`,
+  `teaching-handoff`, `job-recovery-reload`,
   `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
   and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
   are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
   `reasoning-resend`: its initial Send assertion could match before the opening turn started,
   so deletion returned 409 during the turn. It now waits for the completed reply's thinking
-  button before Send confirms settlement; the full 72-case verification suite passes. The other timing
+  button before Send confirms settlement; the full 49-flow verification suite passes. The other timing
   bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium; both passed once the load dropped

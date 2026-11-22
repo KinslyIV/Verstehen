@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-22 (Mobile & sync Milestone B on `mobile-sync-b`).
+> PRs. Last update: 2026-11-22 (9-area test organization and 49-flow verification suite on `organize-tests`).
 
 ## Where we are
 
@@ -23,6 +23,10 @@ Mobile & sync Milestone A (`--server` mode, per-device SHA-256 token auth, `vers
 and short-code device pairing) is merged into `dev`. Milestone B (two-way Laptop ↔ Server sync
 engine, `verstehen.sync`, `0008_sync.sql`, fork-on-conflict, active-turn deferral, image/prompt
 sync; see [plan](plans/mobile-sync-b.md)) is built on `mobile-sync-b` and waits for review.
+
+Test separation and verification trimming (`organize-tests`) organizes backend pytest files,
+frontend Vitest globs, and Playwright verify flows into the 9 architecture areas (`tools/test_areas.py`,
+`make check AREA='...'`, `@pytest.mark.slow`) and trims the Playwright suite from 72 to 49 flows.
 
 ## Next
 
