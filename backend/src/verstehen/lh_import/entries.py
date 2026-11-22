@@ -292,6 +292,10 @@ class ChatEntries:
             return self.plan_details(details, where, is_error=message.is_error)
         if name in JOB_TOOLS:
             return None
+        if name == "conclude":
+            if details is None or details == {}:
+                return details
+            return self.conclude_details(details, where)
         if name == "show_image":
             if message.is_error and (details is None or details == {}):
                 return details
@@ -407,6 +411,12 @@ class ChatEntries:
             details = self.side_question_details(message, where)
         elif kind == "compaction":
             details = self.compaction_details(message, previous_id, where)
+        elif kind == "practice-thinking":
+            details = self.practice_thinking_details(message, where)
+        elif kind == "problem-dismissed":
+            details = self.problem_dismissed_details(message, where)
+        elif kind == "practice-next":
+            details = self.practice_next_details(message, where)
         elif kind == "plan-block":
             self.check_plan_block(details, where)
         return MarkerEntry(
@@ -475,6 +485,37 @@ class ChatEntries:
             and isinstance(details.get("block"), dict)
         ):
             raise ImportRefused(f"{where}: the plan block has no planCallId and block")
+
+    def practice_thinking_details(
+        self, message: lh.MarkerMessage, where: str
+    ) -> JsonValue:
+        thinking = parse(lh.PracticeThinkingDetails, message.details, where)
+        if thinking.images:
+            self.dropped_learner_images += len(thinking.images)
+        return {
+            "problem_call_id": thinking.problem_call_id,
+            "text": thinking.text,
+        }
+
+    def problem_dismissed_details(
+        self, message: lh.MarkerMessage, where: str
+    ) -> JsonValue:
+        dismissed = parse(lh.ProblemDismissedDetails, message.details, where)
+        return {"problem_call_id": dismissed.problem_call_id}
+
+    def practice_next_details(self, message: lh.MarkerMessage, where: str) -> JsonValue:
+        parse(
+            lh.PracticeNextDetails,
+            {} if message.details is None else message.details,
+            where,
+        )
+        return {}
+
+    def conclude_details(self, details: JsonValue, where: str) -> JsonValue:
+        dismissed = parse(
+            lh.DismissedConcludeDetails, details, f"{where} conclude result"
+        )
+        return {"outcome": "dismissed", "problem_call_id": dismissed.problem_call_id}
 
 
 def side_exchange(

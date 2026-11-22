@@ -110,6 +110,7 @@ def session_for(chat: lh.ChatRecord, chatgpt_account: str | None) -> Session:
     session = Session(
         id=chat.id,
         title=chat.title.strip() or "Untitled session",
+        kind=chat.kind or "teach",
         created_at=parse_time(chat.created_at),
         updated_at=parse_time(chat.updated_at),
     )
@@ -214,13 +215,10 @@ class Importer:
         self.entry_ids: set[str] = set()
 
     def run(self) -> Conversion:
-        imported = {chat.id for chat in self.data.chats if chat.kind != "practice"}
+        imported = {chat.id for chat in self.data.chats}
         for chat in self.data.chats:
-            if chat.kind == "practice":
-                self.summary.practice_titles.append(chat.title)
-            else:
-                with refusing(f"chats/{chat.id}.json"):
-                    self.conversion.contents.sessions.append(self.session(chat))
+            with refusing(f"chats/{chat.id}.json"):
+                self.conversion.contents.sessions.append(self.session(chat))
         self.jobs(imported)
         with refusing("graph"):
             self.graph(imported)
@@ -241,7 +239,8 @@ class Importer:
             self.warn(
                 f"{session_label(chat)}: its {chat.settings.model.provider} model was not carried over; it uses the default"
             )
-        self.check_plan(chat, entries)
+        if session.kind != "practice":
+            self.check_plan(chat, entries)
         threads = self.side_threads(chat, entries)
         self.summary.side_threads += len(threads)
         self.turn_usage(chat, entries)
@@ -318,6 +317,8 @@ class Importer:
                 role = "sideQuestion"
             elif turn.message_id in compactions:
                 role = "compaction"
+            elif chat.kind == "practice":
+                role = "practice"
             else:
                 index = position.get(turn.message_id, len(entries))
                 role = "teacher" if has_probe_done(entries[:index]) else "prober"
@@ -516,7 +517,7 @@ class Importer:
         }
         if unknown:
             self.warn(
-                f"{len(unknown)} session(s) named in the graph were not imported (practice or deleted sessions)"
+                f"{len(unknown)} session(s) named in the graph were not imported (deleted sessions)"
             )
 
 

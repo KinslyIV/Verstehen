@@ -27,19 +27,29 @@ class Database:
 
     @asynccontextmanager
     async def transaction(
-        self, *, script: str | None = None
+        self, *, script: str | None = None, foreign_keys: bool = True
     ) -> AsyncGenerator[aiosqlite.Connection]:
         """Hold exclusive access for an atomic write, running any script before yielding."""
         notify = False
         async with self._lock:
             self._sync_dirty = False
             self.last_tx_committed = False
+            if not foreign_keys:
+                await self._connection.execute("PRAGMA foreign_keys=OFF")
             try:
                 if script is None:
                     await self._connection.execute("BEGIN")
                 else:
                     await self._connection.executescript("BEGIN;\n" + script)
                 yield self._connection
+                if not foreign_keys:
+                    async with self._connection.execute(
+                        "PRAGMA foreign_key_check"
+                    ) as cursor:
+                        if violations := await cursor.fetchall():
+                            raise RuntimeError(
+                                f"Foreign key check failed: {violations}"
+                            )
                 commit_task = asyncio.create_task(self._connection.commit())
                 cancelled = False
                 while not commit_task.done():
@@ -63,6 +73,10 @@ class Database:
                 raise
             finally:
                 self._sync_dirty = False
+                if not foreign_keys:
+                    await asyncio.shield(
+                        self._connection.execute("PRAGMA foreign_keys=ON")
+                    )
         if notify and self.on_sync_write is not None:
             self.on_sync_write()
 

@@ -106,7 +106,7 @@ class ApplySummary(BaseModel):
 class _SessionUpsertPayload(BaseModel):
     id: str = Field(min_length=1)
     title: str = Field(min_length=1)
-    kind: Literal["teach"] = "teach"
+    kind: Literal["teach", "practice"] = "teach"
     created_at: str = Field(min_length=1)
     updated_at: str = Field(min_length=1)
     model_account: str | None = None

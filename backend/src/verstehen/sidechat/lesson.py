@@ -1,7 +1,18 @@
+import re
 from collections.abc import Sequence
 
-from verstehen.store.entries import Entry, ToolCallPart, ToolResultEntry
+from pydantic import JsonValue
+
+from verstehen.store.entries import Entry, MarkerEntry, ToolCallPart, ToolResultEntry
 from verstehen.teaching.compaction import active_compaction, kept_index
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
+from verstehen.teaching.practice.state import (
+    active_problem_of,
+    model_solution_for_conclude,
+)
 from verstehen.teaching.prose import teacher_prose
 from verstehen.teaching.questions.inputs import QuestionAnswer
 from verstehen.teaching.questions.pending import question_calls_of
@@ -138,6 +149,58 @@ def answered_question_markdown(
     return "\n\n".join(lines)
 
 
+def argument_dict(part: ToolCallPart | None) -> dict[str, JsonValue]:
+    return (
+        part.arguments if part is not None and isinstance(part.arguments, dict) else {}
+    )
+
+
+def problem_markdown(part: ToolCallPart | None, *, is_open: bool) -> str | None:
+    """The pose's statement only; an open problem's model solution is never included."""
+    statement = argument_dict(part).get("statement")
+    if not isinstance(statement, str) or not statement.strip():
+        return None
+    heading = (
+        "### OPEN problem — the learner is working on it now (its solution is hidden from you)"
+        if is_open
+        else "### Problem"
+    )
+    return f"{heading}\n\n{statement.strip()}"
+
+
+def practice_thinking_markdown(entry: MarkerEntry) -> str | None:
+    text = entry.details.get("text") if isinstance(entry.details, dict) else None
+    if not isinstance(text, str) or not text.strip():
+        return None
+    return f"### Learner (thinking on the problem)\n\n{text.strip()}"
+
+
+def outcome_label(outcome: str) -> str:
+    """solvedWithHints -> Solved with hints."""
+    spaced = re.sub(r"([a-z])([A-Z])", lambda m: f"{m[1]} {m[2].lower()}", outcome)
+    return spaced[:1].upper() + spaced[1:]
+
+
+def concluded_markdown(
+    entries: Sequence[Entry], result: ToolResultEntry, part: ToolCallPart | None
+) -> str:
+    """A conclusion: outcome and verdict, then the model solution committed at pose time."""
+    arguments = argument_dict(part)
+    outcome = arguments.get("outcome")
+    outcome = outcome.strip() if isinstance(outcome, str) else ""
+    if outcome == "dismissed":
+        return "### Concluded\n\nThe learner skipped this problem."
+    verdict = arguments.get("verdict")
+    verdict = verdict.strip() if isinstance(verdict, str) else ""
+    label = f"**{outcome_label(outcome)}.**" if outcome else "**Concluded.**"
+    body = [f"{label} {verdict}" if verdict else label]
+    solution = model_solution_for_conclude(entries, result.tool_call_id)
+    if solution is not None and solution.strip():
+        quoted = solution.strip().replace("\n", "\n> ")
+        body.append(f"> **Model solution**\n>\n> {quoted}")
+    return "### Concluded\n\n" + "\n\n".join(body)
+
+
 def side_chat_lesson_document(entries: Sequence[Entry]) -> str:
     blocks = []
     start = kept_index(entries, active_compaction(entries))
@@ -159,6 +222,8 @@ def side_chat_lesson_document(entries: Sequence[Entry]) -> str:
         for call in question_calls_of(entries)
         if call.status == "answerable"
     }
+    active_problem = active_problem_of(entries)
+    open_problem_id = active_problem.tool_call_id if active_problem else None
     for entry in entries[:start]:
         if entry.kind == "assistant":
             for part in entry.parts:
@@ -168,9 +233,19 @@ def side_chat_lesson_document(entries: Sequence[Entry]) -> str:
                 ):
                     if text := open_question_markdown(part):
                         blocks.append(text)
+        elif (
+            entry.kind == "tool_result"
+            and not entry.is_error
+            and entry.tool_call_id == open_problem_id
+        ):
+            if text := problem_markdown(calls.get(entry.tool_call_id), is_open=True):
+                blocks.append(text)
     for entry in entries[start:]:
         if entry.kind == "user" and entry.text.strip():
             blocks.append(f"### Learner\n\n{entry.text.strip()}")
+        elif entry.kind == "marker" and entry.marker_type == "practice-thinking":
+            if text := practice_thinking_markdown(entry):
+                blocks.append(text)
         elif entry.kind == "assistant":
             blocks.extend(
                 f"### Teacher\n\n{text.strip()}"
@@ -183,11 +258,16 @@ def side_chat_lesson_document(entries: Sequence[Entry]) -> str:
                 ):
                     if text := open_question_markdown(part):
                         blocks.append(text)
-        elif (
-            entry.kind == "tool_result"
-            and not entry.is_error
-            and entry.tool_name in QUESTION_SCHEMAS
-        ):
-            if text := answered_question_markdown(entry, calls.get(entry.tool_call_id)):
-                blocks.append(text)
+        elif entry.kind == "tool_result" and not entry.is_error:
+            call = calls.get(entry.tool_call_id)
+            if entry.tool_name in QUESTION_SCHEMAS:
+                if text := answered_question_markdown(entry, call):
+                    blocks.append(text)
+            elif entry.tool_name == PRACTICE_PROBLEM_TOOL:
+                if text := problem_markdown(
+                    call, is_open=entry.tool_call_id == open_problem_id
+                ):
+                    blocks.append(text)
+            elif entry.tool_name == PRACTICE_CONCLUDE_TOOL:
+                blocks.append(concluded_markdown(entries, entry, call))
     return "\n\n".join(blocks)

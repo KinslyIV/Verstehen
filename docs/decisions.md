@@ -150,8 +150,17 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Nodes can also be deleted from the detail card**, besides right-click.
 - **Smaller differences:** the chains table is an overlay under the app header, without LH's guide
   lines, drag preview, or find shortcut; card session links open the session, not the message
-  (planned: message anchors); the summary view has no practice row until M10; two texts that point
-  to LH features we don't have are reworded.
+  (planned: message anchors); two texts that point to LH features we don't have are reworded.
+
+### Practice sessions
+
+- **Creation UI:** the sidebar has `+ Teaching` and `Practice`, `/session/new` adds a
+  `Teach | Practice` toggle (preserving draft and picked nodes), and `/graph` offers both
+  `Start teaching` and `Start practice` when nodes are picked. LH uses `/chat/new?kind=practice` and
+  only `Start practicing` on `/graph`.
+- **Context menu & Delete dialog:** practice session context menus omit `CoverageMenuBlock`, and
+  `DeleteSessionDialog` hides the graph-traces option and sends `mode=preserve-graph`. LH leaves the
+  delete dialog unchanged.
 
 ### Providers and models
 

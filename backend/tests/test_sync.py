@@ -15,6 +15,7 @@ from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import (
     AssistantEntry,
     EntriesStore,
+    MarkerEntry,
     TextPart,
     ToolResultEntry,
     UserEntry,
@@ -47,6 +48,7 @@ from verstehen.store.sync import SyncChange
 from verstehen.store.usage import UsageRecord, UsageStore
 from verstehen.sync.images import save_verified_image
 from verstehen.sync.prompts import apply_prompt_change
+from verstehen.teaching.practice.state import new_thinking_message
 
 
 @asynccontextmanager
@@ -1100,5 +1102,54 @@ def test_round3_legacy_jpeg_visual_and_server_created_fork_title(tmp_path: Path)
             assert (
                 server_app.state.data_dir / "images" / f"{jpg_sha}.jpeg"
             ).read_bytes() == jpg_bytes
+
+    asyncio.run(run())
+
+
+def test_sync_practice_session_round_trip_and_fork(tmp_path: Path):
+    """A practice session syncs its kind across devices and preserves kind='practice' on conflict fork."""
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            l_sessions = SessionsStore(laptop_app.state.database)
+            s_sessions = SessionsStore(server_app.state.database)
+            l_entries = EntriesStore(laptop_app.state.database)
+            s_entries = EntriesStore(server_app.state.database)
+
+            session = await l_sessions.create("Practice derivatives", kind="practice")
+            assert session.kind == "practice"
+            thinking = new_thinking_message("call_p1", "Using the chain rule...")
+            await l_entries.append(
+                session.id,
+                [
+                    UserEntry(entry_id="u_1", text="Give me a derivative drill."),
+                    thinking,
+                ],
+            )
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+
+            pulled = await s_sessions.get(session.id)
+            assert pulled is not None
+            assert pulled.kind == "practice"
+            assert pulled.title == "Practice derivatives"
+            s_list = await s_entries.list(session.id)
+            assert [e.entry_id for e in s_list] == ["u_1", thinking.entry_id]
+            assert isinstance(s_list[1], MarkerEntry)
+            assert s_list[1].marker_type == "practice-thinking"
+
+            await l_entries.append(
+                session.id, [UserEntry(entry_id="u_2a", text="From Laptop")]
+            )
+            await s_entries.append(
+                session.id, [UserEntry(entry_id="u_2b", text="From Server")]
+            )
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+
+            l_all = await l_sessions.list()
+            assert len(l_all) == 2
+            assert all(s.kind == "practice" for s in l_all)
 
     asyncio.run(run())

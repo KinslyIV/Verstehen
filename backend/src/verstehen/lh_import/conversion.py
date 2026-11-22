@@ -35,7 +35,6 @@ class ImportSummary:
     sources: int = 0
     coverage_rows: int = 0
     usage_rows: int = 0
-    practice_titles: list[str] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
 

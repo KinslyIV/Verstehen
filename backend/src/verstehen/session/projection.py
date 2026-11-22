@@ -245,6 +245,8 @@ def to_llm_messages(
                 "subagent-abort",
                 "side-question",
                 "graph-context",
+                "practice-thinking",
+                "practice-next",
             )
         ):
             messages.append(user_message(entry))

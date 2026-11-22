@@ -9,7 +9,11 @@ from pydantic import JsonValue
 from verstehen.store.database import open_database
 from verstehen.store.migrate import migrate
 from verstehen.store.settings import SettingsStore
-from verstehen.teaching.prompts import PROMPTS_DIR, compose_instructions
+from verstehen.teaching.prompts import (
+    PRACTICE_SHARED_FRAGMENTS,
+    PROMPTS_DIR,
+    compose_instructions,
+)
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -157,5 +161,78 @@ def test_prompt_discovery_filters_filenames_orders_segments_and_drops_empty_text
                 await compose_instructions(settings_store, tmp_path)
                 == "BASE\n\n---\n\nFIRST\n\n---\n\nSECOND\n\n---\n\nAPPENDIX"
             )
+
+    asyncio.run(run())
+
+
+def test_practice_composition_omits_system_prompt_and_filters_shared_fragments(
+    tmp_path: Path,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            practice = await compose_instructions(settings_store, tmp_path, "practice")
+            system_text = (PROMPTS_DIR / "system-prompt.md").read_text().strip()
+            assert system_text not in practice
+
+            practice_files = sorted(
+                path.name
+                for path in (PROMPTS_DIR / "practice").iterdir()
+                if path.suffix == ".md"
+            )
+            assert practice_files == ["00-base.md", "10-doctrine.md"]
+            expected_parts = [
+                *(
+                    (PROMPTS_DIR / "practice" / name).read_text().strip()
+                    for name in practice_files
+                ),
+                *(
+                    (PROMPTS_DIR / "shared" / name).read_text().strip()
+                    for name in PRACTICE_SHARED_FRAGMENTS
+                ),
+            ]
+            assert practice == "\n\n---\n\n".join(expected_parts)
+            for excluded in (
+                "20-question-tools.md",
+                "25-confidence.md",
+                "30-learner-files.md",
+            ):
+                assert (
+                    PROMPTS_DIR / "shared" / excluded
+                ).read_text().strip() not in practice
+
+    asyncio.run(run())
+
+
+def test_practice_prompt_overrides_replace_or_drop_segments(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            loop_override = tmp_path / "prompts" / "practice" / "10-doctrine.md"
+            loop_override.parent.mkdir(parents=True)
+            loop_override.write_text("CUSTOM PRACTICE LOOP")
+            voice_override = tmp_path / "prompts" / "shared" / "10-voice.md"
+            voice_override.parent.mkdir(parents=True)
+            voice_override.write_text(" \n ")
+            await settings_store.set(
+                "agent.prompts",
+                {
+                    "practice/10-doctrine.md": True,
+                    "shared/10-voice.md": True,
+                },
+            )
+            practice = await compose_instructions(settings_store, tmp_path, "practice")
+            assert "CUSTOM PRACTICE LOOP" in practice
+            assert (
+                PROMPTS_DIR / "practice" / "10-doctrine.md"
+            ).read_text().strip() not in practice
+            assert (
+                PROMPTS_DIR / "shared" / "10-voice.md"
+            ).read_text().strip() not in practice
+            assert (
+                PROMPTS_DIR / "shared" / "15-accuracy.md"
+            ).read_text().strip() in practice
 
     asyncio.run(run())

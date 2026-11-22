@@ -42,9 +42,6 @@ def summary_lines(
         f"Coverage rows: {summary.coverage_rows}",
         f"Usage rows: {summary.usage_rows}",
     ]
-    if summary.practice_titles:
-        lines.append("Skipped practice sessions:")
-        lines.extend(f"  - {title}" for title in summary.practice_titles)
     if ignored:
         lines.append("Skipped files and folders: " + ", ".join(ignored))
     if corrupt_lines:

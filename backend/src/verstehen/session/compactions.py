@@ -32,7 +32,7 @@ from verstehen.teaching.prompts import compose_instructions
 
 logger = logging.getLogger(__name__)
 
-TurnRole = Literal["teacher", "prober"]
+TurnRole = Literal["teacher", "prober", "practice"]
 
 
 class CompactionService:

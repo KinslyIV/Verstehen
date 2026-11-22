@@ -7,24 +7,38 @@ from verstehen.store.settings import SettingsStore
 
 PROMPTS_DIR = Path(__file__).with_suffix("")
 FRAGMENT_RE = re.compile(r"\d+-[\w.-]+\.md", re.ASCII)
+PRACTICE_SHARED_FRAGMENTS = (
+    "10-voice.md",
+    "15-accuracy.md",
+    "16-mental-model.md",
+    "35-side-conversations.md",
+    "40-formatting.md",
+)
 
 
 async def compose_instructions(
     settings_store: SettingsStore,
     data_dir: Path,
-    kind: Literal["prober", "teacher"] = "teacher",
+    kind: Literal["prober", "teacher", "practice"] = "teacher",
 ) -> str:
     """Compose the agent’s source fragments with enabled, readable overrides."""
     switches = await settings_store.get("agent.prompts")
-    paths = [PROMPTS_DIR / "system-prompt.md"]
-    for directory in (kind, "shared"):
-        paths.extend(
-            sorted(
-                path
-                for path in (PROMPTS_DIR / directory).iterdir()
-                if FRAGMENT_RE.fullmatch(path.name)
-            )
+    paths = [] if kind == "practice" else [PROMPTS_DIR / "system-prompt.md"]
+    paths.extend(
+        sorted(
+            path
+            for path in (PROMPTS_DIR / kind).iterdir()
+            if FRAGMENT_RE.fullmatch(path.name)
         )
+    )
+    paths.extend(
+        sorted(
+            path
+            for path in (PROMPTS_DIR / "shared").iterdir()
+            if FRAGMENT_RE.fullmatch(path.name)
+            and (kind != "practice" or path.name in PRACTICE_SHARED_FRAGMENTS)
+        )
+    )
     keys = [path.relative_to(PROMPTS_DIR).as_posix() for path in paths]
     return join_fragments(fragment_text(key, switches, data_dir) for key in keys)
 
