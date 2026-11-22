@@ -1,5 +1,4 @@
 import os
-import shlex
 import subprocess
 from pathlib import Path
 
@@ -271,16 +270,30 @@ def test_short_options_are_refused_with_the_long_form_hint(
 
 
 @pytest.mark.parametrize("target", ["verify", "verify-run"])
-def test_make_passes_flow_to_the_runner_unchanged(target: str):
-    flow = "settings --grep=settings$ --grep-invert='a b' --list"
-    dry_run = subprocess.run(
-        ["make", "--no-print-directory", "-n", target, "AREA=shell", f"FLOW={flow}"],
+@pytest.mark.parametrize(
+    "flow",
+    [
+        "settings --grep=settings$ --grep-invert='a b' --list",
+        "settings\n'--grep=a\nb'",
+    ],
+)
+def test_make_passes_flow_to_the_runner_unchanged(
+    tmp_path: Path, target: str, flow: str
+):
+    calls = tmp_path / "calls"
+    calls.mkdir()
+    stub = tmp_path / "bin/uv"
+    stub.parent.mkdir()
+    stub.write_text(
+        '#!/bin/sh\nprintf "%s\\0" "$@" > "$CALLS/$(ls "$CALLS" | wc -l)"\n'
+    )
+    stub.chmod(0o755)
+    env = {k: v for k, v in os.environ.items() if not k.startswith("MAKE")}
+    subprocess.run(
+        ["make", "--no-print-directory", "-s", target, "AREA=shell", f"FLOW={flow}"],
         cwd=Path(__file__).resolve().parents[2],
-        env={k: v for k, v in os.environ.items() if not k.startswith("MAKE")},
-        capture_output=True,
-        text=True,
+        env={**env, "PATH": f"{stub.parent}:{env['PATH']}", "CALLS": str(calls)},
         check=True,
     )
-    runner = dry_run.stdout.strip().splitlines()[-1]
-    assert "tools/test_areas.py verify" in runner
-    assert shlex.split(runner)[-1] == f"--flow={flow}"
+    runner = (calls / "1").read_text().split("\0")[:-1]
+    assert runner[5:] == ["verify", "--area", "shell", f"--flow={flow}"]
