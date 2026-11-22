@@ -2438,6 +2438,36 @@ def test_rollback_health_probes_open_a_fresh_http_client_per_attempt(tmp_path: P
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("ssh_dropped", [False, True])
+def test_failed_invocation_probe_preserves_service_instead_of_rolling_back(
+    tmp_path: Path, ssh_dropped: bool
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                raise_once=(
+                    {"mv venv.new venv": SshUnreachableError("connection lost")}
+                    if ssh_dropped
+                    else None
+                ),
+                command_results={
+                    "--property=InvocationID": SshCommandResult(
+                        exit_status=1, stderr="bus temporarily unavailable"
+                    )
+                },
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert "left in place" in status["error"]
+            assert any("install lock was retained" in line for line in status["logs"])
+            assert not any("mv venv.prev venv" in c for c in ssh.commands)
+            assert not any("rm -rf venv.prev unit.prev" in c for c in ssh.commands)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("commit_first", [False, True])
 def test_cancelled_switch_keeps_the_committed_pairing_and_restarts_sync(
     tmp_path: Path, commit_first: bool

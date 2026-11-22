@@ -1479,10 +1479,12 @@ class ServerInstallService:
 
     async def _deployment_is_healthy(
         self, session: SshSession, server_url: str, deployment_id: str
-    ) -> Literal["healthy", "unhealthy", "unreachable"]:
+    ) -> Literal["healthy", "unhealthy", "unreachable", "inconclusive"]:
         expected_schema = str(await self.sync_store.schema_version())
+        probe_failed = False
 
         async def verify_invocation(response: httpx2.Response) -> bool:
+            nonlocal probe_failed
             invocation = response.headers.get(INVOCATION_HEADER)
             if (
                 not invocation
@@ -1491,9 +1493,25 @@ class ServerInstallService:
             ):
                 return False
             unit = await session.run(SYSTEMD_INVOCATION_COMMAND, timeout=5.0)
-            return unit.exit_status == 0 and unit.stdout.strip() == invocation
+            if unit.exit_status != 0:
+                probe_failed = True
+                return False
+            return unit.stdout.strip() == invocation
 
-        return await self._wait_healthy(server_url, verify_invocation)
+        health = await self._wait_healthy(server_url, verify_invocation)
+        if health != "healthy" and probe_failed:
+            return "inconclusive"
+        return health
+
+    def _fail_verification_inconclusive(self, detail: str) -> None:
+        self._retain_install_lock = True
+        self._rollback_pending = False
+        self._fail(
+            "health_check",
+            "install_failed",
+            f"{detail} The service and recovery files were left in place. "
+            "Check the server before retrying.",
+        )
 
     async def _verify_deployment(
         self,
@@ -1510,6 +1528,11 @@ class ServerInstallService:
                 health = await self._deployment_is_healthy(
                     session, server_url, deployment_id
                 )
+                if health == "inconclusive":
+                    self._fail_verification_inconclusive(
+                        "Could not verify the installed service over SSH."
+                    )
+                    return None
                 return session, health == "healthy"
             except asyncssh.Error, OSError, SshUnreachableError:
                 self._append_log(
@@ -1521,6 +1544,13 @@ class ServerInstallService:
             health = await self._deployment_is_healthy(
                 recovered, server_url, deployment_id
             )
+            if health == "inconclusive":
+                with suppress(Exception):
+                    await recovered.close()
+                self._fail_verification_inconclusive(
+                    "Could not verify the installed service over SSH."
+                )
+                return None
             if reconnect_first and health == "unreachable":
                 host_state = await self._deployment_is_running_on_host(
                     recovered, deployment_id
@@ -1528,19 +1558,12 @@ class ServerInstallService:
                 if host_state != "absent":
                     with suppress(Exception):
                         await recovered.close()
-                    self._retain_install_lock = True
-                    self._rollback_pending = False
                     detail = (
-                        "Could not reach the installed service over HTTP while it is running on the server. "
+                        "Could not reach the installed service over HTTP while it is running on the server."
                         if host_state == "running"
-                        else "Could not determine whether the installed service is running on the server. "
+                        else "Could not determine whether the installed service is running on the server."
                     )
-                    self._fail(
-                        "health_check",
-                        "install_failed",
-                        f"{detail}The service and recovery files were left in place. "
-                        "Check the server before retrying.",
-                    )
+                    self._fail_verification_inconclusive(detail)
                     return None
         except BaseException as error:
             if recovered is not None:
@@ -1548,13 +1571,8 @@ class ServerInstallService:
                     await recovered.close()
             if not isinstance(error, Exception):
                 raise
-            self._retain_install_lock = True
-            self._rollback_pending = False
-            self._fail(
-                "health_check",
-                "install_failed",
-                "Could not verify the installed service over SSH. The service and recovery files "
-                "were left in place. Check the server before retrying.",
+            self._fail_verification_inconclusive(
+                "Could not verify the installed service over SSH."
             )
             return None
         with suppress(Exception):
