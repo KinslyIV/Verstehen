@@ -204,7 +204,11 @@ def _valid_prompt_path(raw: str) -> bool:
     if not raw or "\0" in raw or "\\" in raw or raw.startswith("/"):
         return False
     pure = PurePosixPath(raw)
-    if pure.is_absolute() or any(part in ("", ".", "..") for part in pure.parts):
+    if (
+        pure.is_absolute()
+        or pure.as_posix() != raw
+        or any(part in ("", ".", "..") for part in pure.parts)
+    ):
         return False
     return pure.suffix == ".md"
 
@@ -272,13 +276,19 @@ def validate_inbound_change(change: SyncChange) -> str | None:
                 raise InvalidSyncPayloadError("job only supports upsert.")
             parsed_job = _JobUpsertPayload.model_validate(payload)
             if isinstance(parsed_job.input, str):
-                _parse_json_object(parsed_job.input, "job.input")
-            if isinstance(parsed_job.result, str):
-                _parse_json_object(parsed_job.result, "job.result")
-            if parsed_job.usage is not None:
-                JobUsage.model_validate(
-                    _parse_json_object(parsed_job.usage, "job.usage")
+                raise InvalidSyncPayloadError(
+                    "job.input must be decoded JSON, not a string."
                 )
+            if isinstance(parsed_job.result, str):
+                raise InvalidSyncPayloadError(
+                    "job.result must be decoded JSON, not a string."
+                )
+            if parsed_job.usage is not None:
+                if isinstance(parsed_job.usage, str):
+                    raise InvalidSyncPayloadError(
+                        "job.usage must be a JSON object, not a string."
+                    )
+                JobUsage.model_validate(parsed_job.usage)
             return parsed_job.session_id
         if entity == "artifact_view":
             if op != "upsert":
@@ -1408,7 +1418,11 @@ class SyncStore:
                     (watermark,),
                 )
         except BaseException:
-            if prompts_written and on_prompt_rollback is not None:
+            if (
+                prompts_written
+                and not self.database.last_tx_committed
+                and on_prompt_rollback is not None
+            ):
                 await asyncio.shield(on_prompt_rollback())
             raise
         return summary
@@ -1537,7 +1551,11 @@ class SyncStore:
                 f"Sync batch violated database constraints: {error}"
             ) from error
         except BaseException:
-            if prompts_written and on_prompt_rollback is not None:
+            if (
+                prompts_written
+                and not self.database.last_tx_committed
+                and on_prompt_rollback is not None
+            ):
                 await asyncio.shield(on_prompt_rollback())
             raise
         summary.deferred_session_ids = sorted(deferred_seen)
@@ -1927,7 +1945,11 @@ class SyncStore:
                         (advance_pulled_seq, advance_pulled_seq),
                     )
         except BaseException:
-            if prompts_written and on_prompt_rollback is not None:
+            if (
+                prompts_written
+                and not self.database.last_tx_committed
+                and on_prompt_rollback is not None
+            ):
                 await asyncio.shield(on_prompt_rollback())
             raise
         return summary

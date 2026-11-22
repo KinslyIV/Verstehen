@@ -18,11 +18,15 @@ class PromptScan:
 
 
 def validate_prompt_rel_path(rel_path: str) -> PurePosixPath:
-    """Ensure a prompt override path is a safe relative .md path with no traversal."""
+    """Ensure a prompt override path is a canonical safe relative .md path."""
     if not rel_path or "\0" in rel_path or "\\" in rel_path or rel_path.startswith("/"):
         raise ValueError(f"Invalid prompt override path: {rel_path!r}")
     pure = PurePosixPath(rel_path)
-    if pure.is_absolute() or any(part in ("", ".", "..") for part in pure.parts):
+    if (
+        pure.is_absolute()
+        or pure.as_posix() != rel_path
+        or any(part in ("", ".", "..") for part in pure.parts)
+    ):
         raise ValueError(f"Invalid prompt override path: {rel_path!r}")
     if pure.suffix != ".md":
         raise ValueError(f"Prompt override must end with .md: {rel_path!r}")

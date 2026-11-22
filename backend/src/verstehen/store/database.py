@@ -14,6 +14,7 @@ class Database:
         self._lock = asyncio.Lock()
         self.on_sync_write: Callable[[], None] | None = None
         self._sync_dirty = False
+        self.last_tx_committed = False
 
     def mark_sync_dirty(self) -> None:
         self._sync_dirty = True
@@ -32,16 +33,28 @@ class Database:
         notify = False
         async with self._lock:
             self._sync_dirty = False
+            self.last_tx_committed = False
             try:
                 if script is None:
                     await self._connection.execute("BEGIN")
                 else:
                     await self._connection.executescript("BEGIN;\n" + script)
                 yield self._connection
-                await self._connection.commit()
+                commit_task = asyncio.create_task(self._connection.commit())
+                try:
+                    await asyncio.shield(commit_task)
+                    self.last_tx_committed = True
+                except asyncio.CancelledError:
+                    try:
+                        await commit_task
+                        self.last_tx_committed = True
+                    except Exception:
+                        self.last_tx_committed = False
+                    raise
                 notify = self._sync_dirty
             except BaseException:
-                await self._connection.rollback()
+                if not self.last_tx_committed:
+                    await self._connection.rollback()
                 raise
             finally:
                 self._sync_dirty = False
