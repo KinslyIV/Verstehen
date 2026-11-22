@@ -39,6 +39,15 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Running the flow alone** needs `FLOW='learnharness-import.flow'`: the worktree path contains
   the flow name, so the bare name matches every flow.
 
+**Mobile & sync (Milestone A):**
+
+- **Revoking a device** invalidates its unredeemed pairing codes and rejects all subsequent
+  requests with 401, while already-open SSE streams stay open until they end or reconnect
+  (alternative: track per-device stream cancellation handles across `/api/events`, lesson `/stream`,
+  and side-chat `/stream`; consequence: a revoked device with an already-open stream can keep
+  receiving notifications and streamed lesson or side-chat content until that stream closes or
+  reconnects, and a separate refetch returning 401 does not close the open stream).
+
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.

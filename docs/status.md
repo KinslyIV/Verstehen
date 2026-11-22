@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-21 (extraction simplification on `simplify-extraction`).
+> PRs. Last update: 2026-11-22 (Mobile & sync Milestone A on `mobile-sync-a`).
 
 ## Where we are
 
@@ -19,12 +19,17 @@ The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `l
 and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
 confirm that converted reasoning is accepted.
 
+Mobile & sync Milestone A (`--server` mode, per-device SHA-256 token auth, `verstehen mint-token`,
+and short-code device pairing; see [plan](plans/mobile-sync-a.md)) is built on `mobile-sync-a` and
+waits for review.
+
 ## Next
 
-1. Rerun `make verify-live` now that the Claude subscription quota has reset.
-2. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
+1. Review and merge `mobile-sync-a` into `dev`, then proceed to Milestone B (two-way sync engine).
+2. Rerun `make verify-live` now that the Claude subscription quota has reset.
+3. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
    zero-retry CI).
-3. Plan M10 (practice sessions).
+4. Plan M10 (practice sessions).
 
 ## Open questions
 

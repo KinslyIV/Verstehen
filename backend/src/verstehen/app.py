@@ -7,7 +7,9 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
 
-from verstehen.api.access import request_refusal
+from verstehen.api.access import authenticate_server_request, request_refusal
+from verstehen.api.auth import PairingCodeManager
+from verstehen.api.auth import router as auth_router
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
 from verstehen.api.graph import router as graph_router
@@ -44,6 +46,7 @@ from verstehen.session.turns import TurnService
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.database import open_database
+from verstehen.store.devices import DevicesStore
 from verstehen.store.entries import EntriesStore
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
@@ -64,6 +67,7 @@ def create_app(settings: Settings) -> FastAPI:
             await migrate(database)
             app.state.database = database
             app.state.data_dir = settings.data_dir
+            app.state.devices_store = DevicesStore(database)
             runtimes = RuntimeRegistry()
             sessions_store = SessionsStore(database)
             entries_store = EntriesStore(database)
@@ -261,6 +265,8 @@ def create_app(settings: Settings) -> FastAPI:
                 await chatgpt_adapter.close()
 
     app = FastAPI(lifespan=lifespan)
+    app.state.settings = settings
+    app.state.pairing_code_manager = PairingCodeManager()
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, error: RequestValidationError):
@@ -277,14 +283,27 @@ def create_app(settings: Settings) -> FastAPI:
     @app.middleware("http")
     async def access(request: Request, call_next: RequestResponseEndpoint) -> Response:
         """Reject API requests that fail the launch mode’s access policy."""
-        if request.url.path == "/api" or request.url.path.startswith("/api/"):
-            refusal = request_refusal(request, settings)
-            if refusal:
-                return JSONResponse(
-                    {"error": refusal},
-                    status_code=403,
-                    headers={"Cache-Control": "no-store"},
+        path = request.url.path
+        if path == "/api" or path.startswith("/api/"):
+            if settings.server:
+                denied = await authenticate_server_request(
+                    request, request.app.state.devices_store
                 )
+                if denied is not None:
+                    return denied
+            else:
+                refusal = request_refusal(request, settings)
+                if refusal:
+                    return JSONResponse(
+                        {"error": refusal},
+                        status_code=403,
+                        headers={"Cache-Control": "no-store"},
+                    )
+                if path == "/api/auth" or path.startswith("/api/auth/"):
+                    return JSONResponse(
+                        {"error": "Server mode is not enabled."},
+                        status_code=404,
+                    )
         return await call_next(request)
 
     if settings.desktop:
@@ -294,7 +313,19 @@ def create_app(settings: Settings) -> FastAPI:
             allow_methods=["*"],
             allow_headers=["x-verstehen-token", "content-type"],
         )
+    elif settings.server:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=[
+                "tauri://localhost",
+                "http://tauri.localhost",
+                "https://tauri.localhost",
+            ],
+            allow_methods=["*"],
+            allow_headers=["authorization", "x-verstehen-token", "content-type"],
+        )
 
+    app.include_router(auth_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
     app.include_router(router)

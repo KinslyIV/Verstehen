@@ -173,10 +173,10 @@ injection for `wake_session` and `graph_changed`).
 
 ## Milestones
 
-### Milestone A — Server mode, per-device auth & short-code pairing
+### Milestone A — Server mode, per-device auth & short-code pairing (implemented on `mobile-sync-a`)
 
 *Goal: The Python backend runs standalone on a Tailscale IP, authenticates per-device tokens, and
-pairs new devices via a short one-time code.*
+pairs new devices via a short one-time code. Detailed plan: [mobile-sync-a.md](mobile-sync-a.md).*
 
 - **Schema & store:**
   - New migration (`0007_devices.sql` or combined with `0007_sync.sql`): `devices` table
