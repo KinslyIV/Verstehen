@@ -55,6 +55,7 @@ class StoreContents:
 class ContentCounts:
     sessions: int
     propositions: int
+    sync_in_use: bool = False
 
 
 def count_contents(database_path: Path) -> ContentCounts:
@@ -81,9 +82,21 @@ def count_contents(database_path: Path) -> ContentCounts:
                     else 0
                     for table in ("sessions", "graph_nodes")
                 ]
+                paired = (
+                    "sync_state" in tables
+                    and connection.execute(
+                        "SELECT 1 FROM sync_state WHERE server_url IS NOT NULL"
+                    ).fetchone()
+                )
+                serves_devices = (
+                    "devices" in tables
+                    and connection.execute(
+                        "SELECT 1 FROM devices WHERE revoked_at IS NULL LIMIT 1"
+                    ).fetchone()
+                )
     except (OSError, sqlite3.Error) as error:
         raise OSError(f"Could not read {database_path}: {error}") from error
-    return ContentCounts(*counts)
+    return ContentCounts(*counts, sync_in_use=bool(paired or serves_devices))
 
 
 async def replace_contents(database: Database, contents: StoreContents) -> None:

@@ -631,12 +631,34 @@ NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
 )
+INVOCATION_HEADER = "X-Verstehen-Invocation"
+SCHEMA_HEADER = "X-Verstehen-Schema"
+SYSTEMD_INVOCATION_COMMAND = (
+    f"{USER_MANAGER_ENV} && systemctl --user show --property=InvocationID --value "
+    "verstehen-server.service"
+)
+ROLLBACK_SCHEMA_CHECK = """import sqlite3
+from pathlib import Path
+from verstehen.store.migrate import MIGRATIONS
+
+database = Path.home() / ".local/share/verstehen/verstehen.db"
+with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as connection:
+    applied = {name for (name,) in connection.execute("SELECT name FROM schema_migrations")}
+supported = {path.name for path in MIGRATIONS.glob("*.sql")}
+if not applied <= supported:
+    raise SystemExit(78)
+"""
 ROLLBACK_COMMAND = (
     f'cd "{SERVER_DIR}" && if [ -d venv.prev ] || [ -f unit.prev ] || [ -f rollback.pending ]; then '
-    "touch rollback.pending && "
+    f"touch rollback.pending && {USER_MANAGER_ENV} && "
+    "systemctl --user stop verstehen-server.service && "
+    '{ [ ! -f "$HOME/.local/share/verstehen/verstehen.db" ] || { '
+    "previous=venv; [ ! -d venv.prev ] || previous=venv.prev; "
+    f'"$previous/bin/python" -c {shlex.quote(ROLLBACK_SCHEMA_CHECK)}; '
+    "}; } && "
     "{ [ ! -d venv.prev ] || { rm -rf venv && mv venv.prev venv; }; } && "
     f'{{ [ ! -f unit.prev ] || cp -p unit.prev "{UNIT_PATH}"; }} && '
-    f"{USER_MANAGER_ENV} && systemctl --user daemon-reload && "
+    "systemctl --user daemon-reload && "
     "systemctl --user restart verstehen-server.service; "
     "else echo NOTHING_TO_ROLL_BACK; fi"
 )
@@ -1141,8 +1163,10 @@ class ServerInstallService:
             host, port, user, password, known_hosts_path=self.known_hosts_path
         )
 
-    async def _rollback(self, session: SshSession | None, server_url: str) -> bool:
-        """Restore the backups, restart and confirm health, then drop the backups; retry on SSH loss."""
+    async def _rollback(
+        self, session: SshSession | None, server_url: str
+    ) -> str | None:
+        """Restore and check the previous server, returning the reason if recovery fails."""
         for candidate in [session] + [None] * ROLLBACK_RECONNECTS:
             opened: SshSession | None = None
             try:
@@ -1154,20 +1178,20 @@ class ServerInstallService:
                     candidate.run(ROLLBACK_COMMAND, timeout=ROLLBACK_TIMEOUT),
                     ROLLBACK_TIMEOUT + 5,
                 )
-                if result.exit_status != 0:
-                    self._append_log("Rollback command failed on the server.")
-                    return False
-                if "NOTHING_TO_ROLL_BACK" in result.stdout:
-                    return True
-                if not await self._wait_healthy(server_url):
-                    self._append_log(
-                        "The previous server version did not become healthy."
+                if result.exit_status == 78:
+                    return (
+                        "The previous server version cannot read the upgraded database."
                     )
-                    return False
+                if result.exit_status != 0:
+                    return "Rollback command failed on the server."
+                if "NOTHING_TO_ROLL_BACK" in result.stdout:
+                    return None
+                if not await self._wait_healthy(server_url):
+                    return "The previous server version did not become healthy."
                 with suppress(Exception):
                     await candidate.run(ROLLBACK_CLEANUP_COMMAND)
                 self._append_log("Rolled back to the previous server version.")
-                return True
+                return None
             except Exception:
                 self._append_log(
                     "SSH connection lost during rollback; retrying over a new connection."
@@ -1176,8 +1200,7 @@ class ServerInstallService:
                 if opened is not None:
                     with suppress(Exception):
                         await opened.close()
-        self._append_log("Could not roll back to the previous server version.")
-        return False
+        return "Could not reconnect to recover the previous server version."
 
     async def _with_rollback_outcome(
         self, session: SshSession | None, server_url: str, message: str
@@ -1186,12 +1209,13 @@ class ServerInstallService:
         if not self._rollback_pending:
             return message
         self._rollback_pending = False
-        if await self._rollback(session, server_url):
+        failure = await self._rollback(session, server_url)
+        if failure is None:
             return message
         self._retain_install_lock = True
         return (
-            f"{message} Rolling back to the previous version also failed, so the server may be "
-            "down. A manual restore may be needed: venv.prev and unit.prev are left in "
+            f"{message} Rolling back to the previous version also failed. {failure} "
+            "A manual restore may be needed. Check venv.prev and unit.prev in "
             "~/.local/share/verstehen-server."
         )
 
@@ -1259,7 +1283,14 @@ class ServerInstallService:
             )
         return True
 
-    async def _wait_healthy(self, server_url: str) -> bool:
+    async def _wait_healthy(
+        self, server_url: str, deployment: SshSession | None = None
+    ) -> bool:
+        expected_schema = (
+            str(await self.sync_store.schema_version())
+            if deployment is not None
+            else None
+        )
         async with self._client_factory() as client:
             for _ in range(self._health_attempts):
                 try:
@@ -1268,7 +1299,21 @@ class ServerInstallService:
                         response.status_code == 200
                         and response.json().get("status") == "ok"
                     ):
-                        return True
+                        if deployment is None:
+                            return True
+                        invocation = response.headers.get(INVOCATION_HEADER)
+                        if (
+                            invocation
+                            and response.headers.get(SCHEMA_HEADER) == expected_schema
+                        ):
+                            unit = await deployment.run(
+                                SYSTEMD_INVOCATION_COMMAND, timeout=5.0
+                            )
+                            if (
+                                unit.exit_status == 0
+                                and unit.stdout.strip() == invocation
+                            ):
+                                return True
                 except Exception:
                     pass
                 if self._health_interval > 0:
@@ -1278,14 +1323,15 @@ class ServerInstallService:
     async def _check_health(self, session: SshSession, server_url: str) -> bool:
         self._current_step = "health_check"
         self._set_step("health_check", "running")
-        if not await self._wait_healthy(server_url):
+        if not await self._wait_healthy(server_url, deployment=session):
             self._fail(
                 "health_check",
                 "install_failed",
                 await self._with_rollback_outcome(
                     session,
                     server_url,
-                    f"Server did not respond at {server_url}/api/health. Check that Tailscale can reach the server.",
+                    f"The updated service did not report the expected identity and schema at {server_url}/api/health. "
+                    "Check Tailscale connectivity and whether another server process is using the port.",
                 ),
             )
             return False

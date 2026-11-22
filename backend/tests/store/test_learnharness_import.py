@@ -981,6 +981,33 @@ def test_confirmation_other_than_replace_aborts(tmp_path: Path):
     assert "1 existing session(s)" in lines[-2]
 
 
+@pytest.mark.parametrize("sync_role", ["laptop", "server"])
+def test_replacement_refuses_active_sync_without_changing_the_database(
+    tmp_path: Path, sync_role: str
+):
+    from verstehen.store.devices import DevicesStore
+    from verstehen.store.sync import SyncStore
+
+    data_dir = seeded_data_dir(tmp_path)
+
+    async def pair(database):
+        if sync_role == "laptop":
+            await SyncStore(database).configure("http://server.local")
+        else:
+            await DevicesStore(database).create("Laptop")
+
+    asyncio.run(with_database(data_dir, pair))
+    database_path = data_dir / "verstehen.db"
+    before = database_path.read_bytes()
+    assert "Dry run: nothing was written." in run(FIXTURE, data_dir, dry_run=True)
+    with pytest.raises(
+        ImportRefused, match="without an active sync pairing or devices"
+    ):
+        run(FIXTURE, data_dir)
+    assert database_path.read_bytes() == before
+    assert not (data_dir / "backups").exists()
+
+
 def test_backup_is_written_before_replacing(tmp_path: Path):
     data_dir = seeded_data_dir(tmp_path)
     lines = run(FIXTURE, data_dir)

@@ -58,6 +58,8 @@ returns `current_device_id`, which a bearer-token connect stores as `server_devi
 laptop). Disconnect
 cancels a starting server sign-in and runs under the sync lifecycle lock.
 A cancelled server switch restarts the sync loops for the pairing that survived the attempt.
+In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation` and
+`X-Verstehen-Schema` headers so the provisioner can verify the responding deployment.
 
 ## Access
 

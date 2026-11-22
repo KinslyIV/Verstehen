@@ -24,12 +24,14 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
 - **Mobile & sync Milestone C** ([plan](plans/mobile-sync-c.md)): Settings → Sync and the sidebar
   badge, SSH install and update with host trust and health-gated rollback, server ChatGPT account
   sign-in, and device pairing and revocation. The server-side install lock serializes deployment
-  and recovery. Two UI races are deferred: a delayed poll from a replaced sign-in on the same
+  and recovery. Updates verify the responding systemd invocation and schema. Rollback retains
+  recovery files when the previous wheel cannot read the upgraded database.
+  Two UI races are deferred: a delayed poll from a replaced sign-in on the same
   pairing, and a stale password prompt after reopening Settings and reconnecting during an update.
 - **M10 practice sessions** ([plan](plans/m10.md)): the practitioner, practice dock and cards,
   LearnHarness practice import, solution-safe side chat, and practice entry points in the sidebar
   and graph. Migration `0010` follows Milestone C's `0009`. Sync pauses until both backends run
-  the same schema version.
+  the same schema version. LearnHarness replacement requires an unpaired local data directory.
 - **Test organization:** backend pytest files, frontend Vitest globs, and browser flows are
   organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
   49. Milestone C and M10 bring the total to 52.

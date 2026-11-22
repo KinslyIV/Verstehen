@@ -18,11 +18,16 @@ from verstehen.app import create_app
 from verstehen.config import Settings
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.chatgpt.sign_in import SignInStarted, SignInStatus
+from verstehen.store.database import open_database
 from verstehen.store.entries import EntriesStore, UserEntry
+from verstehen.store.migrate import MIGRATIONS, migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.sync import SyncChange
 from verstehen.sync.provision import (
+    INVOCATION_HEADER,
     NO_PENDING_RECOVERY_COMMAND,
+    SCHEMA_HEADER,
+    SYSTEMD_INVOCATION_COMMAND,
     AsyncSshBackend,
     HostKeyChallenge,
     HostKeyMismatchError,
@@ -55,6 +60,13 @@ FAKE_KEY_FP = PROBED_KEY.fingerprint_sha256
 FAKE_KEY_B64 = PROBED_KEY.public_key_data.split()[1]
 OTHER_KEY_FP = OTHER_KEY.fingerprint_sha256
 OTHER_KEY_B64 = OTHER_KEY.public_key_data.split()[1]
+
+DEPLOYMENT_INVOCATION = "a" * 32
+SUPPORTED_SCHEMA = max(int(path.name[:4]) for path in MIGRATIONS.glob("*.sql"))
+HEALTH_HEADERS = {
+    INVOCATION_HEADER: DEPLOYMENT_INVOCATION,
+    SCHEMA_HEADER: str(SUPPORTED_SCHEMA),
+}
 
 
 class FakeSshSession:
@@ -200,6 +212,8 @@ class FakeSshBackend:
             return SshCommandResult(exit_status=0, stdout="/home/ubuntu")
         if "python install 3.14" in command:
             return SshCommandResult(exit_status=0, stdout="Installed venv\n")
+        if command == SYSTEMD_INVOCATION_COMMAND:
+            return SshCommandResult(exit_status=0, stdout=DEPLOYMENT_INVOCATION)
         if "verstehen-server.service" in command:
             return SshCommandResult(exit_status=0, stdout="Service started\n")
         if "enable-linger" in command:
@@ -233,7 +247,11 @@ def test_migration_0009_and_sync_status_changed_notifications(tmp_path: Path):
         (tmp_path / "server").mkdir()
         (tmp_path / "laptop").mkdir()
         server_app = create_app(
-            Settings(data_dir=tmp_path / "server", server=True, host="127.0.0.1")
+            Settings(
+                data_dir=tmp_path / "server",
+                server=True,
+                server_invocation_id=DEPLOYMENT_INVOCATION,
+            )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
         async with server_app.router.lifespan_context(server_app):
@@ -382,7 +400,11 @@ def test_server_install_tofu_linger_warning_update_and_no_secret_leak(tmp_path: 
         (tmp_path / "server").mkdir()
         (tmp_path / "laptop").mkdir()
         server_app = create_app(
-            Settings(data_dir=tmp_path / "server", server=True, host="127.0.0.1")
+            Settings(
+                data_dir=tmp_path / "server",
+                server=True,
+                server_invocation_id=DEPLOYMENT_INVOCATION,
+            )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
         bundle_dir = _make_fake_bundle(tmp_path)
@@ -539,7 +561,11 @@ def test_connect_existing_server_proxy_routes_oauth_tunnel_and_server_mode_404(
         (tmp_path / "server").mkdir()
         (tmp_path / "laptop").mkdir()
         server_app = create_app(
-            Settings(data_dir=tmp_path / "server", server=True, host="127.0.0.1")
+            Settings(
+                data_dir=tmp_path / "server",
+                server=True,
+                server_invocation_id=DEPLOYMENT_INVOCATION,
+            )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
         kh_path = tmp_path / "known_hosts"
@@ -736,7 +762,11 @@ async def laptop_and_servers(tmp_path: Path, *server_names: str):
         for name in server_names:
             (tmp_path / name).mkdir()
             app = create_app(
-                Settings(data_dir=tmp_path / name, server=True, host="127.0.0.1")
+                Settings(
+                    data_dir=tmp_path / name,
+                    server=True,
+                    server_invocation_id=DEPLOYMENT_INVOCATION,
+                )
             )
             await stack.enter_async_context(app.router.lifespan_context(app))
             apps[name] = app
@@ -1121,7 +1151,9 @@ def test_update_finishing_after_disconnect_cannot_reconfigure(tmp_path: Path):
             async def handler(request: httpx2.Request) -> httpx2.Response:
                 if request.url.path == "/api/health":
                     await gate.wait()
-                    return httpx2.Response(200, json={"status": "ok"})
+                    return httpx2.Response(
+                        200, json={"status": "ok"}, headers=HEALTH_HEADERS
+                    )
                 return httpx2.Response(
                     200, json={"devices": [], "current_device_id": device.id}
                 )
@@ -1406,7 +1438,7 @@ class RecordingServer:
         if request.url.path == "/api/health":
             if self.gate is not None:
                 await self.gate.wait()
-            return httpx2.Response(200, json={"status": "ok"})
+            return httpx2.Response(200, json={"status": "ok"}, headers=HEALTH_HEADERS)
         body: dict = {"devices": []}
         if self.device_id:
             body["current_device_id"] = self.device_id
@@ -1557,6 +1589,44 @@ def test_rollback_restores_venv_and_unit_restarts_and_confirms_health(tmp_path: 
             assert "restart verstehen-server.service" in rollback
             assert any("Rolled back" in line for line in status["logs"])
             assert any("cp -p" in c and "unit.prev" in c for c in ssh.commands[:-1])
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "headers",
+    [
+        {},
+        {**HEALTH_HEADERS, INVOCATION_HEADER: "b" * 32},
+        {**HEALTH_HEADERS, SCHEMA_HEADER: str(SUPPORTED_SCHEMA - 1)},
+    ],
+)
+def test_update_rejects_healthy_responses_from_the_wrong_deployment(
+    tmp_path: Path, headers: dict[str, str]
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                command_results={
+                    "NOTHING_TO_ROLL_BACK": SshCommandResult(exit_status=78)
+                }
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                assert request.url.path == "/api/health"
+                return httpx2.Response(200, json={"status": "ok"}, headers=headers)
+
+            service._client_factory = lambda: httpx2.AsyncClient(
+                transport=httpx2.MockTransport(handler)
+            )
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert "expected identity and schema" in status["error"]
+            assert "cannot read the upgraded database" in status["error"]
+            assert any("install lock was retained" in line for line in status["logs"])
+            assert all("mint-token" not in command for command in ssh.commands)
 
     asyncio.run(run())
 
@@ -1918,8 +1988,9 @@ def test_install_lock_excludes_another_laptop_until_first_run_finishes(tmp_path:
 
 
 @pytest.mark.slow
+@pytest.mark.parametrize("database_upgraded", [False, True])
 def test_rollback_command_retried_after_a_partial_restore_still_restarts(
-    tmp_path: Path,
+    tmp_path: Path, database_upgraded: bool
 ):
     from verstehen.sync.provision import ROLLBACK_CLEANUP_COMMAND, ROLLBACK_COMMAND
 
@@ -1927,6 +1998,10 @@ def test_rollback_command_retried_after_a_partial_restore_still_restarts(
     server_dir = home / ".local/share/verstehen-server"
     (server_dir / "venv.prev").mkdir(parents=True)
     (server_dir / "venv.prev/marker").write_text("old")
+    previous_python = server_dir / "venv.prev/bin/python"
+    previous_python.parent.mkdir()
+    previous_python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    previous_python.chmod(0o755)
     (server_dir / "venv").mkdir()
     (server_dir / "unit.prev").write_text("old-unit")
     (home / ".config/systemd/user").mkdir(parents=True)
@@ -1942,13 +2017,35 @@ def test_rollback_command_retried_after_a_partial_restore_still_restarts(
     )
     stub.chmod(0o755)
     env = {**os.environ, "HOME": str(home), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    data_dir = home / ".local/share/verstehen"
+    data_dir.mkdir()
+
+    async def seed_database() -> None:
+        async with open_database(data_dir / "verstehen.db") as database:
+            await migrate(database)
+            if database_upgraded:
+                async with database.transaction() as connection:
+                    await connection.execute(
+                        "INSERT INTO schema_migrations VALUES (?, 'unavailable.sql', 'today')",
+                        (SUPPORTED_SCHEMA + 1,),
+                    )
+
+    asyncio.run(seed_database())
 
     def run(command: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             ["bash", "-c", command], env=env, capture_output=True, text=True
         )
 
-    assert run(ROLLBACK_COMMAND).returncode != 0
+    first = run(ROLLBACK_COMMAND)
+    if database_upgraded:
+        assert first.returncode == 78, first.stderr
+        assert (server_dir / "venv.prev/marker").read_text() == "old"
+        assert (server_dir / "unit.prev").exists()
+        assert (server_dir / "rollback.pending").exists()
+        assert "restart" not in calls.read_text()
+        return
+    assert first.returncode == 1, first.stderr
     assert (server_dir / "venv/marker").read_text() == "old"
     assert (server_dir / "unit.prev").exists()
     assert (server_dir / "rollback.pending").exists()
@@ -2072,7 +2169,7 @@ class TokenServer:
 
     def __call__(self, request: httpx2.Request) -> httpx2.Response:
         if request.url.path == "/api/health":
-            return httpx2.Response(200, json={"status": "ok"})
+            return httpx2.Response(200, json={"status": "ok"}, headers=HEALTH_HEADERS)
         if request.headers.get("authorization") == f"Bearer {self.old_token}":
             if self.old_status == 200:
                 return httpx2.Response(

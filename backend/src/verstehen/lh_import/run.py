@@ -123,6 +123,11 @@ async def run_import(
         return False
     database_path = settings.data_dir / "verstehen.db"
     existing = await asyncio.to_thread(count_contents, database_path)
+    if settings.server or existing.sync_in_use:
+        raise ImportRefused(
+            "LearnHarness import replaces local data and requires a data directory "
+            "without an active sync pairing or devices."
+        )
     try:
         answer = confirm(confirmation_prompt(existing))
     except EOFError:

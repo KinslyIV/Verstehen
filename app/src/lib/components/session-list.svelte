@@ -68,6 +68,13 @@
 							);
 							return;
 						}
+						if (
+							event.type !== 'chats-changed' &&
+							event.type !== 'turn-started' &&
+							event.type !== 'turn-settled' &&
+							event.type !== 'compaction-changed'
+						)
+							return;
 						void refresh(lifetime.signal);
 						if (!deletedIds.includes(event.session_id) && deleting?.id !== event.session_id)
 							window.dispatchEvent(

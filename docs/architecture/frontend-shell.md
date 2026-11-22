@@ -34,6 +34,8 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **New sessions:** `/session/new` is the teaching screen and `/session/new?mode=practice` the
   practice one; the `Teach | Practice` toggle navigates between them without remounting, so the
   draft and the picked nodes stay. The kind filter is remembered in `localStorage`.
+- **Sidebar refresh:** session notifications update the list and its pending practice indicators.
+  Sync-status notifications refresh the badge and Settings → Sync.
 - **Layout state:** the sidebar collapses with Ctrl+B and remembers its state; the right panel
   starts closed; toggling it remembers its visibility, and it remembers its width (default 25%,
   20–40%). Opening it from code (a new plan, a plan block, Ctrl+J) changes only the live state.

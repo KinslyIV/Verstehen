@@ -16,6 +16,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 **LearnHarness import:**
 
+- **Replacement requires an unpaired local data directory.** Dry runs still work. Replacing a
+  synced dataset would leave remote copies and the outbox inconsistent. The alternative needs an
+  explicit distributed replace operation with its own confirmation and recovery rules.
 - **Learner-message images are dropped**, with one warning per session. `UserEntry` has no
   attachments. Alternative: refuse the import. Consequence: such images are lost (the user's data has none).
 - **Plan-block and probe-handoff details keep LH's camelCase keys.** Verstehen's consumers read them.
@@ -69,6 +72,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   account. It survives an uncertain interruption or failed rollback so another install cannot race
   lingering remote work; clear it manually only after confirming setup has stopped and recovering.
   Alternative: restore the venv only (leaves a unit the old venv may not run).
+- **Update health checks** verify the systemd invocation and schema before removing backups.
+  Rollback refuses to start the old wheel if the database has already applied migrations absent
+  from it. Recovery files and the lock stay in place, and the database keeps its committed data.
 - **One snapshot per server operation:** `ServerProxy` and server OAuth take URL, token, generation and SSH
   details from `capture_connection()` (under the lifecycle lock, released before any request). The sign-in
   tunnel, its request and its watcher use that snapshot; a stale generation before the request or the SSH

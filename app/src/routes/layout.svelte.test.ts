@@ -5,7 +5,13 @@ import Root from './(lesson)/+page.svelte';
 import Lesson from './lesson-test-harness.svelte';
 import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
+import type { Notification } from '#lib/api/client.js';
 import appHtml from '../app.html?raw';
+
+const { sessionRequests, subscribers } = vi.hoisted(() => ({
+	sessionRequests: vi.fn(async () => []),
+	subscribers: new Set<(event: Notification) => void>()
+}));
 
 vi.mock('$app/navigation', () => ({ goto: async () => {} }));
 vi.mock('#lib/api/client.js', async (original) => ({
@@ -58,9 +64,15 @@ vi.mock('#lib/api/client.js', async (original) => ({
 		error: null,
 		error_code: null
 	}),
-	listSessions: async () => [],
-	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
-		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+	listSessions: sessionRequests,
+	streamNotifications: (receive: (event: Notification) => void, signal: AbortSignal) =>
+		new Promise<void>((resolve) => {
+			subscribers.add(receive);
+			signal.addEventListener('abort', () => {
+				subscribers.delete(receive);
+				resolve();
+			});
+		})
 }));
 
 declare module 'vitest/browser' {
@@ -70,6 +82,7 @@ declare module 'vitest/browser' {
 }
 
 beforeEach(() => {
+	sessionRequests.mockClear();
 	localStorage.clear();
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
 });
@@ -83,6 +96,17 @@ test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
 		.toHaveAttribute('href', '/session/new?mode=practice');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('sync_status_does_not_refresh_the_sidebar_session_list', async () => {
+	await render(Lesson);
+	await expect.poll(() => sessionRequests.mock.calls.length).toBe(1);
+
+	for (const receive of subscribers) receive({ type: 'sync-status-changed', session_id: '' });
+	expect(sessionRequests).toHaveBeenCalledTimes(1);
+
+	for (const receive of subscribers) receive({ type: 'chats-changed', session_id: 'one' });
+	expect(sessionRequests).toHaveBeenCalledTimes(2);
 });
 
 test('root_shows_new_session_screen', async () => {
