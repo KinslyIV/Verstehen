@@ -138,6 +138,7 @@ async def _replace_ledger_table(
     new_payloads: list[str],
     *,
     log_sync: bool,
+    removed_source_ids: set[str] | None = None,
 ) -> None:
     async with connection.execute(
         f"SELECT sync_id, payload FROM {table} ORDER BY seq"
@@ -171,10 +172,14 @@ async def _replace_ledger_table(
         for sync_id, payload in removed:
             await record_tombstone(connection, entity=table, entity_id=sync_id)
             delete_payload: dict[str, object] = {"sync_id": sync_id}
-            if table == "graph_sources":
+            if table == "graph_sources" and removed_source_ids:
                 parsed = json.loads(payload)
-                if isinstance(parsed, dict) and "id" in parsed:
-                    delete_payload["source_id"] = parsed["id"]
+                if (
+                    isinstance(parsed, dict)
+                    and isinstance(source_id := parsed.get("id"), str)
+                    and source_id in removed_source_ids
+                ):
+                    delete_payload["source_id"] = source_id
             await append_sync_log(
                 connection,
                 entity=table,
@@ -217,16 +222,20 @@ async def write_ledger(
         await _replace_ledger_table(
             connection, "graph_node_links", link_payloads, log_sync=log_sync
         )
+    removed_sources = {source.id for source in previous.sources} - {
+        source.id for source in ledger.sources
+    }
     for field in ("chains", "coverage", "checkpoints", "sources"):
         if getattr(ledger, field) == getattr(previous, field):
             continue
         payloads = [record.model_dump_json() for record in getattr(ledger, field)]
         await _replace_ledger_table(
-            connection, f"graph_{field}", payloads, log_sync=log_sync
+            connection,
+            f"graph_{field}",
+            payloads,
+            log_sync=log_sync,
+            removed_source_ids=removed_sources if field == "sources" else None,
         )
-    removed_sources = {source.id for source in previous.sources} - {
-        source.id for source in ledger.sources
-    }
     for id in removed_sources:
         await connection.execute("DELETE FROM usage WHERE session_id = ?", (id,))
     if ledger.organization.folders != previous.organization.folders:

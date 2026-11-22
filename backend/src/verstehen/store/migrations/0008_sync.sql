@@ -22,6 +22,7 @@ CREATE TABLE sync_log (
     payload TEXT NOT NULL CHECK (json_valid(payload)),
     origin_device_id TEXT NOT NULL,
     origin_seq INTEGER NOT NULL,
+    pushed INTEGER NOT NULL DEFAULT 0 CHECK (pushed IN (0, 1)),
     created_at TEXT NOT NULL,
     UNIQUE (origin_device_id, origin_seq)
 );

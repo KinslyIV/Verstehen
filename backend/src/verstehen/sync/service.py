@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Callable
+from contextlib import AsyncExitStack
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,7 +10,13 @@ import httpx2
 from verstehen.providers.credentials import CredentialsStore
 from verstehen.session.events import Notification, Notifications
 from verstehen.session.runtime import RuntimeRegistry
-from verstehen.store.sync import ApplySummary, SyncChange, SyncState, SyncStore
+from verstehen.store.sync import (
+    AcceptedChange,
+    ApplySummary,
+    SyncChange,
+    SyncState,
+    SyncStore,
+)
 from verstehen.sync.images import (
     extract_image_refs,
     image_path,
@@ -36,6 +43,7 @@ class SyncService:
         notifications: Notifications,
         data_dir: Path,
         *,
+        prompt_lock: asyncio.Lock | None = None,
         client_factory: Callable[[], httpx2.AsyncClient] = lambda: httpx2.AsyncClient(
             trust_env=False
         ),
@@ -48,6 +56,7 @@ class SyncService:
         self.runtimes = runtimes
         self.notifications = notifications
         self.data_dir = data_dir
+        self._prompt_lock = prompt_lock or asyncio.Lock()
         self._client_factory = client_factory
         self._debounce_seconds = debounce_seconds
         self._fallback_seconds = fallback_seconds
@@ -131,7 +140,7 @@ class SyncService:
             )
             if settled_turn or ended_compaction:
                 await self.flush_deferred(event.session_id)
-            if settled_turn:
+            if settled_turn or ended_compaction:
                 self.notify_local_change()
 
     async def _fallback_loop(self) -> None:
@@ -149,6 +158,7 @@ class SyncService:
             if not state.server_url or not token:
                 await asyncio.sleep(2.0)
                 continue
+            saw_frame = False
             try:
                 async with self._client_factory() as client:
                     async with client.stream(
@@ -159,12 +169,14 @@ class SyncService:
                     ) as response:
                         if response.status_code != 200:
                             raise httpx2.HTTPError(f"SSE status {response.status_code}")
-                        attempt = 0
                         await self._safe_sync_now()
                         event_name = ""
                         async for line in response.aiter_lines():
                             if self._closed:
                                 return
+                            if not saw_frame:
+                                saw_frame = True
+                                attempt = 0
                             if line.startswith("event:"):
                                 event_name = line.partition(":")[2].strip()
                             elif line == "":
@@ -174,15 +186,19 @@ class SyncService:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                delay = self._backoff_schedule[
-                    min(attempt, len(self._backoff_schedule) - 1)
-                ]
-                attempt += 1
-                await asyncio.sleep(delay)
+                pass
+            if self._closed:
+                return
+            delay = self._backoff_schedule[
+                min(attempt, len(self._backoff_schedule) - 1)
+            ]
+            attempt += 1
+            await asyncio.sleep(delay)
 
     async def _scan_local_prompts(self) -> None:
-        current = await asyncio.to_thread(scan_prompts, self.data_dir)
-        await self.sync_store.sync_prompt_snapshot(current)
+        async with self._prompt_lock:
+            current = await asyncio.to_thread(scan_prompts, self.data_dir)
+            await self.sync_store.sync_prompt_snapshot(current)
 
     def _emit_summary_notifications(self, summary: ApplySummary) -> None:
         for sid in sorted(summary.chats_changed):
@@ -206,44 +222,36 @@ class SyncService:
                 )
             )
 
-    async def _apply_prompt_changes(self, summary: ApplySummary) -> None:
-        for change in summary.prompt_changes:
-            try:
-                rel, digest = await asyncio.to_thread(
-                    apply_prompt_change, self.data_dir, change
-                )
-                await self.sync_store.record_prompt_hash(rel, digest)
-            except ValueError:
-                logger.warning(
-                    "Ignored invalid remote prompt override %s", change.entity_id
-                )
-
-    def _next_db_pulled_cursor(self) -> int:
-        if not self._deferred:
-            return self._seen_seq
+    @staticmethod
+    def _compute_db_cursor(deferred: dict[str, list[SyncChange]], seen_seq: int) -> int:
+        if not deferred:
+            return seen_seq
         earliest = min(
-            change.change_seq for queue in self._deferred.values() for change in queue
+            change.change_seq for queue in deferred.values() for change in queue
         )
         return max(0, earliest - 1)
+
+    async def _flush_deferred_unlocked(self, session_id: str) -> int:
+        queued = self._deferred.get(session_id)
+        if not queued:
+            return 0
+        runtime = self.runtimes.get(session_id)
+        async with runtime.lock:
+            if runtime.run is not None or runtime.compaction is not None:
+                return 0
+            remaining = {k: v for k, v in self._deferred.items() if k != session_id}
+            cursor = self._compute_db_cursor(remaining, self._seen_seq)
+            summary = await self.sync_store.apply_pulled_changes(
+                queued, advance_pulled_seq=cursor
+            )
+            self._deferred.pop(session_id, None)
+        self._emit_summary_notifications(summary)
+        return summary.applied
 
     async def flush_deferred(self, session_id: str) -> int:
         """Apply deferred remote changes for a session once its runtime is idle."""
         async with self._sync_lock:
-            queued = self._deferred.get(session_id)
-            if not queued:
-                return 0
-            runtime = self.runtimes.get(session_id)
-            async with runtime.lock:
-                if runtime.run is not None or runtime.compaction is not None:
-                    return 0
-                batch = self._deferred.pop(session_id)
-                cursor = self._next_db_pulled_cursor()
-                summary = await self.sync_store.apply_pulled_changes(
-                    batch, advance_pulled_seq=cursor
-                )
-            await self._apply_prompt_changes(summary)
-            self._emit_summary_notifications(summary)
-            return summary.applied
+            return await self._flush_deferred_unlocked(session_id)
 
     async def _download_missing_images(
         self,
@@ -259,7 +267,9 @@ class SyncService:
                 f"{server_url}/api/images/{sha256}.{ext}", headers=headers
             )
             if response.status_code == 404:
-                continue
+                raise RuntimeError(
+                    f"Referenced image {sha256}.{ext} is missing on server."
+                )
             response.raise_for_status()
             await asyncio.to_thread(
                 save_verified_image, self.data_dir, sha256, ext, response.content
@@ -275,7 +285,9 @@ class SyncService:
         for sha256, ext in extract_image_refs(changes, self.data_dir):
             data = await asyncio.to_thread(read_local_image, self.data_dir, sha256, ext)
             if data is None:
-                continue
+                raise RuntimeError(
+                    f"Referenced image {sha256}.{ext} is missing locally."
+                )
             response = await client.post(
                 f"{server_url}/api/sync/images/{sha256}.{ext}",
                 content=data,
@@ -292,6 +304,14 @@ class SyncService:
                     status="update_required",
                     last_error=body.get(
                         "error", "Schema version mismatch; update Verstehen."
+                    ),
+                )
+                return True
+            if body.get("code") == "missing_images":
+                await self.sync_store.update_state(
+                    status="error",
+                    last_error=body.get(
+                        "error", "Referenced image blobs missing on server."
                     ),
                 )
                 return True
@@ -316,13 +336,16 @@ class SyncService:
             schema = await self.sync_store.schema_version()
             self._seen_seq = max(self._seen_seq, state.last_pulled_seq)
             await self.sync_store.update_state(status="syncing")
+
+            # Retry any deferred sessions that are now idle before pulling/pushing.
+            for sid in list(self._deferred):
+                await self._flush_deferred_unlocked(sid)
+
             await self._scan_local_prompts()
 
             try:
                 async with self._client_factory() as client:
-                    if not await self._pull_all(
-                        client, server_url, headers, state.device_id, schema
-                    ):
+                    if not await self._pull_all(client, server_url, headers, schema):
                         return await self.sync_store.read_state()
                     if not await self._push_all(
                         client, server_url, headers, state.device_id, schema
@@ -350,17 +373,12 @@ class SyncService:
         client: httpx2.AsyncClient,
         server_url: str,
         headers: dict[str, str],
-        device_id: str,
         schema: int,
     ) -> bool:
         while True:
             response = await client.get(
                 f"{server_url}/api/sync/pull",
-                params={
-                    "since": self._seen_seq,
-                    "schema_version": schema,
-                    "device_id": device_id,
-                },
+                params={"since": self._seen_seq, "schema_version": schema},
                 headers=headers,
             )
             if await self._handle_error_response(response):
@@ -382,27 +400,56 @@ class SyncService:
                     client, server_url, headers, changes
                 )
 
-            ready: list[SyncChange] = []
-            for change in changes:
-                sid = change.session_id
-                if sid is not None:
-                    runtime = self.runtimes.get(sid)
-                    is_busy = (
-                        runtime.run is not None
-                        or runtime.compaction is not None
-                        or sid in self._deferred
-                    )
-                    if is_busy:
-                        self._deferred.setdefault(sid, []).append(change)
-                        continue
-                ready.append(change)
-
-            self._seen_seq = max(self._seen_seq, latest_seq)
-            db_cursor = self._next_db_pulled_cursor()
-            summary = await self.sync_store.apply_pulled_changes(
-                ready, advance_pulled_seq=db_cursor
+            session_ids = sorted(
+                {c.session_id for c in changes if c.session_id is not None}
             )
-            await self._apply_prompt_changes(summary)
+            async with self._prompt_lock:
+                # Write remote prompt files BEFORE committing SQLite cursor & prompt hashes.
+                prompt_hashes: dict[str, str | None] = {}
+                for change in changes:
+                    if change.entity == "prompt_override":
+                        rel, digest = await asyncio.to_thread(
+                            apply_prompt_change, self.data_dir, change
+                        )
+                        prompt_hashes[rel] = digest
+
+                async with AsyncExitStack() as stack:
+                    for sid in session_ids:
+                        await stack.enter_async_context(self.runtimes.get(sid).lock)
+                    ready: list[SyncChange] = []
+                    new_deferred: dict[str, list[SyncChange]] = {}
+                    for change in changes:
+                        sid = change.session_id
+                        if sid is not None:
+                            runtime = self.runtimes.get(sid)
+                            is_busy = (
+                                runtime.run is not None
+                                or runtime.compaction is not None
+                                or sid in self._deferred
+                                or sid in new_deferred
+                            )
+                            if is_busy:
+                                new_deferred.setdefault(sid, []).append(change)
+                                continue
+                        ready.append(change)
+
+                    provisional_seen = max(self._seen_seq, latest_seq)
+                    provisional_deferred = {k: [*v] for k, v in self._deferred.items()}
+                    for sid, items in new_deferred.items():
+                        provisional_deferred.setdefault(sid, []).extend(items)
+                    db_cursor = self._compute_db_cursor(
+                        provisional_deferred, provisional_seen
+                    )
+
+                    summary = await self.sync_store.apply_pulled_changes(
+                        ready,
+                        advance_pulled_seq=db_cursor,
+                        prompt_hashes=prompt_hashes,
+                    )
+                    # Commit succeeded: update in-memory cursor and deferred queues now.
+                    self._seen_seq = provisional_seen
+                    self._deferred = provisional_deferred
+
             self._emit_summary_notifications(summary)
             if not has_more:
                 return True
@@ -415,21 +462,21 @@ class SyncService:
         device_id: str,
         schema: int,
     ) -> bool:
-        state = await self.sync_store.read_state()
-        cursor = state.last_pushed_seq
+        skipped_busy: set[str] = set()
         while True:
-            pending = await self.sync_store.list_pending_push(cursor)
-            if not pending:
-                return True
-
+            pending = await self.sync_store.list_pending_push()
             batch: list[SyncChange] = []
-            earliest_local_busy: int | None = None
             for change in pending:
                 sid = change.session_id
-                if sid is not None and self.runtimes.get(sid).run is not None:
-                    if earliest_local_busy is None:
-                        earliest_local_busy = change.change_seq
-                    continue
+                if sid is not None:
+                    runtime = self.runtimes.get(sid)
+                    if (
+                        runtime.run is not None
+                        or runtime.compaction is not None
+                        or sid in self._deferred
+                        or sid in skipped_busy
+                    ):
+                        continue
                 batch.append(change)
 
             if not batch:
@@ -448,24 +495,31 @@ class SyncService:
             if await self._handle_error_response(response):
                 return False
             data = response.json()
+            accepted = [
+                AcceptedChange.model_validate(item)
+                for item in data.get("accepted_changes", ())
+            ]
             deferred_ids = set(data.get("deferred_session_ids", ()))
-            earliest_deferred = earliest_local_busy
-            if deferred_ids:
-                for change in batch:
-                    if change.session_id in deferred_ids:
-                        if (
-                            earliest_deferred is None
-                            or change.change_seq < earliest_deferred
-                        ):
-                            earliest_deferred = change.change_seq
-            if earliest_deferred is not None:
-                next_cursor = max(cursor, earliest_deferred - 1)
-                if next_cursor > cursor:
-                    await self.sync_store.update_state(last_pushed_seq=next_cursor)
+            skipped_busy.update(deferred_ids)
+
+            if accepted:
+                async with self._prompt_lock:
+                    summary = await self.sync_store.mark_pushed_and_reconcile(
+                        batch, accepted
+                    )
+                    prompt_hashes: dict[str, str | None] = {}
+                    for change in summary.prompt_changes:
+                        rel, digest = await asyncio.to_thread(
+                            apply_prompt_change, self.data_dir, change
+                        )
+                        prompt_hashes[rel] = digest
+                    if prompt_hashes:
+                        await self.sync_store.mark_pushed_and_reconcile(
+                            [], [], prompt_hashes=prompt_hashes
+                        )
+                self._emit_summary_notifications(summary)
+            else:
                 return True
-            next_cursor = batch[-1].change_seq
-            await self.sync_store.update_state(last_pushed_seq=next_cursor)
-            cursor = next_cursor
 
     async def close(self) -> None:
         self._closed = True

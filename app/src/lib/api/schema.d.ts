@@ -818,6 +818,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** AcceptedChange */
+		AcceptedChange: {
+			/** Origin Seq */
+			origin_seq: number;
+			/** Server Seq */
+			server_seq: number;
+		};
 		/** Account */
 		Account: {
 			/** Id */
@@ -1518,6 +1525,19 @@ export interface components {
 			 */
 			display: boolean;
 		};
+		/** MissingImagesError */
+		MissingImagesError: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default missing_images
+			 * @constant
+			 */
+			code: 'missing_images';
+			/** Missing */
+			missing: string[];
+		};
 		/** ModelCatalog */
 		ModelCatalog: {
 			/** Accounts */
@@ -1789,6 +1809,8 @@ export interface components {
 			schema_version: number;
 			/** Deferred Session Ids */
 			deferred_session_ids?: string[];
+			/** Accepted Changes */
+			accepted_changes?: components['schemas']['AcceptedChange'][];
 		};
 		/** QuestionAnswer */
 		QuestionAnswer: {
@@ -2756,7 +2778,9 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['SchemaMismatchError'];
+					'application/json':
+						| components['schemas']['SchemaMismatchError']
+						| components['schemas']['MissingImagesError'];
 				};
 			};
 			/** @description Validation Error */
@@ -2772,10 +2796,9 @@ export interface operations {
 	};
 	sync_pull_api_sync_pull_get: {
 		parameters: {
-			query?: {
+			query: {
+				schema_version: number;
 				since?: number;
-				schema_version?: number | null;
-				device_id?: string | null;
 				limit?: number;
 			};
 			header?: never;

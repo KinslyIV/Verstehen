@@ -81,6 +81,8 @@ def create_app(settings: Settings) -> FastAPI:
             app.state.notifications = notifications
             sync_store = SyncStore(database)
             app.state.sync_store = sync_store
+            prompt_lock = asyncio.Lock()
+            app.state.prompt_lock = prompt_lock
             claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
             chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
@@ -263,6 +265,7 @@ def create_app(settings: Settings) -> FastAPI:
                 runtimes,
                 notifications,
                 settings.data_dir,
+                prompt_lock=prompt_lock,
             )
             app.state.sync_service = sync_service
             if settings.server:

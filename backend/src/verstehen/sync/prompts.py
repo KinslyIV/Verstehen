@@ -18,17 +18,38 @@ def validate_prompt_rel_path(rel_path: str) -> PurePosixPath:
     return pure
 
 
+def _ensure_no_symlinks(root: Path, pure: PurePosixPath) -> Path:
+    if root.is_symlink():
+        raise ValueError("Prompts directory must not be a symlink.")
+    current = root
+    for part in pure.parts:
+        current = current / part
+        if current.is_symlink():
+            raise ValueError(
+                f"Prompt override path contains a symlink: {pure.as_posix()!r}"
+            )
+    return current
+
+
 def scan_prompts(data_dir: Path) -> dict[str, tuple[str, str]]:
     """Return {rel_posix_path: (content, sha256_hex)} for all .md files under data_dir/prompts."""
     root = data_dir / "prompts"
-    if not root.is_dir():
+    if root.is_symlink() or not root.is_dir():
         return {}
     resolved_root = root.resolve()
     result: dict[str, tuple[str, str]] = {}
     for path in sorted(root.rglob("*.md")):
         if path.is_symlink() or not path.is_file():
             continue
-        if not path.resolve().is_relative_to(resolved_root):
+        rel_parts = path.relative_to(root).parts
+        check = root
+        has_symlink = False
+        for part in rel_parts:
+            check = check / part
+            if check.is_symlink():
+                has_symlink = True
+                break
+        if has_symlink or not path.resolve().is_relative_to(resolved_root):
             continue
         rel = path.relative_to(root).as_posix()
         try:
@@ -46,7 +67,7 @@ def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | 
     pure = validate_prompt_rel_path(raw_path)
     rel = pure.as_posix()
     root = data_dir / "prompts"
-    target = root / Path(*pure.parts)
+    target = _ensure_no_symlinks(root, pure)
     resolved_root = root.resolve()
     resolved_target = target.resolve()
     if not resolved_target.is_relative_to(resolved_root):
@@ -54,7 +75,7 @@ def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | 
     if change.op == "delete":
         target.unlink(missing_ok=True)
         parent = target.parent
-        while parent != root and parent.is_dir():
+        while parent != root and parent.is_dir() and not parent.is_symlink():
             try:
                 parent.rmdir()
             except OSError:

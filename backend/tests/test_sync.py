@@ -339,6 +339,8 @@ def test_duplicate_push_is_idempotent_and_offline_recovers(tmp_path: Path):
             )
 
             # Force re-pushing the exact same changes (simulating lost ACK on flaky Wi-Fi).
+            async with laptop_app.state.database.transaction() as conn:
+                await conn.execute("UPDATE sync_log SET pushed = 0")
             await laptop_app.state.sync_store.update_state(last_pushed_seq=0)
             ok_state_2 = await laptop_app.state.sync_service.sync_now()
             assert ok_state_2.status == "idle"
@@ -662,5 +664,196 @@ def test_sync_routes_auth_mode_gating_and_security(tmp_path: Path):
                 body = json.loads(configured.text)
                 assert body["enabled"] is True
                 assert body["server_url"] == "http://server.local"
+
+                # Pull requires schema_version (missing -> 400 validation error).
+                missing_schema = await s_client.get(
+                    "/api/sync/pull",
+                    headers={"Authorization": f"Bearer {token}"},
+                )
+                assert missing_schema.status_code == 400
+
+    asyncio.run(run())
+
+
+def test_concurrent_renames_converge_and_legacy_post_migration_backfill_succeeds(
+    tmp_path: Path,
+):
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            l_db = laptop_app.state.database
+            s_db = server_app.state.database
+            l_sessions = SessionsStore(l_db)
+            s_sessions = SessionsStore(s_db)
+            l_entries = EntriesStore(l_db)
+
+            # Reproduce legacy session (pre-migration) + post-migration entry before configure().
+            async with l_db.transaction() as conn:
+                await conn.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                    "VALUES ('legacy-1', 'Legacy', 'teach', '2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+                )
+            await l_entries.append("legacy-1", [UserEntry(text="Post-migration entry")])
+
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            assert await s_sessions.get("legacy-1") is not None
+            assert len(await EntriesStore(s_db).list("legacy-1")) == 1
+
+            # Concurrent renames on laptop and server must converge on both sides.
+            await s_sessions.rename("legacy-1", "Server rename")
+            await l_sessions.rename("legacy-1", "Laptop rename")
+            await laptop_app.state.sync_service.sync_now()
+            await laptop_app.state.sync_service.sync_now()
+
+            l_final = await l_sessions.get("legacy-1")
+            s_final = await s_sessions.get("legacy-1")
+            assert l_final is not None and s_final is not None
+            assert l_final.title == s_final.title == "Laptop rename"
+
+    asyncio.run(run())
+
+
+def test_remote_delete_preserves_unpushed_laptop_work_and_missing_images_block_commit(
+    tmp_path: Path,
+):
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            l_sessions = SessionsStore(laptop_app.state.database)
+            s_sessions = SessionsStore(server_app.state.database)
+            l_entries = EntriesStore(laptop_app.state.database)
+
+            session = await l_sessions.create("Keep Offline Work")
+            await l_entries.append(session.id, [UserEntry(text="Synced base")])
+            await laptop_app.state.sync_service.sync_now()
+
+            # Server deletes session while laptop adds an offline entry.
+            await s_sessions.delete(session.id)
+            await l_entries.append(session.id, [UserEntry(text="Unsaved offline note")])
+
+            await laptop_app.state.sync_service.sync_now()
+            assert await l_sessions.get(session.id) is None
+            forks = [
+                s
+                for s in await l_sessions.list()
+                if s.title == "Keep Offline Work (Laptop copy)"
+            ]
+            assert len(forks) == 1
+            assert len(await l_entries.list(forks[0].id)) == 2
+            assert await s_sessions.get(forks[0].id) is not None
+
+            # Server rejects push referencing an image blob that was not uploaded first.
+            missing_sha = "a" * 64
+            bad_entry = ToolResultEntry(
+                tool_call_id="tc-missing-img",
+                tool_name="show_image",
+                text="Missing image",
+                details={"sha256": missing_sha, "mime_type": "image/png"},
+            )
+            bad_change = SyncChange(
+                change_seq=1,
+                entity="entry",
+                op="upsert",
+                entity_id=bad_entry.entry_id,
+                session_id=forks[0].id,
+                payload={
+                    "session_id": forks[0].id,
+                    "entry_id": bad_entry.entry_id,
+                    "kind": "tool_result",
+                    "payload": json.loads(bad_entry.model_dump_json()),
+                    "created_at": bad_entry.created_at.isoformat(),
+                },
+                origin_device_id="spoofed",
+                origin_seq=999,
+                created_at=bad_entry.created_at.isoformat(),
+            )
+            schema = await server_app.state.sync_store.schema_version()
+            async with httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app=server_app),
+                base_url="http://127.0.0.1",
+            ) as s_client:
+                resp = await s_client.post(
+                    "/api/sync/push",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "device_id": "laptop",
+                        "schema_version": schema,
+                        "changes": [bad_change.model_dump(mode="json")],
+                    },
+                )
+                assert resp.status_code == 409
+                assert resp.json()["code"] == "missing_images"
+
+    asyncio.run(run())
+
+
+def test_symlinked_prompts_root_is_rejected_and_graph_source_update_keeps_usage(
+    tmp_path: Path,
+):
+    from verstehen.store.graph import NotesSource
+    from verstehen.sync.prompts import scan_prompts
+
+    async def run() -> None:
+        # Symlinked prompts directory must be ignored/rejected.
+        outside = tmp_path / "outside"
+        outside.mkdir()
+        (outside / "secret.md").write_text("secret", encoding="utf-8")
+        fake_data = tmp_path / "fake_data"
+        fake_data.mkdir()
+        (fake_data / "prompts").symlink_to(outside)
+        assert scan_prompts(fake_data) == {}
+        with pytest.raises(ValueError):
+            apply_prompt_change(
+                fake_data,
+                SyncChange(
+                    change_seq=1,
+                    entity="prompt_override",
+                    op="upsert",
+                    entity_id="secret.md",
+                    payload={"path": "secret.md", "content": "x"},
+                    origin_device_id="dev",
+                    origin_seq=1,
+                    created_at="2026-11-22T00:00:00Z",
+                ),
+            )
+
+        # Updating a graph source's metadata must NOT delete its usage on the peer.
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            l_graph = GraphStore(laptop_app.state.database)
+            l_usage = UsageStore(laptop_app.state.database)
+            s_usage = UsageStore(server_app.state.database)
+
+            async with l_graph.transaction() as ledger:
+                ledger.sources.append(
+                    NotesSource(
+                        id="src-1",
+                        file_path="/notes/a.md",
+                        imported_at="2026-11-22T00:00:00Z",
+                    )
+                )
+            await l_usage.append(
+                UsageRecord(
+                    request_id="req-src-1",
+                    session_id="src-1",
+                    role="extractor",
+                    account="chatgpt:a",
+                    model="gpt-5",
+                    input_tokens=10,
+                    output_tokens=5,
+                    cache_read_tokens=0,
+                    cache_write_tokens=0,
+                    reasoning_tokens=0,
+                )
+            )
+            await laptop_app.state.sync_service.sync_now()
+            assert len(await s_usage.list("src-1")) == 1
+
+            # Update source metadata (same logical id, new file_path).
+            async with l_graph.transaction() as ledger:
+                ledger.sources[0].file_path = "/notes/renamed.md"
+            await laptop_app.state.sync_service.sync_now()
+            assert len(await s_usage.list("src-1")) == 1
 
     asyncio.run(run())
