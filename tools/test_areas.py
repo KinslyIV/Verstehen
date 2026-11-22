@@ -1,5 +1,6 @@
 import argparse
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -74,10 +75,20 @@ def parse_areas(raw: str | None) -> list[str]:
     return list(dict.fromkeys(tokens))
 
 
-def parse_tokens(raw: str | None) -> list[str]:
-    if not raw or not raw.strip():
-        return []
-    return [token for token in re.split(r"[\s,]+", raw.strip()) if token]
+def parse_flows(raw: str | None) -> list[str]:
+    """Split FLOW like a shell would; short options are refused because their values split off."""
+    tokens = shlex.split(raw or "")
+    short = [
+        token
+        for token in tokens
+        if token.startswith("-") and not token.startswith("--")
+    ]
+    if short:
+        raise ValueError(
+            f"Unsupported short option(s): {', '.join(short)}. Use long options with "
+            "values attached, such as --grep=settings or --workers=1."
+        )
+    return tokens
 
 
 def check(root: Path) -> list[str]:
@@ -319,7 +330,7 @@ def main(argv: list[str] | None = None, root: Path | None = None) -> int:
         return run_plan(vitest_plan(workspace, areas))
     if args.runner == "verify":
         try:
-            plan = verify_plan(workspace, areas, parse_tokens(args.flow))
+            plan = verify_plan(workspace, areas, parse_flows(args.flow))
         except ValueError as error:
             print(error, file=sys.stderr)
             return 2

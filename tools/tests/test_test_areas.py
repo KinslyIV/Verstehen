@@ -1,3 +1,5 @@
+import os
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -231,3 +233,54 @@ def test_check_catches_nested_tooling_tests(tmp_path: Path):
     assert any(
         "tools/tests/new_area/extra_test.py: move tooling test" in e for e in errors
     )
+
+
+def test_option_values_keep_commas_and_quotes_instead_of_selecting_flows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    make_valid_tree(tmp_path)
+    (tmp_path / "app/verify/session/session-new.flow.ts").write_text("")
+    commands: list[list[str]] = []
+    monkeypatch.setattr(
+        "tools.test_areas.subprocess.run",
+        lambda command, **_: (
+            commands.append(command) or subprocess.CompletedProcess(command, 0)
+        ),
+    )
+    flow = "session-abort --grep=.*,session-new '--grep-invert=a b'"
+    assert main(["verify", f"--flow={flow}"], root=tmp_path) == 0
+    assert commands == [
+        [
+            "npx",
+            "playwright",
+            "test",
+            r"verify/session/session\-abort\.flow\.ts$",
+            "--grep=.*,session-new",
+            "--grep-invert=a b",
+        ]
+    ]
+
+
+@pytest.mark.parametrize("flow", ["session-abort -g settings", "session-abort -j=1"])
+def test_short_options_are_refused_with_the_long_form_hint(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], flow: str
+):
+    make_valid_tree(tmp_path)
+    assert main(["verify", f"--flow={flow}"], root=tmp_path) == 2
+    assert "--grep=settings or --workers=1" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("target", ["verify", "verify-run"])
+def test_make_passes_flow_to_the_runner_unchanged(target: str):
+    flow = "settings --grep=settings$ --grep-invert='a b' --list"
+    dry_run = subprocess.run(
+        ["make", "--no-print-directory", "-n", target, "AREA=shell", f"FLOW={flow}"],
+        cwd=Path(__file__).resolve().parents[2],
+        env={k: v for k, v in os.environ.items() if not k.startswith("MAKE")},
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    runner = dry_run.stdout.strip().splitlines()[-1]
+    assert "tools/test_areas.py verify" in runner
+    assert shlex.split(runner)[-1] == f"--flow={flow}"

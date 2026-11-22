@@ -9,7 +9,7 @@ Run from the repository root after `make setup`:
 - `make verify AREA=graph` or `make verify AREA='session teaching'` builds and runs all flows in the named architecture area(s) (`session`, `teaching`, `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`).
 - `make verify FLOW=shell-layout` builds and runs a single flow.
 - Batch affected flows in one invocation: `make verify FLOW='shell-layout settings'`.
-- `FLOW` names must be exact flow names (`session-abort`) or paths (`verify/session/session-abort.flow.ts`); an unmatched name fails. Pass Playwright options as `--option=value`, e.g. `FLOW='settings --repeat-each=3'`.
+- `FLOW` names must be exact flow names (`session-abort`) or paths (`verify/session/session-abort.flow.ts`); an unmatched name fails. Pass Playwright options in long form as `--option=value`, e.g. `FLOW='settings --repeat-each=3'`; short options like `-g` are refused. `FLOW` is split like shell arguments, so quote a value with spaces: `FLOW="settings '--grep=a b'"`.
 - `make verify-run AREA=graph` or `make verify-run FLOW='shell-layout settings'` reruns selected areas or flows without rebuilding, only if the build guard passes. Omit `AREA` and `FLOW` to rerun all flows.
 - Screenshots and always-on traces land in `app/verify-output/<flow>/` (Playwright may append a project or retry suffix).
 - Open a trace with `cd app && npx playwright show-trace verify-output/<flow>/trace.zip`.
