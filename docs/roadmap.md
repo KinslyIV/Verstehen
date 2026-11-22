@@ -71,6 +71,10 @@ All of this is merged into `main`.
    variables; a prompt-override UI if needed; API keys, a custom endpoint, Copilot (Pydantic AI has
    a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a subscription login
    would be our own code).
+4. **Mobile app (Android) and two-way sync.** Independent of M10/M11 (can be scheduled before or
+   after them): local-first laptop backend syncing automatically with an always-on Tailscale server
+   backend, plus a client-only Tauri 2 Android `.apk` paired by short code. Approved plan:
+   [mobile-and-sync](plans/mobile-and-sync.md).
 
 ## Not ported (by decision)
 
