@@ -46,7 +46,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 ## Decided, not yet implemented
 
-_Nothing._
+**Mobile app and two-way sync ([plan](plans/mobile-and-sync.md)):**
+
+- **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
+  offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
+  to the server.
+- **Tauri 2 Mobile, Android only (v1).** Signed `.apk` connecting directly to the server's
+  Tailscale IP (`http://100.x.y.z:<port>`, no `tailscale serve`), with Android cleartext HTTP
+  allowlisted only for `100.64.0.0/10`.
+- **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
+  SHA-256 hashed on the server and individually revocable.
+- **Server SSH install & ChatGPT OAuth from laptop UI only (v1).** SSH password is used once in
+  memory and never stored; server ChatGPT OAuth runs through a temporary SSH tunnel on port 1455;
+  Claude Code is installed and signed in separately on the server.
+- **Sync semantics:** immediate delete propagation via `sync_tombstones` (no trash); fork on
+  offline same-session conflict; defer incoming remote entries while a session's `SessionRuntime`
+  has an active turn or compaction; sync prompt overrides (`prompts/`); leave raw laptop PDF paths
+  laptop-only for v1; never sync `credentials.json`, Claude Code login, `file_access`, or
+  `demo_browser`.
 
 ## Deliberate differences from LearnHarness
 
