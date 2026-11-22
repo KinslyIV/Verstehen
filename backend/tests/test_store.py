@@ -147,6 +147,42 @@ def test_read_waits_for_transaction_commit(tmp_path: Path):
     asyncio.run(run())
 
 
+def test_double_cancellation_during_commit_reports_committed_truthfully(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            real_commit = database._connection.commit
+
+            async def slow_commit():
+                entered.set()
+                await release.wait()
+                return await real_commit()
+
+            database._connection.commit = slow_commit  # type: ignore[method-assign]
+
+            async def write_row():
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('k', '1')"
+                    )
+
+            task = asyncio.create_task(write_row())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert database.last_tx_committed is True
+            assert await SettingsStore(database).get("k") == 1
+
+    asyncio.run(run())
+
+
 def test_invalid_migration_files_fail_before_database_changes(tmp_path: Path):
     directory = tmp_path / "migrations"
     directory.mkdir()

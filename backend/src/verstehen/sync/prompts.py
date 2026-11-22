@@ -208,16 +208,17 @@ def make_prompt_tx_hooks(
                 apply_prompt_winners_with_rollback, data_dir, winners, backups
             )
         )
-        try:
-            return await asyncio.shield(worker)
-        except asyncio.CancelledError:
+        cancelled = False
+        while not worker.done():
             try:
-                await worker
-            except Exception:
-                pass
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancelled = True
+        if cancelled:
             if backups:
                 await asyncio.to_thread(restore_prompt_backups, data_dir, backups)
-            raise
+            raise asyncio.CancelledError
+        return worker.result()
 
     async def rollback_winners() -> None:
         if backups:

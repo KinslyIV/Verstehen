@@ -41,16 +41,19 @@ class Database:
                     await self._connection.executescript("BEGIN;\n" + script)
                 yield self._connection
                 commit_task = asyncio.create_task(self._connection.commit())
-                try:
-                    await asyncio.shield(commit_task)
-                    self.last_tx_committed = True
-                except asyncio.CancelledError:
+                cancelled = False
+                while not commit_task.done():
                     try:
-                        await commit_task
-                        self.last_tx_committed = True
-                    except Exception:
-                        self.last_tx_committed = False
-                    raise
+                        await asyncio.shield(commit_task)
+                    except asyncio.CancelledError:
+                        cancelled = True
+                commit_error = commit_task.exception()
+                if commit_error is None:
+                    self.last_tx_committed = True
+                if cancelled:
+                    raise asyncio.CancelledError
+                if commit_error is not None:
+                    raise commit_error
                 notify = self._sync_dirty
             except BaseException:
                 if not self.last_tx_committed:
