@@ -22,6 +22,7 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md).
 | `side_chats.py` | `SideChatsStore`: threads and exchanges |
 | `graph.py` | `GraphStore`: the graph ledgers; every mutation advances the revision and notifies after commit |
 | `usage.py` | `UsageStore`: one row per billed call |
+| `devices.py` | `Device` and `DevicesStore`: paired devices, SHA-256-hashed bearer tokens, throttled `last_seen_at`, and revocation |
 | `replace.py`, `backup.py` | `replace_contents` (delete every session, usage row, and graph row, then write a whole `StoreContents`, in one transaction) and `backup_database` (SQLite's backup API); used only by the LearnHarness import |
 
 The insert statements shared with the LearnHarness import live in each store module as functions
@@ -39,6 +40,7 @@ over a connection (`insert_entry`, `insert_session`, `insert_job`, `insert_side_
 | `side_threads`, `side_exchanges` | 0005 | side-chat threads per segment and their exchanges |
 | `schema_migrations` | created by the runner | applied migration numbers |
 | `graph_nodes`, `graph_node_links`, `graph_chains`, `graph_coverage`, `graph_checkpoints`, `graph_sources`, `graph_source_folders`, `graph_source_placements`, `graph_positions`, `graph_revision` | 0006 | the graph ledgers, organization, positions, and the monotonic revision |
+| `devices` | 0007 | paired devices (`id`, `name`, `token_hash`, `created_at`, `last_seen_at`, `revoked_at`) |
 
 Files outside SQLite: learner images at `<data dir>/images/<sha256>.<ext>` (`show_image` stores PNG
 or JPEG; a `read` attachment can also be GIF or WebP), credentials in
