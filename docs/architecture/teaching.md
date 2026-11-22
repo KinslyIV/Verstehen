@@ -53,7 +53,8 @@ Frontend, `app/src/lib/`:
   learner-file tools, `research` and `pdf` (always armed, regardless of Settings → Tools, still
   behind background consent and File access), and `list_sessions` and `list_propositions` when
   `graph.enabled` and `agent.graph_tools` are on. `problem` validates, canonicalizes target names
-  to node ids, saves a clean acknowledgement, and ends the turn; the learner's `thinking` and
+  to node ids, saves a clean acknowledgement, and ends the turn when every call in the response is a clean pose (a
+  mixed batch goes on, as in LH's loop; a truncated response fails every call unrun); the learner's `thinking` and
   `next` inputs arrive as `practice-thinking` and `practice-next` markers. `conclude` needs an
   active problem (the `PracticeGate`, seeded from the entries), and the turn goes on for closing
   words. The model solution is committed in the `problem` call and shown verbatim by the UI when

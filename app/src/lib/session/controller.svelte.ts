@@ -61,9 +61,7 @@ export class SessionController {
 	compacting = $derived(this.record?.compacting ?? false);
 	isPractice = $derived(this.record?.kind === 'practice');
 	/** The posed problem awaiting the learner; its dock replaces the composer. */
-	activeProblem = $derived(
-		this.isPractice ? activeProblemOf(this.record?.entries ?? []) : undefined
-	);
+	activeProblem = $derived(this.isPractice ? activeProblemOf(this.entries) : undefined);
 	/** Between problems: the composer offers `Next problem →` (LearnHarness `nextReady`). */
 	nextReady = $derived(
 		this.isPractice &&
@@ -71,10 +69,18 @@ export class SessionController {
 			!this.activeProblem &&
 			!this.compacting &&
 			!this.busy &&
-			hasPosedProblem(this.record?.entries ?? [])
+			hasPosedProblem(this.entries)
 	);
-	/** The practice dock's unsent thinking; restored when its send is refused. */
-	thinkingDraft = $state('');
+	private thinkingDrafts = new SvelteMap<string, string>();
+	/** The active problem's unsent thinking, kept per problem and restored when its send is refused. */
+	get thinkingDraft(): string {
+		const id = this.activeProblem?.toolCallId;
+		return (id && this.thinkingDrafts.get(id)) || '';
+	}
+	set thinkingDraft(text: string) {
+		const id = this.activeProblem?.toolCallId;
+		if (id) this.thinkingDrafts.set(id, text);
+	}
 	/** A failed reply behind a compaction cannot be retried (LearnHarness `failedTail`). */
 	retryBlocked = $derived(
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
@@ -343,7 +349,7 @@ export class SessionController {
 
 	async dismissProblem(problem: ActiveProblem): Promise<void> {
 		if (problem.toolCallId !== this.activeProblem?.toolCallId) return;
-		this.thinkingDraft = '';
+		this.thinkingDrafts.delete(problem.toolCallId);
 		await this.dismiss({ problem_call_id: problem.toolCallId });
 	}
 
@@ -351,7 +357,7 @@ export class SessionController {
 		const problem = this.activeProblem;
 		const text = this.thinkingDraft.trim();
 		if (!problem || !text || this.loading || this.busy || this.compacting) return;
-		this.thinkingDraft = '';
+		this.thinkingDrafts.delete(problem.toolCallId);
 		await this.submit({ type: 'thinking', text, problem_call_id: problem.toolCallId });
 	}
 
@@ -426,7 +432,8 @@ export class SessionController {
 			}
 		} catch (error) {
 			if (!accepted && input.type === 'text') this.draft = text;
-			if (!accepted && input.type === 'thinking') this.thinkingDraft = input.text ?? '';
+			if (!accepted && input.type === 'thinking' && input.problem_call_id)
+				this.thinkingDrafts.set(input.problem_call_id, input.text ?? '');
 			this.automaticContinuationBlocked = true;
 			if (error instanceof ApiError && error.code === 'models_not_configured') {
 				this.setupOpen = true;

@@ -910,7 +910,13 @@ def test_side_chat_lesson_document_redacts_open_problem_and_reveals_on_conclude(
     compacted = [
         *entries,
         thinking,
-        new_compaction_marker("summary", thinking, entries[-1], 100, "m"),
+        new_compaction_marker(
+            "Summary mentioning SECRET_SOLUTION_2X_PLUS_5.",
+            thinking,
+            entries[-1],
+            100,
+            "m",
+        ),
     ]
     compacted_doc = side_chat_lesson_document(compacted)
     assert compacted_doc.index("### Earlier session history") < compacted_doc.index(

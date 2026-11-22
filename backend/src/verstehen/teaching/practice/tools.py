@@ -179,7 +179,9 @@ def only_clean_problem_calls(
     response: ModelResponse, requests: DeferredToolRequests
 ) -> bool:
     """True when every tool call in the response is a posed problem, the batch that ends the turn."""
-    called = {part.tool_call_id for part in response.parts if isinstance(part, ToolCallPart)}
+    called = {
+        part.tool_call_id for part in response.parts if isinstance(part, ToolCallPart)
+    }
     posed = {call.tool_call_id for call in requests.calls}
     return bool(called) and called <= posed
 

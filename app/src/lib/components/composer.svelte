@@ -2,7 +2,7 @@
 	import { onMount, type Snippet } from 'svelte';
 	import { ArrowRight, ArrowUp, Square } from '@lucide/svelte';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
-	import { hasOpenOverlay, isTypingSurface } from '#lib/questions/keyboard.js';
+	import { isPlainEnterOutsideFields } from '#lib/questions/keyboard.js';
 	let {
 		draft = $bindable(''),
 		busy = false,
@@ -32,19 +32,7 @@
 	const offersNext = $derived(nextReady && !draft.trim());
 
 	function windowEnter(event: KeyboardEvent) {
-		const target = event.target as HTMLElement | null;
-		if (
-			!offersNext ||
-			event.key !== 'Enter' ||
-			event.defaultPrevented ||
-			event.isComposing ||
-			event.altKey ||
-			event.shiftKey ||
-			isTypingSurface(target) ||
-			target?.closest('button, a') ||
-			hasOpenOverlay()
-		)
-			return;
+		if (!offersNext || !isPlainEnterOutsideFields(event)) return;
 		event.preventDefault();
 		onnext?.();
 	}

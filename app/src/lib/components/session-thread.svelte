@@ -28,6 +28,7 @@
 	import CoverageRing from '#lib/graph/coverage-ring.svelte';
 	import SelectionAsk from '#lib/sidechat/selection-ask.svelte';
 	import PracticeDock from '#lib/practice/practice-dock.svelte';
+	import type { ActiveProblem } from '#lib/practice/state.js';
 	import ProblemCard from '#lib/practice/problem-card.svelte';
 	import ThinkingCard from '#lib/practice/thinking-card.svelte';
 	import ConcludeCard from '#lib/practice/conclude-card.svelte';
@@ -61,7 +62,7 @@
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
-	let abortTarget = $state<'turn' | 'problem' | PendingQuestion>();
+	let abortTarget = $state<'turn' | PendingQuestion | ActiveProblem>();
 	let previousHeight = 0;
 
 	function handleScroll() {
@@ -108,16 +109,16 @@
 		});
 		if (!target) return;
 		event.preventDefault();
-		abortTarget = target === 'question' ? pending : target;
+		abortTarget =
+			target === 'question' ? pending : target === 'problem' ? controller.activeProblem : target;
 	}
 
 	function confirmAbort() {
 		const target = abortTarget;
 		abortTarget = undefined;
 		if (target === 'turn') void controller.stop();
-		else if (target === 'problem') {
-			if (controller.activeProblem) void controller.dismissProblem(controller.activeProblem);
-		} else if (target) void controller.dismissPending(target);
+		else if (target && 'key' in target) void controller.dismissPending(target);
+		else if (target) void controller.dismissProblem(target);
 	}
 
 	onMount(() => {
@@ -478,7 +479,7 @@
 	{/if}
 	{#if abortTarget}
 		<AbortTurnDialog
-			mode={abortTarget === 'turn' || abortTarget === 'problem' ? abortTarget : 'question'}
+			mode={abortTarget === 'turn' ? 'turn' : 'key' in abortTarget ? 'question' : 'problem'}
 			busy={controller.busy}
 			onclose={() => (abortTarget = undefined)}
 			onconfirm={confirmAbort}

@@ -61,7 +61,7 @@
 <section class="relative flex h-full min-w-0 flex-col" aria-label="Lesson">
 	<div class="flex flex-1 flex-col items-center justify-center px-6 pb-10 text-center">
 		<h1 class="text-2xl font-semibold tracking-tight">New session</h1>
-		<p class="mt-3 max-w-sm text-sm leading-6 text-muted-foreground">
+		<p class="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
 			{kind === 'practice'
 				? 'The practitioner will pose problems on what you want to practice.'
 				: 'The teacher will open by probing what you already know.'}

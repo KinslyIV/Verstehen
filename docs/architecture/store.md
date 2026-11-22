@@ -142,7 +142,7 @@ not extracted again. `updated_at` is kept, so the sidebar order matches.
   plan that differs from LH's saved `tree`, jobs of sessions that were not imported, and graph
   rows that name sessions that were not imported.
 
-**Skipped:** practice sessions (listed by title), `settings.json`, `graph/render-settings.json`,
+**Skipped:** `settings.json`, `graph/render-settings.json`,
 `prompts/`, `themes/`, `plugins/`, `core-plugin-data/`, `debug/`, and `auth.json` (never read).
 Plugin problem submissions and plugin jobs are refused.
 

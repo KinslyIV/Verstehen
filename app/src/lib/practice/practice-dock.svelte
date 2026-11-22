@@ -4,7 +4,7 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import Nodes from '#lib/markdown/nodes.svelte';
-	import { hasOpenOverlay, isTypingSurface } from '#lib/questions/keyboard.js';
+	import { isPlainEnterOutsideFields } from '#lib/questions/keyboard.js';
 	import { questionPreview } from '#lib/questions/question-preview.js';
 	import ToolContent from '#lib/questions/tool-content.svelte';
 
@@ -51,19 +51,7 @@
 	}
 
 	function windowKey(event: KeyboardEvent) {
-		const target = event.target as HTMLElement | null;
-		if (
-			event.key !== 'Enter' ||
-			event.defaultPrevented ||
-			event.isComposing ||
-			event.altKey ||
-			event.shiftKey ||
-			modelMenuOpen ||
-			hasOpenOverlay() ||
-			isTypingSurface(target) ||
-			target?.closest('button, a')
-		)
-			return;
+		if (modelMenuOpen || !isPlainEnterOutsideFields(event)) return;
 		event.preventDefault();
 		if (thinking.trim()) submit();
 		else if (expanded) field?.focus();

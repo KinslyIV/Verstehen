@@ -166,6 +166,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **The practice dock's submit waits for the agent's reply** to the previous thinking (LH only
   blocks it during compaction); a window-level Enter with an empty draft focuses the field instead
   of doing nothing.
+- **A dismissed problem pauses job wakes** like a dismissed question: LH's wake pipeline checks
+  `endsInDismissal`, which misses the `problem-dismissed` marker, so a job result can wake the
+  practitioner and pose a new problem before the dismissal's `conclude` pair is saved. Verstehen
+  holds the delivered results until the learner's next input, which carries the pair and the results.
 
 ### Providers and models
 

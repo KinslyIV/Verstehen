@@ -2,7 +2,14 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SessionController } from './controller.svelte';
 import * as api from '#lib/api/client.js';
 import { questionBatch, questionResult } from '#lib/questions/question-fixtures.js';
-import { conclude, dismissed, pose } from '#lib/practice/practice-fixtures.js';
+import {
+	ack,
+	call,
+	conclude,
+	dismissed,
+	pose,
+	problemArguments
+} from '#lib/practice/practice-fixtures.js';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	dismissQuestion: vi.fn(),
@@ -550,4 +557,39 @@ test('discarding_a_problem_sends_its_call_id_and_aborts_a_parked_turn', async ()
 	await controller.refresh();
 	expect(controller.activeProblem).toBeUndefined();
 	expect(controller.nextReady).toBe(true);
+});
+test('a_streamed_pose_is_the_active_problem_before_it_is_saved', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([{ kind: 'user', entry_id: 'u', text: 'Practice' }], true, 'practice')
+	);
+	vi.mocked(api.streamTurn).mockImplementation(async (_, receive) => {
+		receive({
+			type: 'message_end',
+			message: call('p1', 'problem', problemArguments),
+			results: [ack('p1', 'problem')]
+		});
+		receive({
+			type: 'message_update',
+			message: { kind: 'assistant', entry_id: 'next', parts: [], stop_reason: 'stop' }
+		});
+		expect(controller.activeProblem?.toolCallId).toBe('p1');
+		vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+		return true;
+	});
+	await controller.load();
+	await expect.poll(() => controller.busy).toBe(false);
+});
+test('a_replacement_problem_is_not_discarded_by_a_dismissal_confirmed_for_the_old_one', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose('p1'), false, 'practice'));
+	await controller.load();
+	const opened = controller.activeProblem!;
+	controller.thinkingDraft = 'about p1';
+	controller.adoptRecord(
+		record([...pose('p1'), ...conclude('c1'), ...pose('p2')], false, 'practice')
+	);
+	expect(controller.activeProblem?.toolCallId).toBe('p2');
+	expect(controller.thinkingDraft).toBe('');
+	await controller.dismissProblem(opened);
+	expect(api.dismissQuestion).not.toHaveBeenCalled();
+	expect(controller.activeProblem?.toolCallId).toBe('p2');
 });
