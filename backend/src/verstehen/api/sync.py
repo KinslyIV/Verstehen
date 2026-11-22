@@ -11,6 +11,7 @@ from verstehen.session.events import Notification, Notifications
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.store.sync import (
     AcceptedChange,
+    InvalidSyncPayloadError,
     SyncChange,
     SyncStore,
     validate_inbound_change,
@@ -21,7 +22,11 @@ from verstehen.sync.images import (
     missing_local_images,
     save_verified_image,
 )
-from verstehen.sync.prompts import apply_prompt_change, scan_prompts
+from verstehen.sync.prompts import (
+    apply_prompt_winners_with_rollback,
+    restore_prompt_backups,
+    scan_prompts,
+)
 
 
 def get_sync_store(request: Request) -> SyncStore:
@@ -42,6 +47,10 @@ class SchemaMismatchError(ApiError):
 class MissingImagesError(ApiError):
     code: Literal["missing_images"] = "missing_images"
     missing: list[str]
+
+
+class InvalidSyncPayloadResponse(ApiError):
+    code: Literal["invalid_sync_payload"] = "invalid_sync_payload"
 
 
 class PushRequest(BaseModel):
@@ -81,6 +90,7 @@ def _schema_mismatch_response(server_version: int, client_version: int) -> JSONR
     "/api/sync/push",
     response_model=PushResponse,
     responses={
+        400: {"model": InvalidSyncPayloadResponse},
         409: {"model": SchemaMismatchError | MissingImagesError},
     },
 )
@@ -93,17 +103,20 @@ async def sync_push(
     if body.schema_version != server_schema:
         return _schema_mismatch_response(server_schema, body.schema_version)
 
-    data_dir = request.app.state.data_dir
-    valid_changes: list[SyncChange] = []
     session_ids: set[str] = set()
-    for change in body.changes:
-        valid, derived_sid = validate_inbound_change(change)
-        if valid:
-            valid_changes.append(change)
+    try:
+        for change in body.changes:
+            derived_sid = validate_inbound_change(change)
             if derived_sid is not None:
                 session_ids.add(derived_sid)
+    except InvalidSyncPayloadError as error:
+        return JSONResponse(
+            InvalidSyncPayloadResponse(error=str(error)).model_dump(),
+            status_code=400,
+        )
 
-    image_refs = extract_image_refs(valid_changes)
+    data_dir = request.app.state.data_dir
+    image_refs = extract_image_refs(body.changes)
     missing = await asyncio.to_thread(missing_local_images, data_dir, image_refs)
     if missing:
         return JSONResponse(
@@ -117,31 +130,47 @@ async def sync_push(
     runtimes: RuntimeRegistry = request.app.state.runtimes
     prompt_lock: asyncio.Lock = request.app.state.prompt_lock
     origin_device_id = str(request.state.device_id)
+    prompt_backups: dict[str, bytes | None] = {}
 
-    async with prompt_lock:
-        prompt_hashes: dict[str, str | None] = {}
-        for change in valid_changes:
-            if change.entity == "prompt_override":
-                rel, digest = await asyncio.to_thread(
-                    apply_prompt_change, data_dir, change
+    async def write_winners(winners: list[SyncChange]) -> dict[str, str | None]:
+        hashes, backups = await asyncio.to_thread(
+            apply_prompt_winners_with_rollback, data_dir, winners
+        )
+        prompt_backups.update(backups)
+        return hashes
+
+    async def rollback_winners() -> None:
+        if prompt_backups:
+            await asyncio.to_thread(restore_prompt_backups, data_dir, prompt_backups)
+
+    try:
+        async with prompt_lock:
+            async with AsyncExitStack() as stack:
+                for sid in sorted(session_ids):
+                    await stack.enter_async_context(runtimes.get(sid).lock)
+                busy_sessions = {
+                    sid
+                    for sid in session_ids
+                    if runtimes.get(sid).run is not None
+                    or runtimes.get(sid).compaction is not None
+                }
+                (
+                    accepted,
+                    skipped,
+                    server_seq,
+                    summary,
+                ) = await sync_store.apply_server_push(
+                    body.changes,
+                    origin_device_id=origin_device_id,
+                    busy_sessions=busy_sessions,
+                    on_prompt_winners=write_winners,
+                    on_prompt_rollback=rollback_winners,
                 )
-                prompt_hashes[rel] = digest
-
-        async with AsyncExitStack() as stack:
-            for sid in sorted(session_ids):
-                await stack.enter_async_context(runtimes.get(sid).lock)
-            busy_sessions = {
-                sid
-                for sid in session_ids
-                if runtimes.get(sid).run is not None
-                or runtimes.get(sid).compaction is not None
-            }
-            accepted, skipped, server_seq, summary = await sync_store.apply_server_push(
-                body.changes,
-                origin_device_id=origin_device_id,
-                busy_sessions=busy_sessions,
-                prompt_hashes=prompt_hashes,
-            )
+    except InvalidSyncPayloadError as error:
+        return JSONResponse(
+            InvalidSyncPayloadResponse(error=str(error)).model_dump(),
+            status_code=400,
+        )
 
     notifications: Notifications = request.app.state.notifications
     for sid in sorted(summary.chats_changed):
@@ -193,10 +222,12 @@ async def sync_pull(
 
     prompt_lock: asyncio.Lock = request.app.state.prompt_lock
     async with prompt_lock:
-        current_prompts = await asyncio.to_thread(
-            scan_prompts, request.app.state.data_dir
+        scan = await asyncio.to_thread(scan_prompts, request.app.state.data_dir)
+        await sync_store.sync_prompt_snapshot(
+            scan.files,
+            skipped_all=scan.skipped_all,
+            skipped_paths=scan.skipped_paths,
         )
-        await sync_store.sync_prompt_snapshot(current_prompts)
 
     origin_device_id = str(request.state.device_id)
     changes, latest_seq, has_more = await sync_store.list_changes_since(

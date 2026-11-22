@@ -626,8 +626,8 @@ def test_sync_routes_auth_mode_gating_and_security(tmp_path: Path):
                         "changes": [forged.model_dump(mode="json")],
                     },
                 )
-                assert push_resp.status_code == 200
-                assert push_resp.json()["accepted"] == 0
+                assert push_resp.status_code == 400
+                assert push_resp.json()["code"] == "invalid_sync_payload"
                 assert (
                     await SettingsStore(server_app.state.database).read_file_access()
                 ).folders == []
@@ -802,7 +802,9 @@ def test_symlinked_prompts_root_is_rejected_and_graph_source_update_keeps_usage(
         fake_data = tmp_path / "fake_data"
         fake_data.mkdir()
         (fake_data / "prompts").symlink_to(outside)
-        assert scan_prompts(fake_data) == {}
+        scan = scan_prompts(fake_data)
+        assert scan.skipped_all is True
+        assert scan.files == {}
         with pytest.raises(ValueError):
             apply_prompt_change(
                 fake_data,
@@ -855,5 +857,167 @@ def test_symlinked_prompts_root_is_rejected_and_graph_source_update_keeps_usage(
                 ledger.sources[0].file_path = "/notes/renamed.md"
             await laptop_app.state.sync_service.sync_now()
             assert len(await s_usage.list("src-1")) == 1
+
+    asyncio.run(run())
+
+
+def test_round2_prompt_replay_recreated_position_visual_blob_and_ownership(
+    tmp_path: Path,
+):
+    from verstehen.jobs.contracts import VisualImage, VisualResult
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            l_db = laptop_app.state.database
+            s_db = server_app.state.database
+            l_graph = GraphStore(l_db)
+            s_graph = GraphStore(s_db)
+
+            # #2: Create, delete, and recreate a graph position before configuring sync.
+            async with l_graph.transaction() as ledger:
+                ledger.positions["n-pos"] = Position(x=1.0, y=2.0)
+            async with l_graph.transaction() as ledger:
+                del ledger.positions["n-pos"]
+            async with l_graph.transaction() as ledger:
+                ledger.positions["n-pos"] = Position(x=9.0, y=10.0)
+
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            await laptop_app.state.sync_service.sync_now()
+            assert (await s_graph.read()).positions["n-pos"] == Position(x=9.0, y=10.0)
+            assert (await l_graph.read()).positions["n-pos"] == Position(x=9.0, y=10.0)
+
+            # #7: Replaying an acknowledged prompt push must NOT overwrite a newer server edit.
+            l_prompt = laptop_app.state.data_dir / "prompts" / "teacher" / "custom.md"
+            l_prompt.parent.mkdir(parents=True, exist_ok=True)
+            l_prompt.write_text("v1 from laptop", encoding="utf-8")
+            await laptop_app.state.sync_service.sync_now()
+            s_prompt = server_app.state.data_dir / "prompts" / "teacher" / "custom.md"
+            assert s_prompt.read_text(encoding="utf-8") == "v1 from laptop"
+
+            # Newer edit on server.
+            s_prompt.write_text("v2 from server", encoding="utf-8")
+            # Replay the old laptop prompt push directly.
+            async with l_db.read() as conn:
+                async with conn.execute(
+                    "SELECT change_seq, entity, op, entity_id, session_id, payload, "
+                    "origin_device_id, origin_seq, created_at FROM sync_log "
+                    "WHERE entity = 'prompt_override' ORDER BY change_seq DESC LIMIT 1"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    assert row is not None
+            old_prompt_change = SyncChange(
+                change_seq=int(row[0]),
+                entity=str(row[1]),
+                op=row[2],
+                entity_id=str(row[3]),
+                session_id=row[4],
+                payload=json.loads(row[5]),
+                origin_device_id=str(row[6]),
+                origin_seq=int(row[7]),
+                created_at=str(row[8]),
+            )
+            schema = await server_app.state.sync_store.schema_version()
+            async with httpx2.AsyncClient(
+                transport=httpx2.ASGITransport(app=server_app),
+                base_url="http://127.0.0.1",
+            ) as s_client:
+                replay = await s_client.post(
+                    "/api/sync/push",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "device_id": "laptop",
+                        "schema_version": schema,
+                        "changes": [old_prompt_change.model_dump(mode="json")],
+                    },
+                )
+                assert replay.status_code == 200
+                assert replay.json()["accepted"] == 0
+                assert s_prompt.read_text(encoding="utf-8") == "v2 from server"
+
+                # #6: Visual job result referencing a missing snapshot_id must be blocked with 409.
+                s1 = await SessionsStore(s_db).create("Visual S1")
+                s2 = await SessionsStore(s_db).create("Other S2")
+                missing_snap = "b" * 64
+                visual_result = VisualResult(
+                    svg="<svg/>",
+                    image=VisualImage(
+                        path="/tmp/a.png", snapshot_id=missing_snap, extension="png"
+                    ),
+                )
+                visual_job_change = SyncChange(
+                    change_seq=10,
+                    entity="job",
+                    op="upsert",
+                    entity_id="job-vis-1",
+                    session_id=s1.id,
+                    payload={
+                        "id": "job-vis-1",
+                        "session_id": s1.id,
+                        "kind": "visual",
+                        "tool_call_id": "tc-vis-1",
+                        "input": {"brief": "draw"},
+                        "status": "done",
+                        "activity": "done",
+                        "result": visual_result.model_dump(mode="json"),
+                        "error": None,
+                        "delivery_kind": "result",
+                        "delivery_status": "delivered",
+                        "usage": None,
+                        "created_at": "2026-11-22T00:00:00Z",
+                        "updated_at": "2026-11-22T00:00:00Z",
+                        "owner_device_id": "dev",
+                    },
+                    origin_device_id="dev",
+                    origin_seq=500,
+                    created_at="2026-11-22T00:00:00Z",
+                )
+                vis_resp = await s_client.post(
+                    "/api/sync/push",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "device_id": "laptop",
+                        "schema_version": schema,
+                        "changes": [visual_job_change.model_dump(mode="json")],
+                    },
+                )
+                assert vis_resp.status_code == 409
+                assert vis_resp.json()["code"] == "missing_images"
+
+                # #9: side_exchange referencing a thread owned by a different session is rejected with 400.
+                await SideChatsStore(s_db).append(
+                    s1.id,
+                    SideThread(id="th-s1", anchor=SideAnchor(entry_id="e1")),
+                    None,
+                )
+                cross_ex = SyncChange(
+                    change_seq=11,
+                    entity="side_exchange",
+                    op="upsert",
+                    entity_id="th-s1:ex-bad",
+                    session_id=s2.id,
+                    payload={
+                        "id": "ex-bad",
+                        "thread_id": "th-s1",
+                        "session_id": s2.id,
+                        "role": "user",
+                        "text": "cross-session injection",
+                        "quotes": [],
+                        "created_at": "2026-11-22T00:00:00Z",
+                    },
+                    origin_device_id="dev",
+                    origin_seq=501,
+                    created_at="2026-11-22T00:00:00Z",
+                )
+                cross_resp = await s_client.post(
+                    "/api/sync/push",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "device_id": "laptop",
+                        "schema_version": schema,
+                        "changes": [cross_ex.model_dump(mode="json")],
+                    },
+                )
+                assert cross_resp.status_code == 400
+                assert cross_resp.json()["code"] == "invalid_sync_payload"
 
     asyncio.run(run())

@@ -1,4 +1,5 @@
 import json
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Any, Literal
@@ -9,7 +10,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from verstehen.store.database import Database
 from verstehen.store.entries import ENTRY, MarkerEntry, delivered_job_id
-from verstehen.store.jobs import mark_delivered
+from verstehen.store.jobs import JobKind, mark_delivered
 from verstehen.store.sync_log import (
     GRAPH_LEDGER_TABLES,
     SYNCED_SETTINGS_KEYS,
@@ -54,6 +55,10 @@ SYNCABLE_ENTITIES = frozenset(
 )
 
 
+class InvalidSyncPayloadError(ValueError):
+    """Raised when an inbound sync change fails typed validation or ownership checks."""
+
+
 class SyncState(BaseModel):
     device_id: str
     server_url: str | None = None
@@ -94,6 +99,103 @@ class ApplySummary(BaseModel):
     prompt_changes: list[SyncChange] = Field(default_factory=list)
 
 
+class _SessionUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    kind: Literal["teach"] = "teach"
+    created_at: str = Field(min_length=1)
+    updated_at: str = Field(min_length=1)
+    model_account: str | None = None
+    model_id: str | None = None
+    thinking_level: str | None = None
+
+
+class _EntryUpsertPayload(BaseModel):
+    session_id: str = Field(min_length=1)
+    entry_id: str = Field(min_length=1)
+    kind: Literal["user", "assistant", "tool_result", "marker"]
+    payload: dict[str, Any]
+    created_at: str = Field(min_length=1)
+
+
+class _SideThreadUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    anchor: dict[str, Any] | str
+    created_at: str = Field(min_length=1)
+
+
+class _SideExchangeUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    thread_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    role: Literal["user", "assistant"]
+    text: str
+    quotes: list[str] | str = Field(default_factory=list)
+    model: str | None = None
+    request_id: str | None = None
+    stopped: bool = False
+    error: str | None = None
+    created_at: str = Field(min_length=1)
+
+
+class _JobUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    kind: JobKind
+    tool_call_id: str = Field(min_length=1)
+    input: Any
+    status: Literal["done", "error"]
+    activity: str
+    result: Any = None
+    error: str | None = None
+    delivery_kind: Literal["result", "abort", "failure"] | None = None
+    delivery_status: Literal["pending", "delivered"] | None = None
+    usage: Any = None
+    created_at: str = Field(min_length=1)
+    updated_at: str = Field(min_length=1)
+    owner_device_id: str | None = None
+
+
+class _ArtifactViewUpsertPayload(BaseModel):
+    entry_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    inverted: bool
+    updated_at: str | None = None
+
+
+class _UsageUpsertPayload(BaseModel):
+    request_id: str = Field(min_length=1)
+    session_id: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    account: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    input_tokens: int
+    output_tokens: int
+    cache_read_tokens: int
+    cache_write_tokens: int
+    reasoning_tokens: int
+    created_at: str = Field(min_length=1)
+
+
+class _GraphPositionUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    x: float
+    y: float
+    updated_at: str | None = None
+
+
+class _GraphPlacementUpsertPayload(BaseModel):
+    id: str = Field(min_length=1)
+    payload: dict[str, Any] | str
+    updated_at: str | None = None
+
+
+class _GraphLedgerUpsertPayload(BaseModel):
+    sync_id: str = Field(min_length=1)
+    payload: dict[str, Any] | str
+
+
 def _valid_prompt_path(raw: str) -> bool:
     if not raw or "\0" in raw or "\\" in raw or raw.startswith("/"):
         return False
@@ -103,63 +205,87 @@ def _valid_prompt_path(raw: str) -> bool:
     return pure.suffix == ".md"
 
 
-def validate_inbound_change(change: SyncChange) -> tuple[bool, str | None]:
-    """Validate an inbound change against the sync allowlist and derive its session scope."""
+def validate_inbound_change(change: SyncChange) -> str | None:
+    """Validate an inbound change strictly and return its derived session_id (or raise)."""
     entity = change.entity
     op = change.op
     payload = change.payload
     if entity not in SYNCABLE_ENTITIES:
-        return False, None
-    if entity == "session":
-        sid = payload.get("id", change.entity_id)
-        if not isinstance(sid, str) or not sid:
-            return False, None
-        if op == "upsert" and not all(
-            isinstance(payload.get(k), str)
-            for k in ("title", "created_at", "updated_at")
-        ):
-            return False, None
-        return True, sid
-    if entity == "entry":
-        if op != "upsert":
-            return False, None
-        sid = payload.get("session_id")
-        if not isinstance(sid, str) or not sid or "payload" not in payload:
-            return False, None
-        try:
-            ENTRY.validate_python(payload["payload"])
-        except ValidationError:
-            return False, None
-        return True, sid
-    if entity in ("side_thread", "side_exchange", "artifact_view", "usage"):
-        if op != "upsert":
-            return False, None
-        sid = payload.get("session_id")
-        if not isinstance(sid, str) or not sid:
-            return False, None
-        return True, sid
-    if entity == "job":
-        if op != "upsert" or payload.get("status") not in ("done", "error"):
-            return False, None
-        sid = payload.get("session_id")
-        if not isinstance(sid, str) or not sid:
-            return False, None
-        return True, sid
-    if entity == "setting":
-        key = str(payload.get("key", change.entity_id))
-        if key not in SYNCED_SETTINGS_KEYS:
-            return False, None
-        if op == "upsert" and "value" not in payload:
-            return False, None
-        return True, None
-    if entity == "prompt_override":
-        raw_path = str(payload.get("path", change.entity_id))
-        if not _valid_prompt_path(raw_path):
-            return False, None
-        if op == "upsert" and not isinstance(payload.get("content"), str):
-            return False, None
-        return True, None
-    return True, None
+        raise InvalidSyncPayloadError(f"Unsupported sync entity: {entity!r}")
+    try:
+        if entity == "session":
+            if op == "delete":
+                sid = payload.get("id", change.entity_id)
+                if not isinstance(sid, str) or not sid:
+                    raise InvalidSyncPayloadError("Session delete requires id.")
+                return sid
+            parsed = _SessionUpsertPayload.model_validate(payload)
+            return parsed.id
+        if entity == "entry":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("Entry only supports upsert.")
+            parsed = _EntryUpsertPayload.model_validate(payload)
+            ENTRY.validate_python(parsed.payload)
+            return parsed.session_id
+        if entity == "side_thread":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("side_thread only supports upsert.")
+            return _SideThreadUpsertPayload.model_validate(payload).session_id
+        if entity == "side_exchange":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("side_exchange only supports upsert.")
+            return _SideExchangeUpsertPayload.model_validate(payload).session_id
+        if entity == "job":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("job only supports upsert.")
+            return _JobUpsertPayload.model_validate(payload).session_id
+        if entity == "artifact_view":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("artifact_view only supports upsert.")
+            return _ArtifactViewUpsertPayload.model_validate(payload).session_id
+        if entity == "usage":
+            if op != "upsert":
+                raise InvalidSyncPayloadError("usage only supports upsert.")
+            return _UsageUpsertPayload.model_validate(payload).session_id
+        if entity == "setting":
+            key = str(payload.get("key", change.entity_id))
+            if key not in SYNCED_SETTINGS_KEYS:
+                raise InvalidSyncPayloadError(f"Setting {key!r} is not syncable.")
+            if op == "upsert" and "value" not in payload:
+                raise InvalidSyncPayloadError(f"Setting {key!r} upsert requires value.")
+            return None
+        if entity == "prompt_override":
+            raw_path = str(payload.get("path", change.entity_id))
+            if not _valid_prompt_path(raw_path):
+                raise InvalidSyncPayloadError(f"Invalid prompt path: {raw_path!r}")
+            if op == "upsert" and not isinstance(payload.get("content"), str):
+                raise InvalidSyncPayloadError("Prompt upsert requires string content.")
+            return None
+        if entity == "graph_position":
+            if op == "upsert":
+                _GraphPositionUpsertPayload.model_validate(payload)
+            elif not isinstance(payload.get("id", change.entity_id), str):
+                raise InvalidSyncPayloadError("graph_position delete requires id.")
+            return None
+        if entity == "graph_source_placement":
+            if op == "upsert":
+                _GraphPlacementUpsertPayload.model_validate(payload)
+            elif not isinstance(payload.get("id", change.entity_id), str):
+                raise InvalidSyncPayloadError(
+                    "graph_source_placement delete requires id."
+                )
+            return None
+        if entity in GRAPH_LEDGER_TABLES:
+            if op == "upsert":
+                _GraphLedgerUpsertPayload.model_validate(payload)
+            elif not isinstance(payload.get("sync_id", change.entity_id), str):
+                raise InvalidSyncPayloadError(f"{entity} delete requires sync_id.")
+            return None
+    except ValidationError as error:
+        raise InvalidSyncPayloadError(
+            f"Invalid payload for {entity}: {error.errors()[0]['msg']}"
+        ) from error
+    return None
 
 
 async def get_schema_version(connection: Connection) -> int:
@@ -208,6 +334,8 @@ async def _apply_one(
     change: SyncChange,
     server_seq: int,
     summary: ApplySummary,
+    *,
+    strict_ownership: bool = False,
 ) -> bool:
     entity = change.entity
     op = change.op
@@ -322,6 +450,16 @@ async def _apply_one(
         if sid and await is_tombstoned(connection, "session", sid):
             return False
         thread_id = str(payload["thread_id"])
+        async with connection.execute(
+            "SELECT session_id FROM side_threads WHERE id = ?", (thread_id,)
+        ) as cursor:
+            owner_row = await cursor.fetchone()
+        if owner_row is None or (sid and str(owner_row[0]) != sid):
+            if strict_ownership:
+                raise InvalidSyncPayloadError(
+                    f"side_thread {thread_id!r} does not belong to session {sid!r}."
+                )
+            return False
         quotes = payload.get("quotes", [])
         cursor = await connection.execute(
             "INSERT INTO side_exchanges "
@@ -514,14 +652,9 @@ async def _apply_one(
 
     if entity == "graph_source_placement":
         pid = str(payload.get("id", change.entity_id))
+        if not await _should_apply_lww(connection, entity, pid, server_seq):
+            return False
         if op == "delete":
-            await record_tombstone(
-                connection,
-                entity=entity,
-                entity_id=pid,
-                origin_device_id=change.origin_device_id,
-                deleted_at=change.created_at,
-            )
             cursor = await connection.execute(
                 "DELETE FROM graph_source_placements WHERE id = ?", (pid,)
             )
@@ -530,8 +663,6 @@ async def _apply_one(
             if deleted:
                 summary.graph_revision = 0
             return deleted
-        if not await _should_apply_lww(connection, entity, pid, server_seq):
-            return False
         row_payload = payload["payload"]
         encoded = (
             row_payload
@@ -548,14 +679,9 @@ async def _apply_one(
 
     if entity == "graph_position":
         pid = str(payload.get("id", change.entity_id))
+        if not await _should_apply_lww(connection, entity, pid, server_seq):
+            return False
         if op == "delete":
-            await record_tombstone(
-                connection,
-                entity=entity,
-                entity_id=pid,
-                origin_device_id=change.origin_device_id,
-                deleted_at=change.created_at,
-            )
             cursor = await connection.execute(
                 "DELETE FROM graph_positions WHERE id = ?", (pid,)
             )
@@ -564,8 +690,6 @@ async def _apply_one(
             if deleted:
                 summary.graph_revision = 0
             return deleted
-        if not await _should_apply_lww(connection, entity, pid, server_seq):
-            return False
         await connection.execute(
             "INSERT INTO graph_positions (id, x, y, updated_at) VALUES (?, ?, ?, ?) "
             "ON CONFLICT(id) DO UPDATE SET x = excluded.x, y = excluded.y, updated_at = excluded.updated_at",
@@ -921,15 +1045,18 @@ async def _fork_session_in_transaction(
                 origin_device_id=device_id,
             )
 
-    # Strip unpushed local session-scoped rows from the original session and its pending log.
+    # Strip unpushed local session-scoped rows from the original session and move usage to fork.
     async with connection.execute(
         "SELECT entity, entity_id FROM sync_log "
         "WHERE pushed = 0 AND session_id = ? AND origin_device_id = ?",
         (session_id, device_id),
     ) as cursor:
         unpushed_rows = [(str(r[0]), str(r[1])) for r in await cursor.fetchall()]
+    had_unpushed_session_meta = False
     for entity, entity_id in unpushed_rows:
-        if entity == "entry":
+        if entity == "session":
+            had_unpushed_session_meta = True
+        elif entity == "entry":
             await connection.execute(
                 "DELETE FROM entries WHERE session_id = ? AND entry_id = ?",
                 (session_id, entity_id),
@@ -955,11 +1082,72 @@ async def _fork_session_in_transaction(
                 "DELETE FROM artifact_views WHERE session_id = ? AND entry_id = ?",
                 (session_id, entity_id),
             )
+        elif entity == "usage":
+            async with connection.execute(
+                "SELECT request_id, role, account, model, input_tokens, output_tokens, "
+                "cache_read_tokens, cache_write_tokens, reasoning_tokens, created_at "
+                "FROM usage WHERE request_id = ? AND session_id = ?",
+                (entity_id, session_id),
+            ) as u_cursor:
+                u_row = await u_cursor.fetchone()
+            if u_row is not None:
+                await connection.execute(
+                    "UPDATE usage SET session_id = ? WHERE request_id = ?",
+                    (fork_id, entity_id),
+                )
+                await append_sync_log(
+                    connection,
+                    entity="usage",
+                    op="upsert",
+                    entity_id=str(u_row[0]),
+                    session_id=fork_id,
+                    payload={
+                        "request_id": u_row[0],
+                        "session_id": fork_id,
+                        "role": u_row[1],
+                        "account": u_row[2],
+                        "model": u_row[3],
+                        "input_tokens": int(u_row[4]),
+                        "output_tokens": int(u_row[5]),
+                        "cache_read_tokens": int(u_row[6]),
+                        "cache_write_tokens": int(u_row[7]),
+                        "reasoning_tokens": int(u_row[8]),
+                        "created_at": u_row[9],
+                    },
+                    origin_device_id=device_id,
+                )
+
+    if had_unpushed_session_meta:
+        async with connection.execute(
+            "SELECT payload FROM sync_log "
+            "WHERE pushed = 1 AND entity = 'session' AND op = 'upsert' AND entity_id = ? "
+            "ORDER BY change_seq DESC LIMIT 1",
+            (session_id,),
+        ) as prev_cursor:
+            prev_row = await prev_cursor.fetchone()
+        if prev_row is not None:
+            prev_meta = json.loads(prev_row[0])
+            await connection.execute(
+                "UPDATE sessions SET title = ?, model_account = ?, model_id = ?, thinking_level = ? "
+                "WHERE id = ?",
+                (
+                    prev_meta["title"],
+                    prev_meta.get("model_account"),
+                    prev_meta.get("model_id"),
+                    prev_meta.get("thinking_level"),
+                    session_id,
+                ),
+            )
+
     await connection.execute(
         "DELETE FROM sync_log WHERE pushed = 0 AND session_id = ? AND origin_device_id = ?",
         (session_id, device_id),
     )
     return fork_id
+
+
+PromptApplyHook = Callable[[list[SyncChange]], Awaitable[dict[str, str | None]]]
+PromptRollbackHook = Callable[[], Awaitable[None]]
 
 
 class SyncStore:
@@ -1062,16 +1250,34 @@ class SyncStore:
                 assert row is not None
                 return int(row[0])
 
-    async def list_pending_push(self, *, limit: int = 500) -> list[SyncChange]:
+    async def list_pending_push(
+        self,
+        *,
+        exclude_sessions: set[str] | None = None,
+        limit: int = 500,
+    ) -> list[SyncChange]:
         async with self.database.read() as connection:
             device_id = await local_device_id(connection)
-            async with connection.execute(
-                "SELECT change_seq, entity, op, entity_id, session_id, payload, "
-                "origin_device_id, origin_seq, created_at FROM sync_log "
-                "WHERE pushed = 0 AND origin_device_id = ? "
-                "ORDER BY change_seq ASC LIMIT ?",
-                (device_id, limit),
-            ) as cursor:
+            excluded = sorted(exclude_sessions or ())
+            if excluded:
+                placeholders = ", ".join("?" for _ in excluded)
+                query = (
+                    "SELECT change_seq, entity, op, entity_id, session_id, payload, "
+                    "origin_device_id, origin_seq, created_at FROM sync_log "
+                    f"WHERE pushed = 0 AND origin_device_id = ? "
+                    f"AND (session_id IS NULL OR session_id NOT IN ({placeholders})) "
+                    "ORDER BY change_seq ASC LIMIT ?"
+                )
+                params: tuple[object, ...] = (device_id, *excluded, limit)
+            else:
+                query = (
+                    "SELECT change_seq, entity, op, entity_id, session_id, payload, "
+                    "origin_device_id, origin_seq, created_at FROM sync_log "
+                    "WHERE pushed = 0 AND origin_device_id = ? "
+                    "ORDER BY change_seq ASC LIMIT ?"
+                )
+                params = (device_id, limit)
+            async with connection.execute(query, params) as cursor:
                 return [_change_from_row(tuple(row)) for row in await cursor.fetchall()]
 
     async def mark_pushed_and_reconcile(
@@ -1079,33 +1285,50 @@ class SyncStore:
         pushed_changes: list[SyncChange],
         accepted: list[AcceptedChange],
         *,
-        prompt_hashes: dict[str, str | None] | None = None,
+        on_prompt_winners: PromptApplyHook | None = None,
+        on_prompt_rollback: PromptRollbackHook | None = None,
     ) -> ApplySummary:
-        """Mark accepted changes pushed and reconcile LWW rows with server_seq."""
+        """Mark accepted changes pushed, reconcile LWW rows, and hold watermark before gaps."""
         summary = ApplySummary()
         by_origin_seq = {item.origin_seq: item.server_seq for item in accepted}
-        async with self.database.transaction() as connection:
-            for change in pushed_changes:
-                server_seq = by_origin_seq.get(change.origin_seq)
-                if server_seq is None:
-                    continue
+        prompts_written = False
+        try:
+            async with self.database.transaction() as connection:
+                for change in pushed_changes:
+                    server_seq = by_origin_seq.get(change.origin_seq)
+                    if server_seq is None:
+                        continue
+                    await connection.execute(
+                        "UPDATE sync_log SET pushed = 1 WHERE change_seq = ?",
+                        (change.change_seq,),
+                    )
+                    if change.entity in LWW_ENTITIES:
+                        await _apply_one(connection, change, server_seq, summary)
+                if summary.prompt_changes and on_prompt_winners is not None:
+                    hashes = await on_prompt_winners(summary.prompt_changes)
+                    prompts_written = True
+                    await _write_prompt_hashes(connection, hashes)
+                async with connection.execute(
+                    "SELECT MIN(change_seq) FROM sync_log WHERE pushed = 0"
+                ) as cursor:
+                    gap_row = await cursor.fetchone()
+                if gap_row is not None and gap_row[0] is not None:
+                    watermark = max(0, int(gap_row[0]) - 1)
+                else:
+                    async with connection.execute(
+                        "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log WHERE pushed = 1"
+                    ) as cursor:
+                        max_row = await cursor.fetchone()
+                        assert max_row is not None
+                        watermark = int(max_row[0])
                 await connection.execute(
-                    "UPDATE sync_log SET pushed = 1 WHERE change_seq = ?",
-                    (change.change_seq,),
+                    "UPDATE sync_state SET last_pushed_seq = ? WHERE id = 1",
+                    (watermark,),
                 )
-                if change.entity in LWW_ENTITIES:
-                    await _apply_one(connection, change, server_seq, summary)
-            await _write_prompt_hashes(connection, prompt_hashes)
-            async with connection.execute(
-                "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log WHERE pushed = 1"
-            ) as cursor:
-                row = await cursor.fetchone()
-                assert row is not None
-                max_pushed = int(row[0])
-            await connection.execute(
-                "UPDATE sync_state SET last_pushed_seq = ? WHERE id = 1",
-                (max_pushed,),
-            )
+        except BaseException:
+            if prompts_written and on_prompt_rollback is not None:
+                await on_prompt_rollback()
+            raise
         return summary
 
     async def list_changes_since(
@@ -1150,69 +1373,85 @@ class SyncStore:
         *,
         origin_device_id: str,
         busy_sessions: set[str] | None = None,
-        prompt_hashes: dict[str, str | None] | None = None,
+        on_prompt_winners: PromptApplyHook | None = None,
+        on_prompt_rollback: PromptRollbackHook | None = None,
     ) -> tuple[int, int, int, ApplySummary]:
         """Validate and apply pushed changes on the server idempotently."""
         summary = ApplySummary()
         busy = busy_sessions or set()
         deferred_seen: set[str] = set()
-        async with self.database.transaction() as connection:
-            for change in changes:
-                valid, derived_sid = validate_inbound_change(change)
-                if not valid:
-                    summary.skipped += 1
-                    continue
-                if derived_sid is not None and derived_sid in busy:
-                    deferred_seen.add(derived_sid)
-                    continue
-                async with connection.execute(
-                    "SELECT change_seq FROM sync_log WHERE origin_device_id = ? AND origin_seq = ?",
-                    (origin_device_id, change.origin_seq),
-                ) as cursor:
-                    existing = await cursor.fetchone()
-                if existing is not None:
-                    summary.skipped += 1
+        prompts_written = False
+        try:
+            async with self.database.transaction() as connection:
+                for change in changes:
+                    derived_sid = validate_inbound_change(change)
+                    if derived_sid is not None and derived_sid in busy:
+                        deferred_seen.add(derived_sid)
+                        continue
+                    async with connection.execute(
+                        "SELECT change_seq FROM sync_log WHERE origin_device_id = ? AND origin_seq = ?",
+                        (origin_device_id, change.origin_seq),
+                    ) as cursor:
+                        existing = await cursor.fetchone()
+                    if existing is not None:
+                        summary.skipped += 1
+                        summary.accepted_changes.append(
+                            AcceptedChange(
+                                origin_seq=change.origin_seq,
+                                server_seq=int(existing[0]),
+                            )
+                        )
+                        continue
+                    bound = change.model_copy(
+                        update={
+                            "origin_device_id": origin_device_id,
+                            "session_id": derived_sid,
+                        }
+                    )
+                    server_seq = await append_sync_log(
+                        connection,
+                        entity=bound.entity,
+                        op=bound.op,
+                        entity_id=bound.entity_id,
+                        session_id=derived_sid,
+                        payload=bound.payload,
+                        origin_device_id=origin_device_id,
+                        origin_seq=bound.origin_seq,
+                        created_at=bound.created_at,
+                    )
+                    applied = await _apply_one(
+                        connection,
+                        bound,
+                        server_seq,
+                        summary,
+                        strict_ownership=True,
+                    )
                     summary.accepted_changes.append(
                         AcceptedChange(
-                            origin_seq=change.origin_seq, server_seq=int(existing[0])
+                            origin_seq=bound.origin_seq, server_seq=server_seq
                         )
                     )
-                    continue
-                bound = change.model_copy(
-                    update={
-                        "origin_device_id": origin_device_id,
-                        "session_id": derived_sid,
-                    }
-                )
-                server_seq = await append_sync_log(
-                    connection,
-                    entity=bound.entity,
-                    op=bound.op,
-                    entity_id=bound.entity_id,
-                    session_id=derived_sid,
-                    payload=bound.payload,
-                    origin_device_id=origin_device_id,
-                    origin_seq=bound.origin_seq,
-                    created_at=bound.created_at,
-                )
-                applied = await _apply_one(connection, bound, server_seq, summary)
-                summary.accepted_changes.append(
-                    AcceptedChange(origin_seq=bound.origin_seq, server_seq=server_seq)
-                )
-                if applied:
-                    summary.applied += 1
-                    self.database.mark_sync_dirty()
-                else:
-                    summary.skipped += 1
-            await _write_prompt_hashes(connection, prompt_hashes)
-            if summary.graph_revision is not None:
-                summary.graph_revision = await _bump_graph_revision(connection)
-            async with connection.execute(
-                "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log"
-            ) as cursor:
-                row = await cursor.fetchone()
-                assert row is not None
-                latest_seq = int(row[0])
+                    if applied:
+                        summary.applied += 1
+                        self.database.mark_sync_dirty()
+                    else:
+                        summary.skipped += 1
+                if summary.prompt_changes and on_prompt_winners is not None:
+                    hashes = await on_prompt_winners(summary.prompt_changes)
+                    prompts_written = True
+                    await _write_prompt_hashes(connection, hashes)
+                if summary.graph_revision is not None:
+                    summary.graph_revision = await _bump_graph_revision(connection)
+                async with connection.execute(
+                    "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log"
+                ) as cursor:
+                    row = await cursor.fetchone()
+                    assert row is not None
+                    latest_seq = int(row[0])
+        except BaseException:
+            if prompts_written and on_prompt_rollback is not None:
+                await on_prompt_rollback()
+            raise
         summary.deferred_session_ids = sorted(deferred_seen)
         return summary.applied, summary.skipped, latest_seq, summary
 
@@ -1234,7 +1473,6 @@ class SyncStore:
                 if await cursor.fetchone() is not None:
                     return 0
 
-            # Preserve any post-migration local deletes so they replay after the baseline.
             async with connection.execute(
                 "SELECT entity, op, entity_id, session_id, payload, created_at "
                 "FROM sync_log WHERE origin_device_id = ? AND op = 'delete' ORDER BY change_seq",
@@ -1246,6 +1484,8 @@ class SyncStore:
                 "DELETE FROM sync_log WHERE origin_device_id = ? AND pushed = 0",
                 (device_id,),
             )
+
+            live_keys: set[tuple[str, str]] = set()
 
             async def log_row(
                 *,
@@ -1264,6 +1504,7 @@ class SyncStore:
                     payload=payload,
                     origin_device_id=device_id,
                 )
+                live_keys.add((entity, entity_id))
                 added += 1
 
             async with connection.execute(
@@ -1491,7 +1732,10 @@ class SyncStore:
                         },
                     )
 
+            # Retain only deletes for entities absent from the live baseline.
             for entity, op, entity_id, sid, raw_payload, created_at in saved_deletes:
+                if (str(entity), str(entity_id)) in live_keys:
+                    continue
                 await append_sync_log(
                     connection,
                     entity=str(entity),
@@ -1514,84 +1758,102 @@ class SyncStore:
         *,
         advance_pulled_seq: int | None = None,
         allow_fork: bool = True,
-        prompt_hashes: dict[str, str | None] | None = None,
+        on_prompt_winners: PromptApplyHook | None = None,
+        on_prompt_rollback: PromptRollbackHook | None = None,
     ) -> ApplySummary:
         """Apply remote changes on the laptop in one transaction with fork-on-conflict."""
         summary = ApplySummary()
-        async with self.database.transaction() as connection:
-            device_id = await local_device_id(connection)
+        prompts_written = False
+        try:
+            async with self.database.transaction() as connection:
+                device_id = await local_device_id(connection)
 
-            deleted_sessions = {
-                str(c.payload.get("id", c.entity_id))
-                for c in changes
-                if c.entity == "session"
-                and c.op == "delete"
-                and c.origin_device_id != device_id
-            }
-
-            if allow_fork:
-                remote_entry_sessions = {
-                    str(c.payload["session_id"])
+                deleted_sessions = {
+                    str(c.payload.get("id", c.entity_id))
                     for c in changes
-                    if c.entity == "entry"
-                    and c.op == "upsert"
+                    if c.entity == "session"
+                    and c.op == "delete"
                     and c.origin_device_id != device_id
                 }
-                conflict_candidates = sorted(remote_entry_sessions | deleted_sessions)
-                for sid in conflict_candidates:
-                    async with connection.execute(
-                        "SELECT 1 FROM sync_log "
-                        "WHERE pushed = 0 AND session_id = ? AND entity = 'entry' "
-                        "AND origin_device_id = ? LIMIT 1",
-                        (sid, device_id),
-                    ) as cursor:
-                        has_unpushed = await cursor.fetchone() is not None
-                    if not has_unpushed:
-                        continue
-                    fork_id = await _fork_session_in_transaction(
-                        connection, sid, device_id
+
+                if allow_fork:
+                    remote_entry_sessions = {
+                        str(c.payload["session_id"])
+                        for c in changes
+                        if c.entity == "entry"
+                        and c.op == "upsert"
+                        and c.origin_device_id != device_id
+                    }
+                    conflict_candidates = sorted(
+                        remote_entry_sessions | deleted_sessions
                     )
-                    if fork_id is not None:
-                        summary.forked_sessions.append(fork_id)
-                        summary.chats_changed.add(fork_id)
-                        self.database.mark_sync_dirty()
+                    for sid in conflict_candidates:
+                        async with connection.execute(
+                            "SELECT 1 FROM sync_log "
+                            "WHERE pushed = 0 AND session_id = ? AND entity = 'entry' "
+                            "AND origin_device_id = ? LIMIT 1",
+                            (sid, device_id),
+                        ) as cursor:
+                            has_unpushed = await cursor.fetchone() is not None
+                        if not has_unpushed:
+                            continue
+                        fork_id = await _fork_session_in_transaction(
+                            connection, sid, device_id
+                        )
+                        if fork_id is not None:
+                            summary.forked_sessions.append(fork_id)
+                            summary.chats_changed.add(fork_id)
+                            self.database.mark_sync_dirty()
 
-            for sid in deleted_sessions:
-                await connection.execute(
-                    "DELETE FROM sync_log "
-                    "WHERE pushed = 0 AND session_id = ? AND origin_device_id = ?",
-                    (sid, device_id),
-                )
+                for sid in deleted_sessions:
+                    await connection.execute(
+                        "DELETE FROM sync_log "
+                        "WHERE pushed = 0 AND session_id = ? AND origin_device_id = ?",
+                        (sid, device_id),
+                    )
 
-            for change in changes:
-                if change.origin_device_id == device_id:
-                    summary.skipped += 1
-                    continue
-                applied = await _apply_one(
-                    connection, change, change.change_seq, summary
-                )
-                if applied:
-                    summary.applied += 1
-                else:
-                    summary.skipped += 1
+                for change in changes:
+                    if change.origin_device_id == device_id:
+                        summary.skipped += 1
+                        continue
+                    applied = await _apply_one(
+                        connection, change, change.change_seq, summary
+                    )
+                    if applied:
+                        summary.applied += 1
+                    else:
+                        summary.skipped += 1
 
-            await _write_prompt_hashes(connection, prompt_hashes)
+                if summary.prompt_changes and on_prompt_winners is not None:
+                    hashes = await on_prompt_winners(summary.prompt_changes)
+                    prompts_written = True
+                    await _write_prompt_hashes(connection, hashes)
 
-            if summary.graph_revision is not None:
-                summary.graph_revision = await _bump_graph_revision(connection)
+                if summary.graph_revision is not None:
+                    summary.graph_revision = await _bump_graph_revision(connection)
 
-            if advance_pulled_seq is not None:
-                await connection.execute(
-                    "UPDATE sync_state SET last_pulled_seq = ? "
-                    "WHERE id = 1 AND last_pulled_seq < ?",
-                    (advance_pulled_seq, advance_pulled_seq),
-                )
+                if advance_pulled_seq is not None:
+                    await connection.execute(
+                        "UPDATE sync_state SET last_pulled_seq = ? "
+                        "WHERE id = 1 AND last_pulled_seq < ?",
+                        (advance_pulled_seq, advance_pulled_seq),
+                    )
+        except BaseException:
+            if prompts_written and on_prompt_rollback is not None:
+                await on_prompt_rollback()
+            raise
         return summary
 
     async def sync_prompt_snapshot(
-        self, current: dict[str, tuple[str, str]]
+        self,
+        current: dict[str, tuple[str, str]],
+        *,
+        skipped_all: bool = False,
+        skipped_paths: frozenset[str] = frozenset(),
     ) -> list[str]:
-        """Diff on-disk prompt overrides against sync_prompt_state and log local changes."""
+        """Diff confirmed on-disk prompt overrides against sync_prompt_state."""
+        if skipped_all:
+            return []
         changed: list[str] = []
         async with self.database.transaction() as connection:
             async with connection.execute(
@@ -1622,6 +1884,10 @@ class SyncStore:
                 self.database.mark_sync_dirty()
                 changed.append(rel_path)
             for rel_path in sorted(set(previous) - set(current)):
+                if rel_path in skipped_paths or any(
+                    rel_path.startswith(f"{prefix}/") for prefix in skipped_paths
+                ):
+                    continue
                 await connection.execute(
                     "DELETE FROM sync_prompt_state WHERE path = ?", (rel_path,)
                 )

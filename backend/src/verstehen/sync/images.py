@@ -34,11 +34,14 @@ def _extract_dict_ref(
             ext = MIME_TO_EXT.get(mime) if isinstance(mime, str) else None
         if ext in IMAGE_EXTENSIONS:
             found.add((digest, ext))
-        elif data_dir is not None:
+            continue
+        matched: str | None = None
+        if data_dir is not None:
             for candidate in IMAGE_EXTENSIONS:
                 if (data_dir / "images" / f"{digest}.{candidate}").is_file():
-                    found.add((digest, candidate))
+                    matched = candidate
                     break
+        found.add((digest, matched or "png"))
 
 
 def _walk_typed_payload(

@@ -23,7 +23,11 @@ from verstehen.sync.images import (
     read_local_image,
     save_verified_image,
 )
-from verstehen.sync.prompts import apply_prompt_change, scan_prompts
+from verstehen.sync.prompts import (
+    apply_prompt_winners_with_rollback,
+    restore_prompt_backups,
+    scan_prompts,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -139,8 +143,14 @@ class SyncService:
                 and bool(event.session_id)
             )
             if settled_turn or ended_compaction:
-                await self.flush_deferred(event.session_id)
-            if settled_turn or ended_compaction:
+                try:
+                    await self.flush_deferred(event.session_id)
+                except asyncio.CancelledError:
+                    raise
+                except Exception:
+                    logger.exception(
+                        "Deferred sync flush failed for session %s", event.session_id
+                    )
                 self.notify_local_change()
 
     async def _fallback_loop(self) -> None:
@@ -158,7 +168,6 @@ class SyncService:
             if not state.server_url or not token:
                 await asyncio.sleep(2.0)
                 continue
-            saw_frame = False
             try:
                 async with self._client_factory() as client:
                     async with client.stream(
@@ -171,18 +180,24 @@ class SyncService:
                             raise httpx2.HTTPError(f"SSE status {response.status_code}")
                         await self._safe_sync_now()
                         event_name = ""
+                        in_frame = False
                         async for line in response.aiter_lines():
                             if self._closed:
                                 return
-                            if not saw_frame:
-                                saw_frame = True
+                            if line.startswith(":"):
                                 attempt = 0
-                            if line.startswith("event:"):
+                            elif line.startswith("event:"):
                                 event_name = line.partition(":")[2].strip()
+                                in_frame = True
+                            elif line.startswith("data:"):
+                                in_frame = True
                             elif line == "":
-                                if event_name == "sync-changed":
-                                    await self._safe_sync_now()
+                                if in_frame:
+                                    attempt = 0
+                                    if event_name == "sync-changed":
+                                        await self._safe_sync_now()
                                 event_name = ""
+                                in_frame = False
             except asyncio.CancelledError:
                 raise
             except Exception:
@@ -197,8 +212,12 @@ class SyncService:
 
     async def _scan_local_prompts(self) -> None:
         async with self._prompt_lock:
-            current = await asyncio.to_thread(scan_prompts, self.data_dir)
-            await self.sync_store.sync_prompt_snapshot(current)
+            scan = await asyncio.to_thread(scan_prompts, self.data_dir)
+            await self.sync_store.sync_prompt_snapshot(
+                scan.files,
+                skipped_all=scan.skipped_all,
+                skipped_paths=scan.skipped_paths,
+            )
 
     def _emit_summary_notifications(self, summary: ApplySummary) -> None:
         for sid in sorted(summary.chats_changed):
@@ -222,6 +241,22 @@ class SyncService:
                 )
             )
 
+    def _make_prompt_hooks(self):
+        backups: dict[str, bytes | None] = {}
+
+        async def write_winners(winners: list[SyncChange]) -> dict[str, str | None]:
+            hashes, saved = await asyncio.to_thread(
+                apply_prompt_winners_with_rollback, self.data_dir, winners
+            )
+            backups.update(saved)
+            return hashes
+
+        async def rollback_winners() -> None:
+            if backups:
+                await asyncio.to_thread(restore_prompt_backups, self.data_dir, backups)
+
+        return write_winners, rollback_winners
+
     @staticmethod
     def _compute_db_cursor(deferred: dict[str, list[SyncChange]], seen_seq: int) -> int:
         if not deferred:
@@ -236,15 +271,20 @@ class SyncService:
         if not queued:
             return 0
         runtime = self.runtimes.get(session_id)
-        async with runtime.lock:
-            if runtime.run is not None or runtime.compaction is not None:
-                return 0
-            remaining = {k: v for k, v in self._deferred.items() if k != session_id}
-            cursor = self._compute_db_cursor(remaining, self._seen_seq)
-            summary = await self.sync_store.apply_pulled_changes(
-                queued, advance_pulled_seq=cursor
-            )
-            self._deferred.pop(session_id, None)
+        async with self._prompt_lock:
+            write_winners, rollback_winners = self._make_prompt_hooks()
+            async with runtime.lock:
+                if runtime.run is not None or runtime.compaction is not None:
+                    return 0
+                remaining = {k: v for k, v in self._deferred.items() if k != session_id}
+                cursor = self._compute_db_cursor(remaining, self._seen_seq)
+                summary = await self.sync_store.apply_pulled_changes(
+                    queued,
+                    advance_pulled_seq=cursor,
+                    on_prompt_winners=write_winners,
+                    on_prompt_rollback=rollback_winners,
+                )
+                self._deferred.pop(session_id, None)
         self._emit_summary_notifications(summary)
         return summary.applied
 
@@ -337,13 +377,19 @@ class SyncService:
             self._seen_seq = max(self._seen_seq, state.last_pulled_seq)
             await self.sync_store.update_state(status="syncing")
 
-            # Retry any deferred sessions that are now idle before pulling/pushing.
-            for sid in list(self._deferred):
-                await self._flush_deferred_unlocked(sid)
-
-            await self._scan_local_prompts()
-
             try:
+                for sid in list(self._deferred):
+                    try:
+                        await self._flush_deferred_unlocked(sid)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        logger.exception(
+                            "Deferred sync retry failed for session %s", sid
+                        )
+
+                await self._scan_local_prompts()
+
                 async with self._client_factory() as client:
                     if not await self._pull_all(client, server_url, headers, schema):
                         return await self.sync_store.read_state()
@@ -404,15 +450,7 @@ class SyncService:
                 {c.session_id for c in changes if c.session_id is not None}
             )
             async with self._prompt_lock:
-                # Write remote prompt files BEFORE committing SQLite cursor & prompt hashes.
-                prompt_hashes: dict[str, str | None] = {}
-                for change in changes:
-                    if change.entity == "prompt_override":
-                        rel, digest = await asyncio.to_thread(
-                            apply_prompt_change, self.data_dir, change
-                        )
-                        prompt_hashes[rel] = digest
-
+                write_winners, rollback_winners = self._make_prompt_hooks()
                 async with AsyncExitStack() as stack:
                     for sid in session_ids:
                         await stack.enter_async_context(self.runtimes.get(sid).lock)
@@ -444,9 +482,9 @@ class SyncService:
                     summary = await self.sync_store.apply_pulled_changes(
                         ready,
                         advance_pulled_seq=db_cursor,
-                        prompt_hashes=prompt_hashes,
+                        on_prompt_winners=write_winners,
+                        on_prompt_rollback=rollback_winners,
                     )
-                    # Commit succeeded: update in-memory cursor and deferred queues now.
                     self._seen_seq = provisional_seen
                     self._deferred = provisional_deferred
 
@@ -462,23 +500,15 @@ class SyncService:
         device_id: str,
         schema: int,
     ) -> bool:
-        skipped_busy: set[str] = set()
+        server_deferred: set[str] = set()
         while True:
-            pending = await self.sync_store.list_pending_push()
-            batch: list[SyncChange] = []
-            for change in pending:
-                sid = change.session_id
-                if sid is not None:
-                    runtime = self.runtimes.get(sid)
-                    if (
-                        runtime.run is not None
-                        or runtime.compaction is not None
-                        or sid in self._deferred
-                        or sid in skipped_busy
-                    ):
-                        continue
-                batch.append(change)
-
+            local_busy = {
+                sid
+                for sid, rt in self.runtimes.runtimes.items()
+                if rt.run is not None or rt.compaction is not None
+            }
+            exclude = local_busy | set(self._deferred) | server_deferred
+            batch = await self.sync_store.list_pending_push(exclude_sessions=exclude)
             if not batch:
                 return True
 
@@ -500,23 +530,17 @@ class SyncService:
                 for item in data.get("accepted_changes", ())
             ]
             deferred_ids = set(data.get("deferred_session_ids", ()))
-            skipped_busy.update(deferred_ids)
+            server_deferred.update(deferred_ids)
 
             if accepted:
                 async with self._prompt_lock:
+                    write_winners, rollback_winners = self._make_prompt_hooks()
                     summary = await self.sync_store.mark_pushed_and_reconcile(
-                        batch, accepted
+                        batch,
+                        accepted,
+                        on_prompt_winners=write_winners,
+                        on_prompt_rollback=rollback_winners,
                     )
-                    prompt_hashes: dict[str, str | None] = {}
-                    for change in summary.prompt_changes:
-                        rel, digest = await asyncio.to_thread(
-                            apply_prompt_change, self.data_dir, change
-                        )
-                        prompt_hashes[rel] = digest
-                    if prompt_hashes:
-                        await self.sync_store.mark_pushed_and_reconcile(
-                            [], [], prompt_hashes=prompt_hashes
-                        )
                 self._emit_summary_notifications(summary)
             else:
                 return True

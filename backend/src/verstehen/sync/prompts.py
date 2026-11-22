@@ -1,9 +1,19 @@
 import hashlib
 import os
 import tempfile
+from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from verstehen.store.sync import SyncChange
+
+
+@dataclass(frozen=True)
+class PromptScan:
+    """On-disk prompt snapshot separating confirmed files from skipped/unreadable paths."""
+
+    files: dict[str, tuple[str, str]] = field(default_factory=dict)
+    skipped_all: bool = False
+    skipped_paths: frozenset[str] = frozenset()
 
 
 def validate_prompt_rel_path(rel_path: str) -> PurePosixPath:
@@ -31,34 +41,48 @@ def _ensure_no_symlinks(root: Path, pure: PurePosixPath) -> Path:
     return current
 
 
-def scan_prompts(data_dir: Path) -> dict[str, tuple[str, str]]:
-    """Return {rel_posix_path: (content, sha256_hex)} for all .md files under data_dir/prompts."""
+def scan_prompts(data_dir: Path) -> PromptScan:
+    """Scan data_dir/prompts for regular .md files while tracking skipped symlinks/errors."""
     root = data_dir / "prompts"
-    if root.is_symlink() or not root.is_dir():
-        return {}
+    if root.is_symlink():
+        return PromptScan(skipped_all=True)
+    if not root.exists():
+        return PromptScan()
+    if not root.is_dir():
+        return PromptScan(skipped_all=True)
     resolved_root = root.resolve()
-    result: dict[str, tuple[str, str]] = {}
-    for path in sorted(root.rglob("*.md")):
-        if path.is_symlink() or not path.is_file():
-            continue
-        rel_parts = path.relative_to(root).parts
-        check = root
-        has_symlink = False
-        for part in rel_parts:
-            check = check / part
-            if check.is_symlink():
-                has_symlink = True
-                break
-        if has_symlink or not path.resolve().is_relative_to(resolved_root):
-            continue
-        rel = path.relative_to(root).as_posix()
-        try:
-            content = path.read_text(encoding="utf-8")
-        except OSError, UnicodeError:
-            continue
-        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
-        result[rel] = (content, digest)
-    return result
+    files: dict[str, tuple[str, str]] = {}
+    skipped: set[str] = set()
+    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+        current_dir = Path(dirpath)
+        kept_dirs: list[str] = []
+        for name in sorted(dirnames):
+            candidate = current_dir / name
+            rel_dir = candidate.relative_to(root).as_posix()
+            if candidate.is_symlink():
+                skipped.add(rel_dir)
+                continue
+            kept_dirs.append(name)
+        dirnames[:] = kept_dirs
+        for name in sorted(filenames):
+            if not name.endswith(".md"):
+                continue
+            path = current_dir / name
+            rel = path.relative_to(root).as_posix()
+            if path.is_symlink() or not path.is_file():
+                skipped.add(rel)
+                continue
+            if not path.resolve().is_relative_to(resolved_root):
+                skipped.add(rel)
+                continue
+            try:
+                content = path.read_text(encoding="utf-8")
+            except OSError, UnicodeError:
+                skipped.add(rel)
+                continue
+            digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+            files[rel] = (content, digest)
+    return PromptScan(files=files, skipped_paths=frozenset(skipped))
 
 
 def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | None]:
@@ -95,3 +119,48 @@ def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | 
     finally:
         Path(temp_name).unlink(missing_ok=True)
     return rel, digest
+
+
+def apply_prompt_winners_with_rollback(
+    data_dir: Path, changes: list[SyncChange]
+) -> tuple[dict[str, str | None], dict[str, bytes | None]]:
+    """Apply winning prompt changes on disk and return (hashes, backups for rollback)."""
+    backups: dict[str, bytes | None] = {}
+    hashes: dict[str, str | None] = {}
+    try:
+        for change in changes:
+            raw_path = str(change.payload.get("path", change.entity_id))
+            pure = validate_prompt_rel_path(raw_path)
+            rel = pure.as_posix()
+            if rel not in backups:
+                target = _ensure_no_symlinks(data_dir / "prompts", pure)
+                backups[rel] = target.read_bytes() if target.is_file() else None
+            rel, digest = apply_prompt_change(data_dir, change)
+            hashes[rel] = digest
+    except Exception:
+        restore_prompt_backups(data_dir, backups)
+        raise
+    return hashes, backups
+
+
+def restore_prompt_backups(data_dir: Path, backups: dict[str, bytes | None]) -> None:
+    """Restore prompt files after a failed SQLite commit."""
+    root = data_dir / "prompts"
+    for rel, original in backups.items():
+        pure = validate_prompt_rel_path(rel)
+        target = root / Path(*pure.parts)
+        if original is None:
+            target.unlink(missing_ok=True)
+        else:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            descriptor, temp_name = tempfile.mkstemp(
+                dir=target.parent, prefix=".prompt-rb-"
+            )
+            try:
+                with os.fdopen(descriptor, "wb") as stream:
+                    stream.write(original)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                os.replace(temp_name, target)
+            finally:
+                Path(temp_name).unlink(missing_ok=True)

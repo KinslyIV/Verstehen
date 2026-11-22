@@ -1354,6 +1354,17 @@ export interface components {
 			/** Notice */
 			notice?: string | null;
 		};
+		/** InvalidSyncPayloadResponse */
+		InvalidSyncPayloadResponse: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default invalid_sync_payload
+			 * @constant
+			 */
+			code: 'invalid_sync_payload';
+		};
 		/** JobDelivery */
 		JobDelivery: {
 			/**
@@ -2752,6 +2763,15 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['PushResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['InvalidSyncPayloadResponse'];
 				};
 			};
 			/** @description Unauthorized */
