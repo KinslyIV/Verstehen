@@ -633,6 +633,7 @@ NO_PENDING_RECOVERY_COMMAND = (
 )
 INVOCATION_HEADER = "X-Verstehen-Invocation"
 SCHEMA_HEADER = "X-Verstehen-Schema"
+DEPLOYMENT_HEADER = "X-Verstehen-Deployment"
 SYSTEMD_INVOCATION_COMMAND = (
     f"{USER_MANAGER_ENV} && systemctl --user show --property=InvocationID --value "
     "verstehen-server.service"
@@ -683,7 +684,7 @@ ROLLBACK_COMMAND = (
     "} && previous=venv && { [ ! -d venv.prev ] || previous=venv.prev; } && "
     "check_schema && "
     "systemctl --user stop verstehen-server.service && "
-    "check_schema && "
+    '{ check_schema || { status=$?; systemctl --user start verstehen-server.service || true; exit "$status"; }; } && '
     "{ [ ! -d venv.prev ] || { rm -rf venv && mv venv.prev venv; }; } && "
     f'{{ [ ! -f unit.prev ] || cp -p unit.prev "{UNIT_PATH}"; }} && '
     "systemctl --user daemon-reload && "
@@ -773,6 +774,7 @@ class ServerInstallService:
         ),
         health_attempts: int = 20,
         health_interval: float = 0.5,
+        deployment_id_factory: Callable[[], str] = lambda: uuid4().hex,
     ):
         self.sync_store = sync_store
         self.credentials_store = credentials_store
@@ -787,6 +789,7 @@ class ServerInstallService:
         self._client_factory = client_factory
         self._health_attempts = health_attempts
         self._health_interval = health_interval
+        self._deployment_id_factory = deployment_id_factory
         self._status = ServerInstallStatus()
         self._task: asyncio.Task[None] | None = None
         self._secrets: list[str] = []
@@ -911,12 +914,34 @@ class ServerInstallService:
                 return
             if not await self._build_venv(session, wheel_name):
                 return
-            if not await self._start_service(session, host, server_port, ssh_user):
+            started = await self._start_service(session, host, server_port, ssh_user)
+            if started is None:
                 return
-            verified = await self._verify_deployment(session, server_url)
+            start_state, deployment_id = started
+            verified = await self._verify_deployment(
+                session,
+                server_url,
+                deployment_id,
+                reconnect_first=start_state == "uncertain",
+            )
             if verified is None:
+                if start_state == "uncertain":
+                    self._set_step(
+                        "configure_systemd",
+                        "failed",
+                        detail="SSH connection lost while starting verstehen-server.service.",
+                    )
                 return
             session, healthy = verified
+            if start_state == "uncertain":
+                if healthy:
+                    self._finish_configure_step(ssh_user)
+                else:
+                    self._set_step(
+                        "configure_systemd",
+                        "failed",
+                        detail="SSH connection lost while starting verstehen-server.service.",
+                    )
             if not await self._check_health(session, server_url, healthy):
                 return
             if not await self._pair_device(
@@ -1219,10 +1244,30 @@ class ServerInstallService:
                 if "NOTHING_TO_ROLL_BACK" in result.stdout:
                     return None
 
-                async def verify_listener(_: httpx2.Response) -> bool:
-                    return await self._owns_listener(candidate, server_url)
+                restored_pid: str | None = None
 
-                if not await self._wait_healthy(server_url, verify_listener):
+                async def listener_ready() -> bool:
+                    nonlocal restored_pid
+                    restored_pid = await self._owns_listener(candidate, server_url)
+                    return restored_pid is not None
+
+                async def verify_restored(response: httpx2.Response) -> bool:
+                    if INVOCATION_HEADER in response.headers:
+                        invocation = response.headers.get(INVOCATION_HEADER)
+                        if not invocation:
+                            return False
+                        unit = await candidate.run(
+                            SYSTEMD_INVOCATION_COMMAND, timeout=5.0
+                        )
+                        if unit.exit_status != 0 or unit.stdout.strip() != invocation:
+                            return False
+                    return (
+                        await self._owns_listener(candidate, server_url) == restored_pid
+                    )
+
+                if not await self._wait_healthy(
+                    server_url, verify_restored, ready=listener_ready
+                ):
                     return "The previous server version did not become healthy."
                 with suppress(Exception):
                     await candidate.run(ROLLBACK_CLEANUP_COMMAND)
@@ -1255,9 +1300,18 @@ class ServerInstallService:
             "~/.local/share/verstehen-server."
         )
 
+    def _finish_configure_step(self, ssh_user: str) -> None:
+        if self._linger_hint:
+            hint = self._linger_hint.replace("<user>", ssh_user)
+            self._set_step("configure_systemd", "warning", detail=hint)
+        else:
+            self._set_step(
+                "configure_systemd", "done", detail="verstehen-server.service active"
+            )
+
     async def _start_service(
         self, session: SshSession, host: str, server_port: int, ssh_user: str
-    ) -> bool:
+    ) -> tuple[Literal["started", "uncertain"], str] | None:
         self._current_step = "configure_systemd"
         self._set_step("configure_systemd", "running")
         recovery = await session.run(NO_PENDING_RECOVERY_COMMAND)
@@ -1268,7 +1322,8 @@ class ServerInstallService:
                 "Cannot start the update while rollback recovery files may remain in "
                 "~/.local/share/verstehen-server. Check and recover the server before retrying.",
             )
-            return False
+            return None
+        deployment_id = self._deployment_id_factory()
         unit_text = (
             "[Unit]\n"
             "Description=Verstehen Sync Server\n"
@@ -1277,6 +1332,7 @@ class ServerInstallService:
             "[Service]\n"
             "Type=simple\n"
             "Environment=VERSTEHEN_DATA_DIR=%h/.local/share/verstehen\n"
+            f"Environment=VERSTEHEN_DEPLOYMENT_ID={deployment_id}\n"
             f"ExecStart=%h/.local/share/verstehen-server/venv/bin/python -m verstehen --server --host {shlex.quote(host)} --port {int(server_port)}\n"
             "Restart=on-failure\n"
             "RestartSec=5\n\n"
@@ -1285,18 +1341,25 @@ class ServerInstallService:
         )
         unit_b64 = base64.b64encode(unit_text.encode("utf-8")).decode("ascii")
         self._rollback_pending = True
-        result = await session.run(
-            f"{USER_MANAGER_ENV} && "
-            'mkdir -p "$HOME/.config/systemd/user" && '
-            f'cd "{SERVER_DIR}" && '
-            f'{{ [ ! -f "{UNIT_PATH}" ] || cp -p "{UNIT_PATH}" unit.prev; }} && '
-            f"printf %s {shlex.quote(unit_b64)} | base64 -d > "
-            f'"{UNIT_PATH}" && '
-            "{ [ ! -d venv ] || mv venv venv.prev; } && mv venv.new venv && "
-            "systemctl --user daemon-reload && "
-            "systemctl --user enable verstehen-server.service && "
-            "systemctl --user restart verstehen-server.service"
-        )
+        try:
+            result = await session.run(
+                f"{USER_MANAGER_ENV} && "
+                'mkdir -p "$HOME/.config/systemd/user" && '
+                f'cd "{SERVER_DIR}" && '
+                f'{{ [ ! -f "{UNIT_PATH}" ] || cp -p "{UNIT_PATH}" unit.prev; }} && '
+                f"printf %s {shlex.quote(unit_b64)} | base64 -d > "
+                f'"{UNIT_PATH}" && '
+                "{ [ ! -d venv ] || mv venv venv.prev; } && mv venv.new venv && "
+                "systemctl --user daemon-reload && "
+                "systemctl --user enable verstehen-server.service && "
+                "systemctl --user restart verstehen-server.service"
+            )
+        except asyncssh.Error, OSError, SshUnreachableError:
+            self._append_log(
+                "SSH connection lost while starting verstehen-server.service; "
+                "verifying the deployment over a new connection."
+            )
+            return "uncertain", deployment_id
         self._append_log(result.stdout or result.stderr)
         if result.exit_status != 0:
             self._fail(
@@ -1309,58 +1372,63 @@ class ServerInstallService:
                     or "Failed to start verstehen-server.service.",
                 ),
             )
-            return False
-        if self._linger_hint:
-            hint = self._linger_hint.replace("<user>", ssh_user)
-            self._set_step("configure_systemd", "warning", detail=hint)
-        else:
-            self._set_step(
-                "configure_systemd", "done", detail="verstehen-server.service active"
-            )
-        return True
+            return None
+        self._finish_configure_step(ssh_user)
+        return "started", deployment_id
 
-    async def _owns_listener(self, session: SshSession, server_url: str) -> bool:
+    async def _owns_listener(self, session: SshSession, server_url: str) -> str | None:
         target = urlsplit(server_url)
         assert target.hostname and target.port is not None
         result = await session.run(
             f"{USER_MANAGER_ENV} && "
             'pid="$(systemctl --user show --property=MainPID --value verstehen-server.service)" && '
             f'"{SERVER_DIR}/venv/bin/python" -c {shlex.quote(ROLLBACK_LISTENER_CHECK)} '
-            f'"$pid" {shlex.quote(target.hostname)} {target.port}',
+            f'"$pid" {shlex.quote(target.hostname)} {target.port} && '
+            'printf "%s" "$pid"',
             timeout=5.0,
         )
-        return result.exit_status == 0
+        pid = result.stdout.strip()
+        return pid if result.exit_status == 0 and pid else None
 
     async def _wait_healthy(
         self,
         server_url: str,
         verify: Callable[[httpx2.Response], Awaitable[bool]],
+        *,
+        ready: Callable[[], Awaitable[bool]] | None = None,
     ) -> bool:
         async with self._client_factory() as client:
             for _ in range(self._health_attempts):
-                try:
-                    response = await client.get(f"{server_url}/api/health", timeout=3.0)
-                    if (
-                        response.status_code != 200
-                        or response.json().get("status") != "ok"
-                    ):
+                if ready is None or await ready():
+                    try:
+                        response = await client.get(
+                            f"{server_url}/api/health", timeout=3.0
+                        )
+                        if (
+                            response.status_code != 200
+                            or response.json().get("status") != "ok"
+                        ):
+                            response = None
+                    except httpx2.HTTPError, OSError, ValueError, AttributeError:
                         response = None
-                except httpx2.HTTPError, OSError, ValueError, AttributeError:
-                    response = None
-                if response is not None and await verify(response):
-                    return True
+                    if response is not None and await verify(response):
+                        return True
                 if self._health_interval > 0:
                     await asyncio.sleep(self._health_interval)
         return False
 
     async def _deployment_is_healthy(
-        self, session: SshSession, server_url: str
+        self, session: SshSession, server_url: str, deployment_id: str
     ) -> bool:
         expected_schema = str(await self.sync_store.schema_version())
 
         async def verify_invocation(response: httpx2.Response) -> bool:
             invocation = response.headers.get(INVOCATION_HEADER)
-            if not invocation or response.headers.get(SCHEMA_HEADER) != expected_schema:
+            if (
+                not invocation
+                or response.headers.get(SCHEMA_HEADER) != expected_schema
+                or response.headers.get(DEPLOYMENT_HEADER) != deployment_id
+            ):
                 return False
             unit = await session.run(SYSTEMD_INVOCATION_COMMAND, timeout=5.0)
             return unit.exit_status == 0 and unit.stdout.strip() == invocation
@@ -1368,18 +1436,30 @@ class ServerInstallService:
         return await self._wait_healthy(server_url, verify_invocation)
 
     async def _verify_deployment(
-        self, session: SshSession, server_url: str
+        self,
+        session: SshSession,
+        server_url: str,
+        deployment_id: str,
+        *,
+        reconnect_first: bool = False,
     ) -> tuple[SshSession, bool] | None:
         self._current_step = "health_check"
         self._set_step("health_check", "running")
-        try:
-            return session, await self._deployment_is_healthy(session, server_url)
-        except asyncssh.Error, OSError, SshUnreachableError:
-            self._append_log("SSH connection lost during verification. Reconnecting.")
+        if not reconnect_first:
+            try:
+                return session, await self._deployment_is_healthy(
+                    session, server_url, deployment_id
+                )
+            except asyncssh.Error, OSError, SshUnreachableError:
+                self._append_log(
+                    "SSH connection lost during verification. Reconnecting."
+                )
         recovered = None
         try:
             recovered = await asyncio.wait_for(self._reconnect(), ROLLBACK_TIMEOUT)
-            healthy = await self._deployment_is_healthy(recovered, server_url)
+            healthy = await self._deployment_is_healthy(
+                recovered, server_url, deployment_id
+            )
         except BaseException as error:
             if recovered is not None:
                 with suppress(Exception):

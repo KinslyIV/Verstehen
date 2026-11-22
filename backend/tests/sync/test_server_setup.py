@@ -25,6 +25,7 @@ from verstehen.store.migrate import MIGRATIONS, migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.sync import SyncChange
 from verstehen.sync.provision import (
+    DEPLOYMENT_HEADER,
     INVOCATION_HEADER,
     NO_PENDING_RECOVERY_COMMAND,
     ROLLBACK_LISTENER_CHECK,
@@ -64,10 +65,12 @@ OTHER_KEY_FP = OTHER_KEY.fingerprint_sha256
 OTHER_KEY_B64 = OTHER_KEY.public_key_data.split()[1]
 
 DEPLOYMENT_INVOCATION = "a" * 32
+DEPLOYMENT_ID = "d" * 32
 SUPPORTED_SCHEMA = max(int(path.name[:4]) for path in MIGRATIONS.glob("*.sql"))
 HEALTH_HEADERS = {
     INVOCATION_HEADER: DEPLOYMENT_INVOCATION,
     SCHEMA_HEADER: str(SUPPORTED_SCHEMA),
+    DEPLOYMENT_HEADER: DEPLOYMENT_ID,
 }
 
 
@@ -253,6 +256,7 @@ def test_migration_0009_and_sync_status_changed_notifications(tmp_path: Path):
                 data_dir=tmp_path / "server",
                 server=True,
                 server_invocation_id=DEPLOYMENT_INVOCATION,
+                server_deployment_id=DEPLOYMENT_ID,
             )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
@@ -406,6 +410,7 @@ def test_server_install_tofu_linger_warning_update_and_no_secret_leak(tmp_path: 
                 data_dir=tmp_path / "server",
                 server=True,
                 server_invocation_id=DEPLOYMENT_INVOCATION,
+                server_deployment_id=DEPLOYMENT_ID,
             )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
@@ -444,6 +449,7 @@ def test_server_install_tofu_linger_warning_update_and_no_secret_leak(tmp_path: 
                 install_svc.bundle_locator = lambda: bundle_dir
                 install_svc._client_factory = client_factory
                 install_svc._health_interval = 0.01
+                install_svc._deployment_id_factory = lambda: DEPLOYMENT_ID
 
                 async with httpx2.AsyncClient(
                     transport=httpx2.ASGITransport(app=laptop_app),
@@ -567,6 +573,7 @@ def test_connect_existing_server_proxy_routes_oauth_tunnel_and_server_mode_404(
                 data_dir=tmp_path / "server",
                 server=True,
                 server_invocation_id=DEPLOYMENT_INVOCATION,
+                server_deployment_id=DEPLOYMENT_ID,
             )
         )
         laptop_app = create_app(Settings(data_dir=tmp_path / "laptop", server=False))
@@ -768,6 +775,7 @@ async def laptop_and_servers(tmp_path: Path, *server_names: str):
                     data_dir=tmp_path / name,
                     server=True,
                     server_invocation_id=DEPLOYMENT_INVOCATION,
+                    server_deployment_id=DEPLOYMENT_ID,
                 )
             )
             await stack.enter_async_context(app.router.lifespan_context(app))
@@ -964,6 +972,7 @@ def prepare_install(laptop_app, server_app, tmp_path: Path, ssh: "FakeSshBackend
     service.bundle_locator = lambda: _make_fake_bundle(tmp_path)
     service._health_interval = 0.0
     service._health_attempts = 2
+    service._deployment_id_factory = lambda: DEPLOYMENT_ID
     return service
 
 
@@ -1601,6 +1610,7 @@ def test_rollback_restores_venv_and_unit_restarts_and_confirms_health(tmp_path: 
         {},
         {**HEALTH_HEADERS, INVOCATION_HEADER: "b" * 32},
         {**HEALTH_HEADERS, SCHEMA_HEADER: str(SUPPORTED_SCHEMA - 1)},
+        {**HEALTH_HEADERS, DEPLOYMENT_HEADER: "e" * 32},
     ],
 )
 def test_update_rejects_healthy_responses_from_the_wrong_deployment(
@@ -1686,6 +1696,92 @@ def test_health_verification_reconnects_before_rollback(
                     "install lock was retained" in line for line in status["logs"]
                 )
             assert not any("mv venv.prev venv" in command for command in ssh.commands)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("outcome", ["healthy", "cannot_reconnect", "previous_service"])
+def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
+    tmp_path: Path, outcome: str
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                raise_once={"mv venv.new venv": SshUnreachableError("connection lost")},
+                fail_reconnect=outcome == "cannot_reconnect",
+                mint_callback=minting(apps["server"], []),
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            if outcome == "previous_service":
+                service._deployment_id_factory = lambda: "e" * 32
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service)
+            steps = {step["id"]: step for step in status["steps"]}
+            if outcome == "healthy":
+                assert status["state"] == "complete"
+                assert steps["configure_systemd"]["status"] == "done"
+                assert ssh.connections == 2
+                assert not any("mv venv.prev venv" in c for c in ssh.commands)
+            elif outcome == "cannot_reconnect":
+                assert status["state"] == "failed"
+                assert steps["configure_systemd"]["status"] == "failed"
+                assert "left in place" in status["error"]
+                assert any(
+                    "install lock was retained" in line for line in status["logs"]
+                )
+                assert not any("mv venv.prev venv" in c for c in ssh.commands)
+            else:
+                assert status["state"] == "failed"
+                assert steps["configure_systemd"]["status"] == "failed"
+                assert any("mv venv.prev venv" in c for c in ssh.commands)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("failure_mode", ["listener_handed_off", "wrong_invocation"])
+def test_rollback_rejects_unrelated_health_response_when_listener_changes_hands(
+    tmp_path: Path, failure_mode: str
+):
+    class SwitchingListenerSsh(FakeSshBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pid_checks = 0
+
+        async def handle_command(self, command: str) -> SshCommandResult:
+            if "--property=MainPID" in command:
+                self.pid_checks += 1
+                if failure_mode == "listener_handed_off":
+                    return SshCommandResult(
+                        exit_status=0, stdout=f"{1000 + self.pid_checks}\n"
+                    )
+                return SshCommandResult(exit_status=0, stdout="1234\n")
+            return await super().handle_command(command)
+
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = SwitchingListenerSsh()
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                rolled_back = any("mv venv.prev venv" in c for c in ssh.commands)
+                if not rolled_back:
+                    return httpx2.Response(503)
+                headers = (
+                    {INVOCATION_HEADER: "b" * 32}
+                    if failure_mode == "wrong_invocation"
+                    else {}
+                )
+                return httpx2.Response(200, json={"status": "ok"}, headers=headers)
+
+            service._client_factory = lambda: httpx2.AsyncClient(
+                transport=httpx2.MockTransport(handler)
+            )
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert "previous server version did not become healthy" in status["error"]
+            assert any("install lock was retained" in line for line in status["logs"])
+            assert not any("rm -rf venv.prev unit.prev" in c for c in ssh.commands)
 
     asyncio.run(run())
 
@@ -2137,6 +2233,64 @@ def test_rollback_command_retried_after_a_partial_restore_still_restarts(
     assert not (server_dir / "unit.prev").exists()
     assert not (server_dir / "rollback.pending").exists()
     assert "NOTHING_TO_ROLL_BACK" in run(ROLLBACK_COMMAND).stdout
+
+
+@pytest.mark.slow
+def test_rollback_restarts_installed_service_if_migration_commits_between_schema_checks(
+    tmp_path: Path,
+):
+    from verstehen.sync.provision import ROLLBACK_COMMAND
+
+    home = tmp_path / "home"
+    server_dir = home / ".local/share/verstehen-server"
+    (server_dir / "venv.prev").mkdir(parents=True)
+    (server_dir / "venv.prev/marker").write_text("old")
+    previous_python = server_dir / "venv.prev/bin/python"
+    previous_python.parent.mkdir()
+    previous_python.write_text(f'#!/bin/sh\nexec "{sys.executable}" "$@"\n')
+    previous_python.chmod(0o755)
+    (server_dir / "venv").mkdir()
+    (server_dir / "venv/marker").write_text("new")
+    (server_dir / "unit.prev").write_text("old-unit")
+    (home / ".config/systemd/user").mkdir(parents=True)
+    data_dir = home / ".local/share/verstehen"
+    data_dir.mkdir()
+    db_path = data_dir / "verstehen.db"
+
+    async def seed_database() -> None:
+        async with open_database(db_path) as database:
+            await migrate(database)
+
+    asyncio.run(seed_database())
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "calls"
+    stub = bin_dir / "systemctl"
+    stub.write_text(
+        f'#!/bin/sh\necho "$@" >> {calls}\n'
+        f'if [ "$2" = stop ]; then\n'
+        f'  "{sys.executable}" -c "import sqlite3; c = sqlite3.connect(\'{db_path}\'); '
+        f"c.execute('INSERT INTO schema_migrations VALUES ({SUPPORTED_SCHEMA + 1}, \\'late.sql\\', \\'today\\')'); "
+        f'c.commit(); c.close()"\n'
+        "fi\n"
+    )
+    stub.chmod(0o755)
+    env = {**os.environ, "HOME": str(home), "PATH": f"{bin_dir}:{os.environ['PATH']}"}
+    result = subprocess.run(
+        ["bash", "-c", ROLLBACK_COMMAND], env=env, capture_output=True, text=True
+    )
+    assert result.returncode == 78, result.stderr
+    recorded = calls.read_text().splitlines()
+    assert "--user stop verstehen-server.service" in recorded
+    assert "--user start verstehen-server.service" in recorded
+    assert recorded.index("--user stop verstehen-server.service") < recorded.index(
+        "--user start verstehen-server.service"
+    )
+    assert (server_dir / "venv/marker").read_text() == "new"
+    assert (server_dir / "venv.prev/marker").read_text() == "old"
+    assert (server_dir / "unit.prev").exists()
+    assert (server_dir / "rollback.pending").exists()
 
 
 @pytest.mark.parametrize("commit_first", [False, True])

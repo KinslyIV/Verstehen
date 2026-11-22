@@ -4,7 +4,11 @@ from fastapi import APIRouter, Depends, Request, Response
 
 from verstehen.api.deps import get_database
 from verstehen.store.database import Database
-from verstehen.sync.provision import INVOCATION_HEADER, SCHEMA_HEADER
+from verstehen.sync.provision import (
+    DEPLOYMENT_HEADER,
+    INVOCATION_HEADER,
+    SCHEMA_HEADER,
+)
 
 router = APIRouter()
 
@@ -21,4 +25,7 @@ async def health(
         schema = await request.app.state.sync_store.schema_version()
         response.headers[INVOCATION_HEADER] = invocation
         response.headers[SCHEMA_HEADER] = str(schema)
+        deployment = request.app.state.settings.server_deployment_id
+        if deployment:
+            response.headers[DEPLOYMENT_HEADER] = deployment
     return {"status": "ok"}

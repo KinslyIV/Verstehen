@@ -17,6 +17,7 @@ class Settings:
     fake_model_script: Path | None = None
     provider_events: bool = False
     server_invocation_id: str | None = None
+    server_deployment_id: str | None = None
 
 
 def resolve_data_dir(*, create: bool = True) -> Path:
@@ -102,4 +103,7 @@ def load_settings(
         fake_model_script=fake_model_script,
         provider_events=os.environ.get("VERSTEHEN_PROVIDER_EVENTS") == "1",
         server_invocation_id=os.environ.get("INVOCATION_ID") if is_server else None,
+        server_deployment_id=(
+            os.environ.get("VERSTEHEN_DEPLOYMENT_ID") if is_server else None
+        ),
     )
