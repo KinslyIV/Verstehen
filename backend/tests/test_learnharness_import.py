@@ -610,8 +610,19 @@ def seeded_data_dir(tmp_path: Path, *, migrations: int | None = None) -> Path:
 
     async def seed(database):
         await migrate(database, older if migrations is not None else MIGRATIONS)
-        await SessionsStore(database).create("Existing session")
-        await SettingsStore(database).write(StoredSettings(quizzing="free"))
+        if migrations is not None:
+            async with database.transaction() as connection:
+                await connection.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                    "VALUES ('existing-session', 'Existing session', 'teach', "
+                    "'2026-01-01T00:00:00+00:00', '2026-01-01T00:00:00+00:00')"
+                )
+                await connection.execute(
+                    "INSERT INTO settings (key, value) VALUES ('quizzing', '\"free\"')"
+                )
+        else:
+            await SessionsStore(database).create("Existing session")
+            await SettingsStore(database).write(StoredSettings(quizzing="free"))
 
     asyncio.run(with_database(data_dir, seed))
     (data_dir / "credentials.json").write_text('{"accounts": []}')

@@ -1,16 +1,19 @@
 from aiosqlite import Connection
 
 from verstehen.store.database import Database
+from verstehen.store.sync_log import append_sync_log, utc_now
 
 
 async def set_inverted(
     connection: Connection, session_id: str, entry_id: str, inverted: bool
-) -> None:
+) -> str:
+    now = utc_now()
     await connection.execute(
-        "INSERT INTO artifact_views (entry_id, session_id, inverted) VALUES (?, ?, ?) "
-        "ON CONFLICT(entry_id) DO UPDATE SET inverted = excluded.inverted",
-        (entry_id, session_id, int(inverted)),
+        "INSERT INTO artifact_views (entry_id, session_id, inverted, updated_at) VALUES (?, ?, ?, ?) "
+        "ON CONFLICT(entry_id) DO UPDATE SET inverted = excluded.inverted, updated_at = excluded.updated_at",
+        (entry_id, session_id, int(inverted), now),
     )
+    return now
 
 
 class ArtifactViewsStore:
@@ -29,4 +32,18 @@ class ArtifactViewsStore:
 
     async def set(self, session_id: str, entry_id: str, inverted: bool) -> None:
         async with self.database.transaction() as connection:
-            await set_inverted(connection, session_id, entry_id, inverted)
+            updated_at = await set_inverted(connection, session_id, entry_id, inverted)
+            await append_sync_log(
+                connection,
+                entity="artifact_view",
+                op="upsert",
+                entity_id=entry_id,
+                session_id=session_id,
+                payload={
+                    "entry_id": entry_id,
+                    "session_id": session_id,
+                    "inverted": inverted,
+                    "updated_at": updated_at,
+                },
+            )
+            self.database.mark_sync_dirty()

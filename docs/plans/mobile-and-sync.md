@@ -202,7 +202,7 @@ pairs new devices via a short one-time code. Detailed plan: [mobile-sync-a.md](m
 - **Tests:** Offline pytest suite covering server mode binding, token auth refusal/acceptance,
   pairing code expiry/single-use, and device revocation.
 
-### Milestone B — Two-way Laptop ↔ Server sync engine
+### Milestone B — Two-way Laptop ↔ Server sync engine *(implemented on `mobile-sync-b`; see [mobile-sync-b.md](mobile-sync-b.md))*
 
 *Goal: Two Verstehen backends sync automatically over HTTP + SSE, offline-safe, satisfying all 8
 safety rules plus fork-on-conflict and active-turn queueing.*

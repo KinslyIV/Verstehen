@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from verstehen.store.entries import (
     AssistantEntry,
@@ -37,10 +37,12 @@ class Notification(BaseModel):
         "side-chats-changed",
         "graph-changed",
         "extractions-changed",
+        "sync-changed",
     ]
     session_id: str = ""
     revision: int | None = None
     running: bool | None = None
+    from_sync: bool = Field(default=False, exclude=True)
 
 
 class Notifications:

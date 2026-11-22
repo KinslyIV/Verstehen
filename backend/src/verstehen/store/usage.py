@@ -5,6 +5,7 @@ from aiosqlite import Connection
 from pydantic import BaseModel, Field
 
 from verstehen.store.database import Database
+from verstehen.store.sync_log import append_sync_log
 
 
 class UsageRecord(BaseModel):
@@ -27,7 +28,16 @@ class UsageStore:
 
     async def append(self, record: UsageRecord) -> None:
         async with self.database.transaction() as connection:
-            await insert_usage(connection, record)
+            if await insert_usage(connection, record):
+                await append_sync_log(
+                    connection,
+                    entity="usage",
+                    op="upsert",
+                    entity_id=record.request_id,
+                    session_id=record.session_id,
+                    payload=record.model_dump(mode="json"),
+                )
+                self.database.mark_sync_dirty()
 
     async def list(self, session_id: str) -> list[UsageRecord]:
         async with self.database.read() as connection:
@@ -55,11 +65,14 @@ class UsageStore:
                 ]
 
 
-async def insert_usage(connection: Connection, record: UsageRecord) -> None:
-    await connection.execute(
+async def insert_usage(connection: Connection, record: UsageRecord) -> bool:
+    cursor = await connection.execute(
         "INSERT INTO usage (request_id, session_id, role, account, model, "
         "input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, "
         "reasoning_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(request_id) DO NOTHING",
         tuple(record.model_dump(mode="json").values()),
     )
+    inserted = cursor.rowcount > 0
+    await cursor.close()
+    return inserted

@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime
 from typing import Annotated, List, Literal
 from uuid import uuid4
@@ -7,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, TypeAdapter
 
 from verstehen.store.database import Database
 from verstehen.store.jobs import mark_delivered
+from verstehen.store.sync_log import append_sync_log
 from verstehen.store.usage import UsageRecord, insert_usage
 
 
@@ -166,17 +168,42 @@ class EntriesStore:
         async with self.database.transaction() as connection:
             inserted = False
             for entry in validated:
-                inserted = await insert_entry(connection, session_id, entry) or inserted
+                did_insert = await insert_entry(connection, session_id, entry)
+                if did_insert:
+                    inserted = True
+                    await append_sync_log(
+                        connection,
+                        entity="entry",
+                        op="upsert",
+                        entity_id=entry.entry_id,
+                        session_id=session_id,
+                        payload={
+                            "session_id": session_id,
+                            "entry_id": entry.entry_id,
+                            "kind": entry.kind,
+                            "payload": json.loads(ENTRY.dump_json(entry).decode()),
+                            "created_at": entry.created_at.isoformat(),
+                        },
+                    )
                 job_id = delivered_job_id(entry)
                 if job_id is not None:
-                    await mark_delivered(connection, job_id)
+                    await mark_delivered(connection, job_id, log_sync=True)
             if inserted:
                 await connection.execute(
                     "UPDATE sessions SET updated_at = ? WHERE id = ?",
                     (datetime.now(UTC).isoformat(), session_id),
                 )
                 if usage is not None:
-                    await insert_usage(connection, usage)
+                    if await insert_usage(connection, usage):
+                        await append_sync_log(
+                            connection,
+                            entity="usage",
+                            op="upsert",
+                            entity_id=usage.request_id,
+                            session_id=usage.session_id,
+                            payload=usage.model_dump(mode="json"),
+                        )
+                self.database.mark_sync_dirty()
 
     async def list(self, session_id: str) -> List[Entry]:
         async with self.database.read() as connection:

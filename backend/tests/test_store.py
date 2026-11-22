@@ -119,7 +119,7 @@ def test_failed_transaction_rolls_back_and_releases_lock(tmp_path: Path, failure
             with pytest.raises(failure):
                 async with database.transaction() as connection:
                     await connection.execute(
-                        "INSERT INTO settings VALUES ('failed', '1')"
+                        "INSERT INTO settings (key, value) VALUES ('failed', '1')"
                     )
                     raise failure()
             settings_store = SettingsStore(database)
@@ -136,7 +136,9 @@ def test_read_waits_for_transaction_commit(tmp_path: Path):
             await migrate(database)
             settings_store = SettingsStore(database)
             async with database.transaction() as connection:
-                await connection.execute("INSERT INTO settings VALUES ('key', '1')")
+                await connection.execute(
+                    "INSERT INTO settings (key, value) VALUES ('key', '1')"
+                )
                 reader = asyncio.create_task(settings_store.get("key"))
                 await asyncio.sleep(0)
                 assert not reader.done()

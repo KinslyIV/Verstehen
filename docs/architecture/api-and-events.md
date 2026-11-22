@@ -9,10 +9,11 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md#ev
 
 ## Code map
 
-Backend, `backend/src/verstehen/api/`: one router per area (`auth.py`, `sessions.py`, `jobs.py`,
-`side_chats.py`, `graph.py`, `providers.py`, `chatgpt.py`, `claude_code.py`, `tools.py`,
-`images.py`, `health.py`), `access.py` (`authenticate_server_request`, `request_refusal`), and
-`deps.py` (services from `app.state`, wired in `app.py`).
+Backend, `backend/src/verstehen/api/`: one router per area (`auth.py`, `sync.py`, `sync_status.py`,
+`sessions.py`, `jobs.py`, `side_chats.py`, `graph.py`, `providers.py`, `chatgpt.py`,
+`claude_code.py`, `tools.py`, `images.py`, `health.py`), `access.py`
+(`authenticate_server_request`, `request_refusal`), and `deps.py` (services from `app.state`, wired
+in `app.py`).
 
 Frontend, `app/src/lib/api/`: `client.ts` (every request; JSON and fetch-based SSE with the token
 header; the Tauri `sidecar_connection` lookup) and `schema.d.ts` (generated, never edited). Generated
@@ -30,6 +31,7 @@ types stay behind the client.
 | Settings and models | `GET PUT /api/settings`; `GET /api/models`; `POST /api/settings/default-model` |
 | Accounts | `GET /api/accounts/claude-code`; `GET POST /api/accounts/chatgpt`; `GET /api/accounts/chatgpt/sign-in/{id}`; `POST /api/accounts/chatgpt/{account}/sign-in`; `DELETE /api/accounts/chatgpt/{account}` |
 | Auth | `POST /api/auth/pairing-code`; `POST /api/auth/pair`; `GET /api/auth/devices`; `DELETE /api/auth/devices/{id}` (server mode only; `404` otherwise) |
+| Sync | `POST /api/sync/push`; `GET /api/sync/pull`; `POST /api/sync/images/{sha256}.{ext}` (server mode only; `404` otherwise); `GET /api/sync/status`; `POST /api/sync/now` (laptop mode; `404` in server mode) |
 | Tools | `GET /api/search-keys`; `PUT DELETE /api/search-keys/{engine}`; `GET /api/demo-browser`; `GET POST /api/demo-browser/download` |
 | Other | `GET /api/images/{sha256}.{ext}`; `GET /api/health` |
 
@@ -46,7 +48,7 @@ LearnHarness's two-stream model is kept:
   then `data: [DONE]`.
 - **Notifications** (`GET /api/events`): "something changed, refetch". Types: `turn-started`,
   `turn-settled`, `chats-changed`, `compaction-changed`, `jobs-changed`, `side-chats-changed`,
-  `graph-changed` (with `revision`), `extractions-changed`.
+  `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`.
 
 ## Access
 

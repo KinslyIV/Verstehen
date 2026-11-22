@@ -19,6 +19,8 @@ from verstehen.api.jobs import router as jobs_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.sessions import router as sessions_router
 from verstehen.api.side_chats import router as side_chats_router
+from verstehen.api.sync import router as sync_router
+from verstehen.api.sync_status import router as sync_status_router
 from verstehen.api.tools import router as tools_router
 from verstehen.config import Settings
 from verstehen.graph.errors import GraphRefused
@@ -54,7 +56,9 @@ from verstehen.store.migrate import migrate
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
+from verstehen.store.sync import SyncStore
 from verstehen.store.usage import UsageStore
+from verstehen.sync.service import SyncService
 
 
 def create_app(settings: Settings) -> FastAPI:
@@ -69,10 +73,14 @@ def create_app(settings: Settings) -> FastAPI:
             app.state.data_dir = settings.data_dir
             app.state.devices_store = DevicesStore(database)
             runtimes = RuntimeRegistry()
+            app.state.runtimes = runtimes
             sessions_store = SessionsStore(database)
             entries_store = EntriesStore(database)
             settings_store = SettingsStore(database)
             notifications = Notifications()
+            app.state.notifications = notifications
+            sync_store = SyncStore(database)
+            app.state.sync_store = sync_store
             claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
             chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
@@ -249,10 +257,26 @@ def create_app(settings: Settings) -> FastAPI:
                 runtimes,
                 turn_service.delivery_service,
             )
+            sync_service = SyncService(
+                sync_store,
+                credentials_store,
+                runtimes,
+                notifications,
+                settings.data_dir,
+            )
+            app.state.sync_service = sync_service
+            if settings.server:
+                database.on_sync_write = lambda: notifications.publish(
+                    Notification(type="sync-changed")
+                )
+            else:
+                database.on_sync_write = sync_service.notify_local_change
+                sync_service.start()
             turn_service.delivery_service.start_watching()
             try:
                 yield
             finally:
+                await sync_service.close()
                 await turn_service.delivery_service.close()
                 await extraction_service.close()
                 await side_chat_service.close()
@@ -291,6 +315,11 @@ def create_app(settings: Settings) -> FastAPI:
                 )
                 if denied is not None:
                     return denied
+                if path == "/api/sync/now":
+                    return JSONResponse(
+                        {"error": "Sync client is not enabled in server mode."},
+                        status_code=404,
+                    )
             else:
                 refusal = request_refusal(request, settings)
                 if refusal:
@@ -299,7 +328,12 @@ def create_app(settings: Settings) -> FastAPI:
                         status_code=403,
                         headers={"Cache-Control": "no-store"},
                     )
-                if path == "/api/auth" or path.startswith("/api/auth/"):
+                if (
+                    path == "/api/auth"
+                    or path.startswith("/api/auth/")
+                    or path in ("/api/sync/push", "/api/sync/pull")
+                    or path.startswith("/api/sync/images/")
+                ):
                     return JSONResponse(
                         {"error": "Server mode is not enabled."},
                         status_code=404,
@@ -326,6 +360,8 @@ def create_app(settings: Settings) -> FastAPI:
         )
 
     app.include_router(auth_router)
+    app.include_router(sync_router)
+    app.include_router(sync_status_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
     app.include_router(router)
