@@ -72,6 +72,91 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sync/push': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Sync Push */
+		post: operations['sync_push_api_sync_push_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/pull': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Sync Pull */
+		get: operations['sync_pull_api_sync_pull_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/images/{sha256}.{ext}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Sync Upload Image */
+		post: operations['sync_upload_image_api_sync_images__sha256___ext__post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Sync Status */
+		get: operations['get_sync_status_api_sync_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/now': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Trigger Sync Now */
+		post: operations['trigger_sync_now_api_sync_now_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/graph': {
 		parameters: {
 			query?: never;
@@ -733,6 +818,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** AcceptedChange */
+		AcceptedChange: {
+			/** Origin Seq */
+			origin_seq: number;
+			/** Server Seq */
+			server_seq: number;
+		};
 		/** Account */
 		Account: {
 			/** Id */
@@ -1262,6 +1354,17 @@ export interface components {
 			/** Notice */
 			notice?: string | null;
 		};
+		/** InvalidSyncPayloadResponse */
+		InvalidSyncPayloadResponse: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default invalid_sync_payload
+			 * @constant
+			 */
+			code: 'invalid_sync_payload';
+		};
 		/** JobDelivery */
 		JobDelivery: {
 			/**
@@ -1337,6 +1440,8 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at?: string;
+			/** Owner Device Id */
+			owner_device_id?: string | null;
 		};
 		/**
 		 * JobUsage
@@ -1431,6 +1536,19 @@ export interface components {
 			 */
 			display: boolean;
 		};
+		/** MissingImagesError */
+		MissingImagesError: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default missing_images
+			 * @constant
+			 */
+			code: 'missing_images';
+			/** Missing */
+			missing: string[];
+		};
 		/** ModelCatalog */
 		ModelCatalog: {
 			/** Accounts */
@@ -1518,7 +1636,8 @@ export interface components {
 				| 'jobs-changed'
 				| 'side-chats-changed'
 				| 'graph-changed'
-				| 'extractions-changed';
+				| 'extractions-changed'
+				| 'sync-changed';
 			/**
 			 * Session Id
 			 * @default
@@ -1669,6 +1788,41 @@ export interface components {
 			 */
 			message_id: string;
 		};
+		/** PullResponse */
+		PullResponse: {
+			/** Changes */
+			changes: components['schemas']['SyncChange'][];
+			/** Latest Seq */
+			latest_seq: number;
+			/** Schema Version */
+			schema_version: number;
+			/** Has More */
+			has_more: boolean;
+		};
+		/** PushRequest */
+		PushRequest: {
+			/** Device Id */
+			device_id: string;
+			/** Schema Version */
+			schema_version: number;
+			/** Changes */
+			changes: components['schemas']['SyncChange'][];
+		};
+		/** PushResponse */
+		PushResponse: {
+			/** Accepted */
+			accepted: number;
+			/** Skipped */
+			skipped: number;
+			/** Server Seq */
+			server_seq: number;
+			/** Schema Version */
+			schema_version: number;
+			/** Deferred Session Ids */
+			deferred_session_ids?: string[];
+			/** Accepted Changes */
+			accepted_changes?: components['schemas']['AcceptedChange'][];
+		};
 		/** QuestionAnswer */
 		QuestionAnswer: {
 			/**
@@ -1772,6 +1926,21 @@ export interface components {
 			usage?: {
 				[key: string]: components['schemas']['StageUsage'];
 			};
+		};
+		/** SchemaMismatchError */
+		SchemaMismatchError: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default schema_mismatch
+			 * @constant
+			 */
+			code: 'schema_mismatch';
+			/** Server Schema Version */
+			server_schema_version: number;
+			/** Client Schema Version */
+			client_schema_version: number;
 		};
 		/** SearchKeyBody */
 		SearchKeyBody: {
@@ -2156,6 +2325,58 @@ export interface components {
 			/** Text */
 			text: string;
 		};
+		/** SyncChange */
+		SyncChange: {
+			/** Change Seq */
+			change_seq: number;
+			/** Entity */
+			entity: string;
+			/**
+			 * Op
+			 * @enum {string}
+			 */
+			op: 'upsert' | 'delete';
+			/** Entity Id */
+			entity_id: string;
+			/** Session Id */
+			session_id?: string | null;
+			/** Payload */
+			payload: {
+				[key: string]: unknown;
+			};
+			/** Origin Device Id */
+			origin_device_id: string;
+			/** Origin Seq */
+			origin_seq: number;
+			/** Created At */
+			created_at: string;
+		};
+		/** SyncStatusResponse */
+		SyncStatusResponse: {
+			/** Enabled */
+			enabled: boolean;
+			/** Device Id */
+			device_id: string;
+			/** Server Url */
+			server_url: string | null;
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status: 'disabled' | 'idle' | 'syncing' | 'offline' | 'update_required' | 'error';
+			/** Last Pushed Seq */
+			last_pushed_seq: number;
+			/** Last Pulled Seq */
+			last_pulled_seq: number;
+			/** Last Error */
+			last_error: string | null;
+			/** Last Sync At */
+			last_sync_at: string | null;
+			/** Pending Changes */
+			pending_changes: number;
+			/** Deferred Sessions */
+			deferred_sessions: string[];
+		};
 		/** TextPart */
 		TextPart: {
 			/**
@@ -2518,6 +2739,272 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_push_api_sync_push_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['PushRequest'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PushResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['InvalidSyncPayloadResponse'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json':
+						| components['schemas']['SchemaMismatchError']
+						| components['schemas']['MissingImagesError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_pull_api_sync_pull_get: {
+		parameters: {
+			query: {
+				schema_version: number;
+				since?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PullResponse'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SchemaMismatchError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_upload_image_api_sync_images__sha256___ext__post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				sha256: string;
+				ext: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_sync_status_api_sync_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	trigger_sync_now_api_sync_now_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
 				};
 			};
 		};

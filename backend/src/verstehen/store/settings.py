@@ -17,6 +17,11 @@ from pydantic import (
 from pydantic_core import PydanticCustomError
 
 from verstehen.store.database import Database
+from verstehen.store.sync_log import (
+    SYNCED_SETTINGS_KEYS,
+    append_sync_log,
+    utc_now,
+)
 
 JSON = TypeAdapter(JsonValue)
 ThinkingLevel = Literal["minimal", "low", "medium", "high", "xhigh", "max"]
@@ -231,20 +236,47 @@ class SettingsStore:
             raise ValueError(FILE_ACCESS_ERROR) from error
 
     async def write(self, settings: Settings) -> None:
+        now = utc_now()
         async with self.database.transaction() as connection:
+            async with connection.execute("SELECT key, value FROM settings") as cursor:
+                previous = {str(k): str(v) for k, v in await cursor.fetchall()}
+            dirty = False
             for key, value in settings.model_dump(mode="json").items():
                 if value is None:
-                    await connection.execute(
+                    cursor = await connection.execute(
                         "DELETE FROM settings WHERE key = ?", (key,)
                     )
+                    deleted = cursor.rowcount > 0
+                    await cursor.close()
+                    if deleted and key in SYNCED_SETTINGS_KEYS:
+                        await append_sync_log(
+                            connection,
+                            entity="setting",
+                            op="delete",
+                            entity_id=key,
+                            payload={"key": key},
+                        )
+                        dirty = True
                     continue
                 if key == "compaction_limit":
                     value = Settings.floor_compaction_limit(settings.compaction_limit)
+                encoded = JSON.dump_json(value).decode()
                 await connection.execute(
-                    "INSERT INTO settings (key, value) VALUES (?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                    (key, JSON.dump_json(value).decode()),
+                    "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                    (key, encoded, now),
                 )
+                if key in SYNCED_SETTINGS_KEYS and previous.get(key) != encoded:
+                    await append_sync_log(
+                        connection,
+                        entity="setting",
+                        op="upsert",
+                        entity_id=key,
+                        payload={"key": key, "value": value, "updated_at": now},
+                    )
+                    dirty = True
+            if dirty:
+                self.database.mark_sync_dirty()
 
     async def get(self, key: str) -> JsonValue:
         async with self.database.read() as connection:
@@ -260,10 +292,21 @@ class SettingsStore:
                 f"Setting {key!r} cannot be stored as null: None from get() means "
                 "the key is missing. Store a non-null value instead."
             )
-        encoded = JSON.dump_json(JSON.validate_python(value)).decode()
+        validated = JSON.validate_python(value)
+        encoded = JSON.dump_json(validated).decode()
+        now = utc_now()
         async with self.database.transaction() as connection:
             await connection.execute(
-                "INSERT INTO settings (key, value) VALUES (?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                (key, encoded),
+                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                (key, encoded, now),
             )
+            if key in SYNCED_SETTINGS_KEYS:
+                await append_sync_log(
+                    connection,
+                    entity="setting",
+                    op="upsert",
+                    entity_id=key,
+                    payload={"key": key, "value": validated, "updated_at": now},
+                )
+                self.database.mark_sync_dirty()

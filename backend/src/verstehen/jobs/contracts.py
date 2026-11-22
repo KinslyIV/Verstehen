@@ -48,6 +48,7 @@ class PdfResult(BaseModel):
 class VisualImage(BaseModel):
     path: str
     snapshot_id: str
+    extension: Literal["png", "jpeg", "gif", "webp"] | None = None
 
 
 class VisualResult(BaseModel):

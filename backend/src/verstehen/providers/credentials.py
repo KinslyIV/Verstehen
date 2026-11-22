@@ -46,6 +46,7 @@ class CredentialFile(BaseModel):
     host_id: str = Field(default_factory=lambda: uuid4().urn)
     accounts: list[StoredAccount] = Field(default_factory=list)
     search_keys: dict[str, str] = Field(default_factory=dict, repr=False)
+    sync_token: str | None = Field(default=None, repr=False)
 
 
 def identity(credentials: OpenAIChatGPTCredentials) -> tuple[str, str | None]:
@@ -190,4 +191,14 @@ class CredentialsStore:
                 data.search_keys.pop(engine, None)
             else:
                 data.search_keys[engine] = value
+            self.write(data)
+
+    def sync_token(self) -> str | None:
+        with _lock:
+            return self.read().sync_token
+
+    def set_sync_token(self, token: str | None) -> None:
+        with _lock:
+            data = self.read()
+            data.sync_token = token.strip() if token else None
             self.write(data)

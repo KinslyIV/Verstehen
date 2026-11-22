@@ -43,7 +43,7 @@ The backend is `backend/src/verstehen/`, one package per LearnHarness topic. The
 by import-linter (`backend/pyproject.toml`):
 
 ```
-api | lh_import  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
+api | lh_import  →  sync  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
 ```
 
 `lh_import` is the one-off LearnHarness import ([store](architecture/store.md#importing-from-learnharness)),

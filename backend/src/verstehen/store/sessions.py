@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 from verstehen.store.database import Database
 from verstehen.store.graph import GraphLedger, GraphStore, read_ledger, write_ledger
 from verstehen.store.settings import ModelPick, ThinkingLevel
+from verstehen.store.sync_log import append_sync_log, record_tombstone
 
 
 class Session(BaseModel):
@@ -53,6 +54,26 @@ async def insert_session(connection: Connection, session: Session) -> None:
     )
 
 
+async def _log_session_upsert(connection: Connection, session_id: str) -> None:
+    async with connection.execute(
+        "SELECT id, title, kind, created_at, updated_at, model_account, model_id, thinking_level "
+        "FROM sessions WHERE id = ?",
+        (session_id,),
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return
+    session = Session.model_validate(dict(zip(Session.model_fields, row)))
+    await append_sync_log(
+        connection,
+        entity="session",
+        op="upsert",
+        entity_id=session.id,
+        session_id=session.id,
+        payload=session.model_dump(mode="json"),
+    )
+
+
 class SessionsStore:
     def __init__(self, database: Database):
         self.database = database
@@ -66,6 +87,15 @@ class SessionsStore:
         )
         async with self.database.transaction() as connection:
             await insert_session(connection, session)
+            await append_sync_log(
+                connection,
+                entity="session",
+                op="upsert",
+                entity_id=session.id,
+                session_id=session.id,
+                payload=session.model_dump(mode="json"),
+            )
+            self.database.mark_sync_dirty()
         return session
 
     async def get(self, session_id: str) -> Session | None:
@@ -99,7 +129,11 @@ class SessionsStore:
             async with connection.execute(
                 "UPDATE sessions SET title = ? WHERE id = ?", (title, session_id)
             ) as cursor:
-                return cursor.rowcount > 0
+                updated = cursor.rowcount > 0
+            if updated:
+                await _log_session_upsert(connection, session_id)
+                self.database.mark_sync_dirty()
+            return updated
 
     async def set_model(self, session_id: str, pick: ModelPick) -> bool:
         async with self.database.transaction() as connection:
@@ -107,14 +141,32 @@ class SessionsStore:
                 "UPDATE sessions SET model_account = ?, model_id = ?, thinking_level = ? WHERE id = ?",
                 (pick.account, pick.model, pick.thinking_level, session_id),
             ) as cursor:
-                return cursor.rowcount > 0
+                updated = cursor.rowcount > 0
+            if updated:
+                await _log_session_upsert(connection, session_id)
+                self.database.mark_sync_dirty()
+            return updated
 
     async def delete(self, session_id: str) -> bool:
         async with self.database.transaction() as connection:
             async with connection.execute(
                 "DELETE FROM sessions WHERE id = ?", (session_id,)
             ) as cursor:
-                return cursor.rowcount > 0
+                deleted = cursor.rowcount > 0
+            if deleted:
+                await record_tombstone(
+                    connection, entity="session", entity_id=session_id
+                )
+                await append_sync_log(
+                    connection,
+                    entity="session",
+                    op="delete",
+                    entity_id=session_id,
+                    session_id=session_id,
+                    payload={"id": session_id},
+                )
+                self.database.mark_sync_dirty()
+            return deleted
 
     async def delete_with_graph(
         self,
@@ -134,10 +186,27 @@ class SessionsStore:
             if ledger != previous:
                 revision += 1
                 ledger.revision = revision
-                await write_ledger(connection, ledger, previous)
+                await write_ledger(connection, ledger, previous, log_sync=True)
                 changed = True
+                self.database.mark_sync_dirty()
             orphaned = await find_unreferenced_image_hashes(connection, session_id)
-            await connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+            async with connection.execute(
+                "DELETE FROM sessions WHERE id = ?", (session_id,)
+            ) as cursor:
+                deleted = cursor.rowcount > 0
+            if deleted:
+                await record_tombstone(
+                    connection, entity="session", entity_id=session_id
+                )
+                await append_sync_log(
+                    connection,
+                    entity="session",
+                    op="delete",
+                    entity_id=session_id,
+                    session_id=session_id,
+                    payload={"id": session_id},
+                )
+                self.database.mark_sync_dirty()
         if changed and graph_store.changed is not None:
             graph_store.changed(revision)
         return orphaned

@@ -119,7 +119,7 @@ def test_failed_transaction_rolls_back_and_releases_lock(tmp_path: Path, failure
             with pytest.raises(failure):
                 async with database.transaction() as connection:
                     await connection.execute(
-                        "INSERT INTO settings VALUES ('failed', '1')"
+                        "INSERT INTO settings (key, value) VALUES ('failed', '1')"
                     )
                     raise failure()
             settings_store = SettingsStore(database)
@@ -136,11 +136,81 @@ def test_read_waits_for_transaction_commit(tmp_path: Path):
             await migrate(database)
             settings_store = SettingsStore(database)
             async with database.transaction() as connection:
-                await connection.execute("INSERT INTO settings VALUES ('key', '1')")
+                await connection.execute(
+                    "INSERT INTO settings (key, value) VALUES ('key', '1')"
+                )
                 reader = asyncio.create_task(settings_store.get("key"))
                 await asyncio.sleep(0)
                 assert not reader.done()
             assert await reader == 1
+
+    asyncio.run(run())
+
+
+def test_double_cancellation_during_commit_reports_committed_truthfully(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            real_commit = database._connection.commit
+
+            async def slow_commit():
+                entered.set()
+                await release.wait()
+                return await real_commit()
+
+            database._connection.commit = slow_commit  # type: ignore[method-assign]
+
+            async def write_row():
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('k', '1')"
+                    )
+
+            task = asyncio.create_task(write_row())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert database.last_tx_committed is True
+            assert await SettingsStore(database).get("k") == 1
+
+    asyncio.run(run())
+
+
+def test_cancellation_followed_by_commit_failure_raises_cancelled_error(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+
+            async def failing_commit():
+                entered.set()
+                await release.wait()
+                raise OSError("disk full")
+
+            database._connection.commit = failing_commit  # type: ignore[method-assign]
+
+            async def write_row():
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('k', '1')"
+                    )
+
+            task = asyncio.create_task(write_row())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert database.last_tx_committed is False
 
     asyncio.run(run())
 

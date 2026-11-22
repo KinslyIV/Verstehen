@@ -6,6 +6,7 @@ from aiosqlite import Connection
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter
 
 from verstehen.store.database import Database
+from verstehen.store.sync_log import append_sync_log, local_device_id
 
 JSON = TypeAdapter(JsonValue)
 JobKind = Literal["research", "demo", "visual", "pdf"]
@@ -14,7 +15,7 @@ DeliveryKind = Literal["result", "abort", "failure"]
 DeliveryStatus = Literal["pending", "delivered"]
 COLUMNS = (
     "id, session_id, kind, tool_call_id, input, status, activity, result, error, "
-    "delivery_kind, delivery_status, usage, created_at, updated_at"
+    "delivery_kind, delivery_status, usage, created_at, updated_at, owner_device_id"
 )
 
 
@@ -50,6 +51,7 @@ class JobRecord(BaseModel):
     usage: JobUsage | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    owner_device_id: str | None = None
 
 
 class JobPatch(BaseModel):
@@ -87,6 +89,7 @@ def record_from_row(row: tuple) -> JobRecord:
         usage,
         created_at,
         updated_at,
+        owner_device_id,
     ) = row
     return JobRecord(
         id=id,
@@ -104,6 +107,7 @@ def record_from_row(row: tuple) -> JobRecord:
         usage=None if usage is None else JobUsage.model_validate_json(usage),
         created_at=created_at,
         updated_at=updated_at,
+        owner_device_id=owner_device_id,
     )
 
 
@@ -123,18 +127,61 @@ def patch_assignments(patch: JobPatch) -> tuple[list[str], list[str | None]]:
     return columns, values
 
 
-async def mark_delivered(connection: Connection, job_id: str) -> None:
+async def _log_settled_job(connection: Connection, job_id: str) -> bool:
+    async with connection.execute(
+        f"SELECT {COLUMNS} FROM jobs WHERE id = ?", (job_id,)
+    ) as cursor:
+        row = await cursor.fetchone()
+    if row is None:
+        return False
+    job = record_from_row(tuple(row))
+    if job.status not in ("done", "error"):
+        return False
+    await append_sync_log(
+        connection,
+        entity="job",
+        op="upsert",
+        entity_id=job.id,
+        session_id=job.session_id,
+        payload={
+            "id": job.id,
+            "session_id": job.session_id,
+            "kind": job.kind,
+            "tool_call_id": job.tool_call_id,
+            "input": job.input,
+            "status": job.status,
+            "activity": job.activity,
+            "result": job.result,
+            "error": job.error,
+            "delivery_kind": None if job.delivery is None else job.delivery.kind,
+            "delivery_status": None if job.delivery is None else job.delivery.status,
+            "usage": None if job.usage is None else job.usage.model_dump(mode="json"),
+            "created_at": job.created_at.isoformat(),
+            "updated_at": job.updated_at.isoformat(),
+            "owner_device_id": job.owner_device_id,
+        },
+    )
+    return True
+
+
+async def mark_delivered(
+    connection: Connection, job_id: str, *, log_sync: bool = False
+) -> None:
     """Acknowledge delivery inside the caller's transaction, as the marker is saved."""
-    await connection.execute(
+    cursor = await connection.execute(
         "UPDATE jobs SET delivery_status = 'delivered', updated_at = ? "
         "WHERE id = ? AND delivery_status = 'pending'",
         (datetime.now(UTC).isoformat(), job_id),
     )
+    updated = cursor.rowcount > 0
+    await cursor.close()
+    if updated and log_sync:
+        await _log_settled_job(connection, job_id)
 
 
 async def insert_job(connection: Connection, job: JobRecord) -> None:
     await connection.execute(
-        f"INSERT INTO jobs ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        f"INSERT INTO jobs ({COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             job.id,
             job.session_id,
@@ -150,6 +197,7 @@ async def insert_job(connection: Connection, job: JobRecord) -> None:
             encode(job.usage),
             job.created_at.isoformat(),
             job.updated_at.isoformat(),
+            job.owner_device_id,
         ),
     )
 
@@ -163,10 +211,15 @@ class JobsStore:
     async def create(
         self, session_id: str, kind: JobKind, tool_call_id: str, input: JsonValue
     ) -> JobRecord:
-        job = JobRecord(
-            session_id=session_id, kind=kind, tool_call_id=tool_call_id, input=input
-        )
         async with self.database.transaction() as connection:
+            owner = await local_device_id(connection)
+            job = JobRecord(
+                session_id=session_id,
+                kind=kind,
+                tool_call_id=tool_call_id,
+                input=input,
+                owner_device_id=owner,
+            )
             await insert_job(connection, job)
         return job
 
@@ -202,13 +255,29 @@ class JobsStore:
             "WHERE session_id = ? AND status = 'running'", (session_id,)
         )
 
-    async def pending_deliveries(self, session_id: str) -> List[JobRecord]:
+    async def pending_deliveries(
+        self, session_id: str, *, owner_device_id: str | None = None
+    ) -> List[JobRecord]:
+        if owner_device_id is not None:
+            return await self.select_all(
+                "WHERE session_id = ? AND delivery_status = 'pending' "
+                "AND (owner_device_id = ? OR owner_device_id IS NULL)",
+                (session_id, owner_device_id),
+            )
         return await self.select_all(
             "WHERE session_id = ? AND delivery_status = 'pending'", (session_id,)
         )
 
-    async def unfinished(self) -> List[JobRecord]:
+    async def unfinished(
+        self, *, owner_device_id: str | None = None
+    ) -> List[JobRecord]:
         """Jobs the recovery sweep may act on: pending delivery or a worker with no result."""
+        if owner_device_id is not None:
+            return await self.select_all(
+                "WHERE (delivery_status = 'pending' OR (status = 'running' AND result IS NULL)) "
+                "AND (owner_device_id = ? OR owner_device_id IS NULL)",
+                (owner_device_id,),
+            )
         return await self.select_all(
             "WHERE delivery_status = 'pending' OR (status = 'running' AND result IS NULL)",
             (),
@@ -227,4 +296,7 @@ class JobsStore:
                 f"UPDATE jobs SET {', '.join(columns)} WHERE id = ?{condition}",
                 (*values, job_id),
             ) as cursor:
-                return cursor.rowcount > 0
+                updated = cursor.rowcount > 0
+            if updated and await _log_settled_job(connection, job_id):
+                self.database.mark_sync_dirty()
+            return updated

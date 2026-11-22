@@ -335,7 +335,11 @@ async def run_visual_maker(
         return VisualResult(
             svg=current,
             notes=notes or None,
-            image=VisualImage(path=image.path, snapshot_id=image.snapshot_id)
+            image=VisualImage(
+                path=image.path,
+                snapshot_id=image.snapshot_id,
+                extension="png" if image.mime_type == "image/png" else "jpeg",
+            )
             if image
             else None,
         )

@@ -7,6 +7,7 @@ from verstehen.session.results import Refused
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.store.jobs import JobPatch, JobRecord, JobsStore
 from verstehen.store.sessions import SessionsStore
+from verstehen.store.sync import SyncStore
 
 SWEEP_INTERVAL_SECONDS = 30
 
@@ -50,7 +51,8 @@ class JobService:
         if now - self.last_sweep < SWEEP_INTERVAL_SECONDS:
             return
         self.last_sweep = now
-        for job in await self.jobs_store.unfinished():
+        owner = await SyncStore(self.jobs_store.database).device_id()
+        for job in await self.jobs_store.unfinished(owner_device_id=owner):
             if self.job_runner.is_live(job.id):
                 continue
             if self.runtimes.get(job.session_id).run is not None:

@@ -9,6 +9,7 @@ from verstehen.session.runtime import RuntimeRegistry
 from verstehen.store.entries import EntriesStore, UserEntry
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import SessionsStore
+from verstehen.store.sync import SyncStore
 from verstehen.teaching.phases import handoff_owed
 from verstehen.teaching.questions.pending import (
     ends_in_dismissal,
@@ -41,11 +42,17 @@ class DeliveryService:
         self.start_wake = start_wake
         self.watcher: asyncio.Task[None] | None = None
 
+    async def _local_device_id(self) -> str:
+        return await SyncStore(self.jobs_store.database).device_id()
+
     async def restore(self, session_id: str) -> None:
         runtime = self.runtimes.get(session_id)
         if runtime.deleted:
             return
-        for job in await self.jobs_store.pending_deliveries(session_id):
+        owner = await self._local_device_id()
+        for job in await self.jobs_store.pending_deliveries(
+            session_id, owner_device_id=owner
+        ):
             if marker := delivery_marker(job):
                 runtime.delivery.add("job_result", marker)
 
@@ -73,7 +80,8 @@ class DeliveryService:
             logger.warning("Wake for session %s refused: %s", session_id, result.reason)
 
     async def pump_all(self) -> None:
-        for job in await self.jobs_store.unfinished():
+        owner = await self._local_device_id()
+        for job in await self.jobs_store.unfinished(owner_device_id=owner):
             if job.delivery is not None:
                 await self.pump(job.session_id)
 
@@ -98,7 +106,7 @@ class DeliveryService:
 
     async def watch(self) -> None:
         async for event in self.notifications.subscribe():
-            if event is None:
+            if event is None or event.from_sync:
                 continue
             ended_compaction = (
                 event.type == "compaction-changed" and event.running is False

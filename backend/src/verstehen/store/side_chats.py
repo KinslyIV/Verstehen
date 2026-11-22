@@ -7,6 +7,7 @@ from aiosqlite import Connection
 from pydantic import BaseModel, Field
 
 from verstehen.store.database import Database
+from verstehen.store.sync_log import append_sync_log
 from verstehen.store.usage import UsageRecord, insert_usage
 
 
@@ -37,8 +38,8 @@ class SideThread(BaseModel):
 
 async def insert_side_thread(
     connection: Connection, session_id: str, thread: SideThread
-) -> None:
-    await connection.execute(
+) -> bool:
+    cursor = await connection.execute(
         "INSERT INTO side_threads (id, session_id, anchor, created_at) VALUES (?, ?, ?, ?) "
         "ON CONFLICT(id) DO NOTHING",
         (
@@ -48,12 +49,15 @@ async def insert_side_thread(
             thread.created_at.isoformat(),
         ),
     )
+    inserted = cursor.rowcount > 0
+    await cursor.close()
+    return inserted
 
 
 async def insert_side_exchange(
     connection: Connection, thread_id: str, exchange: SideExchange
-) -> None:
-    await connection.execute(
+) -> bool:
+    cursor = await connection.execute(
         "INSERT INTO side_exchanges (id, thread_id, seq, role, text, quotes, model, request_id, stopped, error, created_at) "
         "SELECT ?, ?, COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?, ? "
         "FROM side_exchanges WHERE thread_id = ? ON CONFLICT(thread_id, id) DO NOTHING",
@@ -71,6 +75,9 @@ async def insert_side_exchange(
             thread_id,
         ),
     )
+    inserted = cursor.rowcount > 0
+    await cursor.close()
+    return inserted
 
 
 class SideChatsStore:
@@ -127,10 +134,58 @@ class SideChatsStore:
     ) -> None:
         thread = SideThread.model_validate(thread)
         async with self.database.transaction() as connection:
-            await insert_side_thread(connection, session_id, thread)
-            if exchange is not None:
-                await insert_side_exchange(
-                    connection, thread.id, SideExchange.model_validate(exchange)
+            dirty = False
+            if await insert_side_thread(connection, session_id, thread):
+                await append_sync_log(
+                    connection,
+                    entity="side_thread",
+                    op="upsert",
+                    entity_id=thread.id,
+                    session_id=session_id,
+                    payload={
+                        "id": thread.id,
+                        "session_id": session_id,
+                        "anchor": thread.anchor.model_dump(mode="json"),
+                        "created_at": thread.created_at.isoformat(),
+                    },
                 )
+                dirty = True
+            if exchange is not None:
+                validated_exchange = SideExchange.model_validate(exchange)
+                if await insert_side_exchange(
+                    connection, thread.id, validated_exchange
+                ):
+                    await append_sync_log(
+                        connection,
+                        entity="side_exchange",
+                        op="upsert",
+                        entity_id=f"{thread.id}:{validated_exchange.id}",
+                        session_id=session_id,
+                        payload={
+                            "id": validated_exchange.id,
+                            "thread_id": thread.id,
+                            "session_id": session_id,
+                            "role": validated_exchange.role,
+                            "text": validated_exchange.text,
+                            "quotes": validated_exchange.quotes,
+                            "model": validated_exchange.model,
+                            "request_id": validated_exchange.request_id,
+                            "stopped": validated_exchange.stopped,
+                            "error": validated_exchange.error,
+                            "created_at": validated_exchange.created_at.isoformat(),
+                        },
+                    )
+                    dirty = True
             if usage is not None:
-                await insert_usage(connection, usage)
+                if await insert_usage(connection, usage):
+                    await append_sync_log(
+                        connection,
+                        entity="usage",
+                        op="upsert",
+                        entity_id=usage.request_id,
+                        session_id=usage.session_id,
+                        payload=usage.model_dump(mode="json"),
+                    )
+                    dirty = True
+            if dirty:
+                self.database.mark_sync_dirty()
