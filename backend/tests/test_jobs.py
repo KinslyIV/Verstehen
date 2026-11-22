@@ -233,6 +233,7 @@ async def stack(
             runner,
             side_threads,
             extraction_service,
+            graph_store,
         )
         sessions = SessionService(
             sessions_store,

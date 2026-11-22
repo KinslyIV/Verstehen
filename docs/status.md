@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-21 (LearnHarness import on `learnharness-import`).
+> PRs. Last update: 2026-11-21 (extraction simplification on `simplify-extraction`).
 
 ## Where we are
 

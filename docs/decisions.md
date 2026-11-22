@@ -115,8 +115,10 @@ _Nothing._
   both the new-session screen and the graph page, with one selection.
 - **The page settles the layout**, not the server after each merge.
 - **Refreshes come from events**, not LH's 2-second polls.
-- **Extract now** refuses up front when no model is usable (LH accepts and logs later), and is the
-  button text in both the popover and the session menu.
+- **Extract now** refuses up front when no model is usable (LH accepts with `202` and logs a
+  later refusal), and is the button text in both the popover and the session menu.
+- **Notes imports** check model readiness before registering the source or folders (LH registers
+  the folder and source first, then returns a per-file configuration refusal).
 - **Deleting a session** waits up to ten seconds for its extraction to stop, then asks you to try
   again; without a `mode` it keeps the graph.
 - **Nodes can also be deleted from the detail card**, besides right-click.

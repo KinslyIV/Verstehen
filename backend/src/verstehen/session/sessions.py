@@ -7,7 +7,7 @@ from typing import List
 
 from verstehen.graph.context import GraphContext, graph_context_message
 from verstehen.graph.coverage import SessionCoverage
-from verstehen.graph.deletion import DeleteMode
+from verstehen.graph.deletion import DeleteMode, delete_sources_traces
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
@@ -19,7 +19,7 @@ from verstehen.sidechat.segments import SideSegments, side_segments
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
-from verstehen.store.graph import GraphStore
+from verstehen.store.graph import GraphLedger, GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionsStore
 from verstehen.store.settings import ModelPick
@@ -221,8 +221,10 @@ class SessionService:
                         "job_ids": [job.id for job in running],
                     },
                 )
-            try:
-                if not await self.extraction_service.begin_deletion(session_id):
+            async with self.extraction_service.deleting_source(
+                session_id
+            ) as wound_down:
+                if not wound_down:
                     return Refused(
                         503,
                         {
@@ -230,19 +232,20 @@ class SessionService:
                             "code": "extraction_winding_down",
                         },
                     )
-                await self.extraction_service.delete_session_traces(session_id, mode)
+
+                def mutate_graph(ledger: GraphLedger) -> None:
+                    delete_sources_traces(ledger, {session_id}, mode)
+                    ledger.organization.placements.pop(session_id, None)
+
+                orphaned = await self.sessions_store.delete_with_graph(
+                    session_id, self.graph_store, mutate_graph
+                )
                 if self.side_chat_service is not None:
                     self.side_chat_service.stop_all(session_id)
-                orphaned = await self.sessions_store.unreferenced_image_hashes(
-                    session_id
-                )
-                await self.sessions_store.delete(session_id)
                 self.extraction_service.forget_failure(session_id)
                 runtime.mark_deleted()
                 runtime.delivery.clear()
                 await asyncio.to_thread(remove_images, self.data_dir, orphaned)
-            finally:
-                self.extraction_service.end_deletion(session_id)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )

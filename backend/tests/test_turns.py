@@ -100,6 +100,7 @@ async def turn_service_context(tmp_path: Path, model=None):
             job_runner,
             lambda session_id: asyncio.sleep(0, []),
             extraction_service,
+            graph_store,
         )
         session = await turn_service.sessions_store.create("Test")
         try:

@@ -10,6 +10,7 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
 from verstehen.graph.extraction_service import ExtractionService
+from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
@@ -44,6 +45,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import SessionsStore
@@ -168,6 +170,7 @@ class TurnService:
         job_runner: JobRunner,
         side_threads: Callable[[str], Awaitable[list[SideThread]]],
         extraction_service: ExtractionService,
+        graph_store: GraphStore,
         provider_events: bool = False,
     ):
         self.sessions_store = sessions_store
@@ -185,6 +188,7 @@ class TurnService:
         self.job_runner = job_runner
         self.side_threads = side_threads
         self.extraction_service = extraction_service
+        self.graph_store = graph_store
         self.delivery_service = DeliveryService(
             sessions_store,
             entries_store,
@@ -465,6 +469,14 @@ class TurnService:
                     and has_unresolved_question([state.response])
                 )
 
+            async def list_sessions() -> str:
+                return format_graph_sessions(
+                    await self.graph_store.read(), await self.sessions_store.list()
+                )
+
+            async def list_propositions(session: str) -> str:
+                return format_graph_propositions(await self.graph_store.read(), session)
+
             state.agent = build_prober(
                 model,
                 instructions,
@@ -474,10 +486,7 @@ class TurnService:
                 extra_tools=(
                     *files,
                     *(
-                        prober_graph_tools(
-                            self.extraction_service.readers.sessions,
-                            self.extraction_service.readers.propositions,
-                        )
+                        prober_graph_tools(list_sessions, list_propositions)
                         if settings.graph.enabled and settings.agent.graph_tools
                         else ()
                     ),

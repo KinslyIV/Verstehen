@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from contextlib import AbstractAsyncContextManager
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 from pydantic_ai.messages import (
     ModelMessage,
     ModelRequest,
@@ -16,67 +16,12 @@ from pydantic_ai.messages import (
 from pydantic_ai.models import ModelRequestParameters
 from pydantic_ai.tools import ToolDefinition
 
-from verstehen.graph.merge import ExtractedChain, ExtractedProposition, SessionFindings
+from verstehen.graph.merge import Findings, NotesFindings, SessionFindings
 from verstehen.graph.model import DerivedGraph
-from verstehen.graph.prompts import EXTRACTOR_INSTRUCTIONS, NOTES_EXTRACTOR_INSTRUCTIONS
 from verstehen.providers.fake import script_role
 from verstehen.providers.resolve import ResolvedModel
 from verstehen.providers.usage import UsageModel, response_usage
 from verstehen.store.entries import EntryUsage
-
-
-class Proposition(BaseModel):
-    model_config = ConfigDict(strict=True)
-    id: str = Field(
-        description='Local id: "p1", "p2", … — referenced by chains in this call.'
-    )
-    name: str = Field(
-        description="A very short label — established terminology, the term the discipline itself uses, a glossary headword a textbook would print ('Will to power', 'Divine command theory'). Not a sentence, needn't be unique or self-contained: this becomes the node's global label in the graph."
-    )
-    statement: str = Field(
-        description='One true, self-contained, world-facing core idea at full precision. Never about the learner, the teacher, or the reading: not "the learner understands X" but "X". A misconception enters as its TRUE correction.'
-    )
-    aliases: list[str] = Field(
-        default_factory=list,
-        description="Verbatim phrasings the source used for the same proposition, if any.",
-    )
-
-
-class SessionProposition(Proposition):
-    messageId: str = Field(
-        description='The message id of the ONE passage in this stretch that most directly states or explains this proposition — copy it EXACTLY from that passage\'s "TEACHER [id]" label.'
-    )
-
-
-class Chain(BaseModel):
-    model_config = ConfigDict(strict=True)
-    premises: list[str] = Field(
-        description="Premise ids used TOGETHER: they jointly entail the conclusion; independent reasons are separate chains.",
-        json_schema_extra={
-            "minItems": 1,
-            "items": {
-                "type": "string",
-                "description": 'The id this premise uses — EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim ("n_…"), OR the local id of a proposition in this submission ("p1", …).',
-            },
-        },
-    )
-    conclusion: str = Field(
-        description='The id this conclusion is — EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim ("n_…"), OR the local id of a proposition in this submission ("p1", …).'
-    )
-
-
-PROPOSITIONS_DESCRIPTION = "Only the NEW core ideas this stretch contributes — ideas the prompt's THE GRAPH SO FAR already holds are referenced by id in chains, never restated here."
-CHAINS_DESCRIPTION = "Every argument this stretch makes — including arguments that join new ideas to established ones; conclusions reusable by id as premises of later chains; bare ideas (no argument) ride the propositions list alone; pass [] when none — never omit the field."
-
-
-class NotesFindings(BaseModel):
-    propositions: list[Proposition] = Field(description=PROPOSITIONS_DESCRIPTION)
-    chains: list[Chain] = Field(description=CHAINS_DESCRIPTION)
-
-
-class SessionSubmit(BaseModel):
-    propositions: list[SessionProposition] = Field(description=PROPOSITIONS_DESCRIPTION)
-    chains: list[Chain] = Field(description=CHAINS_DESCRIPTION)
 
 
 def heal_stringified_arrays(raw: object) -> object:
@@ -94,9 +39,7 @@ def heal_stringified_arrays(raw: object) -> object:
     return result
 
 
-def validate_findings_chains(
-    value: SessionFindings, existing_ids: set[str]
-) -> str | None:
+def validate_findings_chains(value: Findings, existing_ids: set[str]) -> str | None:
     ids = {p.id for p in value.propositions} | existing_ids
     for chain in value.chains:
         if not chain.premises:
@@ -111,7 +54,7 @@ def validate_findings_chains(
 
 def validate_session_anchors(value: SessionFindings, batch_ids: set[str]) -> str | None:
     for p in value.propositions:
-        if not (p.message_id or "").strip():
+        if not p.message_id.strip():
             return f'propositions: "{p.id}" is missing its messageId — copy the message id from the brackets of the passage (TEACHER [id]) that most directly states or explains it.'
         if p.message_id not in batch_ids:
             return f'propositions: "{p.id}" names messageId "{p.message_id}", which is not a passage of THIS stretch — copy the id from the brackets of one of this stretch\'s own TEACHER [id] passages.'
@@ -206,7 +149,9 @@ async def run_submit_agent(
                     if tool is None:
                         raise ValueError(f"Unknown tool: {call.tool_name}")
                     value = tool.schema.model_validate(
-                        heal_stringified_arrays(call.args_as_dict())
+                        heal_stringified_arrays(call.args_as_dict()),
+                        by_alias=True,
+                        by_name=False,
                     )
                     result = await tool.execute(value)
                     if tool is submit:
@@ -238,25 +183,10 @@ async def run_submit_agent(
 
 
 def findings_tool(existing_ids: set[str], batch_ids: set[str] | None) -> SubmitTool:
-    async def execute(raw: NotesFindings | SessionSubmit) -> SessionFindings:
-        findings = SessionFindings(
-            propositions=[
-                ExtractedProposition(
-                    id=p.id,
-                    name=p.name,
-                    statement=p.statement,
-                    aliases=p.aliases,
-                    message_id=p.messageId
-                    if isinstance(p, SessionProposition)
-                    else None,
-                )
-                for p in raw.propositions
-            ],
-            chains=[ExtractedChain(**c.model_dump()) for c in raw.chains],
-        )
+    async def execute(findings: Findings) -> Findings:
         problem = (
             validate_session_anchors(findings, batch_ids)
-            if batch_ids is not None
+            if batch_ids is not None and isinstance(findings, SessionFindings)
             else None
         )
         problem = problem or validate_findings_chains(findings, existing_ids)
@@ -269,10 +199,6 @@ def findings_tool(existing_ids: set[str], batch_ids: set[str] | None) -> SubmitT
         "Submit the notes findings."
         if batch_ids is None
         else "Submit the session findings.",
-        NotesFindings if batch_ids is None else SessionSubmit,
+        NotesFindings if batch_ids is None else SessionFindings,
         execute,
     )
-
-
-def extractor_instructions(notes: bool) -> str:
-    return NOTES_EXTRACTOR_INSTRUCTIONS if notes else EXTRACTOR_INSTRUCTIONS

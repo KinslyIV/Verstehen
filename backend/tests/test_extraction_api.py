@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -6,8 +7,16 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings
+from verstehen.graph.errors import GraphRefused
+from verstehen.graph.merge import EmissionStats
 from verstehen.store.entries import AssistantEntry, TextPart
-from verstehen.store.graph import GraphNode, ProvenancePoint
+from verstehen.store.graph import (
+    GraphNode,
+    NotesSource,
+    ProvenancePoint,
+    SourceFolder,
+    SourcePlacement,
+)
 
 
 @pytest.mark.parametrize("mode", ["preserve-graph", "delete-nodes"])
@@ -57,10 +66,11 @@ def test_delete_refuses_turn_job_and_extraction_wind_down(tmp_path: Path, monkey
         )
         other = client.post("/api/sessions", json={}).json()["id"]
 
+        @asynccontextmanager
         async def winding(id):
-            return False
+            yield False
 
-        monkeypatch.setattr(app.state.extraction_service, "wind_down", winding)
+        monkeypatch.setattr(app.state.extraction_service, "deleting_source", winding)
         response = client.delete(f"/api/sessions/{other}")
         assert (
             response.status_code == 503
@@ -139,6 +149,7 @@ def test_import_transport_rejects_unsafe_binary_disallowed_and_oversized_files(
             "/api/graph/import", files={"files": ("notes.md", b"Ideas")}
         )
         assert response.json()["results"][0]["code"] == "models_not_configured"
+        assert client.get("/api/graph/sources").json()["sources"] == []
 
 
 def test_manual_extract_conflict_and_session_delete_cancel_a_live_run(tmp_path: Path):
@@ -287,3 +298,168 @@ def test_manual_extract_and_notes_import_use_fake_roles_and_publish_graph_result
         assert len(client.get("/api/graph").json()["propositions"]) == 2
         sources = client.get("/api/graph/sources").json()["sources"]
         assert any(s["kind"] == "notes" for s in sources)
+
+
+def test_session_delete_rolls_back_graph_and_event_when_session_delete_fails(
+    tmp_path: Path, monkeypatch
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        session = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+        changed_events: list[int] = []
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.append(
+                    GraphNode(
+                        id="n_one",
+                        name="Name",
+                        statement="Statement",
+                        provenance=[ProvenancePoint(session_id=session)],
+                    )
+                )
+            original_changed = app.state.graph_service.graph_store.changed
+            monkeypatch.setattr(
+                app.state.graph_service.graph_store,
+                "changed",
+                lambda rev: (changed_events.append(rev), original_changed(rev))[1],
+            )
+            app.state.extraction_service.failure_reasons[session] = "Sign in again."
+            async with app.state.database.transaction() as connection:
+                await connection.execute(
+                    "CREATE TRIGGER fail_session_delete BEFORE DELETE ON sessions "
+                    "BEGIN SELECT RAISE(ABORT, 'session delete failed'); END"
+                )
+
+        client.portal.call(seed)
+
+        async def fail_delete():
+            with pytest.raises(Exception, match="session delete failed"):
+                await app.state.session_service.delete(session, mode="delete-nodes")
+
+        client.portal.call(fail_delete)
+        assert client.get(f"/api/sessions/{session}").status_code == 200
+        assert len(client.get("/api/graph").json()["propositions"]) == 1
+        assert changed_events == []
+        assert app.state.extraction_service.failure_reasons[session] == "Sign in again."
+        assert session not in app.state.extraction_service.deleting
+
+
+def test_chains_table_source_delete_rolls_back_session_when_graph_write_fails(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        session = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.append(
+                    GraphNode(
+                        id="n_one",
+                        name="Name",
+                        statement="Statement",
+                        provenance=[ProvenancePoint(session_id=session)],
+                    )
+                )
+            async with app.state.database.transaction() as connection:
+                await connection.execute(
+                    "CREATE TRIGGER fail_graph_write BEFORE UPDATE ON graph_revision "
+                    "BEGIN SELECT RAISE(ABORT, 'graph write failed'); END"
+                )
+
+        client.portal.call(seed)
+        response = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={"source_ids": [session], "folder_ids": [], "delete_sessions": True},
+        )
+        assert response.status_code == 500
+        assert client.get(f"/api/sessions/{session}").status_code == 200
+        assert len(client.get("/api/graph").json()["propositions"]) == 1
+
+
+def test_chains_table_delete_blocks_concurrent_extraction_after_session_delete(
+    tmp_path: Path, monkeypatch
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        s1 = client.post("/api/sessions", json={}).json()["id"]
+        s2 = client.post("/api/sessions", json={}).json()["id"]
+        assert client.portal is not None
+        launch_errors: list[tuple[int, str | None]] = []
+
+        async def seed():
+            async with app.state.graph_service.graph_store.transaction() as ledger:
+                ledger.nodes.extend(
+                    [
+                        GraphNode(
+                            id="n_chat",
+                            name="Chat",
+                            statement="Chat claim",
+                            provenance=[ProvenancePoint(session_id=s1)],
+                        ),
+                        GraphNode(
+                            id="n_notes",
+                            name="Notes",
+                            statement="Notes claim",
+                            provenance=[ProvenancePoint(session_id="src_notes")],
+                        ),
+                    ]
+                )
+                ledger.sources.append(
+                    NotesSource(
+                        id="src_notes",
+                        file_path="folder/notes.md",
+                        imported_at="2026-11-21T00:00:00+00:00",
+                    )
+                )
+                ledger.organization.folders.append(
+                    SourceFolder(
+                        id="f1",
+                        name="folder",
+                        parent_id=None,
+                        created_at="2026-11-21T00:00:00+00:00",
+                    )
+                )
+                ledger.organization.placements["src_notes"] = SourcePlacement(
+                    folder_id="f1"
+                )
+
+            original_delete = app.state.graph_service.delete_session
+
+            async def delete_then_try_launch(session_id: str) -> None:
+                await original_delete(session_id)
+
+                async def noop() -> EmissionStats:
+                    return EmissionStats()
+
+                with pytest.raises(GraphRefused) as err:
+                    app.state.extraction_service.launch(s2, noop)
+                launch_errors.append((err.value.status, err.value.code))
+
+            monkeypatch.setattr(
+                app.state.graph_service, "delete_session", delete_then_try_launch
+            )
+
+        client.portal.call(seed)
+        response = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={
+                "source_ids": [s1, "src_notes"],
+                "folder_ids": ["f1"],
+                "delete_sessions": True,
+            },
+        )
+        assert response.status_code == 200
+        assert launch_errors == [(409, "graph_deleting")]
+        assert app.state.extraction_service.graph_deletions == 0
+        assert client.get(f"/api/sessions/{s1}").status_code == 404
+        assert client.get(f"/api/sessions/{s2}").status_code == 200
+        assert client.get("/api/graph").json()["propositions"] == []
+        directory = client.get("/api/graph/sources").json()
+        assert directory["organization"]["folders"] == []
+        assert [s["id"] for s in directory["sources"]] == [s2]

@@ -16,11 +16,12 @@ from verstehen.graph.costs import graph_cost_summary
 from verstehen.graph.deletion import delete_node_traces, delete_sources_traces
 from verstehen.graph.merge import (
     AuditVerdicts,
-    ExtractedChain,
-    ExtractedProposition,
-    IdentityLink,
-    MergeSource,
+    Chain,
+    Link,
+    NotesFindings,
+    Proposition,
     SessionFindings,
+    SessionProposition,
     merge_findings,
     simplify_chains,
 )
@@ -40,8 +41,9 @@ from verstehen.graph.render_settings import (
     sanitize_render_settings,
 )
 from verstehen.graph.snapshot import (
+    format_graph_propositions,
+    format_graph_sessions,
     graph_session_index,
-    graph_session_propositions,
     graph_snapshot,
 )
 from verstehen.store.database import open_database
@@ -90,12 +92,14 @@ def chain(
 def findings() -> SessionFindings:
     return SessionFindings(
         propositions=[
-            ExtractedProposition(
+            SessionProposition(
                 id="p1", name="A", statement="A is true", message_id="m1"
             ),
-            ExtractedProposition(id="p2", name="B", statement="B follows"),
+            SessionProposition(
+                id="p2", name="B", statement="B follows", message_id="m2"
+            ),
         ],
-        chains=[ExtractedChain(premises=["p1"], conclusion="p2")],
+        chains=[Chain(premises=["p1"], conclusion="p2")],
     )
 
 
@@ -220,8 +224,6 @@ def test_session_readers_count_births_and_include_missing_sources():
         ("s1", 2, "chat"),
         ("missing", 1, "file"),
     ]
-    assert [p.node_id for p in graph_session_propositions(ledger, "s1")] == ["a", "b"]
-    assert graph_session_propositions(ledger, "s2") == []
 
 
 def test_merge_commits_nodes_chains_and_coverage_together_and_emits_after_commit(
@@ -238,7 +240,8 @@ def test_merge_commits_nodes_chains_and_coverage_together_and_emits_after_commit
                 "s1",
                 findings(),
                 AuditVerdicts(links=[]),
-                MergeSource(folded_at=NOW, coverage=[coverage]),
+                NOW,
+                [coverage],
             )
             ledger = await store.read()
             assert stats.nodes == 2 and stats.chains == 1
@@ -269,14 +272,8 @@ def test_failed_coverage_write_rolls_back_every_graph_write_and_event(tmp_path: 
                     "s1",
                     findings(),
                     AuditVerdicts(links=[]),
-                    MergeSource(
-                        folded_at=NOW,
-                        coverage=[
-                            CoverageEntry(
-                                session_id="s1", fp="fp", tokens=1, folded_at=NOW
-                            )
-                        ],
-                    ),
+                    NOW,
+                    [CoverageEntry(session_id="s1", fp="fp", tokens=1, folded_at=NOW)],
                 )
             assert await store.read() == GraphLedger()
             assert events == []
@@ -293,21 +290,19 @@ def test_merge_links_aliases_resolves_digest_endpoints_and_checkpoints_notes(
             store = GraphStore(database)
             async with store.transaction() as ledger:
                 ledger.nodes = [node("n_known")]
-            proposed = SessionFindings(
+            proposed = NotesFindings(
                 propositions=[
-                    ExtractedProposition(id="p", name="alias", statement="rewording"),
-                    ExtractedProposition(id="p", name="ignored", statement="ignored"),
+                    Proposition(id="p", name="alias", statement="rewording"),
+                    Proposition(id="p", name="ignored", statement="ignored"),
                 ],
-                chains=[
-                    ExtractedChain(premises=["p", "p", "missing"], conclusion="n_known")
-                ],
+                chains=[Chain(premises=["p", "p", "missing"], conclusion="n_known")],
             )
             stats = await merge_findings(
                 store,
                 "src_notes",
                 proposed,
-                AuditVerdicts(links=[IdentityLink(id="p", link_to="n_known")]),
-                MergeSource(folded_at=NOW),
+                AuditVerdicts(links=[Link(id="p", link_to="n_known")]),
+                NOW,
             )
             ledger = await store.read()
             assert stats.nodes == 0 and stats.chains == 0
@@ -317,13 +312,13 @@ def test_merge_links_aliases_resolves_digest_endpoints_and_checkpoints_notes(
             ]
             proposed.propositions[0].id = "p2"
             proposed.propositions = proposed.propositions[:1]
-            proposed.chains = [ExtractedChain(premises=["n_known"], conclusion="p2")]
+            proposed.chains = [Chain(premises=["n_known"], conclusion="p2")]
             stats = await merge_findings(
                 store,
                 "src_notes",
                 proposed,
-                AuditVerdicts(links=[IdentityLink(id="p2", link_to="n_gone")]),
-                MergeSource(folded_at=NOW),
+                AuditVerdicts(links=[Link(id="p2", link_to="n_gone")]),
+                NOW,
             )
             assert stats.nodes == 1 and stats.chains == 1
 
@@ -340,7 +335,7 @@ def test_bm25_ranks_aliases_separately_and_pages_with_hints():
         for i in range(7)
     ]
     search = PropositionCandidateSearch(nodes)
-    proposition = ExtractedProposition(id="p", name="", statement="wave")
+    proposition = Proposition(id="p", name="", statement="wave")
     first = proposition_candidate_batch(
         search, [proposition], [CandidateRequest(id="p")]
     )
@@ -352,7 +347,7 @@ def test_bm25_ranks_aliases_separately_and_pages_with_hints():
     )
     assert second.matches[0].candidate_ids == ["n_5", "n_6"]
     assert second.matches[0].next_offset is None
-    unrelated = ExtractedProposition(id="p", name="", statement="banana")
+    unrelated = Proposition(id="p", name="", statement="banana")
     assert not proposition_candidate_batch(
         search, [unrelated], [CandidateRequest(id="p")]
     ).candidates
@@ -379,7 +374,7 @@ def test_candidate_batch_rejects_invalid_requests(requests, message):
     with pytest.raises(ValueError, match=message):
         proposition_candidate_batch(
             PropositionCandidateSearch([]),
-            [ExtractedProposition(id="p", name="", statement="")],
+            [Proposition(id="p", name="", statement="")],
             requests,
         )
 
@@ -816,27 +811,103 @@ def test_notes_source_deletion_removes_usage_and_placement_in_the_graph_transact
         assert client.get("/api/graph").json()["propositions"] == []
 
 
-def test_source_deletion_rechecks_extraction_after_acquiring_the_graph_transaction(
+def test_source_deletion_blocks_new_extractions_until_finished(
     tmp_path: Path,
-    monkeypatch,
 ):
+    from verstehen.graph.errors import GraphRefused
+    from verstehen.graph.merge import EmissionStats
+
     app = create_app(Settings(tmp_path))
     with TestClient(app, headers={"host": "localhost"}) as client:
+        launched_during_delete = []
+
+        async def noop():
+            return EmissionStats()
 
         async def seed():
             async with app.state.graph_service.graph_store.transaction() as ledger:
                 ledger.nodes = [node("n_a")]
-            checks = iter([False, True])
-            monkeypatch.setattr(
-                app.state.extraction_service, "running", lambda: next(checks)
-            )
+            blocker = asyncio.Event()
+
+            async def wait():
+                await blocker.wait()
+                return EmissionStats()
+
+            task = app.state.extraction_service.launch("s2", wait)
+            return blocker, task
 
         assert client.portal is not None
-        client.portal.call(seed)
+        blocker, task = client.portal.call(seed)
+        refused = client.request(
+            "DELETE",
+            "/api/graph/sources",
+            json={"source_ids": ["s1"], "folder_ids": [], "delete_sessions": False},
+        )
+        assert refused.status_code == 409
+        assert client.get("/api/graph").json()["propositions"][0]["id"] == "n_a"
+
+        async def finish_blocker():
+            blocker.set()
+            await task
+
+        client.portal.call(finish_blocker)
+
+        original_delete = app.state.graph_service.graph_store.transaction
+
+        def probe_launch():
+            with pytest.raises(GraphRefused) as err:
+                app.state.extraction_service.launch("s2", noop)
+            launched_during_delete.append((err.value.status, err.value.code))
+            return original_delete()
+
+        app.state.graph_service.graph_store.transaction = probe_launch
         response = client.request(
             "DELETE",
             "/api/graph/sources",
             json={"source_ids": ["s1"], "folder_ids": [], "delete_sessions": False},
         )
-        assert response.status_code == 409
-        assert client.get("/api/graph").json()["propositions"][0]["id"] == "n_a"
+        assert response.status_code == 200
+        assert launched_during_delete == [(409, "graph_deleting")]
+        assert app.state.extraction_service.graph_deletions == 0
+        assert client.get("/api/graph").json()["propositions"] == []
+
+
+def test_graph_formatters_separate_prober_and_auditor_views():
+    assert "The knowledge graph is empty" in format_graph_sessions(GraphLedger(), [])
+    assert 'No propositions born in session "missing"' in format_graph_propositions(
+        GraphLedger(), "missing"
+    )
+
+    session = Session(id="s1", title="Live")
+    ledger = GraphLedger(
+        nodes=[
+            node("n_2", "s1", name="Beta", statement="Secret beta statement"),
+            node("n_1", "s1", name="Alpha", statement="Secret alpha statement"),
+            node("n_2", "s2", name="Linked", statement="Linked beta statement"),
+        ]
+    )
+
+    prober_sessions = format_graph_sessions(ledger, [session], auditor=False)
+    assert "most recent first:" in prober_sessions
+    assert "born " in prober_sessions and "last active " in prober_sessions
+
+    auditor_sessions = format_graph_sessions(ledger, [session], auditor=True)
+    assert "1 session(s):\n" in auditor_sessions
+    assert "born " not in auditor_sessions
+
+    prober_props = format_graph_propositions(ledger, "s1", auditor=False)
+    assert "covered in this session:" in prober_props
+    assert prober_props.splitlines()[1:] == ["- Alpha", "- Beta"]
+    assert "Secret alpha statement" not in prober_props
+
+    auditor_props = format_graph_propositions(ledger, "s1", auditor=True)
+    assert "born in this session:" in auditor_props
+    assert auditor_props.splitlines()[1:] == [
+        "- n_1 :: Alpha",
+        "  statement: Secret alpha statement",
+        "- n_2 :: Beta",
+        "  statement: Secret beta statement",
+    ]
+    assert 'No propositions born in session "s2"' in format_graph_propositions(
+        ledger, "s2", auditor=True
+    )

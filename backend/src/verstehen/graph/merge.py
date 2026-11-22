@@ -1,6 +1,6 @@
 from secrets import token_hex
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from verstehen.graph.model import chain_key
 from verstehen.store.graph import (
@@ -15,42 +15,93 @@ from verstehen.store.graph import (
 )
 
 
-class ExtractedProposition(BaseModel):
-    id: str
-    name: str
-    statement: str
-    aliases: list[str] = Field(default_factory=list)
-    message_id: str | None = None
+class Proposition(BaseModel):
+    model_config = ConfigDict(strict=True)
+    id: str = Field(
+        description='Local id: "p1", "p2", … — referenced by chains in this call.'
+    )
+    name: str = Field(
+        description="A very short label — established terminology, the term the discipline itself uses, a glossary headword a textbook would print ('Will to power', 'Divine command theory'). Not a sentence, needn't be unique or self-contained: this becomes the node's global label in the graph."
+    )
+    statement: str = Field(
+        description='One true, self-contained, world-facing core idea at full precision. Never about the learner, the teacher, or the reading: not "the learner understands X" but "X". A misconception enters as its TRUE correction.'
+    )
+    aliases: list[str] = Field(
+        default_factory=list,
+        description="Verbatim phrasings the source used for the same proposition, if any.",
+    )
 
 
-class ExtractedChain(BaseModel):
-    premises: list[str]
-    conclusion: str
+class SessionProposition(Proposition):
+    model_config = ConfigDict(strict=True, populate_by_name=True)
+    message_id: str = Field(
+        alias="messageId",
+        title="Messageid",
+        description='The message id of the ONE passage in this stretch that most directly states or explains this proposition — copy it EXACTLY from that passage\'s "TEACHER [id]" label.',
+    )
+
+
+class Chain(BaseModel):
+    model_config = ConfigDict(strict=True)
+    premises: list[str] = Field(
+        description="Premise ids used TOGETHER: they jointly entail the conclusion; independent reasons are separate chains.",
+        json_schema_extra={
+            "minItems": 1,
+            "items": {
+                "type": "string",
+                "description": 'The id this premise uses — EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim ("n_…"), OR the local id of a proposition in this submission ("p1", …).',
+            },
+        },
+    )
+    conclusion: str = Field(
+        description='The id this conclusion is — EITHER an existing graph idea id from THE GRAPH SO FAR in the prompt, verbatim ("n_…"), OR the local id of a proposition in this submission ("p1", …).'
+    )
+
+
+PROPOSITIONS_DESCRIPTION = "Only the NEW core ideas this stretch contributes — ideas the prompt's THE GRAPH SO FAR already holds are referenced by id in chains, never restated here."
+CHAINS_DESCRIPTION = "Every argument this stretch makes — including arguments that join new ideas to established ones; conclusions reusable by id as premises of later chains; bare ideas (no argument) ride the propositions list alone; pass [] when none — never omit the field."
+
+
+class NotesFindings(BaseModel):
+    propositions: list[Proposition] = Field(description=PROPOSITIONS_DESCRIPTION)
+    chains: list[Chain] = Field(description=CHAINS_DESCRIPTION)
 
 
 class SessionFindings(BaseModel):
-    propositions: list[ExtractedProposition]
-    chains: list[ExtractedChain]
+    model_config = ConfigDict(title="SessionSubmit")
+    propositions: list[SessionProposition] = Field(description=PROPOSITIONS_DESCRIPTION)
+    chains: list[Chain] = Field(description=CHAINS_DESCRIPTION)
 
 
-class IdentityLink(BaseModel):
-    id: str
-    link_to: str
+type Findings = NotesFindings | SessionFindings
+
+
+class Link(BaseModel):
+    model_config = ConfigDict(strict=True, populate_by_name=True)
+    id: str = Field(description='The proposition id from the findings ("p1", …).')
+    link_to: str = Field(
+        alias="linkTo",
+        title="Linkto",
+        description="The id of the EXISTING graph node this proposition IS — your identity verdict. EQUIVALENCE BIAS (2026-09-27): paraphrases, rewordings, and compressions of the same claim MERGE; only genuinely distinct propositions stay apart.",
+    )
 
 
 class AuditVerdicts(BaseModel):
-    links: list[IdentityLink]
-
-
-class MergeSource(BaseModel):
-    folded_at: str
-    coverage: list[CoverageEntry] | None = None
+    model_config = ConfigDict(title="Review")
+    links: list[Link] = Field(
+        description="Identity verdicts — which findings propositions ARE existing graph nodes. A proposition absent from here = create a new node. Pass [] when none — never omit the field."
+    )
 
 
 class EmissionStats(BaseModel):
     nodes: int = 0
     chains: int = 0
     dropped_chains: int = 0
+
+    def add(self, other: "EmissionStats") -> None:
+        self.nodes += other.nodes
+        self.chains += other.chains
+        self.dropped_chains += other.dropped_chains
 
 
 def simplify_chains(lines: list[GraphChain]) -> list[GraphChain]:
@@ -105,9 +156,10 @@ def simplify_chains(lines: list[GraphChain]) -> list[GraphChain]:
 def merge_into(
     ledger: GraphLedger,
     session_id: str,
-    findings: SessionFindings,
+    findings: Findings,
     verdicts: AuditVerdicts,
-    source: MergeSource,
+    folded_at: str,
+    coverage: list[CoverageEntry] | None = None,
 ) -> EmissionStats:
     stats = EmissionStats()
     existing = {node.id for node in ledger.nodes}
@@ -131,7 +183,10 @@ def merge_into(
                 created_at=now,
                 provenance=[
                     ProvenancePoint(
-                        session_id=session_id, message_id=proposition.message_id or ""
+                        session_id=session_id,
+                        message_id=proposition.message_id
+                        if isinstance(proposition, SessionProposition)
+                        else "",
                     )
                 ],
             )
@@ -177,21 +232,22 @@ def merge_into(
     kept = simplify_chains(ledger.chains)
     stats.dropped_chains = len(ledger.chains) - len(kept)
     ledger.chains = kept
-    if source.coverage is None:
+    if coverage is None:
         ledger.checkpoints.append(
-            SourceCheckpoint(session_id=session_id, folded_at=source.folded_at)
+            SourceCheckpoint(session_id=session_id, folded_at=folded_at)
         )
     else:
-        ledger.coverage.extend(source.coverage)
+        ledger.coverage.extend(coverage)
     return stats
 
 
 async def merge_findings(
     graph_store: GraphStore,
     session_id: str,
-    findings: SessionFindings,
+    findings: Findings,
     verdicts: AuditVerdicts,
-    source: MergeSource,
+    folded_at: str,
+    coverage: list[CoverageEntry] | None = None,
 ) -> EmissionStats:
     async with graph_store.transaction() as ledger:
-        return merge_into(ledger, session_id, findings, verdicts, source)
+        return merge_into(ledger, session_id, findings, verdicts, folded_at, coverage)

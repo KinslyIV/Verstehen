@@ -1,6 +1,7 @@
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import cast
 
 import pytest
@@ -8,7 +9,8 @@ from pydantic_ai.messages import ModelResponse, ToolReturnPart
 from pydantic_ai.messages import ToolCallPart as ModelToolCall
 from pydantic_ai.models.function import DeltaToolCall, FunctionModel
 
-from verstehen.graph.auditor import prepare_auditor_review
+from verstehen.graph.auditor import prepare_auditor_review, review_tool
+from verstehen.graph.candidates import CandidateNode
 from verstehen.graph.context import (
     GraphContext,
     GraphContextPick,
@@ -16,7 +18,6 @@ from verstehen.graph.context import (
 )
 from verstehen.graph.coverage import (
     batch_runs,
-    batch_tag,
     coverage_of,
     message_view_lines,
 )
@@ -30,7 +31,14 @@ from verstehen.graph.extractor import (
     findings_tool,
     run_submit_agent,
 )
-from verstehen.graph.merge import EmissionStats, ExtractedProposition, SessionFindings
+from verstehen.graph.merge import (
+    AuditVerdicts,
+    EmissionStats,
+    Link,
+    Proposition,
+    SessionFindings,
+    SessionProposition,
+)
 from verstehen.graph.model import get_graph
 from verstehen.graph.notes import read_notes_file
 from verstehen.graph.pdf_markdown import (
@@ -40,7 +48,7 @@ from verstehen.graph.pdf_markdown import (
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.fake import script_role
 from verstehen.providers.policy import ProviderPolicy
-from verstehen.providers.resolve import ResolvedModel, ResolverService
+from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
 from verstehen.providers.usage import UsageModel
 from verstehen.store.database import open_database
 from verstehen.store.entries import (
@@ -205,8 +213,6 @@ def test_failed_delivery_is_invisible_and_batches_never_split_a_message():
         ["2"],
         ["3"],
     ]
-    assert batch_tag(runs[0]) == batch_tag(runs[0])
-    assert batch_tag(runs[0]) != batch_tag(runs[1])
     assert cov.uncovered_count == 4
 
 
@@ -291,7 +297,7 @@ def test_session_anchor_validation_and_notes_strip_stray_anchors():
                 "chains": [],
             }
         )
-        assert (await notes.execute(raw)).propositions[0].message_id is None
+        assert not hasattr((await notes.execute(raw)).propositions[0], "message_id")
 
     asyncio.run(scenario())
 
@@ -313,7 +319,7 @@ def test_auditor_sees_findings_and_candidates_without_source_or_anchors(tmp_path
                 )
             findings = SessionFindings(
                 propositions=[
-                    ExtractedProposition(
+                    SessionProposition(
                         id="p1",
                         name="Claim",
                         statement="A true claim",
@@ -322,11 +328,14 @@ def test_auditor_sees_findings_and_candidates_without_source_or_anchors(tmp_path
                 ],
                 chains=[],
             )
-            prompt, tools = await prepare_auditor_review(service.readers, findings)
+            prompt, tools = await prepare_auditor_review(
+                service.graph_store, service.sessions_store, findings
+            )
             assert "n_old" in prompt and "p1" in prompt
             assert (
                 "secret-source-passage" not in prompt
                 and "message_id" not in prompt
+                and "messageId" not in prompt
                 and "chains" not in prompt
             )
             assert {t.name for t in tools} == {
@@ -488,9 +497,9 @@ def test_failure_reason_survives_a_refused_start_and_a_deletion_that_has_not_com
                 await service.start(session.id)
             assert refused.value.status == 409
             assert service.failure_reasons[session.id] == "Sign in again."
-            await service.begin_deletion(session.id)
-            assert service.failure_reasons[session.id] == "Sign in again."
-            service.end_deletion(session.id)
+            async with service.deleting_source(session.id) as wound_down:
+                assert wound_down
+                assert service.failure_reasons[session.id] == "Sign in again."
             service.forget_failure(session.id)
             assert session.id not in service.failure_reasons
 
@@ -872,5 +881,188 @@ def test_notes_partial_failure_keeps_successful_chunk_checkpoint(tmp_path):
             assert error.value.outcome == "partial"
             assert error.value.stats.nodes == 1
             assert len((await service.graph_store.read()).checkpoints) == 1
+
+    asyncio.run(scenario())
+
+
+def test_tool_schemas_and_candidate_serialization_use_camel_case_wire_names():
+    expected = json.loads(
+        (Path(__file__).parent / "fixtures/lh-extraction-schemas.json").read_text()
+    )
+    assert (
+        findings_tool(set(), None).definition.parameters_json_schema
+        == expected["notes"]
+    )
+    assert (
+        findings_tool(set(), {"m1"}).definition.parameters_json_schema
+        == expected["session"]
+    )
+    assert review_tool().definition.parameters_json_schema == expected["review"]
+    assert Link.model_validate({"id": "p1", "linkTo": "n_1"}) == Link(
+        id="p1", link_to="n_1"
+    )
+    assert (
+        AuditVerdicts.model_validate({"links": [{"id": "p1", "linkTo": "n_1"}]})
+        .links[0]
+        .link_to
+        == "n_1"
+    )
+
+    candidate = CandidateNode(
+        id="n_1",
+        name="Idea",
+        statement="Statement",
+        matched_aliases=["Alias"],
+        sessions=["s1"],
+    )
+    assert candidate.model_dump(by_alias=True) == {
+        "id": "n_1",
+        "name": "Idea",
+        "statement": "Statement",
+        "matchedAliases": ["Alias"],
+        "sessions": ["s1"],
+    }
+    assert Proposition(id="p1", name="N", statement="S").model_dump() == {
+        "id": "p1",
+        "name": "N",
+        "statement": "S",
+        "aliases": [],
+    }
+
+
+def test_notes_import_refused_before_readiness_persists_no_source_or_folders(tmp_path):
+    async def scenario():
+        async def respond(messages, info):
+            raise AssertionError("no model calls")
+
+        async with pipeline(tmp_path, respond) as service:
+
+            async def unconfigured(role, session=None):
+                raise ResolutionError("No model configured", missing=["cheap"])
+
+            service.resolver_service.resolve = unconfigured
+            with pytest.raises(ResolutionError):
+                await service.import_notes("course/topic/notes.md", "Some notes")
+            ledger = await service.graph_store.read()
+            assert ledger.sources == []
+            assert ledger.organization.folders == []
+            assert ledger.organization.placements == {}
+
+    asyncio.run(scenario())
+
+
+def test_deleting_source_times_out_blocks_launch_and_clears_fence(tmp_path):
+    async def scenario():
+        async def respond(messages, info):
+            raise AssertionError("no model calls")
+
+        async with pipeline(tmp_path, respond) as service:
+            started, release = asyncio.Event(), asyncio.Event()
+
+            async def stuck():
+                started.set()
+                try:
+                    await asyncio.Event().wait()
+                finally:
+                    await release.wait()
+                return EmissionStats()
+
+            task = service.launch("src_stuck", stuck)
+            await started.wait()
+
+            async with service.deleting_source("src_stuck", timeout=0.01) as wound_down:
+                assert wound_down is False
+                with pytest.raises(GraphRefused) as refused:
+                    service.launch("src_stuck", stuck)
+                assert refused.value.status == 503
+
+            assert "src_stuck" not in service.deleting
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+    asyncio.run(scenario())
+
+
+def test_submit_agent_rejects_snake_case_wire_names_and_allows_retry(tmp_path):
+    async def scenario():
+        phase = "findings"
+        calls = 0
+
+        async def respond(messages, info):
+            nonlocal calls
+            calls += 1
+            if phase == "findings":
+                if calls == 2:
+                    retry = [
+                        p.content
+                        for m in messages
+                        if hasattr(m, "parts")
+                        for p in m.parts
+                        if isinstance(p, ToolReturnPart) and p.outcome == "failed"
+                    ]
+                    assert any("messageId" in str(r) for r in retry)
+                return tool_response(
+                    "submit_findings",
+                    {
+                        "propositions": [
+                            {
+                                "id": "p1",
+                                "name": "Claim",
+                                "statement": "True",
+                                "message_id" if calls == 1 else "messageId": "m1",
+                            }
+                        ],
+                        "chains": [],
+                    },
+                )
+            if calls == 2:
+                retry = [
+                    p.content
+                    for m in messages
+                    if hasattr(m, "parts")
+                    for p in m.parts
+                    if isinstance(p, ToolReturnPart) and p.outcome == "failed"
+                ]
+                assert any("linkTo" in str(r) for r in retry)
+            return tool_response(
+                "submit_review",
+                {
+                    "links": [
+                        {
+                            "id": "p1",
+                            "link_to" if calls == 1 else "linkTo": "n_1",
+                        }
+                    ]
+                },
+            )
+
+        async with pipeline(tmp_path, respond) as service:
+            resolved = await service.resolver_service.resolve("extractor")
+            findings = await run_submit_agent(
+                resolved,
+                UsageModel(resolved, service.usage_store, "source", "extractor"),
+                admission,
+                "extractor",
+                "instructions",
+                "source",
+                findings_tool(set(), {"m1"}),
+            )
+            assert findings.propositions[0].message_id == "m1"
+            assert calls == 2
+
+            phase = "review"
+            calls = 0
+            verdicts = await run_submit_agent(
+                resolved,
+                UsageModel(resolved, service.usage_store, "source", "auditor"),
+                admission,
+                "auditor",
+                "instructions",
+                "source",
+                review_tool(),
+            )
+            assert verdicts.links[0].link_to == "n_1"
+            assert calls == 2
 
     asyncio.run(scenario())
