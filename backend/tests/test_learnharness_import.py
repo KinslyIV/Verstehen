@@ -774,6 +774,70 @@ def test_practice_session_markers_conclude_details_and_usage_import(tmp_path: Pa
     }
 
 
+def test_failed_conclude_result_imports_as_saved(tmp_path: Path):
+    problems = ["no active problem to conclude — pose one first"]
+
+    def edit(folder: Path):
+        edit_json(
+            folder / "chats" / "chat_fx_practice.json",
+            lambda chat: chat.update(
+                messages=[
+                    {
+                        "id": "msg_c_u1",
+                        "role": "user",
+                        "content": "Practice.",
+                        "timestamp": 1763309666000,
+                    },
+                    {
+                        "id": "msg_c_a1",
+                        "role": "assistant",
+                        "provider": "chatgpt",
+                        "model": "gpt-5.4",
+                        "stopReason": "toolUse",
+                        "timestamp": 1763309667000,
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": "call_bad",
+                                "name": "conclude",
+                                "arguments": {"outcome": "solved"},
+                            }
+                        ],
+                    },
+                    {
+                        "id": "msg_c_r1",
+                        "role": "toolResult",
+                        "toolCallId": "call_bad",
+                        "toolName": "conclude",
+                        "content": [{"type": "text", "text": "Invalid tool input"}],
+                        "details": {"tool": "conclude", "problems": problems},
+                        "isError": True,
+                        "timestamp": 1763309667100,
+                    },
+                    {
+                        "id": "msg_c_a2",
+                        "role": "assistant",
+                        "provider": "chatgpt",
+                        "model": "gpt-5.4",
+                        "stopReason": "stop",
+                        "timestamp": 1763309668000,
+                        "content": [{"type": "text", "text": "Let's start over."}],
+                    },
+                ],
+                sideChats=[],
+                turns=[],
+            ),
+        )
+
+    conversion = convert(read_folder(fixture_copy(tmp_path, edit)), ACCOUNT)
+    practice = next(
+        s for s in conversion.contents.sessions if s.session.id == "chat_fx_practice"
+    )
+    failed = next(e for e in practice.entries if e.entry_id == "msg_c_r1")
+    assert isinstance(failed, ToolResultEntry) and failed.is_error
+    assert failed.details == {"tool": "conclude", "problems": problems}
+
+
 def test_newer_chat_version_is_refused(tmp_path: Path):
     def edit(folder: Path):
         edit_json(folder / "chats" / f"{CHAT}.json", lambda c: c.update(version=3))

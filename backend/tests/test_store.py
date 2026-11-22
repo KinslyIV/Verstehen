@@ -421,3 +421,45 @@ def test_migration_0010_keeps_sync_state_and_outbox(tmp_path: Path):
             assert all(before[table] for table in sync_tables)
 
     asyncio.run(run())
+
+
+def test_cancelled_while_foreign_keys_pragma_runs_still_restores_them(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            real_execute = database._connection.execute
+
+            def slow_foreign_keys_off(sql, *args):
+                if sql != "PRAGMA foreign_keys=OFF":
+                    return real_execute(sql, *args)
+
+                async def delayed():
+                    entered.set()
+                    await release.wait()
+                    return await real_execute(sql, *args)
+
+                return delayed()
+
+            database._connection.execute = slow_foreign_keys_off  # type: ignore[method-assign]
+
+            async def rebuild():
+                async with database.transaction(foreign_keys=False):
+                    pass
+
+            task = asyncio.create_task(rebuild())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            database._connection.execute = real_execute  # type: ignore[method-assign]
+            async with database.read() as conn:
+                async with conn.execute("PRAGMA foreign_keys") as cur:
+                    assert await cur.fetchone() == (1,)
+
+    asyncio.run(run())

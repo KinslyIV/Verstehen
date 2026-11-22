@@ -5,7 +5,7 @@ from pathlib import Path
 from pydantic_ai.messages import ModelRequest, ModelResponse, ToolReturnPart
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 
-from backend.tests.test_turns import completed, turn_service_context
+from backend.tests.test_turns import completed, scripted, turn_service_context
 from verstehen.session.cause import is_background_cause
 from verstehen.session.projection import to_llm_messages
 from verstehen.session.results import Refused
@@ -349,20 +349,62 @@ def test_mid_turn_conclude_then_pose_pair_works(tmp_path: Path):
     asyncio.run(scenario())
 
 
-def test_problem_in_a_mixed_batch_ends_the_turn_and_keeps_every_result(tmp_path: Path):
+def test_problem_alone_ends_the_turn(tmp_path: Path):
+    async def scenario():
+        model, requests = scripted_stream(calls(("problem", PROBLEM, "p1")))
+        async with turn_service_context(tmp_path, model) as (service, _):
+            session_id = await practice_session(service)
+            await run_turn(service, session_id, text_input())
+            assert len(requests) == 1
+
+    asyncio.run(scenario())
+
+
+def test_problem_in_a_mixed_batch_continues_the_turn_with_every_result(tmp_path: Path):
     async def scenario():
         model, requests = scripted_stream(
-            calls(("ls", {"path": "."}, "ls1"), ("problem", PROBLEM, "p1"))
+            calls(("ls", {"path": "."}, "ls1"), ("problem", PROBLEM, "p1")),
+            "Take your time.",
         )
         async with turn_service_context(tmp_path, model) as (service, _):
             session_id = await practice_session(service)
             await run_turn(service, session_id, text_input())
             entries = await service.entries_store.list(session_id)
-            assert len(requests) == 1
+            assert len(requests) == 2
             assert [
                 e.tool_call_id for e in entries if isinstance(e, ToolResultEntry)
             ] == ["ls1", "p1"]
+            assert kinds(entries)[-1] == "assistant"
             assert active_problem_of(entries) is not None
+            assert not needs_continuation(entries)
+
+    asyncio.run(scenario())
+
+
+def test_truncated_response_fails_every_call_before_any_runs(tmp_path: Path):
+    async def scenario():
+        model = scripted(
+            tmp_path,
+            [
+                {
+                    "tool_calls": [
+                        {"name": "research", "arguments": {"question": "chain rule"}},
+                        {"name": "problem", "arguments": PROBLEM},
+                    ],
+                    "stop_reason": "length",
+                },
+                {"text": "Retrying."},
+            ],
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            session_id = await practice_session(service)
+            await run_turn(service, session_id, text_input())
+            entries = await service.entries_store.list(session_id)
+            results = [e for e in entries if isinstance(e, ToolResultEntry)]
+            assert len(results) == 2 and all(r.is_error for r in results)
+            assert all("output token limit" in r.text for r in results)
+            assert await service.jobs_store.list(session_id) == []
+            assert active_problem_of(entries) is None
 
     asyncio.run(scenario())
 
@@ -594,6 +636,38 @@ def test_job_wake_is_not_blocked_by_an_active_problem(tmp_path: Path):
             entries = await service.entries_store.list(session_id)
             assert active_problem_of(entries) is not None
             assert "steer_job1" in [e.entry_id for e in entries]
+
+    asyncio.run(scenario())
+
+
+def test_job_result_waits_for_the_learner_after_a_problem_dismissal(tmp_path: Path):
+    async def scenario():
+        model, requests = scripted_stream(
+            calls(("problem", PROBLEM, "p1")), "Fine, moving on."
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            session_id = await practice_session(service)
+            await run_turn(service, session_id, text_input())
+            await service.dismiss(session_id, DismissInput(problem_call_id="p1"))
+            marker = MarkerEntry(
+                entry_id="steer_job1",
+                marker_type="subagent-steer",
+                content="Research finished.",
+                details={},
+            )
+            runtime = service.runtimes.get(session_id)
+            runtime.delivery.add("job_result", marker)
+            await service.delivery_service.pump(session_id)
+            assert runtime.run is None and len(requests) == 1
+            refused = await service.start(session_id, TurnInput(type="steers"))
+            assert isinstance(refused, Refused)
+
+            await run_turn(service, session_id, text_input("Skip it"))
+            entries = await service.entries_store.list(session_id)
+            assert pending_problem_dismissal_of(entries) is None
+            ids = [e.entry_id for e in entries]
+            assert "call_conc_p1" in [getattr(e, "tool_call_id", None) for e in entries]
+            assert "steer_job1" in ids
 
     asyncio.run(scenario())
 

@@ -288,6 +288,7 @@ class TurnService:
                 if (
                     has_unresolved_question(state.entries)
                     or ends_in_dismissal(state.entries)
+                    or dismissed_id is not None
                     or ends_in_question_recovery(state.entries)
                 ):
                     raise ValueError("The session is waiting for the learner")

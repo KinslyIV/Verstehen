@@ -175,15 +175,13 @@ def _format_validation_error(
     return f'Validation failed for tool "{name}":\n{lines}\n\nReceived arguments:\n{raw_json}'
 
 
-def all_problem_calls_succeeded(
+def only_clean_problem_calls(
     response: ModelResponse, requests: DeferredToolRequests
 ) -> bool:
-    called = {
-        part.tool_call_id
-        for part in response.parts
-        if isinstance(part, ToolCallPart) and part.tool_name == PRACTICE_PROBLEM_TOOL
-    }
-    return bool(called) and called <= {call.tool_call_id for call in requests.calls}
+    """True when every tool call in the response is a posed problem, the batch that ends the turn."""
+    called = {part.tool_call_id for part in response.parts if isinstance(part, ToolCallPart)}
+    posed = {call.tool_call_id for call in requests.calls}
+    return bool(called) and called <= posed
 
 
 class PracticeTools(AbstractCapability[None]):
@@ -207,6 +205,12 @@ class PracticeTools(AbstractCapability[None]):
         tool_def: ToolDefinition,
         args: str | dict[str, object],
     ) -> str | dict[str, object]:
+        response = ctx.messages[-1]
+        assert isinstance(response, ModelResponse)
+        if response.finish_reason == "length":
+            message = truncated_call_text(tool_def.name)
+            self.count_invalid_call(tool_def.name, message)
+            raise ToolFailed(message)
         if tool_def.name in (PRACTICE_PROBLEM_TOOL, PRACTICE_CONCLUDE_TOOL):
             return {}
         if isinstance(args, dict):
@@ -224,19 +228,12 @@ class PracticeTools(AbstractCapability[None]):
         args: ValidatedToolArgs,
     ) -> ValidatedToolArgs:
         if tool_def.name == PRACTICE_PROBLEM_TOOL:
-            await self.validate_problem(ctx, call)
+            await self.validate_problem(call)
         elif tool_def.name == PRACTICE_CONCLUDE_TOOL:
-            self.validate_conclude(ctx, call)
+            self.validate_conclude(call)
         return args
 
-    async def validate_problem(self, ctx: RunContext[None], call: ToolCallPart) -> None:
-        response = ctx.messages[-1]
-        assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            self.count_invalid_call(
-                PRACTICE_PROBLEM_TOOL, truncated_call_text(PRACTICE_PROBLEM_TOOL)
-            )
-            return
+    async def validate_problem(self, call: ToolCallPart) -> None:
         raw = call.args if call.args is not None else {}
         try:
             parsed = _parse_raw_args(PRACTICE_PROBLEM_TOOL, raw)
@@ -261,13 +258,7 @@ class PracticeTools(AbstractCapability[None]):
             self.problems[call.tool_call_id] = problems
             raise ModelRetry(message)
 
-    def validate_conclude(self, ctx: RunContext[None], call: ToolCallPart) -> None:
-        response = ctx.messages[-1]
-        assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            message = truncated_call_text(PRACTICE_CONCLUDE_TOOL)
-            self.count_invalid_call(PRACTICE_CONCLUDE_TOOL, message)
-            raise ToolFailed(message)
+    def validate_conclude(self, call: ToolCallPart) -> None:
         raw = call.args if call.args is not None else {}
         try:
             parsed = _parse_raw_args(PRACTICE_CONCLUDE_TOOL, raw)
@@ -329,15 +320,7 @@ class PracticeTools(AbstractCapability[None]):
     ) -> DeferredToolResults | None:
         response = ctx.messages[-1]
         assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            return DeferredToolResults(
-                calls={
-                    call.tool_call_id: ToolFailed(truncated_call_text(call.tool_name))
-                    for call in requests.calls
-                    if call.tool_name == PRACTICE_PROBLEM_TOOL
-                }
-            )
-        if all_problem_calls_succeeded(response, requests):
+        if only_clean_problem_calls(response, requests):
             self.stopped_problems = [
                 call.tool_call_id
                 for call in requests.calls

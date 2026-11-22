@@ -293,7 +293,7 @@ class ChatEntries:
         if name in JOB_TOOLS:
             return None
         if name == "conclude":
-            if details is None or details == {}:
+            if message.is_error or details is None or details == {}:
                 return details
             return self.conclude_details(details, where)
         if name == "show_image":
