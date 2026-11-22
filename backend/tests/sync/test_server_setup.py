@@ -2468,6 +2468,35 @@ def test_failed_invocation_probe_preserves_service_instead_of_rolling_back(
     asyncio.run(run())
 
 
+def test_transient_invocation_probe_failure_still_rolls_back_on_confirmed_mismatch(
+    tmp_path: Path,
+):
+    class RecoveringMismatchSsh(FakeSshBackend):
+        def __init__(self) -> None:
+            super().__init__()
+            self.invocation_checks = 0
+
+        async def handle_command(self, command: str) -> SshCommandResult:
+            if command == SYSTEMD_INVOCATION_COMMAND:
+                self.invocation_checks += 1
+                if self.invocation_checks == 1:
+                    return SshCommandResult(exit_status=1, stderr="transient error")
+                return SshCommandResult(exit_status=0, stdout="b" * 32)
+            return await super().handle_command(command)
+
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = RecoveringMismatchSsh()
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            service._health_attempts = 2
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert any("mv venv.prev venv" in c for c in ssh.commands)
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("commit_first", [False, True])
 def test_cancelled_switch_keeps_the_committed_pairing_and_restarts_sync(
     tmp_path: Path, commit_first: bool

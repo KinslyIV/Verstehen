@@ -1491,11 +1491,13 @@ class ServerInstallService:
                 or response.headers.get(SCHEMA_HEADER) != expected_schema
                 or response.headers.get(DEPLOYMENT_HEADER) != deployment_id
             ):
+                probe_failed = False
                 return False
             unit = await session.run(SYSTEMD_INVOCATION_COMMAND, timeout=5.0)
             if unit.exit_status != 0:
                 probe_failed = True
                 return False
+            probe_failed = False
             return unit.stdout.strip() == invocation
 
         health = await self._wait_healthy(server_url, verify_invocation)
