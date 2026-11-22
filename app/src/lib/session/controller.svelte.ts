@@ -9,6 +9,7 @@ import {
 	steerSession,
 	streamTurn,
 	type Entry,
+	type DismissInput,
 	type QuestionAnswer,
 	type SessionDetail,
 	type TurnEvent,
@@ -22,6 +23,7 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { activeProblemOf, hasPosedProblem, type ActiveProblem } from '#lib/practice/state.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
@@ -57,6 +59,22 @@ export class SessionController {
 		return pending?.key === this.submittingQuestion ? undefined : pending;
 	});
 	compacting = $derived(this.record?.compacting ?? false);
+	isPractice = $derived(this.record?.kind === 'practice');
+	/** The posed problem awaiting the learner; its dock replaces the composer. */
+	activeProblem = $derived(
+		this.isPractice ? activeProblemOf(this.record?.entries ?? []) : undefined
+	);
+	/** Between problems: the composer offers `Next problem →` (LearnHarness `nextReady`). */
+	nextReady = $derived(
+		this.isPractice &&
+			!this.pendingQuestion &&
+			!this.activeProblem &&
+			!this.compacting &&
+			!this.busy &&
+			hasPosedProblem(this.record?.entries ?? [])
+	);
+	/** The practice dock's unsent thinking; restored when its send is refused. */
+	thinkingDraft = $state('');
 	/** A failed reply behind a compaction cannot be retried (LearnHarness `failedTail`). */
 	retryBlocked = $derived(
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
@@ -313,18 +331,40 @@ export class SessionController {
 	async dismissPending(pending: PendingQuestion): Promise<void> {
 		if (pending.key !== this.pendingQuestion?.key) return;
 		this.submittingQuestion = pending.key;
+		try {
+			await this.dismiss({
+				tool_call_id: pending.toolCallId,
+				answer: dismissedAnswer(pending.question.kind, pending.question.question)
+			});
+		} finally {
+			this.submittingQuestion = undefined;
+		}
+	}
+
+	async dismissProblem(problem: ActiveProblem): Promise<void> {
+		if (problem.toolCallId !== this.activeProblem?.toolCallId) return;
+		this.thinkingDraft = '';
+		await this.dismiss({ problem_call_id: problem.toolCallId });
+	}
+
+	async sendThinking(): Promise<void> {
+		const problem = this.activeProblem;
+		const text = this.thinkingDraft.trim();
+		if (!problem || !text || this.loading || this.busy || this.compacting) return;
+		this.thinkingDraft = '';
+		await this.submit({ type: 'thinking', text, problem_call_id: problem.toolCallId });
+	}
+
+	async sendNext(): Promise<void> {
+		if (this.nextReady && !this.loading) await this.submit({ type: 'next' });
+	}
+
+	private async dismiss(input: DismissInput): Promise<void> {
 		const wasBusy = this.busy;
 		this.busy = true;
 		this.error = null;
 		try {
-			const parked = await dismissQuestion(
-				this.id,
-				{
-					tool_call_id: pending.toolCallId,
-					answer: dismissedAnswer(pending.question.kind, pending.question.question)
-				},
-				this.lifetime.signal
-			);
+			const parked = await dismissQuestion(this.id, input, this.lifetime.signal);
 			if (parked) {
 				try {
 					await abortSession(this.id);
@@ -337,7 +377,6 @@ export class SessionController {
 		} catch (error) {
 			this.fail(error);
 		} finally {
-			this.submittingQuestion = undefined;
 			if (!this.consuming && (!wasBusy || !this.record?.turn_in_flight)) this.busy = false;
 		}
 	}
@@ -387,6 +426,7 @@ export class SessionController {
 			}
 		} catch (error) {
 			if (!accepted && input.type === 'text') this.draft = text;
+			if (!accepted && input.type === 'thinking') this.thinkingDraft = input.text ?? '';
 			this.automaticContinuationBlocked = true;
 			if (error instanceof ApiError && error.code === 'models_not_configured') {
 				this.setupOpen = true;

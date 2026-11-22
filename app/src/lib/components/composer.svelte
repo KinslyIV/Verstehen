@@ -1,7 +1,8 @@
 <script lang="ts">
-	import type { Snippet } from 'svelte';
-	import { ArrowUp, Square } from '@lucide/svelte';
+	import { onMount, type Snippet } from 'svelte';
+	import { ArrowRight, ArrowUp, Square } from '@lucide/svelte';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
+	import { hasOpenOverlay, isTypingSurface } from '#lib/questions/keyboard.js';
 	let {
 		draft = $bindable(''),
 		busy = false,
@@ -9,7 +10,9 @@
 		disabled = false,
 		placeholder = 'What do you want to learn?',
 		queuedSteers = [],
+		nextReady = false,
 		onsend,
+		onnext,
 		onstop,
 		models
 	}: {
@@ -19,11 +22,37 @@
 		disabled?: boolean;
 		placeholder?: string;
 		queuedSteers?: { id: string; text: string }[];
+		nextReady?: boolean;
 		onsend: () => void;
+		onnext?: () => void;
 		onstop?: () => void;
 		models?: Snippet;
 	} = $props();
 	const canSend = $derived(!disabled && !compacting && draft.trim().length > 0);
+	const offersNext = $derived(nextReady && !draft.trim());
+
+	function windowEnter(event: KeyboardEvent) {
+		const target = event.target as HTMLElement | null;
+		if (
+			!offersNext ||
+			event.key !== 'Enter' ||
+			event.defaultPrevented ||
+			event.isComposing ||
+			event.altKey ||
+			event.shiftKey ||
+			isTypingSurface(target) ||
+			target?.closest('button, a') ||
+			hasOpenOverlay()
+		)
+			return;
+		event.preventDefault();
+		onnext?.();
+	}
+
+	onMount(() => {
+		window.addEventListener('keydown', windowEnter);
+		return () => window.removeEventListener('keydown', windowEnter);
+	});
 </script>
 
 <div class="mx-auto w-full max-w-3xl shrink-0 p-6">
@@ -48,6 +77,7 @@
 				if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
 					event.preventDefault();
 					if (canSend) onsend();
+					else if (offersNext) onnext?.();
 					else if (busy && !draft.trim()) onstop?.();
 				}
 			}}
@@ -60,6 +90,15 @@
 					onclick={onstop}
 				>
 					<Square class="size-4" />
+				</InputGroup.Button>
+			{:else if offersNext}<InputGroup.Button
+					data-testid="next-problem"
+					variant="default"
+					size="sm"
+					class="bg-green-600 text-white hover:bg-green-600/90"
+					onclick={onnext}
+				>
+					Next problem <ArrowRight class="size-4" />
 				</InputGroup.Button>
 			{:else}<InputGroup.Button
 					aria-label="Send"

@@ -34,3 +34,32 @@ test('running_turn_sends_typed_text_with_enter_or_send_and_empty_enter_stops', a
 	await userEvent.keyboard('{Enter}');
 	expect(stop).toHaveBeenCalledOnce();
 });
+
+test('next_problem_replaces_send_for_an_empty_draft_and_enter_sends_it', async () => {
+	const next = vi.fn();
+	const send = vi.fn();
+	const screen = await render(Composer, { nextReady: true, onsend: send, onnext: next });
+	await expect.element(screen.getByTestId('next-problem')).toBeVisible();
+	await expect
+		.element(screen.getByRole('button', { name: 'Send', exact: true }))
+		.not.toBeInTheDocument();
+	await screen.getByRole('textbox').click();
+	await userEvent.keyboard('{Enter}');
+	expect(next).toHaveBeenCalledOnce();
+	await screen.getByTestId('next-problem').click();
+	expect(next).toHaveBeenCalledTimes(2);
+	expect(send).not.toHaveBeenCalled();
+});
+
+test('typing_turns_next_problem_back_into_send_and_enter_outside_the_field_moves_on', async () => {
+	const next = vi.fn();
+	const send = vi.fn();
+	const screen = await render(Composer, { nextReady: true, onsend: send, onnext: next });
+	await userEvent.keyboard('{Enter}');
+	expect(next).toHaveBeenCalledOnce();
+	await screen.getByRole('textbox').fill('Why is that so?');
+	await expect.element(screen.getByTestId('next-problem')).not.toBeInTheDocument();
+	await userEvent.keyboard('{Enter}');
+	expect(send).toHaveBeenCalledOnce();
+	expect(next).toHaveBeenCalledOnce();
+});

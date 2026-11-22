@@ -54,14 +54,17 @@ export function questionShortcut(
 export function escAbortTarget({
 	overlay,
 	pending,
+	problem,
 	busy
 }: {
 	overlay: boolean;
 	pending: boolean;
+	problem: boolean;
 	busy: boolean;
-}): 'question' | 'turn' | null {
+}): 'question' | 'problem' | 'turn' | null {
 	if (overlay) return null;
 	if (pending) return 'question';
+	if (problem) return 'problem';
 	return busy ? 'turn' : null;
 }
 

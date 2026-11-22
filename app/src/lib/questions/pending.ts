@@ -1,5 +1,6 @@
 import type { Entry, ToolCallPart } from '#lib/api/client.js';
 import { questionKinds, type Question, type QuestionTool } from './question-core.js';
+import { hasProblemPose } from '#lib/practice/state.js';
 import { asObject, parseQuestionInput } from './question-input.js';
 
 export interface QuestionOccurrence {
@@ -81,15 +82,17 @@ export function needsContinuation(entries: Entry[]): boolean {
 	if (details?.dismissed === true || (last.is_error && details?.question_recovery === true))
 		return false;
 	const resolved = new Set<string>();
+	const results: Entry[] = [];
 	for (let i = end; i >= 0; i--) {
 		const entry = entries[i]!;
 		if (entry.kind === 'marker' && ['plan-block', 'compaction'].includes(entry.marker_type))
 			continue;
 		if (entry.kind === 'tool_result') {
 			resolved.add(entry.tool_call_id);
+			results.push(entry);
 			continue;
 		}
-		if (entry.kind !== 'assistant') return false;
+		if (entry.kind !== 'assistant' || hasProblemPose(results)) return false;
 		const calls = entry.parts.filter((part): part is ToolCallPart => part.type === 'tool_call');
 		return calls.length > 0 && calls.every((part) => resolved.has(part.tool_call_id));
 	}

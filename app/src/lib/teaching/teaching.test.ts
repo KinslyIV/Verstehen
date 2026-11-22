@@ -164,6 +164,20 @@ test('probe_done_refusal_keeps_its_assessment_card', () => {
 	]);
 });
 
+test('problem_and_conclude_calls_pair_with_their_clean_results', () => {
+	const posed = call('problem', { statement: 'Differentiate $x^2$.' });
+	const ack = { ...result, tool_call_id: 'problem', tool_name: 'problem', details: undefined };
+	expect(responseProse(posed, new Map([['problem', ack]]), false)).toEqual([
+		{ kind: 'problem', statement: 'Differentiate $x^2$.' }
+	]);
+	expect(responseProse(posed, undefined, true)).toEqual([]);
+	const concluded = call('conclude', { outcome: 'solved' });
+	const conclusion = { ...ack, tool_call_id: 'conclude', tool_name: 'conclude' };
+	expect(responseProse(concluded, new Map([['conclude', conclusion]]), false)).toEqual([
+		{ kind: 'conclude', args: { outcome: 'solved' }, toolCallId: 'conclude' }
+	]);
+});
+
 test('file_access_composes_the_switch_and_folder_list_independently', () => {
 	expect(isFileAccessFolder('relative')).toBe(false);
 	expect(isFileAccessFolder('/tmp/\0')).toBe(false);
