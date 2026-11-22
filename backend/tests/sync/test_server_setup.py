@@ -2347,6 +2347,77 @@ def test_rollback_surfaces_restart_failure_when_post_stop_schema_blocks_rollback
     asyncio.run(run())
 
 
+def test_async_ssh_session_treats_missing_exit_status_and_signals_as_lost_connection():
+    from types import SimpleNamespace
+
+    from verstehen.sync.provision import _AsyncSshSession
+
+    class FakeConn:
+        def __init__(self, result):
+            self.result = result
+
+        async def run(self, command: str, *, check: bool = False):
+            return self.result
+
+    async def run() -> None:
+        for bad in (
+            SimpleNamespace(exit_status=None, exit_signal=None, stdout="", stderr=""),
+            SimpleNamespace(
+                exit_status=None,
+                exit_signal=("HUP", False, "", ""),
+                stdout="",
+                stderr="",
+            ),
+            SimpleNamespace(exit_status=-1, exit_signal=None, stdout="", stderr=""),
+        ):
+            session = _AsyncSshSession(FakeConn(bad))  # type: ignore[arg-type]
+            with pytest.raises(SshUnreachableError):
+                await session.run("systemctl --user restart verstehen-server.service")
+        ok_result = SimpleNamespace(
+            exit_status=0, exit_signal=None, stdout="ok", stderr=""
+        )
+        ok = _AsyncSshSession(FakeConn(ok_result))  # type: ignore[arg-type]
+        assert (await ok.run("true")).exit_status == 0
+
+    asyncio.run(run())
+
+
+def test_rollback_health_probes_open_a_fresh_http_client_per_attempt(tmp_path: Path):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend()
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            clients_opened = 0
+            connection_headers: list[str | None] = []
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                connection_headers.append(request.headers.get("connection"))
+                return httpx2.Response(200, json={"status": "ok"})
+
+            def counting_factory() -> httpx2.AsyncClient:
+                nonlocal clients_opened
+                clients_opened += 1
+                return httpx2.AsyncClient(transport=httpx2.MockTransport(handler))
+
+            service._client_factory = counting_factory
+            service._health_attempts = 2
+            attempts = 0
+
+            async def reject_first(_: httpx2.Response) -> bool:
+                nonlocal attempts
+                attempts += 1
+                return attempts == 2
+
+            assert (
+                await service._wait_healthy("http://100.64.0.10:8420", reject_first)
+                == "healthy"
+            )
+            assert clients_opened == 2
+            assert connection_headers == ["close", "close"]
+
+    asyncio.run(run())
+
+
 @pytest.mark.parametrize("commit_first", [False, True])
 def test_cancelled_switch_keeps_the_committed_pairing_and_restarts_sync(
     tmp_path: Path, commit_first: bool

@@ -369,8 +369,14 @@ class _AsyncSshSession:
         result = await asyncio.wait_for(
             self._conn.run(command, check=False), timeout=timeout
         )
+        if (
+            result.exit_status is None
+            or result.exit_status < 0
+            or getattr(result, "exit_signal", None) is not None
+        ):
+            raise SshUnreachableError("SSH command ended without an exit status.")
         return SshCommandResult(
-            exit_status=int(result.exit_status or 0),
+            exit_status=int(result.exit_status),
             stdout=str(result.stdout or ""),
             stderr=str(result.stderr or ""),
         )
@@ -1432,25 +1438,27 @@ class ServerInstallService:
         ready: Callable[[], Awaitable[bool]] | None = None,
     ) -> Literal["healthy", "unhealthy", "unreachable"]:
         saw_response = False
-        async with self._client_factory() as client:
-            for _ in range(self._health_attempts):
-                if ready is None or await ready():
-                    try:
+        for _ in range(self._health_attempts):
+            if ready is None or await ready():
+                try:
+                    async with self._client_factory() as client:
                         response = await client.get(
-                            f"{server_url}/api/health", timeout=3.0
+                            f"{server_url}/api/health",
+                            headers={"Connection": "close"},
+                            timeout=3.0,
                         )
-                        saw_response = True
-                        if (
-                            response.status_code != 200
-                            or response.json().get("status") != "ok"
-                        ):
-                            response = None
-                    except httpx2.HTTPError, OSError, ValueError, AttributeError:
+                    saw_response = True
+                    if (
+                        response.status_code != 200
+                        or response.json().get("status") != "ok"
+                    ):
                         response = None
-                    if response is not None and await verify(response):
-                        return "healthy"
-                if self._health_interval > 0:
-                    await asyncio.sleep(self._health_interval)
+                except httpx2.HTTPError, OSError, ValueError, AttributeError:
+                    response = None
+                if response is not None and await verify(response):
+                    return "healthy"
+            if self._health_interval > 0:
+                await asyncio.sleep(self._health_interval)
         return "unhealthy" if saw_response else "unreachable"
 
     async def _deployment_is_healthy(
