@@ -49,6 +49,11 @@ CREATE TABLE sync_prompt_state (
     sha256 TEXT NOT NULL
 );
 
+CREATE TABLE sync_session_baseline (
+    session_id TEXT PRIMARY KEY,
+    payload TEXT NOT NULL CHECK (json_valid(payload))
+);
+
 ALTER TABLE settings ADD COLUMN updated_at TEXT;
 UPDATE settings SET updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE updated_at IS NULL;
 

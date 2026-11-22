@@ -1,3 +1,4 @@
+import copy
 import hashlib
 import os
 import re
@@ -19,6 +20,15 @@ SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 IMAGE_URL_RE = re.compile(r"/api/images/([0-9a-f]{64})\.(png|jpeg|gif|webp)")
 
 
+def _probe_extension(data_dir: Path | None, digest: str) -> str | None:
+    if data_dir is None:
+        return None
+    for candidate in IMAGE_EXTENSIONS:
+        if (data_dir / "images" / f"{digest}.{candidate}").is_file():
+            return candidate
+    return None
+
+
 def _extract_dict_ref(
     mapping: dict[object, object],
     found: set[tuple[str, str]],
@@ -35,12 +45,7 @@ def _extract_dict_ref(
         if ext in IMAGE_EXTENSIONS:
             found.add((digest, ext))
             continue
-        matched: str | None = None
-        if data_dir is not None:
-            for candidate in IMAGE_EXTENSIONS:
-                if (data_dir / "images" / f"{digest}.{candidate}").is_file():
-                    matched = candidate
-                    break
+        matched = _probe_extension(data_dir, digest)
         found.add((digest, matched or "png"))
 
 
@@ -59,6 +64,49 @@ def _walk_typed_payload(
         _extract_dict_ref(value, found, data_dir)
         for child in value.values():
             _walk_typed_payload(child, found, data_dir)
+
+
+def _enrich_dict_extensions(value: object, data_dir: Path) -> None:
+    if isinstance(value, list):
+        for item in value:
+            _enrich_dict_extensions(item, data_dir)
+        return
+    if not isinstance(value, dict):
+        return
+    for key in ("sha256", "snapshot_id"):
+        digest = value.get(key)
+        if not isinstance(digest, str) or not SHA256_RE.fullmatch(digest):
+            continue
+        ext = value.get("extension")
+        mime = value.get("mime_type")
+        if ext not in IMAGE_EXTENSIONS and (
+            not isinstance(mime, str) or mime not in MIME_TO_EXT
+        ):
+            matched = _probe_extension(data_dir, digest)
+            if matched is not None:
+                value["extension"] = matched
+    for child in value.values():
+        _enrich_dict_extensions(child, data_dir)
+
+
+def enrich_legacy_image_refs(
+    changes: list[SyncChange], data_dir: Path
+) -> list[SyncChange]:
+    """Attach canonical blob extensions to legacy visual/image refs on the wire."""
+    enriched: list[SyncChange] = []
+    for change in changes:
+        if change.op == "upsert" and change.entity in ("job", "entry"):
+            payload_copy = copy.deepcopy(change.payload)
+            if change.entity == "job":
+                _enrich_dict_extensions(payload_copy.get("result"), data_dir)
+            else:
+                inner = payload_copy.get("payload")
+                if isinstance(inner, dict) and inner.get("kind") == "tool_result":
+                    _enrich_dict_extensions(inner.get("details"), data_dir)
+            enriched.append(change.model_copy(update={"payload": payload_copy}))
+        else:
+            enriched.append(change)
+    return enriched
 
 
 def extract_image_refs(

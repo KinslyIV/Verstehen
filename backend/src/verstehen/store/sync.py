@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Awaitable, Callable
 from datetime import datetime
@@ -5,12 +6,15 @@ from pathlib import PurePosixPath
 from typing import Any, Literal
 from uuid import uuid4
 
-from aiosqlite import Connection
+from aiosqlite import Connection, IntegrityError
 from pydantic import BaseModel, Field, ValidationError
 
 from verstehen.store.database import Database
 from verstehen.store.entries import ENTRY, MarkerEntry, delivered_job_id
-from verstehen.store.jobs import JobKind, mark_delivered
+from verstehen.store.graph import SourcePlacement
+from verstehen.store.jobs import JobKind, JobUsage, mark_delivered
+from verstehen.store.settings import Settings as AppSettings
+from verstehen.store.side_chats import SideAnchor
 from verstehen.store.sync_log import (
     GRAPH_LEDGER_TABLES,
     SYNCED_SETTINGS_KEYS,
@@ -205,6 +209,28 @@ def _valid_prompt_path(raw: str) -> bool:
     return pure.suffix == ".md"
 
 
+def _parse_json_object(value: Any, label: str) -> dict[str, Any]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise InvalidSyncPayloadError(f"{label} must be valid JSON.") from error
+    if not isinstance(value, dict):
+        raise InvalidSyncPayloadError(f"{label} must be a JSON object.")
+    return value
+
+
+def _parse_string_list(value: Any, label: str) -> list[str]:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as error:
+            raise InvalidSyncPayloadError(f"{label} must be valid JSON.") from error
+    if not isinstance(value, list) or not all(isinstance(x, str) for x in value):
+        raise InvalidSyncPayloadError(f"{label} must be a list of strings.")
+    return value
+
+
 def validate_inbound_change(change: SyncChange) -> str | None:
     """Validate an inbound change strictly and return its derived session_id (or raise)."""
     entity = change.entity
@@ -230,15 +256,30 @@ def validate_inbound_change(change: SyncChange) -> str | None:
         if entity == "side_thread":
             if op != "upsert":
                 raise InvalidSyncPayloadError("side_thread only supports upsert.")
-            return _SideThreadUpsertPayload.model_validate(payload).session_id
+            parsed_thread = _SideThreadUpsertPayload.model_validate(payload)
+            SideAnchor.model_validate(
+                _parse_json_object(parsed_thread.anchor, "side_thread.anchor")
+            )
+            return parsed_thread.session_id
         if entity == "side_exchange":
             if op != "upsert":
                 raise InvalidSyncPayloadError("side_exchange only supports upsert.")
-            return _SideExchangeUpsertPayload.model_validate(payload).session_id
+            parsed_ex = _SideExchangeUpsertPayload.model_validate(payload)
+            _parse_string_list(parsed_ex.quotes, "side_exchange.quotes")
+            return parsed_ex.session_id
         if entity == "job":
             if op != "upsert":
                 raise InvalidSyncPayloadError("job only supports upsert.")
-            return _JobUpsertPayload.model_validate(payload).session_id
+            parsed_job = _JobUpsertPayload.model_validate(payload)
+            if isinstance(parsed_job.input, str):
+                _parse_json_object(parsed_job.input, "job.input")
+            if isinstance(parsed_job.result, str):
+                _parse_json_object(parsed_job.result, "job.result")
+            if parsed_job.usage is not None:
+                JobUsage.model_validate(
+                    _parse_json_object(parsed_job.usage, "job.usage")
+                )
+            return parsed_job.session_id
         if entity == "artifact_view":
             if op != "upsert":
                 raise InvalidSyncPayloadError("artifact_view only supports upsert.")
@@ -251,8 +292,22 @@ def validate_inbound_change(change: SyncChange) -> str | None:
             key = str(payload.get("key", change.entity_id))
             if key not in SYNCED_SETTINGS_KEYS:
                 raise InvalidSyncPayloadError(f"Setting {key!r} is not syncable.")
-            if op == "upsert" and "value" not in payload:
-                raise InvalidSyncPayloadError(f"Setting {key!r} upsert requires value.")
+            if op == "upsert":
+                if "value" not in payload or payload["value"] is None:
+                    raise InvalidSyncPayloadError(
+                        f"Setting {key!r} upsert requires a non-null value."
+                    )
+                val = payload["value"]
+                if key == "agent.prompts":
+                    if not isinstance(val, dict) or not all(
+                        isinstance(k, str) and isinstance(v, bool)
+                        for k, v in val.items()
+                    ):
+                        raise InvalidSyncPayloadError(
+                            "agent.prompts must be a mapping of string keys to booleans."
+                        )
+                else:
+                    AppSettings.model_validate({key: val})
             return None
         if entity == "prompt_override":
             raw_path = str(payload.get("path", change.entity_id))
@@ -269,7 +324,12 @@ def validate_inbound_change(change: SyncChange) -> str | None:
             return None
         if entity == "graph_source_placement":
             if op == "upsert":
-                _GraphPlacementUpsertPayload.model_validate(payload)
+                parsed_pl = _GraphPlacementUpsertPayload.model_validate(payload)
+                SourcePlacement.model_validate(
+                    _parse_json_object(
+                        parsed_pl.payload, "graph_source_placement.payload"
+                    )
+                )
             elif not isinstance(payload.get("id", change.entity_id), str):
                 raise InvalidSyncPayloadError(
                     "graph_source_placement delete requires id."
@@ -277,7 +337,8 @@ def validate_inbound_change(change: SyncChange) -> str | None:
             return None
         if entity in GRAPH_LEDGER_TABLES:
             if op == "upsert":
-                _GraphLedgerUpsertPayload.model_validate(payload)
+                parsed_gl = _GraphLedgerUpsertPayload.model_validate(payload)
+                _parse_json_object(parsed_gl.payload, f"{entity}.payload")
             elif not isinstance(payload.get("sync_id", change.entity_id), str):
                 raise InvalidSyncPayloadError(f"{entity} delete requires sync_id.")
             return None
@@ -378,6 +439,21 @@ async def _apply_one(
                 payload.get("model_account"),
                 payload.get("model_id"),
                 payload.get("thinking_level"),
+            ),
+        )
+        await connection.execute(
+            "INSERT INTO sync_session_baseline (session_id, payload) VALUES (?, ?) "
+            "ON CONFLICT(session_id) DO UPDATE SET payload = excluded.payload",
+            (
+                sid,
+                json.dumps(
+                    {
+                        "title": payload["title"],
+                        "model_account": payload.get("model_account"),
+                        "model_id": payload.get("model_id"),
+                        "thinking_level": payload.get("thinking_level"),
+                    }
+                ),
             ),
         )
         summary.chats_changed.add(sid)
@@ -1119,12 +1195,18 @@ async def _fork_session_in_transaction(
 
     if had_unpushed_session_meta:
         async with connection.execute(
-            "SELECT payload FROM sync_log "
-            "WHERE pushed = 1 AND entity = 'session' AND op = 'upsert' AND entity_id = ? "
-            "ORDER BY change_seq DESC LIMIT 1",
+            "SELECT payload FROM sync_session_baseline WHERE session_id = ?",
             (session_id,),
         ) as prev_cursor:
             prev_row = await prev_cursor.fetchone()
+        if prev_row is None:
+            async with connection.execute(
+                "SELECT payload FROM sync_log "
+                "WHERE pushed = 1 AND entity = 'session' AND op = 'upsert' AND entity_id = ? "
+                "ORDER BY change_seq DESC LIMIT 1",
+                (session_id,),
+            ) as fallback_cursor:
+                prev_row = await fallback_cursor.fetchone()
         if prev_row is not None:
             prev_meta = json.loads(prev_row[0])
             await connection.execute(
@@ -1327,7 +1409,7 @@ class SyncStore:
                 )
         except BaseException:
             if prompts_written and on_prompt_rollback is not None:
-                await on_prompt_rollback()
+                await asyncio.shield(on_prompt_rollback())
             raise
         return summary
 
@@ -1448,9 +1530,15 @@ class SyncStore:
                     row = await cursor.fetchone()
                     assert row is not None
                     latest_seq = int(row[0])
+        except IntegrityError as error:
+            if prompts_written and on_prompt_rollback is not None:
+                await asyncio.shield(on_prompt_rollback())
+            raise InvalidSyncPayloadError(
+                f"Sync batch violated database constraints: {error}"
+            ) from error
         except BaseException:
             if prompts_written and on_prompt_rollback is not None:
-                await on_prompt_rollback()
+                await asyncio.shield(on_prompt_rollback())
             raise
         summary.deferred_session_ids = sorted(deferred_seen)
         return summary.applied, summary.skipped, latest_seq, summary
@@ -1840,7 +1928,7 @@ class SyncStore:
                     )
         except BaseException:
             if prompts_written and on_prompt_rollback is not None:
-                await on_prompt_rollback()
+                await asyncio.shield(on_prompt_rollback())
             raise
         return summary
 

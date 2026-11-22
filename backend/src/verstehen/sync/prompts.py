@@ -1,10 +1,11 @@
+import asyncio
 import hashlib
 import os
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from verstehen.store.sync import SyncChange
+from verstehen.store.sync import PromptApplyHook, PromptRollbackHook, SyncChange
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,25 @@ def scan_prompts(data_dir: Path) -> PromptScan:
     resolved_root = root.resolve()
     files: dict[str, tuple[str, str]] = {}
     skipped: set[str] = set()
-    for dirpath, dirnames, filenames in os.walk(root, followlinks=False):
+    skipped_all = False
+
+    def on_walk_error(error: OSError) -> None:
+        nonlocal skipped_all
+        if not error.filename:
+            skipped_all = True
+            return
+        failed = Path(error.filename)
+        if failed == root:
+            skipped_all = True
+            return
+        try:
+            skipped.add(failed.relative_to(root).as_posix())
+        except ValueError:
+            skipped_all = True
+
+    for dirpath, dirnames, filenames in os.walk(
+        root, followlinks=False, onerror=on_walk_error
+    ):
         current_dir = Path(dirpath)
         kept_dirs: list[str] = []
         for name in sorted(dirnames):
@@ -82,7 +101,9 @@ def scan_prompts(data_dir: Path) -> PromptScan:
                 continue
             digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
             files[rel] = (content, digest)
-    return PromptScan(files=files, skipped_paths=frozenset(skipped))
+    return PromptScan(
+        files=files, skipped_all=skipped_all, skipped_paths=frozenset(skipped)
+    )
 
 
 def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | None]:
@@ -122,29 +143,34 @@ def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | 
 
 
 def apply_prompt_winners_with_rollback(
-    data_dir: Path, changes: list[SyncChange]
-) -> tuple[dict[str, str | None], dict[str, bytes | None]]:
-    """Apply winning prompt changes on disk and return (hashes, backups for rollback)."""
-    backups: dict[str, bytes | None] = {}
+    data_dir: Path,
+    changes: list[SyncChange],
+    backups: dict[str, bytes | None],
+) -> dict[str, str | None]:
+    """Coalesce winning prompt changes by path, back up before write, and apply."""
+    coalesced: dict[str, SyncChange] = {}
+    for change in changes:
+        raw_path = str(change.payload.get("path", change.entity_id))
+        rel = validate_prompt_rel_path(raw_path).as_posix()
+        coalesced[rel] = change
+
     hashes: dict[str, str | None] = {}
     try:
-        for change in changes:
-            raw_path = str(change.payload.get("path", change.entity_id))
-            pure = validate_prompt_rel_path(raw_path)
-            rel = pure.as_posix()
+        for rel, change in coalesced.items():
             if rel not in backups:
+                pure = validate_prompt_rel_path(rel)
                 target = _ensure_no_symlinks(data_dir / "prompts", pure)
                 backups[rel] = target.read_bytes() if target.is_file() else None
-            rel, digest = apply_prompt_change(data_dir, change)
-            hashes[rel] = digest
+            applied_rel, digest = apply_prompt_change(data_dir, change)
+            hashes[applied_rel] = digest
     except Exception:
         restore_prompt_backups(data_dir, backups)
         raise
-    return hashes, backups
+    return hashes
 
 
 def restore_prompt_backups(data_dir: Path, backups: dict[str, bytes | None]) -> None:
-    """Restore prompt files after a failed SQLite commit."""
+    """Restore prompt files after a failed or cancelled SQLite commit."""
     root = data_dir / "prompts"
     for rel, original in backups.items():
         pure = validate_prompt_rel_path(rel)
@@ -164,3 +190,33 @@ def restore_prompt_backups(data_dir: Path, backups: dict[str, bytes | None]) -> 
                 os.replace(temp_name, target)
             finally:
                 Path(temp_name).unlink(missing_ok=True)
+
+
+def make_prompt_tx_hooks(
+    data_dir: Path,
+) -> tuple[PromptApplyHook, PromptRollbackHook]:
+    """Build cancellation-safe prompt write and rollback hooks for one SQLite transaction."""
+    backups: dict[str, bytes | None] = {}
+
+    async def write_winners(winners: list[SyncChange]) -> dict[str, str | None]:
+        worker = asyncio.create_task(
+            asyncio.to_thread(
+                apply_prompt_winners_with_rollback, data_dir, winners, backups
+            )
+        )
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            try:
+                await worker
+            except Exception:
+                pass
+            if backups:
+                await asyncio.to_thread(restore_prompt_backups, data_dir, backups)
+            raise
+
+    async def rollback_winners() -> None:
+        if backups:
+            await asyncio.to_thread(restore_prompt_backups, data_dir, backups)
+
+    return write_winners, rollback_winners

@@ -1020,4 +1020,85 @@ def test_round2_prompt_replay_recreated_position_visual_blob_and_ownership(
                 assert cross_resp.status_code == 400
                 assert cross_resp.json()["code"] == "invalid_sync_payload"
 
+                # #9: Invalid typed setting value is rejected with 400.
+                bad_setting = SyncChange(
+                    change_seq=12,
+                    entity="setting",
+                    op="upsert",
+                    entity_id="quizzing",
+                    payload={"key": "quizzing", "value": 12345},
+                    origin_device_id="dev",
+                    origin_seq=502,
+                    created_at="2026-11-22T00:00:00Z",
+                )
+                bad_set_resp = await s_client.post(
+                    "/api/sync/push",
+                    headers={"Authorization": f"Bearer {token}"},
+                    json={
+                        "device_id": "laptop",
+                        "schema_version": schema,
+                        "changes": [bad_setting.model_dump(mode="json")],
+                    },
+                )
+                assert bad_set_resp.status_code == 400
+                assert bad_set_resp.json()["code"] == "invalid_sync_payload"
+
+    asyncio.run(run())
+
+
+def test_round3_legacy_jpeg_visual_and_server_created_fork_title(tmp_path: Path):
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            l_sessions = SessionsStore(laptop_app.state.database)
+            s_sessions = SessionsStore(server_app.state.database)
+            l_entries = EntriesStore(laptop_app.state.database)
+            s_entries = EntriesStore(server_app.state.database)
+            l_jobs = JobsStore(laptop_app.state.database)
+
+            # #5: Server-created session forked after laptop offline rename + entry.
+            srv_session = await s_sessions.create("Server Original Title")
+            await s_entries.append(srv_session.id, [UserEntry(text="Base")])
+            await laptop_app.state.sync_service.sync_now()
+
+            await l_sessions.rename(srv_session.id, "Laptop Local Rename")
+            await l_entries.append(srv_session.id, [UserEntry(text="Laptop msg")])
+            await s_entries.append(srv_session.id, [UserEntry(text="Server msg")])
+            await laptop_app.state.sync_service.sync_now()
+
+            l_orig = await l_sessions.get(srv_session.id)
+            assert l_orig is not None
+            assert l_orig.title == "Server Original Title"
+            forks = [
+                s
+                for s in await l_sessions.list()
+                if s.title == "Laptop Local Rename (Laptop copy)"
+            ]
+            assert len(forks) == 1
+
+            # #6: Legacy visual job without extension syncs its .jpeg blob cleanly.
+            jpg_bytes = b"\xff\xd8\xff\xe0legacy-jpeg-blob"
+            jpg_sha = hashlib.sha256(jpg_bytes).hexdigest()
+            save_verified_image(laptop_app.state.data_dir, jpg_sha, "jpeg", jpg_bytes)
+            job = await l_jobs.create(
+                srv_session.id, "visual", "tc-legacy-jpg", {"brief": "x"}
+            )
+            await l_jobs.update(
+                job.id,
+                JobPatch(
+                    status="done",
+                    activity="done",
+                    result={
+                        "svg": "<svg/>",
+                        "image": {"path": "/tmp/x.jpg", "snapshot_id": jpg_sha},
+                    },
+                    delivery=JobDelivery(kind="result", status="delivered"),
+                ),
+            )
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            assert (
+                server_app.state.data_dir / "images" / f"{jpg_sha}.jpeg"
+            ).read_bytes() == jpg_bytes
+
     asyncio.run(run())

@@ -18,14 +18,14 @@ from verstehen.store.sync import (
     SyncStore,
 )
 from verstehen.sync.images import (
+    enrich_legacy_image_refs,
     extract_image_refs,
     image_path,
     read_local_image,
     save_verified_image,
 )
 from verstehen.sync.prompts import (
-    apply_prompt_winners_with_rollback,
-    restore_prompt_backups,
+    make_prompt_tx_hooks,
     scan_prompts,
 )
 
@@ -242,20 +242,7 @@ class SyncService:
             )
 
     def _make_prompt_hooks(self):
-        backups: dict[str, bytes | None] = {}
-
-        async def write_winners(winners: list[SyncChange]) -> dict[str, str | None]:
-            hashes, saved = await asyncio.to_thread(
-                apply_prompt_winners_with_rollback, self.data_dir, winners
-            )
-            backups.update(saved)
-            return hashes
-
-        async def rollback_winners() -> None:
-            if backups:
-                await asyncio.to_thread(restore_prompt_backups, self.data_dir, backups)
-
-        return write_winners, rollback_winners
+        return make_prompt_tx_hooks(self.data_dir)
 
     @staticmethod
     def _compute_db_cursor(deferred: dict[str, list[SyncChange]], seen_seq: int) -> int:
@@ -512,13 +499,18 @@ class SyncService:
             if not batch:
                 return True
 
-            await self._upload_referenced_images(client, server_url, headers, batch)
+            wire_batch = await asyncio.to_thread(
+                enrich_legacy_image_refs, batch, self.data_dir
+            )
+            await self._upload_referenced_images(
+                client, server_url, headers, wire_batch
+            )
             response = await client.post(
                 f"{server_url}/api/sync/push",
                 json={
                     "device_id": device_id,
                     "schema_version": schema,
-                    "changes": [c.model_dump(mode="json") for c in batch],
+                    "changes": [c.model_dump(mode="json") for c in wire_batch],
                 },
                 headers=headers,
             )
@@ -530,6 +522,7 @@ class SyncService:
                 for item in data.get("accepted_changes", ())
             ]
             deferred_ids = set(data.get("deferred_session_ids", ()))
+            prev_deferred_count = len(server_deferred)
             server_deferred.update(deferred_ids)
 
             if accepted:
@@ -542,6 +535,8 @@ class SyncService:
                         on_prompt_rollback=rollback_winners,
                     )
                 self._emit_summary_notifications(summary)
+            elif len(server_deferred) > prev_deferred_count:
+                continue
             else:
                 return True
 

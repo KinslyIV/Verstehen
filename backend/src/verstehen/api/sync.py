@@ -18,13 +18,13 @@ from verstehen.store.sync import (
 )
 from verstehen.sync.images import (
     MAX_IMAGE_BYTES,
+    enrich_legacy_image_refs,
     extract_image_refs,
     missing_local_images,
     save_verified_image,
 )
 from verstehen.sync.prompts import (
-    apply_prompt_winners_with_rollback,
-    restore_prompt_backups,
+    make_prompt_tx_hooks,
     scan_prompts,
 )
 
@@ -116,7 +116,7 @@ async def sync_push(
         )
 
     data_dir = request.app.state.data_dir
-    image_refs = extract_image_refs(body.changes)
+    image_refs = extract_image_refs(body.changes, data_dir)
     missing = await asyncio.to_thread(missing_local_images, data_dir, image_refs)
     if missing:
         return JSONResponse(
@@ -130,18 +130,7 @@ async def sync_push(
     runtimes: RuntimeRegistry = request.app.state.runtimes
     prompt_lock: asyncio.Lock = request.app.state.prompt_lock
     origin_device_id = str(request.state.device_id)
-    prompt_backups: dict[str, bytes | None] = {}
-
-    async def write_winners(winners: list[SyncChange]) -> dict[str, str | None]:
-        hashes, backups = await asyncio.to_thread(
-            apply_prompt_winners_with_rollback, data_dir, winners
-        )
-        prompt_backups.update(backups)
-        return hashes
-
-    async def rollback_winners() -> None:
-        if prompt_backups:
-            await asyncio.to_thread(restore_prompt_backups, data_dir, prompt_backups)
+    write_winners, rollback_winners = make_prompt_tx_hooks(data_dir)
 
     try:
         async with prompt_lock:
@@ -232,6 +221,9 @@ async def sync_pull(
     origin_device_id = str(request.state.device_id)
     changes, latest_seq, has_more = await sync_store.list_changes_since(
         since, exclude_device_id=origin_device_id, limit=limit
+    )
+    changes = await asyncio.to_thread(
+        enrich_legacy_image_refs, changes, request.app.state.data_dir
     )
     return PullResponse(
         changes=changes,
