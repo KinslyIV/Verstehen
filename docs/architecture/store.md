@@ -96,7 +96,8 @@ and `convert.py` (LH to Verstehen; practice chats are imported too, with their m
 3. **Confirm.** The prompt says to close Verstehen first and how many existing sessions and
    propositions will be deleted; only the typed word `replace` continues. Replacement requires
    an unpaired local data directory. Server mode or active devices also prevent replacement,
-   since the sync log cannot represent this local-only operation. Until the backup is
+   since the sync log cannot represent this local-only operation. The importer rechecks after
+   confirmation and inside the replacement transaction. Until the backup is
    written the destination is only read: no directory, database, or migration is created, and the
    counts come from a read-only look at the file as it is.
 4. **Back up** to `<data dir>/backups/before-learnharness-import-<UTC time>/`: the database as it

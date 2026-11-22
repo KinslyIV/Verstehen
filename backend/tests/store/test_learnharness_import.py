@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -1006,6 +1007,51 @@ def test_replacement_refuses_active_sync_without_changing_the_database(
         run(FIXTURE, data_dir)
     assert database_path.read_bytes() == before
     assert not (data_dir / "backups").exists()
+
+
+def test_pairing_during_import_confirmation_prevents_replacement(tmp_path: Path):
+    from verstehen.store.replace import (
+        ReplacementWhileSyncedError,
+        StoreContents,
+        replace_contents,
+    )
+    from verstehen.store.sync import SyncStore
+
+    data_dir = seeded_data_dir(tmp_path)
+    database_path = data_dir / "verstehen.db"
+    paired_contents = b""
+
+    async def pair(database) -> None:
+        await SyncStore(database).configure("http://server.local")
+
+    def confirm(_: str) -> str:
+        nonlocal paired_contents
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            executor.submit(lambda: asyncio.run(with_database(data_dir, pair))).result()
+        paired_contents = database_path.read_bytes()
+        return "replace"
+
+    with pytest.raises(
+        ImportRefused, match="without an active sync pairing or devices"
+    ):
+        asyncio.run(
+            run_import(
+                FIXTURE,
+                Settings(data_dir),
+                dry_run=False,
+                confirm=confirm,
+                say=lambda _: None,
+            )
+        )
+    assert database_path.read_bytes() == paired_contents
+    assert not (data_dir / "backups").exists()
+
+    async def replace_while_paired(database):
+        await replace_contents(database, StoreContents())
+
+    with pytest.raises(ReplacementWhileSyncedError):
+        asyncio.run(with_database(data_dir, replace_while_paired))
+    assert asyncio.run(with_database(data_dir, session_titles)) == ["Existing session"]
 
 
 def test_backup_is_written_before_replacing(tmp_path: Path):

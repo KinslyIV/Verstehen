@@ -63,9 +63,11 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   cannot safely release it, confirm the install has stopped and recover before removing it.
   Before swapping the venv and service unit, it refuses to proceed if `venv.prev`, `unit.prev`,
   or `rollback.pending` remains. It accepts a healthy response only from the invocation systemd
-  reports for the installed unit, with the laptop's schema version. Before rollback it stops
-  the attempted service and verifies that the previous wheel includes every applied migration.
-  An incompatible database leaves the recovery files and install lock in place.
+  reports for the installed unit, with the laptop's schema version. If SSH drops, the provisioner
+  reconnects to verify before deciding whether to roll back. If it cannot verify, it leaves the
+  service and recovery files in place. Rollback checks the previous wheel's migrations before
+  and after stopping the attempted service. It keeps recovery files until the restored unit owns
+  the listener and answers the health check.
 - **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
   uploads `app/verify-output` on failure. Flows never retry, in CI or locally.
 - **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,

@@ -73,8 +73,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   lingering remote work; clear it manually only after confirming setup has stopped and recovering.
   Alternative: restore the venv only (leaves a unit the old venv may not run).
 - **Update health checks** verify the systemd invocation and schema before removing backups.
-  Rollback refuses to start the old wheel if the database has already applied migrations absent
-  from it. Recovery files and the lock stay in place, and the database keeps its committed data.
+  An SSH disconnect triggers a fresh verification before rollback. Rollback refuses to restore
+  the old wheel if the database has applied migrations absent from it. Recovery files stay in
+  place until the restored process owns the listener and is healthy.
 - **One snapshot per server operation:** `ServerProxy` and server OAuth take URL, token, generation and SSH
   details from `capture_connection()` (under the lifecycle lock, released before any request). The sign-in
   tunnel, its request and its watcher use that snapshot; a stale generation before the request or the SSH

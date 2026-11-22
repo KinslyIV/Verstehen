@@ -5,6 +5,7 @@ import hmac
 import logging
 import os
 import re
+import socket
 import subprocess
 import sys
 from contextlib import AsyncExitStack, asynccontextmanager
@@ -26,6 +27,7 @@ from verstehen.store.sync import SyncChange
 from verstehen.sync.provision import (
     INVOCATION_HEADER,
     NO_PENDING_RECOVERY_COMMAND,
+    ROLLBACK_LISTENER_CHECK,
     SCHEMA_HEADER,
     SYSTEMD_INVOCATION_COMMAND,
     AsyncSshBackend,
@@ -1631,6 +1633,63 @@ def test_update_rejects_healthy_responses_from_the_wrong_deployment(
     asyncio.run(run())
 
 
+def test_rollback_keeps_recovery_files_when_an_unrelated_listener_answers(
+    tmp_path: Path,
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                command_results={"--property=MainPID": SshCommandResult(exit_status=1)}
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                assert request.url.path == "/api/health"
+                return httpx2.Response(200, json={"status": "ok"})
+
+            service._client_factory = lambda: httpx2.AsyncClient(
+                transport=httpx2.MockTransport(handler)
+            )
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service, mode="update")
+            assert status["state"] == "failed"
+            assert "previous server version did not become healthy" in status["error"]
+            assert any("install lock was retained" in line for line in status["logs"])
+            assert not any(
+                "rm -rf venv.prev unit.prev" in command for command in ssh.commands
+            )
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("can_reconnect", [True, False])
+def test_health_verification_reconnects_before_rollback(
+    tmp_path: Path, can_reconnect: bool
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            ssh = FakeSshBackend(
+                drop_after="mv venv.new venv",
+                fail_reconnect=not can_reconnect,
+                mint_callback=minting(apps["server"], []),
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service)
+            if can_reconnect:
+                assert status["state"] == "complete"
+                assert ssh.connections == 2
+            else:
+                assert status["state"] == "failed"
+                assert "left in place" in status["error"]
+                assert any(
+                    "install lock was retained" in line for line in status["logs"]
+                )
+            assert not any("mv venv.prev venv" in command for command in ssh.commands)
+
+    asyncio.run(run())
+
+
 def test_rollback_that_fails_or_stays_unhealthy_is_a_clear_error(tmp_path: Path):
     async def run(command_failure: bool) -> str:
         async with laptop_and_servers(tmp_path / str(command_failure), "server") as (
@@ -1988,6 +2047,27 @@ def test_install_lock_excludes_another_laptop_until_first_run_finishes(tmp_path:
 
 
 @pytest.mark.slow
+def test_rollback_listener_check_requires_the_unit_pid_to_hold_the_socket():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        port = str(listener.getsockname()[1])
+        for pid, expected in [(os.getpid(), 0), (os.getppid(), 1)]:
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    ROLLBACK_LISTENER_CHECK,
+                    str(pid),
+                    "127.0.0.1",
+                    port,
+                ],
+                capture_output=True,
+            )
+            assert result.returncode == expected, result.stderr
+
+
+@pytest.mark.slow
 @pytest.mark.parametrize("database_upgraded", [False, True])
 def test_rollback_command_retried_after_a_partial_restore_still_restarts(
     tmp_path: Path, database_upgraded: bool
@@ -2043,7 +2123,7 @@ def test_rollback_command_retried_after_a_partial_restore_still_restarts(
         assert (server_dir / "venv.prev/marker").read_text() == "old"
         assert (server_dir / "unit.prev").exists()
         assert (server_dir / "rollback.pending").exists()
-        assert "restart" not in calls.read_text()
+        assert not calls.exists()
         return
     assert first.returncode == 1, first.stderr
     assert (server_dir / "venv/marker").read_text() == "old"

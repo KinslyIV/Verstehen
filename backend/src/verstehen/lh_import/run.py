@@ -14,7 +14,12 @@ from verstehen.providers.credentials import CredentialsStore
 from verstehen.store.backup import backup_database
 from verstehen.store.database import open_database
 from verstehen.store.migrate import migrate
-from verstehen.store.replace import ContentCounts, count_contents, replace_contents
+from verstehen.store.replace import (
+    ContentCounts,
+    ReplacementWhileSyncedError,
+    count_contents,
+    replace_contents,
+)
 from verstehen.teaching.files.read import save_attachment
 
 CONFIRMATION = "replace"
@@ -123,11 +128,12 @@ async def run_import(
         return False
     database_path = settings.data_dir / "verstehen.db"
     existing = await asyncio.to_thread(count_contents, database_path)
+    sync_refusal = (
+        "LearnHarness import replaces local data and requires a data directory "
+        "without an active sync pairing or devices."
+    )
     if settings.server or existing.sync_in_use:
-        raise ImportRefused(
-            "LearnHarness import replaces local data and requires a data directory "
-            "without an active sync pairing or devices."
-        )
+        raise ImportRefused(sync_refusal)
     try:
         answer = confirm(confirmation_prompt(existing))
     except EOFError:
@@ -135,11 +141,16 @@ async def run_import(
     if answer.strip() != CONFIRMATION:
         say("Aborted: nothing was changed.")
         return False
+    if (await asyncio.to_thread(count_contents, database_path)).sync_in_use:
+        raise ImportRefused(sync_refusal)
     backup = await asyncio.to_thread(back_up, settings.data_dir)
     await asyncio.to_thread(write_images, conversion, settings.data_dir)
     async with open_database(database_path) as database:
         await migrate(database)
-        await replace_contents(database, conversion.contents)
+        try:
+            await replace_contents(database, conversion.contents)
+        except ReplacementWhileSyncedError as error:
+            raise ImportRefused(sync_refusal) from error
     say("Imported.")
     for line in restore_lines(settings.data_dir, backup):
         say(line)

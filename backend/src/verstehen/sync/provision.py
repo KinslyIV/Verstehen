@@ -13,7 +13,7 @@ import subprocess
 import sys
 import tempfile
 from collections import OrderedDict
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
 from typing import Annotated, Any, Literal, Protocol
@@ -648,14 +648,42 @@ supported = {path.name for path in MIGRATIONS.glob("*.sql")}
 if not applied <= supported:
     raise SystemExit(78)
 """
+ROLLBACK_LISTENER_CHECK = """import socket
+import sys
+from pathlib import Path
+
+pid, host, port = sys.argv[1:]
+if int(pid) <= 0:
+    raise SystemExit(1)
+process = Path("/proc") / pid
+addresses = {"0.0.0.0"} | {
+    address[0]
+    for _, _, _, _, address in socket.getaddrinfo(host, int(port), socket.AF_INET, socket.SOCK_STREAM)
+}
+bindings = {f"{socket.inet_aton(ip)[::-1].hex().upper()}:{int(port):04X}" for ip in addresses}
+listeners = {
+    f"socket:[{parts[9]}]"
+    for line in (process / "net/tcp").read_text().splitlines()[1:]
+    if (parts := line.split())[3] == "0A" and parts[1] in bindings
+}
+for descriptor in (process / "fd").iterdir():
+    try:
+        if str(descriptor.readlink()) in listeners:
+            raise SystemExit(0)
+    except FileNotFoundError:
+        continue
+raise SystemExit(1)
+"""
 ROLLBACK_COMMAND = (
     f'cd "{SERVER_DIR}" && if [ -d venv.prev ] || [ -f unit.prev ] || [ -f rollback.pending ]; then '
     f"touch rollback.pending && {USER_MANAGER_ENV} && "
-    "systemctl --user stop verstehen-server.service && "
-    '{ [ ! -f "$HOME/.local/share/verstehen/verstehen.db" ] || { '
-    "previous=venv; [ ! -d venv.prev ] || previous=venv.prev; "
+    "check_schema() { "
+    '[ ! -f "$HOME/.local/share/verstehen/verstehen.db" ] || '
     f'"$previous/bin/python" -c {shlex.quote(ROLLBACK_SCHEMA_CHECK)}; '
-    "}; } && "
+    "} && previous=venv && { [ ! -d venv.prev ] || previous=venv.prev; } && "
+    "check_schema && "
+    "systemctl --user stop verstehen-server.service && "
+    "check_schema && "
     "{ [ ! -d venv.prev ] || { rm -rf venv && mv venv.prev venv; }; } && "
     f'{{ [ ! -f unit.prev ] || cp -p unit.prev "{UNIT_PATH}"; }} && '
     "systemctl --user daemon-reload && "
@@ -885,7 +913,11 @@ class ServerInstallService:
                 return
             if not await self._start_service(session, host, server_port, ssh_user):
                 return
-            if not await self._check_health(session, server_url):
+            verified = await self._verify_deployment(session, server_url)
+            if verified is None:
+                return
+            session, healthy = verified
+            if not await self._check_health(session, server_url, healthy):
                 return
             if not await self._pair_device(
                 session, server_url, ssh_user, ssh_port, device_name, mode
@@ -1186,7 +1218,11 @@ class ServerInstallService:
                     return "Rollback command failed on the server."
                 if "NOTHING_TO_ROLL_BACK" in result.stdout:
                     return None
-                if not await self._wait_healthy(server_url):
+
+                async def verify_listener(_: httpx2.Response) -> bool:
+                    return await self._owns_listener(candidate, server_url)
+
+                if not await self._wait_healthy(server_url, verify_listener):
                     return "The previous server version did not become healthy."
                 with suppress(Exception):
                     await candidate.run(ROLLBACK_CLEANUP_COMMAND)
@@ -1283,47 +1319,90 @@ class ServerInstallService:
             )
         return True
 
-    async def _wait_healthy(
-        self, server_url: str, deployment: SshSession | None = None
-    ) -> bool:
-        expected_schema = (
-            str(await self.sync_store.schema_version())
-            if deployment is not None
-            else None
+    async def _owns_listener(self, session: SshSession, server_url: str) -> bool:
+        target = urlsplit(server_url)
+        assert target.hostname and target.port is not None
+        result = await session.run(
+            f"{USER_MANAGER_ENV} && "
+            'pid="$(systemctl --user show --property=MainPID --value verstehen-server.service)" && '
+            f'"{SERVER_DIR}/venv/bin/python" -c {shlex.quote(ROLLBACK_LISTENER_CHECK)} '
+            f'"$pid" {shlex.quote(target.hostname)} {target.port}',
+            timeout=5.0,
         )
+        return result.exit_status == 0
+
+    async def _wait_healthy(
+        self,
+        server_url: str,
+        verify: Callable[[httpx2.Response], Awaitable[bool]],
+    ) -> bool:
         async with self._client_factory() as client:
             for _ in range(self._health_attempts):
                 try:
                     response = await client.get(f"{server_url}/api/health", timeout=3.0)
                     if (
-                        response.status_code == 200
-                        and response.json().get("status") == "ok"
+                        response.status_code != 200
+                        or response.json().get("status") != "ok"
                     ):
-                        if deployment is None:
-                            return True
-                        invocation = response.headers.get(INVOCATION_HEADER)
-                        if (
-                            invocation
-                            and response.headers.get(SCHEMA_HEADER) == expected_schema
-                        ):
-                            unit = await deployment.run(
-                                SYSTEMD_INVOCATION_COMMAND, timeout=5.0
-                            )
-                            if (
-                                unit.exit_status == 0
-                                and unit.stdout.strip() == invocation
-                            ):
-                                return True
-                except Exception:
-                    pass
+                        response = None
+                except httpx2.HTTPError, OSError, ValueError, AttributeError:
+                    response = None
+                if response is not None and await verify(response):
+                    return True
                 if self._health_interval > 0:
                     await asyncio.sleep(self._health_interval)
         return False
 
-    async def _check_health(self, session: SshSession, server_url: str) -> bool:
+    async def _deployment_is_healthy(
+        self, session: SshSession, server_url: str
+    ) -> bool:
+        expected_schema = str(await self.sync_store.schema_version())
+
+        async def verify_invocation(response: httpx2.Response) -> bool:
+            invocation = response.headers.get(INVOCATION_HEADER)
+            if not invocation or response.headers.get(SCHEMA_HEADER) != expected_schema:
+                return False
+            unit = await session.run(SYSTEMD_INVOCATION_COMMAND, timeout=5.0)
+            return unit.exit_status == 0 and unit.stdout.strip() == invocation
+
+        return await self._wait_healthy(server_url, verify_invocation)
+
+    async def _verify_deployment(
+        self, session: SshSession, server_url: str
+    ) -> tuple[SshSession, bool] | None:
         self._current_step = "health_check"
         self._set_step("health_check", "running")
-        if not await self._wait_healthy(server_url, deployment=session):
+        try:
+            return session, await self._deployment_is_healthy(session, server_url)
+        except asyncssh.Error, OSError, SshUnreachableError:
+            self._append_log("SSH connection lost during verification. Reconnecting.")
+        recovered = None
+        try:
+            recovered = await asyncio.wait_for(self._reconnect(), ROLLBACK_TIMEOUT)
+            healthy = await self._deployment_is_healthy(recovered, server_url)
+        except BaseException as error:
+            if recovered is not None:
+                with suppress(Exception):
+                    await recovered.close()
+            if not isinstance(error, Exception):
+                raise
+            self._retain_install_lock = True
+            self._rollback_pending = False
+            self._fail(
+                "health_check",
+                "install_failed",
+                "Could not verify the installed service over SSH. The service and recovery files "
+                "were left in place. Check the server before retrying.",
+            )
+            return None
+        with suppress(Exception):
+            await session.close()
+        return recovered, healthy
+
+    async def _check_health(
+        self, session: SshSession, server_url: str, healthy: bool
+    ) -> bool:
+        if not healthy:
             self._fail(
                 "health_check",
                 "install_failed",
