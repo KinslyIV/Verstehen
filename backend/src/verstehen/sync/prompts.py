@@ -214,6 +214,8 @@ def make_prompt_tx_hooks(
                 await asyncio.shield(worker)
             except asyncio.CancelledError:
                 cancelled = True
+            except Exception:
+                pass
         if cancelled:
             if backups:
                 await asyncio.to_thread(restore_prompt_backups, data_dir, backups)

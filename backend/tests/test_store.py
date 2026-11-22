@@ -183,6 +183,38 @@ def test_double_cancellation_during_commit_reports_committed_truthfully(tmp_path
     asyncio.run(run())
 
 
+def test_cancellation_followed_by_commit_failure_raises_cancelled_error(tmp_path: Path):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            entered = asyncio.Event()
+            release = asyncio.Event()
+
+            async def failing_commit():
+                entered.set()
+                await release.wait()
+                raise OSError("disk full")
+
+            database._connection.commit = failing_commit  # type: ignore[method-assign]
+
+            async def write_row():
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('k', '1')"
+                    )
+
+            task = asyncio.create_task(write_row())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert database.last_tx_committed is False
+
+    asyncio.run(run())
+
+
 def test_invalid_migration_files_fail_before_database_changes(tmp_path: Path):
     directory = tmp_path / "migrations"
     directory.mkdir()

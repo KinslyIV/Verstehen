@@ -47,6 +47,8 @@ class Database:
                         await asyncio.shield(commit_task)
                     except asyncio.CancelledError:
                         cancelled = True
+                    except Exception:
+                        pass
                 commit_error = commit_task.exception()
                 if commit_error is None:
                     self.last_tx_committed = True
