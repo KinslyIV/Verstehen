@@ -686,10 +686,13 @@ from pathlib import Path
 
 pid, deployment_id = sys.argv[1:]
 if int(pid) <= 0:
-    raise SystemExit(1)
-environ = (Path("/proc") / pid / "environ").read_bytes().split(b"\\0")
+    raise SystemExit(10)
+try:
+    environ = (Path("/proc") / pid / "environ").read_bytes().split(b"\\0")
+except OSError:
+    raise SystemExit(2)
 expected = f"VERSTEHEN_DEPLOYMENT_ID={deployment_id}".encode()
-raise SystemExit(0 if expected in environ else 1)
+raise SystemExit(0 if expected in environ else 10)
 """
 ROLLBACK_COMMAND = (
     f'cd "{SERVER_DIR}" && if [ -d venv.prev ] || [ -f unit.prev ] || [ -f rollback.pending ]; then '
@@ -702,7 +705,7 @@ ROLLBACK_COMMAND = (
     "systemctl --user stop verstehen-server.service && "
     "{ check_schema || { status=$?; "
     'if systemctl --user start verstehen-server.service; then exit "$status"; fi; '
-    '[ "$status" -eq 78 ] && exit 79; exit "$status"; }; } && '
+    '[ "$status" -eq 78 ] && exit 79; exit 80; }; } && '
     "{ [ ! -d venv.prev ] || { rm -rf venv && mv venv.prev venv; }; } && "
     f'{{ [ ! -f unit.prev ] || cp -p unit.prev "{UNIT_PATH}"; }} && '
     "systemctl --user daemon-reload && "
@@ -1262,6 +1265,11 @@ class ServerInstallService:
                         "The previous server version cannot read the upgraded database, "
                         "and restarting the installed server version also failed."
                     )
+                if result.exit_status == 80:
+                    return (
+                        "The rollback schema check failed after stopping the service, "
+                        "and restarting the installed server version also failed."
+                    )
                 if result.exit_status != 0:
                     return "Rollback command failed on the server."
                 if "NOTHING_TO_ROLL_BACK" in result.stdout:
@@ -1418,17 +1426,25 @@ class ServerInstallService:
 
     async def _deployment_is_running_on_host(
         self, session: SshSession, deployment_id: str
-    ) -> bool:
+    ) -> Literal["running", "absent", "unknown"]:
         result = await session.run(
             f"{USER_MANAGER_ENV} && "
-            'state="$(systemctl --user show --property=ActiveState --value verstehen-server.service)" && '
-            '[ "$state" = active ] && '
-            'pid="$(systemctl --user show --property=MainPID --value verstehen-server.service)" && '
+            'state="$(systemctl --user show --property=ActiveState --value verstehen-server.service)" || exit 2; '
+            'case "$state" in '
+            "inactive|failed) exit 10 ;; "
+            "active) ;; "
+            "*) exit 2 ;; "
+            "esac; "
+            'pid="$(systemctl --user show --property=MainPID --value verstehen-server.service)" || exit 2; '
             f'"{SERVER_DIR}/venv/bin/python" -c {shlex.quote(DEPLOYMENT_RUNNING_CHECK)} '
             f'"$pid" {shlex.quote(deployment_id)}',
             timeout=5.0,
         )
-        return result.exit_status == 0
+        if result.exit_status == 0:
+            return "running"
+        if result.exit_status == 10:
+            return "absent"
+        return "unknown"
 
     async def _wait_healthy(
         self,
@@ -1505,22 +1521,27 @@ class ServerInstallService:
             health = await self._deployment_is_healthy(
                 recovered, server_url, deployment_id
             )
-            if (
-                reconnect_first
-                and health == "unreachable"
-                and await self._deployment_is_running_on_host(recovered, deployment_id)
-            ):
-                with suppress(Exception):
-                    await recovered.close()
-                self._retain_install_lock = True
-                self._rollback_pending = False
-                self._fail(
-                    "health_check",
-                    "install_failed",
-                    "Could not reach the installed service over HTTP while it is running on the server. "
-                    "The service and recovery files were left in place. Check the server before retrying.",
+            if reconnect_first and health == "unreachable":
+                host_state = await self._deployment_is_running_on_host(
+                    recovered, deployment_id
                 )
-                return None
+                if host_state != "absent":
+                    with suppress(Exception):
+                        await recovered.close()
+                    self._retain_install_lock = True
+                    self._rollback_pending = False
+                    detail = (
+                        "Could not reach the installed service over HTTP while it is running on the server. "
+                        if host_state == "running"
+                        else "Could not determine whether the installed service is running on the server. "
+                    )
+                    self._fail(
+                        "health_check",
+                        "install_failed",
+                        f"{detail}The service and recovery files were left in place. "
+                        "Check the server before retrying.",
+                    )
+                    return None
         except BaseException as error:
             if recovered is not None:
                 with suppress(Exception):

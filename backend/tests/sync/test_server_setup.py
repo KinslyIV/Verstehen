@@ -1707,6 +1707,7 @@ def test_health_verification_reconnects_before_rollback(
         "cannot_reconnect",
         "previous_service",
         "http_unreachable_running",
+        "http_unreachable_probe_failed",
         "http_unreachable_stopped",
     ],
 )
@@ -1715,11 +1716,15 @@ def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
-            command_results = (
-                {"--property=ActiveState": SshCommandResult(exit_status=1)}
-                if outcome == "http_unreachable_stopped"
-                else None
-            )
+            command_results = None
+            if outcome == "http_unreachable_stopped":
+                command_results = {
+                    "--property=ActiveState": SshCommandResult(exit_status=10)
+                }
+            elif outcome == "http_unreachable_probe_failed":
+                command_results = {
+                    "--property=ActiveState": SshCommandResult(exit_status=2)
+                }
             ssh = FakeSshBackend(
                 raise_once={"mv venv.new venv": SshUnreachableError("connection lost")},
                 fail_reconnect=outcome == "cannot_reconnect",
@@ -1729,7 +1734,11 @@ def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
             if outcome == "previous_service":
                 service._deployment_id_factory = lambda: "e" * 32
-            elif outcome in ("http_unreachable_running", "http_unreachable_stopped"):
+            elif outcome in (
+                "http_unreachable_running",
+                "http_unreachable_probe_failed",
+                "http_unreachable_stopped",
+            ):
 
                 def unreachable_until_rolled_back(
                     request: httpx2.Request,
@@ -1749,7 +1758,11 @@ def test_lost_ssh_during_restart_verifies_attempted_deployment_before_rollback(
                 assert steps["configure_systemd"]["status"] == "done"
                 assert ssh.connections == 2
                 assert not any("mv venv.prev venv" in c for c in ssh.commands)
-            elif outcome in ("cannot_reconnect", "http_unreachable_running"):
+            elif outcome in (
+                "cannot_reconnect",
+                "http_unreachable_running",
+                "http_unreachable_probe_failed",
+            ):
                 assert status["state"] == "failed"
                 assert steps["configure_systemd"]["status"] == "failed"
                 assert "left in place" in status["error"]
@@ -2323,14 +2336,21 @@ def test_rollback_restarts_installed_service_if_migration_commits_between_schema
     assert (server_dir / "rollback.pending").exists()
 
 
+@pytest.mark.parametrize(
+    ("exit_status", "expected_fragment"),
+    [
+        (79, "cannot read the upgraded database"),
+        (80, "schema check failed after stopping the service"),
+    ],
+)
 def test_rollback_surfaces_restart_failure_when_post_stop_schema_blocks_rollback(
-    tmp_path: Path,
+    tmp_path: Path, exit_status: int, expected_fragment: str
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
             ssh = FakeSshBackend(
                 command_results={
-                    "NOTHING_TO_ROLL_BACK": SshCommandResult(exit_status=79)
+                    "NOTHING_TO_ROLL_BACK": SshCommandResult(exit_status=exit_status)
                 }
             )
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
@@ -2338,7 +2358,7 @@ def test_rollback_surfaces_restart_failure_when_post_stop_schema_blocks_rollback
             async with laptop_client(laptop_app) as client:
                 status = await run_install(client, service, mode="update")
             assert status["state"] == "failed"
-            assert "cannot read the upgraded database" in status["error"]
+            assert expected_fragment in status["error"]
             assert (
                 "restarting the installed server version also failed" in status["error"]
             )
