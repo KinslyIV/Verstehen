@@ -3,11 +3,21 @@
 		propositions,
 		chains,
 		teachSessions,
+		practiceSessions,
 		importedNotes
-	}: { propositions: number; chains: number; teachSessions: number; importedNotes: number } =
-		$props();
+	}: {
+		propositions: number;
+		chains: number;
+		teachSessions: number;
+		practiceSessions: number;
+		importedNotes: number;
+	} = $props();
 	const empty = $derived(
-		propositions === 0 && chains === 0 && teachSessions === 0 && importedNotes === 0
+		propositions === 0 &&
+			chains === 0 &&
+			teachSessions === 0 &&
+			practiceSessions === 0 &&
+			importedNotes === 0
 	);
 	const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
 </script>
@@ -20,6 +30,9 @@
 	<div class="h-4" aria-hidden="true"></div>
 	<p class="text-sm text-muted-foreground">
 		{count(teachSessions, 'teaching session', 'teaching sessions')}
+	</p>
+	<p class="mt-1 text-sm text-muted-foreground">
+		{count(practiceSessions, 'practice session', 'practice sessions')}
 	</p>
 	<div class="h-4" aria-hidden="true"></div>
 	<p class="text-sm text-muted-foreground">

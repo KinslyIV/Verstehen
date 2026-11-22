@@ -49,7 +49,7 @@ test('model-menu', async ({ page }) => {
 	await expect(page.locator('[data-slot="message"]').last()).toContainText('Rates of change');
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
 
-	await page.getByRole('link', { name: 'New session', exact: true }).click();
+	await page.getByRole('link', { name: 'Teaching', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
 	await page.getByRole('button', { name: 'Choose model', exact: true }).click();
 	await page.getByRole('tab', { name: 'Cheap', exact: true }).click();

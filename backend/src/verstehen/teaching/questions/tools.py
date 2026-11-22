@@ -4,6 +4,7 @@ import json
 from collections import Counter
 from collections.abc import AsyncIterable, AsyncIterator
 
+from pydantic import ValidationError
 from pydantic_ai import Agent, CallDeferred, ModelRetry, RunContext, Tool
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.capabilities.abstract import ValidatedToolArgs
@@ -138,14 +139,73 @@ def all_question_calls_succeeded(
     return bool(called) and called <= {call.tool_call_id for call in requests.calls}
 
 
-class QuestionTools(AbstractCapability[None]):
-    """Validate raw question arguments and own retry counts for one agent run."""
+class ConversationToolErrors(AbstractCapability[None]):
+    """Own tool failures and retry counts for a conversation agent run."""
 
-    def __init__(self, names: tuple[str, ...], plan_nodes: PlanNodeLookup | None):
-        self.names = names
-        self.plan_nodes = plan_nodes
+    def __init__(self) -> None:
         self.invalid_calls: Counter[str] = Counter()
         self.problems: dict[str, list[str]] = {}
+
+    def count_invalid_call(self, name: str, message: str) -> None:
+        self.invalid_calls[name] += 1
+        if self.invalid_calls[name] > QUESTION_RETRY_LIMIT:
+            raise UnexpectedModelBehavior(
+                f"Tool '{name}' exceeded max retries count of {QUESTION_RETRY_LIMIT}.\n{message}"
+            )
+
+    def reject_truncated_call(self, ctx: RunContext[None], name: str) -> None:
+        response = ctx.messages[-1]
+        assert isinstance(response, ModelResponse)
+        if response.finish_reason == "length":
+            message = truncated_call_text(name)
+            self.count_invalid_call(name, message)
+            raise ToolFailed(message)
+
+    async def on_tool_validate_error(
+        self,
+        ctx: RunContext[None],
+        *,
+        call: ToolCallPart,
+        tool_def: ToolDefinition,
+        args: str | dict[str, object],
+        error: ValidationError | ModelRetry,
+    ) -> ValidatedToolArgs:
+        self.count_invalid_call(tool_def.name, str(error))
+        raise error
+
+    async def wrap_run_event_stream(
+        self, ctx: RunContext[None], *, stream: AsyncIterable[AgentStreamEvent]
+    ) -> AsyncIterator[AgentStreamEvent]:
+        async for event in stream:
+            if isinstance(event, FunctionToolResultEvent):
+                result = event.part
+                response = ctx.messages[-1]
+                if (
+                    result.retry is not None
+                    and result.retry.cause in {"unknown_tool", "unavailable_tool"}
+                    and isinstance(response, ModelResponse)
+                    and response.finish_reason == "length"
+                ):
+                    result.content = truncated_call_text(result.tool_name)
+                    result.outcome = "failed"
+                    result.retry = None
+                problems = self.problems.pop(event.tool_call_id, None)
+                if problems is not None:
+                    result.metadata = {"tool": result.tool_name, "problems": problems}
+                elif (
+                    result.outcome in ("retried", "failed") and result.metadata is None
+                ):
+                    result.metadata = {}
+            yield event
+
+
+class QuestionTools(ConversationToolErrors):
+    """Validate raw question arguments and defer successfully posed questions."""
+
+    def __init__(self, names: tuple[str, ...], plan_nodes: PlanNodeLookup | None):
+        super().__init__()
+        self.names = names
+        self.plan_nodes = plan_nodes
 
     async def for_run(self, ctx: RunContext[None]) -> QuestionTools:
         return QuestionTools(self.names, self.plan_nodes)
@@ -158,6 +218,7 @@ class QuestionTools(AbstractCapability[None]):
         tool_def: ToolDefinition,
         args: str | dict[str, object],
     ) -> str | dict[str, object]:
+        self.reject_truncated_call(ctx, tool_def.name)
         if tool_def.name not in self.names:
             return args
         if tool_def.name not in ("quiz", "explain"):
@@ -179,11 +240,6 @@ class QuestionTools(AbstractCapability[None]):
     def validate_arguments(
         self, ctx: RunContext[None], call: ToolCallPart, name: str, args: object
     ) -> None:
-        response = ctx.messages[-1]
-        assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            self.count_invalid_call(name, truncated_call_text(name))
-            return
         try:
             problems = validate_question(name, args, self.plan_nodes)
         except QuestionStructureError as error:
@@ -195,44 +251,11 @@ class QuestionTools(AbstractCapability[None]):
             self.problems[call.tool_call_id] = problems
             raise ModelRetry(message)
 
-    def count_invalid_call(self, name: str, message: str) -> None:
-        self.invalid_calls[name] += 1
-        if self.invalid_calls[name] > QUESTION_RETRY_LIMIT:
-            raise UnexpectedModelBehavior(
-                f"Tool '{name}' exceeded max retries count of {QUESTION_RETRY_LIMIT}.\n{message}"
-            )
-
-    async def wrap_run_event_stream(
-        self, ctx: RunContext[None], *, stream: AsyncIterable[AgentStreamEvent]
-    ) -> AsyncIterator[AgentStreamEvent]:
-        async for event in stream:
-            if isinstance(event, FunctionToolResultEvent):
-                problems = self.problems.pop(event.tool_call_id, None)
-                if problems is not None:
-                    event.part.metadata = {
-                        "tool": event.part.tool_name,
-                        "problems": problems,
-                    }
-                elif (
-                    event.part.outcome in ("retried", "failed")
-                    and event.part.metadata is None
-                ):
-                    event.part.metadata = {}
-            yield event
-
     async def handle_deferred_tool_calls(
         self, ctx: RunContext[None], *, requests: DeferredToolRequests
     ) -> DeferredToolResults | None:
         response = ctx.messages[-1]
         assert isinstance(response, ModelResponse)
-        if response.finish_reason == "length":
-            return DeferredToolResults(
-                calls={
-                    call.tool_call_id: ToolFailed(truncated_call_text(call.tool_name))
-                    for call in requests.calls
-                    if call.tool_name in self.names
-                }
-            )
         if all_question_calls_succeeded(response, requests):
             return None
         return DeferredToolResults(

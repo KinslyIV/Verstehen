@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-22 (test organization and Mobile & sync Milestone C integration).
+> PRs. Last update: 2026-11-22 (test organization, Mobile & sync Milestone C, and M10 integration).
 
 ## Where we are
 
@@ -19,34 +19,27 @@ The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `l
 and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
 confirm that converted reasoning is accepted.
 
-Mobile & sync Milestone A (`--server` mode, per-device SHA-256 token auth, `verstehen mint-token`,
-and short-code device pairing) and Milestone B (two-way Laptop ↔ Server sync engine,
-`verstehen.sync`, `0008_sync.sql`, fork-on-conflict, active-turn deferral, image/prompt sync; see
-[plan](plans/mobile-sync-b.md)) are merged into `dev`. Milestone C (desktop Settings → Sync UI for
-SSH server install/update with TOFU `known_hosts` verification, existing-server connection, server
-ChatGPT OAuth over a `127.0.0.1:1455` SSH tunnel, read-only server Claude Code status, Android
-8-character pairing codes and device revocation, and the sidebar footer Sync badge; see
-[plan](plans/mobile-sync-c.md)) is built on `mobile-sync-c`. The round 5 fixes preserve recovery
-files on subsequent updates, restore sync after a cancelled server switch, clear terminal OAuth
-cancellation, and ignore stale install polls after disconnect.
-Round 6 adds a server-side install lock to protect backups from concurrent setups. Two UI races
-are deferred: a delayed poll from a replaced sign-in for the same pairing, and stale update status
-after reopening Settings and reconnecting while the previous update is still active.
+Mobile & sync Milestones A and B are merged into `dev`. The combined integration branch adds:
 
-Test separation and verification trimming (`organize-tests`) organizes backend pytest files,
-frontend Vitest globs, and Playwright verify flows into the 9 architecture areas (`tools/test_areas.py`,
-`make check AREA='...'`, `@pytest.mark.slow`) and trims the Playwright suite from 72 to 49 flows.
+- **Mobile & sync Milestone C** ([plan](plans/mobile-sync-c.md)): Settings → Sync and the sidebar
+  badge, SSH install and update with host trust and health-gated rollback, server ChatGPT account
+  sign-in, and device pairing and revocation. The server-side install lock serializes deployment
+  and recovery. Two UI races are deferred: a delayed poll from a replaced sign-in on the same
+  pairing, and a stale password prompt after reopening Settings and reconnecting during an update.
+- **M10 practice sessions** ([plan](plans/m10.md)): the practitioner, practice dock and cards,
+  LearnHarness practice import, solution-safe side chat, and practice entry points in the sidebar
+  and graph. Migration `0010` follows Milestone C's `0009`. Sync pauses until both backends run
+  the same schema version.
+- **Test organization:** backend pytest files, frontend Vitest globs, and browser flows are
+  organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
+  49. Milestone C and M10 bring the total to 52.
 
 ## Next
 
-1. Hand off `mobile-sync-c` for the combined integration review into `dev`, then proceed to Milestone D (mobile-responsive
-   SvelteKit UI, `/pair` route, and SSE reconnect resilience).
-2. Rerun `make verify-live` now that the Claude subscription quota has reset.
-3. Merge `dev` into `main` (fixing the [known flaky flows](roadmap.md#known-gaps) if needed for
-   zero-retry CI).
-4. Plan M10 (practice sessions).
+1. Review the integration PR into `dev`.
+2. Continue to Mobile & sync Milestone D (responsive UI, `/pair`, and SSE recovery) and M11.
+3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
 
-_None._ The M1–M9, slim-verification, and reasoning-resend decision queues were reviewed and
-cleared on 2026-11-21.
+Review the [implementation decisions](decisions.md#waiting-for-your-review) in the integration PR.

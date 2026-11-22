@@ -53,6 +53,25 @@ describe('chain table groups', () => {
 		expect(s1.newestCreatedAt).toBe('2026-01-03');
 	});
 
+	it('leaves practice sessions and the chains born in them out', () => {
+		const practice = {
+			...directory,
+			sources: directory.sources.map((source) =>
+				source.id === 's1' ? { ...source, session_kind: 'practice' } : source
+			)
+		};
+		const { chains: shown, groups } = buildGroups({
+			nodes,
+			storedChains: chains,
+			directory: practice,
+			query: '',
+			sort: byName
+		});
+		expect(groups.map((group) => group.key)).not.toContain('s1');
+		expect(shown.map((chain) => chain.id)).not.toContain('arg_1');
+		expect(groups.map((group) => group.key)).toContain('s2');
+	});
+
 	it('shows a node in no chain as a chain of its own, and keeps sources without nodes', () => {
 		const { groups } = build();
 		expect(groups.find((group) => group.key === 's2')!.chains.map((chain) => chain.id)).toEqual([

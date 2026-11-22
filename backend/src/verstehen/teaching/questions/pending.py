@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from typing import Literal
 
 from verstehen.store.entries import Entry, MarkerEntry, ToolCallPart, ToolResultEntry
+from verstehen.teaching.practice.state import has_problem_pose
 from verstehen.teaching.questions.validation import (
     QUESTION_SCHEMAS,
     is_displayable_question,
@@ -106,13 +107,17 @@ def needs_continuation(entries: Sequence[Entry]) -> bool:
     if ends_in_dismissal(tail) or ends_in_question_recovery(tail):
         return False
     resolved: set[str] = set()
+    results: list[ToolResultEntry] = []
     for entry in reversed(tail):
         if entry.kind == "marker" and entry.marker_type in ("plan-block", "compaction"):
             continue
         if entry.kind == "tool_result":
             resolved.add(entry.tool_call_id)
+            results.append(entry)
             continue
         if entry.kind != "assistant":
+            return False
+        if has_problem_pose(results):
             return False
         calls = {
             part.tool_call_id for part in entry.parts if isinstance(part, ToolCallPart)

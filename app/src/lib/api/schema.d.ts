@@ -1241,11 +1241,16 @@ export interface components {
 			/** Current Device Id */
 			current_device_id?: string | null;
 		};
-		/** DismissInput */
+		/**
+		 * DismissInput
+		 * @description A question dismissal (tool_call_id + answer) or a practice problem dismissal (problem_call_id).
+		 */
 		DismissInput: {
 			/** Tool Call Id */
-			tool_call_id: string;
-			answer: components['schemas']['QuestionAnswer'];
+			tool_call_id?: string | null;
+			answer?: components['schemas']['QuestionAnswer'] | null;
+			/** Problem Call Id */
+			problem_call_id?: string | null;
 		};
 		/** EmissionStats */
 		EmissionStats: {
@@ -2358,9 +2363,9 @@ export interface components {
 			/**
 			 * Kind
 			 * @default teach
-			 * @constant
+			 * @enum {string}
 			 */
-			kind: 'teach';
+			kind: 'teach' | 'practice';
 			/**
 			 * Created At
 			 * Format: date-time
@@ -2404,6 +2409,12 @@ export interface components {
 			 * @default
 			 */
 			title: string | null;
+			/**
+			 * Kind
+			 * @default teach
+			 * @enum {string}
+			 */
+			kind: 'teach' | 'practice';
 			model?: components['schemas']['ModelPick'] | null;
 			graph_context?: components['schemas']['GraphContext'] | null;
 		};
@@ -2415,9 +2426,9 @@ export interface components {
 			title: string;
 			/**
 			 * Kind
-			 * @constant
+			 * @enum {string}
 			 */
-			kind: 'teach';
+			kind: 'teach' | 'practice';
 			/**
 			 * Updated At
 			 * Format: date-time
@@ -2427,6 +2438,10 @@ export interface components {
 			busy: boolean;
 			/** Compacting */
 			compacting?: boolean;
+			/** Pending Question */
+			pending_question?: boolean;
+			/** Pending Problem */
+			pending_problem?: boolean;
 		};
 		/** SessionList */
 		SessionList: {
@@ -2895,7 +2910,16 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question' | 'handoff' | 'steers';
+			type:
+				| 'text'
+				| 'retry'
+				| 'answer'
+				| 'continue'
+				| 'retry-question'
+				| 'handoff'
+				| 'steers'
+				| 'thinking'
+				| 'next';
 			/** Text */
 			text?: string | null;
 			/** Tool Call Id */
@@ -2905,6 +2929,8 @@ export interface components {
 			message_id?: string | null;
 			/** Content Index */
 			content_index?: number | null;
+			/** Problem Call Id */
+			problem_call_id?: string | null;
 		};
 		/** UserEntry */
 		UserEntry: {

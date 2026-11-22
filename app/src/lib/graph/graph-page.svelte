@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { ListTree, Waypoints } from '@lucide/svelte';
+	import { Dumbbell, ListTree, Waypoints } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { listSessions } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -31,6 +31,7 @@
 	let selected = $state<{ nodeId: string; anchor: Pt }>();
 	let table = $state<'manage' | 'pick'>();
 	let teachSessions = $state(0);
+	let practiceSessions = $state(0);
 	let menu = $state<{ nodeId: string; anchor: Pt }>();
 	let deleting = $state<{ id: string; name: string }[]>();
 
@@ -55,7 +56,10 @@
 
 	onMount(() => {
 		void listSessions()
-			.then((sessions) => (teachSessions = sessions.length))
+			.then((sessions) => {
+				teachSessions = sessions.filter((session) => session.kind === 'teach').length;
+				practiceSessions = sessions.filter((session) => session.kind === 'practice').length;
+			})
 			.catch(() => {});
 		return () => {
 			controller.dispose();
@@ -73,6 +77,7 @@
 				propositions={graph.snapshot.propositions.length}
 				chains={graph.snapshot.chains?.length ?? 0}
 				{teachSessions}
+				{practiceSessions}
 				importedNotes={Object.keys(graph.snapshot.file_sources).length}
 			/>
 		</div>
@@ -175,10 +180,19 @@
 				<Button
 					href={resolve('/(lesson)/session/new')}
 					size="sm"
-					data-testid="start-session"
+					data-testid="start-teaching"
 					class="rounded-full"
 				>
-					Start session
+					Start teaching
+				</Button>
+				<Button
+					href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+					size="sm"
+					variant="outline"
+					data-testid="start-practice"
+					class="rounded-full"
+				>
+					<Dumbbell class="size-3" /> Start practice
 				</Button>
 			{/if}
 		</div>

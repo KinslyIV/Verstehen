@@ -3,11 +3,13 @@ import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
+export type SessionKind = SessionItem['kind'];
 export type Entry = SessionDetail['entries'][number];
 export type ToolResult = components['schemas']['ToolResultEntry'];
 export type FileAccess = components['schemas']['FileAccessSettings'];
 export type ToolCallPart = components['schemas']['ToolCallPart'];
 export type QuestionAnswer = components['schemas']['QuestionAnswer'];
+export type DismissInput = components['schemas']['DismissInput'];
 export type TurnInput = components['schemas']['TurnInput'];
 export type TurnEvent = components['schemas']['TurnEvent'];
 export type Notification = components['schemas']['Notification'];
@@ -119,12 +121,13 @@ export async function listSessions(signal?: AbortSignal): Promise<SessionItem[]>
 export async function createSession(
 	title: string,
 	model?: ModelPick | null,
-	graph_context?: GraphContext
+	graph_context?: GraphContext,
+	kind: SessionKind = 'teach'
 ): Promise<components['schemas']['Created']> {
 	return (
 		await request('/api/sessions', {
 			method: 'POST',
-			body: JSON.stringify({ title, model, graph_context })
+			body: JSON.stringify({ title, model, graph_context, kind })
 		})
 	).json();
 }
@@ -152,7 +155,7 @@ export async function postInput(id: string, input: TurnInput, signal?: AbortSign
 }
 export async function dismissQuestion(
 	id: string,
-	input: components['schemas']['DismissInput'],
+	input: DismissInput,
 	signal: AbortSignal
 ): Promise<boolean> {
 	const response = await request(`${sessionPath(id)}/dismiss`, {

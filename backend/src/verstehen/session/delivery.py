@@ -11,6 +11,7 @@ from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.sync import SyncStore
 from verstehen.teaching.phases import handoff_owed
+from verstehen.teaching.practice import pending_problem_dismissal_of
 from verstehen.teaching.questions.pending import (
     ends_in_dismissal,
     ends_in_question_recovery,
@@ -71,6 +72,7 @@ class DeliveryService:
         if (
             has_unresolved_question(entries)
             or ends_in_dismissal(entries)
+            or pending_problem_dismissal_of(entries) is not None
             or ends_in_question_recovery(entries)
             or handoff_owed(entries)
         ):

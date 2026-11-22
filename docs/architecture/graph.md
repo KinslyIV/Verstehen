@@ -53,7 +53,12 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
 - **Deletion modes.** Deleting a session uses `preserve-graph` or `delete-nodes` (remove what only
   this session added). Deletion waits up to ten seconds for the session's extraction to wind down.
 - **Prober graph tools** (`list_sessions`, `list_propositions`) exist only while extraction and
-  `agent.graph_tools` are both on.
+  `agent.graph_tools` are both on; the practitioner gets the same two tools under the same gate.
+- **Practice sessions never extract.** `POST /api/graph/coverage/extract` refuses them with 400,
+  their detail has `coverage = null`, and the UI hides the coverage ring and the session menu's
+  coverage block. Picks started in practice mode add the same `graph-context` marker, shown as the
+  collapsed Graph context card. The chains table leaves out sources whose `session_kind` is
+  `practice`, and the summary view counts practice sessions on their own row.
 
 ## Data and events
 
@@ -80,4 +85,4 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   PDF Markdown can differ slightly from LH's pdfjs output, including column order.
 - **The `usage` table has no session foreign key** (notes sources use `src_…` ids); a trigger
   removes a deleted session's rows.
-- **Not ported yet:** practice graph tools (M10), the activity dock (M11), plugin knowledge picker.
+- **Not ported yet:** the activity dock (M11), plugin knowledge picker.

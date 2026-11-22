@@ -9,6 +9,7 @@ import {
 	steerSession,
 	streamTurn,
 	type Entry,
+	type DismissInput,
 	type QuestionAnswer,
 	type SessionDetail,
 	type TurnEvent,
@@ -22,6 +23,7 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { activeProblemOf, hasProblemCall, type ActiveProblem } from '#lib/practice/state.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
@@ -57,6 +59,28 @@ export class SessionController {
 		return pending?.key === this.submittingQuestion ? undefined : pending;
 	});
 	compacting = $derived(this.record?.compacting ?? false);
+	isPractice = $derived(this.record?.kind === 'practice');
+	/** The posed problem awaiting the learner; its dock replaces the composer. */
+	activeProblem = $derived(this.isPractice ? activeProblemOf(this.entries) : undefined);
+	/** Between problems: the composer offers `Next problem →` (LearnHarness `nextReady`). */
+	nextReady = $derived(
+		this.isPractice &&
+			!this.pendingQuestion &&
+			!this.activeProblem &&
+			!this.compacting &&
+			!this.busy &&
+			hasProblemCall(this.entries)
+	);
+	private thinkingDrafts = new SvelteMap<string, string>();
+	/** The active problem's unsent thinking, kept per problem and restored when its send is refused. */
+	get thinkingDraft(): string {
+		const id = this.activeProblem?.toolCallId;
+		return (id && this.thinkingDrafts.get(id)) || '';
+	}
+	set thinkingDraft(text: string) {
+		const id = this.activeProblem?.toolCallId;
+		if (id) this.thinkingDrafts.set(id, text);
+	}
 	/** A failed reply behind a compaction cannot be retried (LearnHarness `failedTail`). */
 	retryBlocked = $derived(
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
@@ -313,18 +337,39 @@ export class SessionController {
 	async dismissPending(pending: PendingQuestion): Promise<void> {
 		if (pending.key !== this.pendingQuestion?.key) return;
 		this.submittingQuestion = pending.key;
+		try {
+			await this.dismiss({
+				tool_call_id: pending.toolCallId,
+				answer: dismissedAnswer(pending.question.kind, pending.question.question)
+			});
+		} finally {
+			this.submittingQuestion = undefined;
+		}
+	}
+
+	async dismissProblem(problem: ActiveProblem): Promise<void> {
+		if (problem.toolCallId !== this.activeProblem?.toolCallId) return;
+		await this.dismiss({ problem_call_id: problem.toolCallId });
+	}
+
+	async sendThinking(): Promise<void> {
+		const problem = this.activeProblem;
+		const text = this.thinkingDraft.trim();
+		if (!problem || !text || this.loading || this.busy || this.compacting) return;
+		await this.submit({ type: 'thinking', text, problem_call_id: problem.toolCallId });
+	}
+
+	async sendNext(): Promise<void> {
+		if (this.nextReady && !this.loading) await this.submit({ type: 'next' });
+	}
+
+	private async dismiss(input: DismissInput): Promise<void> {
 		const wasBusy = this.busy;
 		this.busy = true;
 		this.error = null;
 		try {
-			const parked = await dismissQuestion(
-				this.id,
-				{
-					tool_call_id: pending.toolCallId,
-					answer: dismissedAnswer(pending.question.kind, pending.question.question)
-				},
-				this.lifetime.signal
-			);
+			const parked = await dismissQuestion(this.id, input, this.lifetime.signal);
+			if (input.problem_call_id) this.thinkingDrafts.delete(input.problem_call_id);
 			if (parked) {
 				try {
 					await abortSession(this.id);
@@ -337,7 +382,6 @@ export class SessionController {
 		} catch (error) {
 			this.fail(error);
 		} finally {
-			this.submittingQuestion = undefined;
 			if (!this.consuming && (!wasBusy || !this.record?.turn_in_flight)) this.busy = false;
 		}
 	}
@@ -346,6 +390,8 @@ export class SessionController {
 		if (input.type !== 'continue' && input.type !== 'handoff')
 			this.automaticContinuationBlocked = false;
 		const text = this.draft;
+		const thinkingId = input.type === 'thinking' ? input.problem_call_id : undefined;
+		const thinking = thinkingId ? this.thinkingDrafts.get(thinkingId) : undefined;
 		if (input.type === 'text') this.draft = '';
 		const failureBeforeRetry = input.type === 'retry' ? this.error : null;
 		this.error = null;
@@ -374,6 +420,8 @@ export class SessionController {
 				}
 			}
 			accepted = true;
+			if (thinkingId && this.thinkingDrafts.get(thinkingId) === thinking)
+				this.thinkingDrafts.delete(thinkingId);
 			try {
 				sessionStorage.removeItem(`verstehen.opening.${this.id}`);
 			} catch {

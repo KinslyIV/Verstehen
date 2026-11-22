@@ -35,7 +35,15 @@ test('learnharness-import', async ({ page, request }) => {
 	await page.screenshot({ path: test.info().outputPath('side-chat.png'), animations: 'disabled' });
 
 	const { sessions } = await (await request.get('/api/sessions')).json();
-	expect(sessions).toHaveLength(1);
+	expect(sessions.map((session: { kind: string }) => session.kind).sort()).toEqual([
+		'practice',
+		'teach'
+	]);
+	await page.getByRole('link', { name: /Practice fixture/ }).click();
+	await expect(page.getByTestId('phase-chip')).toHaveText(/Practice/);
+	await expect(page.getByTestId('coverage-ring')).toHaveCount(0);
+	await expect(page.getByTestId('model-solution')).toContainText('The power rule gives twice x.');
+	await page.screenshot({ path: test.info().outputPath('practice.png'), animations: 'disabled' });
 
 	await page.goto('/graph');
 	const canvas = page.getByTestId('graph-canvas');

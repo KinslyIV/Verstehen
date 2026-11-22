@@ -21,8 +21,10 @@ from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
 from verstehen.store.graph import GraphLedger, GraphStore
 from verstehen.store.jobs import JobsStore
-from verstehen.store.sessions import Session, SessionsStore
+from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
+from verstehen.teaching.practice.state import active_problem_of
+from verstehen.teaching.questions.pending import dangling_question_of
 
 
 @dataclass
@@ -30,6 +32,8 @@ class ListedSession:
     session: Session
     busy: bool
     compacting: bool
+    pending_question: bool = False
+    pending_problem: bool = False
 
 
 @dataclass
@@ -79,9 +83,14 @@ class SessionService:
         listed = []
         for session in await self.sessions_store.list():
             runtime = self.runtimes.get(session.id)
+            entries = await self.entries_store.list(session.id)
             listed.append(
                 ListedSession(
-                    session, runtime.run is not None, runtime.compaction is not None
+                    session,
+                    runtime.run is not None,
+                    runtime.compaction is not None,
+                    pending_question=dangling_question_of(entries) is not None,
+                    pending_problem=active_problem_of(entries) is not None,
                 )
             )
         return listed
@@ -91,6 +100,7 @@ class SessionService:
         title: str | None,
         pick: ModelPick | None = None,
         graph_context: GraphContext | None = None,
+        kind: SessionKind = "teach",
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -100,7 +110,7 @@ class SessionService:
         else:
             pick = (await self.resolver_service.settings_store.read()).models.strong
         session = await self.sessions_store.create(
-            title_from_prompt(title or "Untitled session"), pick
+            title_from_prompt(title or "Untitled session"), pick, kind=kind
         )
         if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
@@ -128,7 +138,9 @@ class SessionService:
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
-                await self.extraction_service.coverage(session_id),
+                None
+                if session.kind == "practice"
+                else await self.extraction_service.coverage(session_id),
             )
 
     async def set_artifact_view(

@@ -74,11 +74,14 @@ beforeEach(() => {
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
 });
 
-test('new_session_button_opens_new_session_screen', async () => {
+test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 	const screen = await render(Lesson);
 	await expect
-		.element(screen.getByRole('link', { name: 'New session' }))
+		.element(screen.getByRole('link', { name: 'Teaching', exact: true }))
 		.toHaveAttribute('href', '/session/new');
+	await expect
+		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
+		.toHaveAttribute('href', '/session/new?mode=practice');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
 });
 

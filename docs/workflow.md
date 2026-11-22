@@ -68,7 +68,7 @@ place that names the roles and models; AGENTS.md and plans link here.
   all areas including `slow`. The Playwright suite is trimmed from 72 to 49 flows: flows run once
   in the default dark theme (only `shell-layout` and `settings` check themes), redundant layout
   and settings flows are consolidated into `shell-layout` and `settings` while component and error
-  permutations live in Vitest, and `session-performance*` flows are removed from the suite.
+  permutations live in Vitest, and `session-performance*` flows are removed from the suite. Milestone C and M10 add three flows, bringing the total to 52.
 - **User decision (2026-11-21), workers:** locally, Playwright uses 1 worker on machines with
   4 or fewer CPU threads (Pixal), and at most 3 elsewhere; CI uses Playwright's default.
   Six local workers on the laptop made `composer-steer`, `session-rename-delete`, and

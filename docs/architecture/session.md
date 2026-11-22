@@ -39,7 +39,12 @@ Frontend, `app/src/`:
 ## How it works
 
 - **Input types** (`TurnInput.type`): `text`, `retry`, `answer`, `continue`, `retry-question`,
-  `handoff`, and `steers` (internal, the wake turn; rejected from the API).
+  `handoff`, `thinking` (with `problem_call_id`) and `next` (practice sessions), and `steers`
+  (internal, the wake turn; rejected from the API).
+- **Practice sessions** (`kind = "practice"`) run the `practice` role (the strong slot) instead of
+  prober and teacher. A pending problem dismissal is turned into a synthetic `conclude` pair ahead
+  of the next input, projection renders `practice-thinking` and `practice-next` as learner
+  messages and skips `problem-dismissed`, and settlement skips extraction.
 - **Write-ahead.** The input is saved before inference, so a crash never loses what the learner
   sent. A refusal from `validate`, `model_gate`, or the claim saves nothing; an exception in a
   later stage (for example `build_agent`) returns 500 after the input is already saved.
@@ -58,7 +63,8 @@ Frontend, `app/src/`:
   errors).
 - **Retry** drops the failed reply and its results from the projection (`retry_drops`); it never
   crosses a compaction, except the one its own side-chat budget failure caused.
-- **Dismissal** (`POST …/dismiss`) saves a skip. During a running turn it is parked on the
+- **Dismissal** (`POST …/dismiss`) saves a skip, or with `problem_call_id` a `problem-dismissed`
+  marker for a practice problem (sending it with `tool_call_id` or `answer` is a 400). During a running turn it is parked on the
   `TurnRun` and applied at settlement.
 - **Deletion** is refused while a turn or job runs (409) or while extraction winds down (503). It
   stops side answers, removes graph traces by mode, and deletes images no other session uses.

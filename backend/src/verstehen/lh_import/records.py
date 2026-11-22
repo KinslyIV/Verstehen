@@ -465,3 +465,23 @@ class ShowImageDetails(LhRecord):
     snapshot_id: str
     width: int
     height: int
+
+
+class PracticeThinkingDetails(LhRecord):
+    problem_call_id: str
+    text: str
+    commit: bool | None = None
+    images: list[ImageBlock] | None = None
+
+
+class ProblemDismissedDetails(LhRecord):
+    problem_call_id: str
+
+
+class PracticeNextDetails(LhRecord):
+    pass
+
+
+class DismissedConcludeDetails(LhRecord):
+    outcome: Literal["dismissed"]
+    problem_call_id: str

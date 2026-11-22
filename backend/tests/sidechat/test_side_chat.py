@@ -41,6 +41,16 @@ from verstehen.store.side_chats import (
     SideThread,
 )
 from verstehen.teaching.compaction import new_compaction_marker
+from verstehen.teaching.practice.schemas import (
+    CONCLUDE_ACK_TEXT,
+    PROBLEM_ACK_TEXT,
+)
+from verstehen.teaching.practice.state import (
+    concluded_by_dismissal_pair,
+    new_next_message,
+    new_problem_dismissed_marker,
+    new_thinking_message,
+)
 from verstehen.teaching.prompts import PROMPTS_DIR
 from verstehen.teaching.questions.inputs import (
     OptionAnswer,
@@ -798,3 +808,168 @@ def test_request_id_is_scoped_to_its_thread_across_teaching_segments(tmp_path: P
             assert threads[1].messages[-1].text == "second answer"
 
     asyncio.run(scenario())
+
+
+def test_practice_markers_and_problem_calls_define_side_segments():
+    entries = [
+        UserEntry(entry_id="u1", text="Start practice."),
+        AssistantEntry(
+            entry_id="a1",
+            parts=[
+                ToolCallPart(
+                    tool_call_id="prob_1",
+                    tool_name="problem",
+                    arguments={
+                        "mode": "recall",
+                        "statement": "Differentiate $x^3$.",
+                        "modelSolution": "$3x^2$",
+                    },
+                )
+            ],
+        ),
+        ToolResultEntry(
+            entry_id="r1",
+            tool_call_id="prob_1",
+            tool_name="problem",
+            text=PROBLEM_ACK_TEXT,
+        ),
+        new_thinking_message("prob_1", "Power rule gives $3x^2$."),
+        AssistantEntry(
+            entry_id="a2",
+            parts=[
+                ToolCallPart(
+                    tool_call_id="conc_1",
+                    tool_name="conclude",
+                    arguments={"outcome": "solved", "verdict": "Spot on."},
+                ),
+                TextPart(text="Nice work on the power rule."),
+            ],
+        ),
+        ToolResultEntry(
+            entry_id="r2",
+            tool_call_id="conc_1",
+            tool_name="conclude",
+            text=CONCLUDE_ACK_TEXT,
+        ),
+        new_next_message(),
+        AssistantEntry(
+            entry_id="a3",
+            parts=[
+                ToolCallPart(
+                    tool_call_id="prob_2",
+                    tool_name="problem",
+                    arguments={
+                        "mode": "recall",
+                        "statement": "Differentiate $e^{2x}$.",
+                        "modelSolution": "$2e^{2x}$",
+                    },
+                )
+            ],
+        ),
+        ToolResultEntry(
+            entry_id="r3",
+            tool_call_id="prob_2",
+            tool_name="problem",
+            text=PROBLEM_ACK_TEXT,
+        ),
+    ]
+    segments = side_segments(entries)
+    assert segments.by_entry == {"a1": "a1", "a2": "a2", "a3": "a3"}
+    assert segments.entry_points == {"a1": "a1", "a2": "a2", "a3": "a3"}
+    assert segments.current == "a3"
+
+
+def test_side_chat_lesson_document_redacts_open_problem_and_reveals_on_conclude():
+    entries = [
+        UserEntry(entry_id="u1", text="Give me a problem."),
+        AssistantEntry(
+            entry_id="a1",
+            parts=[
+                ToolCallPart(
+                    tool_call_id="prob_1",
+                    tool_name="problem",
+                    arguments={
+                        "mode": "recall",
+                        "statement": "Compute $\\frac{d}{dx}(x^2 + 5x)$.",
+                        "modelSolution": "SECRET_SOLUTION_2X_PLUS_5",
+                    },
+                )
+            ],
+        ),
+        ToolResultEntry(
+            entry_id="r1",
+            tool_call_id="prob_1",
+            tool_name="problem",
+            text=PROBLEM_ACK_TEXT,
+        ),
+    ]
+    open_doc = side_chat_lesson_document(entries)
+    assert (
+        "### OPEN problem — the learner is working on it now (its solution is hidden from you)\n\n"
+        "Compute $\\frac{d}{dx}(x^2 + 5x)$."
+    ) in open_doc
+    assert "SECRET_SOLUTION_2X_PLUS_5" not in open_doc
+
+    thinking = new_thinking_message("prob_1", "Is the derivative of $x^2$ just $2x$?")
+    compacted = [
+        *entries,
+        thinking,
+        new_compaction_marker(
+            "Summary mentioning SECRET_SOLUTION_2X_PLUS_5.",
+            thinking,
+            entries[-1],
+            100,
+            "m",
+        ),
+    ]
+    compacted_doc = side_chat_lesson_document(compacted)
+    assert compacted_doc.index("### Earlier session history") < compacted_doc.index(
+        "### OPEN problem"
+    )
+    assert "SECRET_SOLUTION_2X_PLUS_5" not in compacted_doc
+    assert (
+        "### Learner (thinking on the problem)\n\nIs the derivative of $x^2$ just $2x$?"
+        in compacted_doc
+    )
+
+    concluded = [
+        *entries,
+        new_thinking_message("prob_1", "It is $2x + 5$."),
+        AssistantEntry(
+            entry_id="a2",
+            parts=[
+                ToolCallPart(
+                    tool_call_id="conc_1",
+                    tool_name="conclude",
+                    arguments={
+                        "outcome": "solvedWithHints",
+                        "verdict": "Clean application of linearity and power rule.",
+                    },
+                )
+            ],
+        ),
+        ToolResultEntry(
+            entry_id="r2",
+            tool_call_id="conc_1",
+            tool_name="conclude",
+            text=CONCLUDE_ACK_TEXT,
+        ),
+    ]
+    concluded_doc = side_chat_lesson_document(concluded)
+    assert "### OPEN problem" not in concluded_doc
+    assert "### Problem\n\nCompute $\\frac{d}{dx}(x^2 + 5x)$." in concluded_doc
+    assert (
+        "### Concluded\n\n"
+        "**Solved with hints.** Clean application of linearity and power rule.\n\n"
+        "> **Model solution**\n>\n"
+        "> SECRET_SOLUTION_2X_PLUS_5"
+    ) in concluded_doc
+
+    dismissed = [
+        *entries,
+        new_problem_dismissed_marker("prob_1"),
+        *concluded_by_dismissal_pair("prob_1"),
+    ]
+    dismissed_doc = side_chat_lesson_document(dismissed)
+    assert "### Concluded\n\nThe learner skipped this problem." in dismissed_doc
+    assert "SECRET_SOLUTION_2X_PLUS_5" not in dismissed_doc

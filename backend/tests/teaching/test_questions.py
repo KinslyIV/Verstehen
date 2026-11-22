@@ -211,6 +211,30 @@ def test_eleventh_invalid_attempt_fails_the_turn(tmp_path: Path, same_batch: boo
     asyncio.run(scenario())
 
 
+def test_truncated_and_invalid_calls_share_the_question_retry_limit(tmp_path: Path):
+    async def scenario():
+        truncated = {**PROBE_REPLY, "stop_reason": "length"}
+        replies = [INVALID_REPLY, truncated] * 5 + [
+            truncated,
+            {"text": "Too many retries"},
+        ]
+        async with turn_service_context(tmp_path, scripted(tmp_path, replies)) as (
+            service,
+            session,
+        ):
+            await completed(await start(service, session))
+            entries = await service.entries_store.list(session)
+            failures = [
+                entry for entry in entries if isinstance(entry, ToolResultEntry)
+            ]
+            assert len(failures) == 10 and all(entry.is_error for entry in failures)
+            last = entries[-1]
+            assert isinstance(last, AssistantEntry) and last.stop_reason == "error"
+            assert "exceeded max retries count of 10" in (last.error_text or "")
+
+    asyncio.run(scenario())
+
+
 def test_unparsable_arguments_retry_without_losing_raw_text(tmp_path: Path):
     async def scenario():
         raw = '{"question":'
@@ -685,6 +709,7 @@ def test_length_response_retries_all_calls_even_with_valid_or_unparsable_argumen
                     "tool_calls": [
                         {"name": "probe", "arguments": PROBE},
                         {"name": "probe", "arguments": '{"question":'},
+                        {"name": "ls", "arguments": {"path": "."}},
                     ],
                     "stop_reason": "length",
                 },
@@ -699,16 +724,17 @@ def test_length_response_retries_all_calls_even_with_valid_or_unparsable_argumen
                 "assistant",
                 "tool_result",
                 "tool_result",
+                "tool_result",
                 "assistant",
             ]
             cut = entries[1]
             assert isinstance(cut, AssistantEntry) and cut.stop_reason == "length"
             raw = cut.parts[1]
             assert isinstance(raw, ToolCallPart) and raw.arguments == '{"question":'
-            for result in entries[2:4]:
+            for result in entries[2:5]:
                 assert isinstance(result, ToolResultEntry) and result.is_error
                 assert result.text == (
-                    'Tool call "probe" was not executed: the response hit the output token limit, '
+                    f'Tool call "{result.tool_name}" was not executed: the response hit the output token limit, '
                     "so its arguments may be truncated. Re-issue the tool call with complete arguments."
                 )
             assert not has_unresolved_question(entries)

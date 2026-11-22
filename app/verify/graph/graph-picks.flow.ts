@@ -6,7 +6,7 @@ test.use({ script: 'verify/scripts/session.json' });
 test('graph-picks', async ({ page, request, seedGraph }) => {
 	await seedGraph(await demoGraph(request));
 	await page.goto('/graph');
-	await expect(page.getByTestId('start-session')).toHaveCount(0);
+	await expect(page.getByTestId('start-teaching')).toHaveCount(0);
 	await page.getByTestId('node-picker-chip').click();
 	const table = page.getByTestId('chain-table');
 	const derivatives = (await sessionIds(request)).Derivatives;
@@ -22,7 +22,7 @@ test('graph-picks', async ({ page, request, seedGraph }) => {
 	});
 
 	// Start session keeps the picks on the new-session screen.
-	await page.getByTestId('start-session').click();
+	await page.getByTestId('start-teaching').click();
 	await expect(page).toHaveURL(/\/session\/new$/);
 	await expect(page.getByTestId('node-picker-chip')).toContainText('3 nodes selected');
 	await page.screenshot({
@@ -52,6 +52,6 @@ test('graph-picks', async ({ page, request, seedGraph }) => {
 	expect(session.entries[0].content).toContain('Limit: A limit is the value a function approaches');
 	expect(session.entries[0].content).toContain('Limit, One-sided limit → Continuity');
 	expect(session.entries[1]).toMatchObject({ kind: 'user', text: 'Teach me limits' });
-	await page.getByRole('link', { name: 'New session' }).click();
+	await page.getByRole('link', { name: 'Teaching', exact: true }).click();
 	await expect(page.getByTestId('node-picker-chip')).toContainText('Pick nodes');
 });

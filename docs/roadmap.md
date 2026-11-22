@@ -62,9 +62,11 @@ All of this is merged into `main`.
    <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
    LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
    it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
-2. **M10 Practice sessions.** The practitioner agent with `problem` and `conclude`, practice
-   sessions, the practice graph tools and problem targets, and practice blocks in the side chat's
-   lesson document.
+2. **M10 Practice sessions** (built on `m10-practice`, awaiting review). The practitioner agent
+   with `problem` and `conclude`, practice sessions (`0010_practice_sessions.sql`), the practice
+   graph tools and problem targets, practice blocks in the side chat's lesson document, the
+   practice dock, `Next problem →`, sidebar and graph creation flows, and LearnHarness import of
+   practice sessions.
 3. **M11 Smaller features and later providers.** LH's stats bar below the composer (context against
    the model's limit, session cost, per-turn usage); session search (SQLite FTS5); the activity
    dock (the right panel's Activity tab is a placeholder until then); themes as shadcn theme
@@ -103,8 +105,9 @@ merges.
   button before Send confirms settlement; the full 49-flow verification suite passes. The other timing
   bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
-  Vitest's browser mode fails to connect to Chromium; both passed once the load dropped
-  (2026-11-21).
+  Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
+  (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
+  and `make check` ran together on Pixal (2026-11-22).
 - **Duplicate probe handoff under load.** The frontend sometimes sends `handoff` twice (400 "No
   probe handoff is owed", seen in `teach-predict-check`).
 - **Long single paragraphs stream slowly.** One huge paragraph re-parses as one block, as in LH;

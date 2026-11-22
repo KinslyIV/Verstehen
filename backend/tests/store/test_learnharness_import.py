@@ -47,7 +47,17 @@ from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.files.read import load_attachment
+from verstehen.teaching.practice.schemas import (
+    CONCLUDE_ACK_TEXT,
+    NEXT_PROBLEM_TEXT,
+    PROBLEM_ACK_TEXT,
+)
+from verstehen.teaching.practice.state import (
+    active_problem_of,
+    pending_problem_dismissal_of,
+)
 from verstehen.teaching.questions.inputs import QuestionAnswer
+from verstehen.teaching.questions.pending import needs_continuation
 
 FIXTURE = Path(__file__).resolve().parents[1] / "fixtures" / "learnharness" / "basic"
 CHAT = "chat_fx_teach"
@@ -505,10 +515,329 @@ def test_unknown_provider_leaves_session_default(tmp_path: Path):
     assert converted(account=None).contents.sessions[0].session.model_pick is None
 
 
-def test_practice_sessions_are_skipped_and_listed():
+def test_practice_sessions_are_imported_with_kind_practice():
     conversion = converted()
-    assert [i.session.id for i in conversion.contents.sessions] == [CHAT]
-    assert conversion.summary.practice_titles == ["Practice fixture"]
+    assert [(i.session.id, i.session.kind) for i in conversion.contents.sessions] == [
+        ("chat_fx_practice", "practice"),
+        (CHAT, "teach"),
+    ]
+
+
+def test_practice_session_markers_conclude_details_and_usage_import(tmp_path: Path):
+    def edit(folder: Path):
+        practice_path = folder / "chats" / "chat_fx_practice.json"
+        edit_json(
+            practice_path,
+            lambda chat: chat.update(
+                messages=[
+                    {
+                        "id": "msg_p_u1",
+                        "role": "user",
+                        "content": "Let's practice derivatives.",
+                        "timestamp": 1763309666000,
+                    },
+                    {
+                        "id": "msg_p_a1",
+                        "role": "assistant",
+                        "provider": "chatgpt",
+                        "model": "gpt-5.4",
+                        "stopReason": "toolUse",
+                        "timestamp": 1763309667000,
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": "call_prob_1",
+                                "name": "problem",
+                                "arguments": {
+                                    "mode": "recall",
+                                    "statement": "Differentiate $x^2$.",
+                                    "modelSolution": "$2x$",
+                                    "target": ["n_fx1"],
+                                },
+                            }
+                        ],
+                    },
+                    {
+                        "id": "msg_p_r1",
+                        "role": "toolResult",
+                        "toolCallId": "call_prob_1",
+                        "toolName": "problem",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": PROBLEM_ACK_TEXT,
+                            }
+                        ],
+                        "details": None,
+                        "isError": False,
+                        "timestamp": 1763309667100,
+                    },
+                    {
+                        "id": "msg_p_think_1",
+                        "role": "custom",
+                        "customType": "practice-thinking",
+                        "content": "[Learner's thinking on the active problem]\n\n$2x$",
+                        "display": True,
+                        "details": {
+                            "problemCallId": "call_prob_1",
+                            "text": "$2x$",
+                            "commit": True,
+                            "images": [
+                                {
+                                    "type": "image",
+                                    "mimeType": "image/png",
+                                    "data": "AAAA",
+                                }
+                            ],
+                        },
+                        "timestamp": 1763309668000,
+                    },
+                    {
+                        "id": "msg_p_dismiss_1",
+                        "role": "custom",
+                        "customType": "problem-dismissed",
+                        "content": "",
+                        "display": True,
+                        "details": {"problemCallId": "call_prob_1"},
+                        "timestamp": 1763309669000,
+                    },
+                    {
+                        "id": "msg_p_a2",
+                        "role": "assistant",
+                        "api": "faux",
+                        "provider": "synthetic",
+                        "model": "synthetic-conclude",
+                        "usage": {
+                            "input": 0,
+                            "output": 0,
+                            "cacheRead": 0,
+                            "cacheWrite": 0,
+                            "totalTokens": 0,
+                            "cost": {
+                                "input": 0,
+                                "output": 0,
+                                "cacheRead": 0,
+                                "cacheWrite": 0,
+                                "total": 0,
+                            },
+                        },
+                        "stopReason": "toolUse",
+                        "timestamp": 1763309670000,
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": "call_conc_1",
+                                "name": "conclude",
+                                "arguments": {"outcome": "dismissed"},
+                            }
+                        ],
+                    },
+                    {
+                        "id": "msg_p_r2",
+                        "role": "toolResult",
+                        "toolCallId": "call_conc_1",
+                        "toolName": "conclude",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": CONCLUDE_ACK_TEXT,
+                            }
+                        ],
+                        "details": {
+                            "outcome": "dismissed",
+                            "problemCallId": "call_prob_1",
+                        },
+                        "isError": False,
+                        "timestamp": 1763309670100,
+                    },
+                    {
+                        "id": "msg_p_next_1",
+                        "role": "custom",
+                        "customType": "practice-next",
+                        "content": NEXT_PROBLEM_TEXT,
+                        "display": True,
+                        "details": {},
+                        "timestamp": 1763309671000,
+                    },
+                    {
+                        "id": "msg_p_comp_1",
+                        "role": "custom",
+                        "customType": "compaction",
+                        "content": "Summary of practice so far.",
+                        "display": True,
+                        "details": {
+                            "firstKeptMessageId": "msg_p_next_1",
+                            "tokensBefore": 1200,
+                            "model": "chatgpt:gpt-5.4",
+                            "at": "2026-11-16T16:15:00.000Z",
+                        },
+                        "timestamp": 1763309672000,
+                    },
+                ],
+                sideChats=[
+                    {
+                        "id": "side_p_1",
+                        "anchor": {
+                            "messageId": "msg_p_a1",
+                            "partId": "call_prob_1",
+                            "blockIndex": 0,
+                            "blockText": "Differentiate",
+                        },
+                        "open": False,
+                        "createdAt": "2026-11-16T16:14:30.000Z",
+                        "messages": [
+                            {
+                                "id": "side_p_u1",
+                                "role": "user",
+                                "text": "Hint?",
+                                "at": "2026-11-16T16:14:30.000Z",
+                            },
+                            {
+                                "id": "side_p_a1",
+                                "role": "assistant",
+                                "text": "Use power rule.",
+                                "at": "2026-11-16T16:14:31.000Z",
+                            },
+                        ],
+                    }
+                ],
+                turns=[
+                    {
+                        "id": "turn_p_1",
+                        "messageId": "msg_p_a1",
+                        "at": "2026-11-16T16:14:27.000Z",
+                        "model": "chatgpt:gpt-5.4",
+                        "steps": [{"inputTokens": 100, "outputTokens": 40}],
+                    },
+                    {
+                        "id": "turn_p_side",
+                        "messageId": "side_p_a1",
+                        "at": "2026-11-16T16:14:31.000Z",
+                        "model": "chatgpt:gpt-5.4",
+                        "steps": [{"inputTokens": 50, "outputTokens": 20}],
+                    },
+                    {
+                        "id": "turn_p_comp",
+                        "messageId": "msg_p_comp_1",
+                        "at": "2026-11-16T16:15:00.000Z",
+                        "model": "chatgpt:gpt-5.4",
+                        "steps": [{"inputTokens": 200, "outputTokens": 60}],
+                    },
+                ],
+            ),
+        )
+
+    conversion = convert(read_folder(fixture_copy(tmp_path, edit)), ACCOUNT)
+    practice = next(
+        s for s in conversion.contents.sessions if s.session.id == "chat_fx_practice"
+    )
+    assert practice.session.kind == "practice"
+    by_id = {entry.entry_id: entry for entry in practice.entries}
+    thinking = by_id["msg_p_think_1"]
+    assert isinstance(thinking, MarkerEntry)
+    assert thinking.details == {"problem_call_id": "call_prob_1", "text": "$2x$"}
+    dismissed = by_id["msg_p_dismiss_1"]
+    assert isinstance(dismissed, MarkerEntry)
+    assert dismissed.details == {"problem_call_id": "call_prob_1"}
+    conclude_res = by_id["msg_p_r2"]
+    assert isinstance(conclude_res, ToolResultEntry)
+    assert conclude_res.details == {
+        "outcome": "dismissed",
+        "problem_call_id": "call_prob_1",
+    }
+    pose_ack = by_id["msg_p_r1"]
+    assert isinstance(pose_ack, ToolResultEntry) and pose_ack.details is None
+    assert not needs_continuation(practice.entries[:3])
+    assert active_problem_of(practice.entries[:3]) is not None
+    assert pending_problem_dismissal_of(practice.entries[:5]) == "call_prob_1"
+    synthetic = by_id["msg_p_a2"]
+    assert isinstance(synthetic, AssistantEntry)
+    assert (synthetic.provider, synthetic.model) == ("synthetic", "synthetic-conclude")
+    next_marker = by_id["msg_p_next_1"]
+    assert isinstance(next_marker, MarkerEntry)
+    assert next_marker.details == {}
+    assert any(
+        "Practice fixture (chat_fx_practice): 1 image(s) in learner messages were not imported"
+        in w
+        for w in conversion.summary.warnings
+    )
+    assert not any(
+        "Practice fixture" in w and "plan" in w for w in conversion.summary.warnings
+    )
+    practice_usage = {
+        row.request_id: row.role
+        for row in conversion.contents.usage
+        if row.session_id == "chat_fx_practice"
+    }
+    assert practice_usage == {
+        "turn_p_1#1": "practice",
+        "turn_p_side#1": "sideQuestion",
+        "turn_p_comp#1": "compaction",
+    }
+
+
+def test_failed_conclude_result_imports_as_saved(tmp_path: Path):
+    problems = ["no active problem to conclude — pose one first"]
+
+    def edit(folder: Path):
+        edit_json(
+            folder / "chats" / "chat_fx_practice.json",
+            lambda chat: chat.update(
+                messages=[
+                    {
+                        "id": "msg_c_u1",
+                        "role": "user",
+                        "content": "Practice.",
+                        "timestamp": 1763309666000,
+                    },
+                    {
+                        "id": "msg_c_a1",
+                        "role": "assistant",
+                        "provider": "chatgpt",
+                        "model": "gpt-5.4",
+                        "stopReason": "toolUse",
+                        "timestamp": 1763309667000,
+                        "content": [
+                            {
+                                "type": "toolCall",
+                                "id": "call_bad",
+                                "name": "conclude",
+                                "arguments": {"outcome": "solved"},
+                            }
+                        ],
+                    },
+                    {
+                        "id": "msg_c_r1",
+                        "role": "toolResult",
+                        "toolCallId": "call_bad",
+                        "toolName": "conclude",
+                        "content": [{"type": "text", "text": "Invalid tool input"}],
+                        "details": {"tool": "conclude", "problems": problems},
+                        "isError": True,
+                        "timestamp": 1763309667100,
+                    },
+                    {
+                        "id": "msg_c_a2",
+                        "role": "assistant",
+                        "provider": "chatgpt",
+                        "model": "gpt-5.4",
+                        "stopReason": "stop",
+                        "timestamp": 1763309668000,
+                        "content": [{"type": "text", "text": "Let's start over."}],
+                    },
+                ],
+                sideChats=[],
+                turns=[],
+            ),
+        )
+
+    conversion = convert(read_folder(fixture_copy(tmp_path, edit)), ACCOUNT)
+    practice = next(
+        s for s in conversion.contents.sessions if s.session.id == "chat_fx_practice"
+    )
+    failed = next(e for e in practice.entries if e.entry_id == "msg_c_r1")
+    assert isinstance(failed, ToolResultEntry) and failed.is_error
+    assert failed.details == {"tool": "conclude", "problems": problems}
 
 
 def test_newer_chat_version_is_refused(tmp_path: Path):
@@ -593,7 +922,7 @@ def test_dry_run_writes_nothing(tmp_path: Path):
     data_dir = tmp_path / "data"
     lines = run(FIXTURE, data_dir, dry_run=True)
     assert "Dry run: nothing was written." in lines
-    assert "Sessions: 1 (19 messages)" in lines
+    assert "Sessions: 2 (25 messages)" in lines
     assert "Propositions: 3 (4 ledger lines)" in lines
     assert "Chains: 1 (1 ledger lines)" in lines
     assert not data_dir.exists()
@@ -659,7 +988,10 @@ def test_backup_is_written_before_replacing(tmp_path: Path):
     assert backup.name.startswith("before-learnharness-import-")
     assert (backup / "images" / "keep.png").read_bytes() == b"old image"
     assert asyncio.run(with_database(backup, session_titles)) == ["Existing session"]
-    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+    assert asyncio.run(with_database(data_dir, session_titles)) == [
+        "Slopes",
+        "Practice fixture",
+    ]
     assert f"Backup: {backup}" in lines
     assert any(line.startswith("  cp ") and "verstehen.db" in line for line in lines)
 
@@ -775,7 +1107,10 @@ def test_imported_fixture_session_loads_projects_and_is_listed(tmp_path: Path):
         create_app(Settings(data_dir)), base_url="http://localhost"
     ) as client:
         listed = client.get("/api/sessions").json()["sessions"]
-        assert [(s["id"], s["title"]) for s in listed] == [(CHAT, "Slopes")]
+        assert [(s["id"], s["title"], s["kind"]) for s in listed] == [
+            (CHAT, "Slopes", "teach"),
+            ("chat_fx_practice", "Practice fixture", "practice"),
+        ]
         detail = client.get(f"/api/sessions/{CHAT}").json()
         assert len(detail["entries"]) == 19
         assert (
@@ -808,11 +1143,14 @@ def sidecar_import(
 def test_sidecar_command_imports_after_typed_confirmation(tmp_path: Path):
     data_dir = tmp_path / "data"
     dry = sidecar_import(data_dir, str(FIXTURE), "--dry-run")
-    assert dry.returncode == 0 and "Sessions: 1 (19 messages)" in dry.stdout
+    assert dry.returncode == 0 and "Sessions: 2 (25 messages)" in dry.stdout
     assert not data_dir.exists()
     done = sidecar_import(data_dir, str(FIXTURE), stdin="replace\n")
     assert done.returncode == 0 and "Imported." in done.stdout
-    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+    assert asyncio.run(with_database(data_dir, session_titles)) == [
+        "Slopes",
+        "Practice fixture",
+    ]
 
 
 def test_sidecar_command_prints_refusals(
@@ -912,7 +1250,10 @@ def test_backup_holds_the_database_before_migration(tmp_path: Path):
     assert asyncio.run(with_database(data_dir, migration_count)) == len(
         list(MIGRATIONS.glob("*.sql"))
     )
-    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+    assert asyncio.run(with_database(data_dir, session_titles)) == [
+        "Slopes",
+        "Practice fixture",
+    ]
 
 
 def test_importing_into_a_fresh_directory_needs_no_database_backup(tmp_path: Path):
@@ -920,7 +1261,10 @@ def test_importing_into_a_fresh_directory_needs_no_database_backup(tmp_path: Pat
     lines = run(FIXTURE, data_dir)
     [backup] = (data_dir / "backups").iterdir()
     assert not (backup / "verstehen.db").exists()
-    assert asyncio.run(with_database(data_dir, session_titles)) == ["Slopes"]
+    assert asyncio.run(with_database(data_dir, session_titles)) == [
+        "Slopes",
+        "Practice fixture",
+    ]
     assert "There was no database before the import." in lines
     commands = restore_commands(lines)
     for suffix in ("-wal", "-shm"):

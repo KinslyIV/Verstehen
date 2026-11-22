@@ -463,3 +463,21 @@ def test_chains_table_delete_blocks_concurrent_extraction_after_session_delete(
         directory = client.get("/api/graph/sources").json()
         assert directory["organization"]["folders"] == []
         assert [s["id"] for s in directory["sources"]] == [s2]
+
+
+def test_practice_session_omits_coverage_and_refuses_manual_extraction(tmp_path: Path):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        practice_id = client.post(
+            "/api/sessions", json={"title": "Drill", "kind": "practice"}
+        ).json()["id"]
+        detail = client.get(f"/api/sessions/{practice_id}").json()
+        assert detail["kind"] == "practice"
+        assert detail["coverage"] is None
+        response = client.post(
+            "/api/graph/coverage/extract", json={"session_id": practice_id}
+        )
+        assert response.status_code == 400
+        assert (
+            response.json()["error"] == "Practice sessions do not run graph extraction"
+        )
