@@ -63,7 +63,7 @@ export type ClientMode = 'sidecar' | 'remote';
 
 /** The Android app is always remote; headless flows opt in at build time. */
 export function clientMode(): ClientMode {
-	return __VERSTEHEN_CLIENT__ === 'remote' || Capacitor.isNativePlatform() ? 'remote' : 'sidecar';
+	return __VERSTEHEN_CLIENT__ !== 'sidecar' || Capacitor.isNativePlatform() ? 'remote' : 'sidecar';
 }
 
 const storage = () => (Capacitor.isNativePlatform() ? preferencesStorage : browserStorage);
@@ -73,31 +73,48 @@ export function loadConnection(): Promise<StoredConnection> {
 	return (stored ??= storage().load());
 }
 
-export async function saveConnection(connection: StoredConnection): Promise<void> {
+let writes: Promise<unknown> = Promise.resolve();
+
+/** Runs connection writes one at a time, so a stale rejection cannot interleave with a pairing. */
+function serialized<T>(write: () => Promise<T>): Promise<T> {
+	const result = writes.then(write);
+	writes = result.catch(() => {});
+	return result;
+}
+
+const writeConnection = async (connection: StoredConnection): Promise<void> => {
 	await storage().save(connection);
 	stored = Promise.resolve(connection);
-}
+};
 
-export async function clearConnection(): Promise<void> {
-	await storage().clear();
-	stored = Promise.resolve({});
-}
+export const saveConnection = (connection: StoredConnection): Promise<void> =>
+	serialized(() => writeConnection(connection));
 
-/** Forgets a rejected token and device but keeps the server address for the next pairing. */
-export async function dropToken(): Promise<void> {
-	const { server_url } = await loadConnection();
-	await saveConnection(server_url ? { server_url } : {});
-}
+export const clearConnection = (): Promise<void> =>
+	serialized(async () => {
+		await storage().clear();
+		stored = Promise.resolve({});
+	});
+
+/** Drops the rejected token (keeping the address) unless a newer pairing replaced it; true if dropped. */
+export const dropToken = (rejectedToken: string | undefined): Promise<boolean> =>
+	serialized(async () => {
+		const { server_url, token } = await loadConnection();
+		if (token !== rejectedToken) return false;
+		await writeConnection(server_url ? { server_url } : {});
+		return true;
+	});
 
 export function isPaired(connection: StoredConnection): connection is ServerConnection {
 	return Boolean(connection.server_url && connection.device_id && connection.token);
 }
 
 const isTailscaleAddress = (host: string): boolean => {
-	const octets = host.split('.').map(Number);
+	const parts = host.split('.');
+	if (parts.length !== 4 || !parts.every((part) => /^\d{1,3}$/.test(part))) return false;
+	const octets = parts.map(Number);
 	return (
-		octets.length === 4 &&
-		octets.every((octet) => Number.isInteger(octet) && octet >= 0 && octet <= 255) &&
+		octets.every((octet) => octet <= 255) &&
 		octets[0] === 100 &&
 		octets[1] >= 64 &&
 		octets[1] <= 127
@@ -116,7 +133,8 @@ export function parseServerAddress(
 	} catch {
 		throw new Error('Enter the server address as 100.x.y.z:port.');
 	}
-	if (!url.hostname || url.pathname !== '/' || url.search || url.hash)
+	const typedHost = text.replace(/^https?:\/\//i, '').split(/[:/?#]/)[0];
+	if (!url.hostname || typedHost !== url.hostname || url.pathname !== '/' || url.search || url.hash)
 		throw new Error('Enter the server address as 100.x.y.z:port.');
 	if (!isTailscaleAddress(url.hostname) && !extraHosts.includes(url.hostname))
 		throw new Error('The server must be at its Tailscale address, 100.x.y.z (100.64.0.0/10).');

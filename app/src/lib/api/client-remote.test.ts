@@ -31,8 +31,43 @@ test('remote requests go to the paired server with a bearer token', async () => 
 	vi.stubGlobal('fetch', request);
 	expect(await listSessions()).toEqual([]);
 	expect(request).toHaveBeenCalledWith('http://100.64.0.7:8420/api/sessions', {
+		redirect: 'error',
 		headers: { authorization: 'Bearer secret' }
 	});
+});
+
+test('a redirect from the server is an error, never followed', async () => {
+	await saveConnection(paired);
+	vi.stubGlobal(
+		'fetch',
+		vi.fn((_url: string, init: RequestInit) =>
+			init.redirect === 'error'
+				? Promise.reject(new TypeError('Failed to fetch'))
+				: Promise.resolve(new Response('{}'))
+		)
+	);
+	await expect(listSessions()).rejects.toThrow(TypeError);
+});
+
+test('a delayed 401 for the old token leaves a newer pairing in place', async () => {
+	await saveConnection(paired);
+	let rejectOldRequest: ((response: Response) => void) | undefined;
+	vi.stubGlobal(
+		'fetch',
+		vi.fn((url: string) =>
+			url.endsWith('/api/auth/pair')
+				? Promise.resolve(new Response(JSON.stringify({ device_id: 'device-2', token: 'fresh' })))
+				: new Promise<Response>((resolve) => (rejectOldRequest = resolve))
+		)
+	);
+	const oldRequest = listSessions();
+	const outcome = expect(oldRequest).rejects.toMatchObject({ status: 401 });
+	await vi.waitFor(() => expect(rejectOldRequest).toBeDefined());
+	const newPairing = await pairDevice('100.64.0.7:8420', 'ABCD2345', 'Phone');
+	rejectOldRequest?.(new Response('{}', { status: 401 }));
+	await outcome;
+	expect(await loadConnection()).toEqual(newPairing);
+	expect(goto).not.toHaveBeenCalled();
 });
 
 test('a 401 drops the token, keeps the address, and returns to pairing', async () => {
@@ -59,6 +94,7 @@ test('pairing redeems the code and saves the connection', async () => {
 	expect(await pairDevice('100.64.0.7:8420', 'abcd2345', ' Phone ')).toEqual(paired);
 	expect(request).toHaveBeenCalledWith('http://100.64.0.7:8420/api/auth/pair', {
 		method: 'POST',
+		redirect: 'error',
 		headers: { 'content-type': 'application/json' },
 		body: JSON.stringify({ code: 'ABCD2345', device_name: 'Phone' })
 	});

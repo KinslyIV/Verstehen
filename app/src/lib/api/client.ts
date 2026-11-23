@@ -98,27 +98,38 @@ export class ApiError extends Error {
 	}
 }
 
-async function returnToPairing(): Promise<void> {
-	await dropToken();
-	await goto(resolve('/pair'));
+/** Forgets the token the server rejected and goes to /pair, unless a newer pairing replaced it. */
+async function returnToPairing(rejectedToken: string | undefined): Promise<void> {
+	if (await dropToken(rejectedToken)) await goto(resolve('/pair'));
+}
+
+interface Endpoint {
+	base: string;
+	auth: Record<string, string>;
+	rejectedToken?: string;
 }
 
 /** Where requests go and how they authenticate: the sidecar, or the paired server. */
-async function endpoint(): Promise<{ base: string; auth: Record<string, string> }> {
+async function endpoint(): Promise<Endpoint> {
 	if (clientMode() === 'sidecar')
 		return { base: await baseUrl(), auth: token ? { 'x-verstehen-token': token } : {} };
 	const connection = await loadConnection();
 	if (!isPaired(connection)) {
-		await returnToPairing();
+		await returnToPairing(connection.token);
 		throw new ApiError(401, undefined, 'This device is not paired with a server.');
 	}
-	return { base: connection.server_url, auth: { authorization: `Bearer ${connection.token}` } };
+	return {
+		base: connection.server_url,
+		auth: { authorization: `Bearer ${connection.token}` },
+		rejectedToken: connection.token
+	};
 }
 
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
-	const { base, auth } = await endpoint();
+	const { base, auth, rejectedToken } = await endpoint();
 	const response = await fetch(`${base}${path}`, {
 		...init,
+		...(clientMode() === 'remote' ? { redirect: 'error' } : {}),
 		headers: {
 			...(init.body && !(init.body instanceof FormData)
 				? { 'content-type': 'application/json' }
@@ -127,7 +138,7 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 			...auth
 		}
 	});
-	if (response.status === 401 && clientMode() === 'remote') await returnToPairing();
+	if (response.status === 401 && clientMode() === 'remote') await returnToPairing(rejectedToken);
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}));
 		throw new ApiError(
@@ -152,6 +163,7 @@ export async function pairDevice(
 	try {
 		response = await fetch(`${server_url}/api/auth/pair`, {
 			method: 'POST',
+			redirect: 'error',
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ code: code.trim().toUpperCase(), device_name: deviceName.trim() })
 		});

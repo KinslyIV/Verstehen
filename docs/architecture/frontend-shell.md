@@ -55,15 +55,20 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 
 - **Two client modes** (`clientMode()` in `connection.ts`): `sidecar` (desktop and `make dev`) and
   `remote`. Remote is chosen when `Capacitor.isNativePlatform()` is true (the Android app, always)
-  or the build sets `PUBLIC_VERSTEHEN_CLIENT=remote` (headless flows only; normal builds never do).
+  or the build sets `PUBLIC_VERSTEHEN_CLIENT` to `remote` (headless flows) or `android` (the app's
+  build); normal builds never do.
   `app/src-tauri/` is untouched; the desktop still bundles and starts the sidecar.
 - **Requests in remote mode** go to the stored `server_url` with `Authorization: Bearer <token>`,
   using the WebView's own `fetch` so SSE streams (Capacitor's native HTTP plugin cannot stream and
-  is not used). A missing connection or a `401` drops the token, keeps the server address, and
-  navigates to `/pair`; the root `+layout.ts` also redirects every other route there when no
+  is not used, and `plugins.CapacitorHttp.enabled` is `false`). Every remote request and the pairing
+  request use `redirect: 'error'`, so an allowed server cannot send the app to another address. A
+  missing connection or a `401` drops the token that request used (only if a newer pairing has not
+  replaced it; writes to the connection are serialized), keeps the server address, and navigates
+  to `/pair`; the root `+layout.ts` also redirects every other route there when no
   connection is stored.
 - **`/pair`** takes the server's Tailscale address (`100.x.y.z:port`, `http://` implied; anything
-  outside `100.64.0.0/10` is refused, plus the hosts in `PUBLIC_VERSTEHEN_EXTRA_HOSTS`, which only
+  outside `100.64.0.0/10`, or typed in any non-canonical form (hex, octal, short, `1.2.3.4e0`), is
+  refused, plus the hosts in `PUBLIC_VERSTEHEN_EXTRA_HOSTS`, which only
   the debug `.apk` and the headless flows set), the 8-character code (any case), and a device name
   (default "Phone"), then calls `POST /api/auth/pair`, saves the connection, and opens `/`. Wrong
   or expired codes, rate limiting, and an unreachable server each show their own message.

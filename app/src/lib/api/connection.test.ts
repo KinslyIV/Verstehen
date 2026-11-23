@@ -67,7 +67,7 @@ test('dropping the token keeps the server address', async () => {
 	vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
 	const { dropToken, isPaired, loadConnection, saveConnection } = await import('./connection');
 	await saveConnection(paired);
-	await dropToken();
+	expect(await dropToken(paired.token)).toBe(true);
 	expect(await loadConnection()).toEqual({ server_url: paired.server_url });
 	expect(Object.fromEntries(preferenceFiles)).toEqual({ server_url: paired.server_url });
 	expect(isPaired(await loadConnection())).toBe(false);
@@ -89,7 +89,17 @@ test.each([
 	'192.168.1.5:8420',
 	'100.128.0.1',
 	'100.63.0.1',
-	'example.com'
+	'example.com',
+	'100.64.0.0e0',
+	'100.64.0.1e0',
+	'100.64.0.0x1',
+	'0x64400001',
+	'1685323777',
+	'100.064.0.1',
+	'100.64.1',
+	'100.64.0.1.',
+	'100.64.0.+1',
+	'user@100.64.0.1'
 ])('the server address "%s" is refused', async (input) => {
 	const { parseServerAddress } = await import('./connection');
 	expect(() => parseServerAddress(input)).toThrow();
@@ -99,4 +109,16 @@ test('debug builds accept their extra hosts only', async () => {
 	const { parseServerAddress } = await import('./connection');
 	expect(parseServerAddress('10.0.2.2:8420', ['10.0.2.2'])).toBe('http://10.0.2.2:8420');
 	expect(() => parseServerAddress('10.0.2.3:8420', ['10.0.2.2'])).toThrow();
+});
+
+test('a rejection of an old token does not erase a newer pairing', async () => {
+	vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+	const { dropToken, loadConnection, saveConnection } = await import('./connection');
+	await saveConnection(paired);
+	const newer = { ...paired, device_id: 'device-2', token: 'fresh' };
+	const saving = saveConnection(newer);
+	expect(await dropToken(paired.token)).toBe(false);
+	await saving;
+	expect(await loadConnection()).toEqual(newer);
+	expect(Object.fromEntries(preferenceFiles)).toEqual(newer);
 });

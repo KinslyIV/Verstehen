@@ -120,6 +120,15 @@ alternative, and the consequence, until the user reviews them at the end of the 
   unguarded) or MagicDNS names under a `ts.net` rule (contradicts the `/pair` address decision).
   Consequence: a debug-only `10.0.2.2` and the range live in Java, checked by a JVM unit test, a
   Python config test, and a blocked-request check on the emulator.
+  **Flagged for you to re-confirm (review round 1).** `shouldInterceptRequest` sees only the first
+  URL of a request, so an allowed host could redirect to an off-range `http` address. The fix does
+  not change the guard: in remote mode every API `fetch` (and the pairing `fetch`) uses
+  `redirect: 'error'`, and `plugins.CapacitorHttp.enabled = false` in `capacitor.config.ts` makes it
+  explicit that `fetch` is never patched. Residual risks, accepted for now: (1) Capacitor's native
+  HTTP bridge is still registered in the app but unused by our code, and a future change that
+  calls it would bypass the guard; (2) WebSocket is not used, and a future use would need its own
+  check; (3) subresource redirects beyond our API requests (such as images) are not re-checked.
+  Alternative: a native redirect check in the WebView client (more Java).
 
 ## Constraints
 
