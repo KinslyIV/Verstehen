@@ -11,7 +11,9 @@
 		onpick,
 		ondefault,
 		busy = false,
-		notice = null
+		notice = null,
+		showTabs = true,
+		refreshing = false
 	}: {
 		catalog: ModelCatalog;
 		pick?: ModelPick | null;
@@ -21,6 +23,8 @@
 		ondefault?: () => void;
 		busy?: boolean;
 		notice?: string | null;
+		showTabs?: boolean;
+		refreshing?: boolean;
 	} = $props();
 	let selectedAccount = $state<string>();
 	let account = $derived(
@@ -31,30 +35,39 @@
 		account?.models.filter((model) => tab !== 'vision' || model.accepts_images) ?? []
 	);
 	let model = $derived(modelFor(catalog, pick));
+	let status = $derived(
+		notice ??
+			(refreshing
+				? 'Refreshing models…'
+				: account?.refresh_error
+					? `Showing saved models. ${account.refresh_error}`
+					: null)
+	);
 </script>
 
 <div class="w-[min(42rem,calc(100vw-3rem))] text-sm" aria-label="Model menu">
-	<div class="flex items-center gap-1 border-b p-2" role="tablist" aria-label="Model slots">
-		{#each modelTabs as item (item.key)}
-			<Button
-				role="tab"
-				aria-selected={tab === item.key}
-				variant={tab === item.key ? 'secondary' : 'ghost'}
-				size="sm"
-				onclick={() => {
-					selectedAccount = undefined;
-					ontab(item.key);
-				}}
-			>
-				{item.label}
-			</Button>
-		{/each}
-	</div>
-	{#if notice}<p role="status" class="border-b px-4 py-3 text-xs text-muted-foreground">
-			{notice}
-		</p>{/if}
+	{#if showTabs}<div
+			class="flex items-center gap-1 border-b p-2"
+			role="tablist"
+			aria-label="Model slots"
+		>
+			{#each modelTabs as item (item.key)}
+				<Button
+					role="tab"
+					aria-selected={tab === item.key}
+					variant={tab === item.key ? 'secondary' : 'ghost'}
+					size="sm"
+					onclick={() => {
+						selectedAccount = undefined;
+						ontab(item.key);
+					}}
+				>
+					{item.label}
+				</Button>
+			{/each}
+		</div>{/if}
 	<div
-		class="grid max-h-[min(24rem,60vh)] min-h-48 grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.3fr)_7rem]"
+		class="grid h-[min(20rem,50vh)] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.3fr)_7rem] grid-rows-1"
 	>
 		<div class="space-y-1 overflow-y-auto border-r bg-muted/20 p-2" aria-label="Accounts">
 			{#each catalog.accounts as item (item.account.id)}
@@ -118,14 +131,18 @@
 				</p>{/if}
 		</div>
 	</div>
-	{#if ondefault}<div class="flex justify-end border-t p-2">
-			<Button
+	<div class="flex h-14 items-center justify-between gap-3 border-t px-4">
+		<p role="status" class="line-clamp-2 min-w-0 text-xs text-muted-foreground" title={status}>
+			{status ?? ''}
+		</p>
+		{#if ondefault}<Button
 				variant="outline"
 				size="sm"
+				class="shrink-0"
 				disabled={busy || !pick || tab !== 'strong'}
 				onclick={ondefault}
 			>
 				Set as default
-			</Button>
-		</div>{/if}
+			</Button>{/if}
+	</div>
 </div>

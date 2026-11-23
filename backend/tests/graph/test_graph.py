@@ -626,7 +626,7 @@ def test_graph_routes_persist_organization_settings_positions_and_errors(
         assert client.get("/api/graph/render-settings").json() == settings
         assert client.put(
             "/api/graph/positions", json={"unknown": {"x": 1, "y": 2}}
-        ).json() == {"positions": {}}
+        ).json() == {"positions": {}, "revision": None}
         assert client.put("/api/graph/positions", content="broken").status_code == 400
         result = client.post(
             "/api/graph/sources",

@@ -417,6 +417,7 @@ def test_status_and_catalog_use_safe_metadata(tmp_path: Path, monkeypatch):
         assert status["state"] == "not_installed"
         assert status["minimum_version"] == binary.MINIMUM_VERSION
         assert status["tested_version"] == binary.TESTED_VERSION
+        client.post("/api/models/refresh")
         catalog = client.get("/api/models").json()
         assert catalog["accounts"][0]["account"]["state"] == "not_installed"
         assert catalog["accounts"][0]["models"] == []

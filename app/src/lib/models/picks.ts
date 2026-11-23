@@ -38,9 +38,13 @@ export function modelLabel(catalog: ModelCatalog | undefined, pick?: ModelPick |
 	const level = pick.thinking_level;
 	return level ? `${name} · ${level[0].toUpperCase()}${level.slice(1)}` : name;
 }
-export function setupStage(catalog: ModelCatalog | undefined): 'loading' | 'connect' | 'models' {
+export function setupStage(
+	catalog: ModelCatalog | undefined,
+	settled = true
+): 'loading' | 'connect' | 'models' {
 	if (!catalog) return 'loading';
-	return catalog.accounts.some((item) => item.models.length > 0) ? 'models' : 'connect';
+	if (catalog.accounts.some((item) => item.models.length > 0)) return 'models';
+	return settled ? 'connect' : 'loading';
 }
 export function slotsComplete(slots: ModelSlots): boolean {
 	return modelTabs.every((tab) => !!slots[tab.key]);

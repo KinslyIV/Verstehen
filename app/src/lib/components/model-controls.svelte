@@ -1,16 +1,15 @@
 <script lang="ts">
-	import { onMount, untrack } from 'svelte';
+	import { onMount } from 'svelte';
 	import { Popover } from 'bits-ui';
 	import { ChevronDown } from '@lucide/svelte';
 	import {
-		getModels,
 		getSettings,
 		saveSettings,
 		setDefaultModel,
 		setSessionModel,
-		type ModelCatalog,
 		type ModelPick
 	} from '#lib/api/client.js';
+	import { models } from '#lib/models/catalog.svelte.js';
 	import { modelFor, modelLabel, cycleLevel, type ModelTab } from '#lib/models/picks.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ModelMenu from './model-menu.svelte';
@@ -25,7 +24,7 @@
 		shortcuts = true,
 		label,
 		onchanged,
-		initialCatalog
+		tabs = true
 	}: {
 		pick?: ModelPick | null;
 		sessionId?: string;
@@ -37,27 +36,20 @@
 		shortcuts?: boolean;
 		label?: string;
 		onchanged?: () => void;
-		initialCatalog?: ModelCatalog;
+		tabs?: boolean;
 	} = $props();
-	let catalog = $state<ModelCatalog | undefined>(untrack(() => initialCatalog));
+	let catalog = $derived(models.catalog);
 	let tab = $state<ModelTab>('strong');
 	let busy = $state(false);
 	let error = $state<string | null>(null);
 	let main = $derived(pick ?? catalog?.slots.strong);
 	let selection = $derived(tab === 'strong' ? main : catalog?.slots[tab]);
-	async function refresh() {
-		try {
-			catalog = await getModels();
-			error = null;
-		} catch (cause) {
-			error = (cause as Error).message;
-		}
-	}
 	async function opened(value: boolean) {
 		open = value;
 		if (value) {
 			tab = initialTab;
 			onopened?.();
+			void models.refresh();
 		}
 	}
 	async function apply(value: ModelPick) {
@@ -72,7 +64,7 @@
 			} else {
 				const settings = await getSettings();
 				await saveSettings({ ...settings, models: { ...settings.models, [target]: value } });
-				await refresh();
+				await models.load();
 				onchanged?.();
 			}
 		} catch (cause) {
@@ -86,7 +78,7 @@
 		busy = true;
 		try {
 			await setDefaultModel(main);
-			await refresh();
+			await models.load();
 			onchanged?.();
 		} catch (cause) {
 			error = (cause as Error).message;
@@ -109,13 +101,9 @@
 		}
 	}
 	onMount(() => {
-		if (!catalog) void refresh();
+		if (!catalog) void models.load();
 		window.addEventListener('keydown', keyboard);
-		window.addEventListener('verstehen:models-changed', refresh);
-		return () => {
-			window.removeEventListener('keydown', keyboard);
-			window.removeEventListener('verstehen:models-changed', refresh);
-		};
+		return () => window.removeEventListener('keydown', keyboard);
 	});
 </script>
 
@@ -137,10 +125,7 @@
 		</Popover.Trigger>
 		<Popover.Portal>
 			<Popover.Content
-				onOpenAutoFocus={() => {
-					tab = initialTab;
-					void refresh();
-				}}
+				onOpenAutoFocus={() => (tab = initialTab)}
 				side="top"
 				align="start"
 				sideOffset={12}
@@ -152,13 +137,12 @@
 						{tab}
 						ontab={(value) => (tab = value)}
 						onpick={(value) => void apply(value)}
-						ondefault={() => void makeDefault()}
+						ondefault={tabs || tab === 'strong' ? () => void makeDefault() : undefined}
 						{busy}
-						notice={notice ?? error}
-					/>{:else}<p class="p-4 text-sm">{error ?? 'Loading models…'}</p>{/if}
-				{#if error && catalog}<p role="alert" class="px-4 pb-3 text-xs text-destructive">
-						{error}
-					</p>{/if}
+						notice={notice ?? error ?? models.error}
+						showTabs={tabs}
+						refreshing={models.refreshing}
+					/>{:else}<p class="p-4 text-sm">{error ?? models.error ?? 'Loading models…'}</p>{/if}
 			</Popover.Content>
 		</Popover.Portal>
 	</Popover.Root>

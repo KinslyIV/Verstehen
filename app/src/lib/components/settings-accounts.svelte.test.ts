@@ -1,10 +1,13 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import * as api from '#lib/api/client.js';
+import { models } from '#lib/models/catalog.svelte.js';
 import SettingsAccounts from './settings-accounts.svelte';
 
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
+	getModels: vi.fn(),
+	refreshModels: vi.fn(),
 	getSettings: vi.fn(),
 	saveSettings: vi.fn(),
 	listChatGPTAccounts: vi.fn(),
@@ -52,6 +55,9 @@ const claudeStates = [
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	models.reset();
+	vi.mocked(api.getModels).mockResolvedValue({ accounts: [], slots: {} });
+	vi.mocked(api.refreshModels).mockResolvedValue(undefined);
 	vi.mocked(api.getSettings).mockResolvedValue({});
 	vi.mocked(api.listChatGPTAccounts).mockResolvedValue([
 		{ id: 'one', kind: 'chatgpt', label: 'learner@example.com', state: 'ready' },
@@ -164,10 +170,13 @@ test('background_switches_sign_in_again_remove_and_add_account_update_state', as
 	];
 	signInState = 'connected';
 	await expect.element(chatgpt.getByText('Needs sign-in', { exact: true })).not.toBeInTheDocument();
+	await expect.poll(() => vi.mocked(api.refreshModels).mock.calls.length).toBe(1);
 
+	const reads = vi.mocked(api.getModels).mock.calls.length;
 	await chatgpt.getByRole('button', { name: 'Remove' }).nth(1).click();
 	expect(api.removeChatGPTAccount).toHaveBeenCalledWith('two');
 	await expect.element(chatgpt.getByText('second@example.com')).not.toBeInTheDocument();
+	await expect.poll(() => vi.mocked(api.getModels).mock.calls.length).toBeGreaterThan(reads);
 
 	await chatgpt.getByRole('button', { name: 'Add account' }).click();
 	expect(api.startChatGPTSignIn).toHaveBeenLastCalledWith(undefined);

@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { Switch } from 'bits-ui';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { models } from '#lib/models/catalog.svelte.js';
 	import {
 		getSettings,
 		saveSettings,
@@ -54,6 +55,8 @@
 					signInUrl = null;
 					if (result.state === 'failed') error = result.reason ?? 'Sign-in failed.';
 					await refresh();
+					await models.load();
+					if (result.state === 'connected') void models.refresh();
 				}
 			}
 		} catch (cause) {
@@ -92,6 +95,7 @@
 			pending = null;
 			signInUrl = null;
 			await refresh();
+			await models.load();
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {

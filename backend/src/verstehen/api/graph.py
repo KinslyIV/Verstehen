@@ -26,7 +26,7 @@ from verstehen.graph.service import (
     NodeDeleted,
     PositionsSaved,
 )
-from verstehen.graph.snapshot import GraphSnapshot
+from verstehen.graph.snapshot import GraphSnapshot, GraphTitles
 from verstehen.providers.resolve import ResolutionError
 
 
@@ -107,6 +107,11 @@ async def json_body(request: Request, *, organization: bool = False) -> object:
 @router.get("", response_model=GraphSnapshot)
 async def get_graph(graph_service: GraphServiceDependency):
     return await graph_service.snapshot()
+
+
+@router.get("/titles", response_model=GraphTitles)
+async def get_titles(graph_service: GraphServiceDependency):
+    return await graph_service.titles()
 
 
 @router.delete("/nodes/{id}", response_model=NodeDeleted)

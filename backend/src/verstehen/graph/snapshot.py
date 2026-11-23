@@ -23,6 +23,14 @@ class GraphSnapshot(GraphView):
     clusters: list[Cluster]
     positions: dict[str, Position]
     revision: int
+    teach_sessions: int
+    practice_sessions: int
+
+
+class GraphTitles(BaseModel):
+    """Every session's current title, for retitling a drawn graph without refetching it."""
+
+    sessions: dict[str, str]
 
 
 class GraphSessionEntry(BaseModel):
@@ -128,7 +136,13 @@ def graph_snapshot(ledger: GraphLedger, sessions: list[Session]) -> GraphSnapsho
         clusters=clusters,
         positions=ledger.positions,
         revision=ledger.revision,
+        teach_sessions=sum(session.kind == "teach" for session in sessions),
+        practice_sessions=sum(session.kind == "practice" for session in sessions),
     )
+
+
+def graph_titles(sessions: list[Session]) -> GraphTitles:
+    return GraphTitles(sessions={session.id: session.title for session in sessions})
 
 
 def graph_session_index(

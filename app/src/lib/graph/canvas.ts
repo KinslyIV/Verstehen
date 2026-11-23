@@ -300,16 +300,24 @@ export function arrowGeometry(
 	};
 }
 
-export function pickNearest<T extends { id: string; x: number; y: number }>(
-	nodes: T[],
+type Camera = { k: number; x: number; y: number };
+
+/** The node nearest the pointer within `maxDist` screen px; hidden and implication nodes never match. */
+export function pickNode(
+	nodes: readonly CanvasNode[],
+	visible: ReadonlySet<string> | null,
+	camera: Camera,
 	px: number,
 	py: number,
 	maxDist: number
-): T | null {
-	let best: T | null = null;
+): CanvasNode | null {
+	let best: CanvasNode | null = null;
 	let bestDistance = maxDist * maxDist;
 	for (const node of nodes) {
-		const distance = (node.x - px) ** 2 + (node.y - py) ** 2;
+		if ((visible && !visible.has(node.id)) || isImpNodeId(node.id)) continue;
+		const dx = node.x * camera.k + camera.x - px;
+		const dy = node.y * camera.k + camera.y - py;
+		const distance = dx * dx + dy * dy;
 		if (distance < bestDistance) {
 			bestDistance = distance;
 			best = node;
@@ -371,8 +379,6 @@ function drawNameLines(
 		context.fillText(line, x, firstTop + i * world.labelSize * LABEL_LINE_HEIGHT)
 	);
 }
-
-type Camera = { k: number; x: number; y: number };
 
 /** One canvas, one animation-frame loop; draws plain data and keeps its camera across updates. */
 export class GraphCanvasRenderer {
@@ -509,7 +515,8 @@ export class GraphCanvasRenderer {
 		this.dragId = null;
 		this.simMoved = false;
 		this.simCenter = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-		this.buildSim();
+		this.sim = null;
+		this.simById = new Map();
 		this.geoVersion++;
 		this.markDirty();
 	}
@@ -530,7 +537,7 @@ export class GraphCanvasRenderer {
 		this.markDirty();
 	}
 
-	/** Rebuilds the live sim from the current positions and re-anneals the layout. */
+	/** Builds the live sim from the current positions and re-anneals the layout. */
 	setPhysicsTuning(tuning: PhysicsTuning): void {
 		this.physicsTuning = tuning;
 		this.buildSim();
@@ -659,6 +666,7 @@ export class GraphCanvasRenderer {
 		if (event.button !== 0) return;
 		const pos = this.eventPos(event);
 		const node = this.pickAt(pos.x, pos.y);
+		if (node && !this.sim) this.buildSim();
 		if (node && this.sim) {
 			event.preventDefault();
 			try {
@@ -735,15 +743,8 @@ export class GraphCanvasRenderer {
 
 	private pickAt(px: number, py: number): CanvasNode | null {
 		if (!this.data || !this.settings) return null;
-		const { x: tx, y: ty, k } = this.transform;
-		const maxDist = this.settings.node_size * k + PICKING_PAD;
-		const projected: { id: string; x: number; y: number }[] = [];
-		for (const node of this.data.nodes) {
-			if ((this.visible && !this.visible.has(node.id)) || isImpNodeId(node.id)) continue;
-			projected.push({ id: node.id, x: node.x * k + tx, y: node.y * k + ty });
-		}
-		const hit = pickNearest(projected, px, py, maxDist);
-		return hit ? (this.nodeById.get(hit.id) ?? null) : null;
+		const maxDist = this.settings.node_size * this.transform.k + PICKING_PAD;
+		return pickNode(this.data.nodes, this.visible, this.transform, px, py, maxDist);
 	}
 
 	private setHover(nodeId: string | null): void {

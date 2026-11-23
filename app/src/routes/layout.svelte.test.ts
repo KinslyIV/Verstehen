@@ -43,6 +43,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getExtractionStatus: async () => [],
 	getSideChats: async () => ({ threads: [], answering: {} }),
 	getModels: async () => ({ accounts: [], slots: {} }),
+	refreshModels: async () => {},
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),

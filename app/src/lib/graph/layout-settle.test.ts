@@ -36,7 +36,9 @@ function snapshot(positions: GraphSnapshot['positions'] = {}): GraphSnapshot {
 		node_sessions: {},
 		clusters: [],
 		positions,
-		revision: 1
+		revision: 1,
+		teach_sessions: 0,
+		practice_sessions: 0
 	};
 }
 

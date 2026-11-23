@@ -55,9 +55,11 @@ class ChatGPTAccountAdapter:
         self,
         credentials_store: CredentialsStore,
         client_factory: Callable[[], httpx2.AsyncClient] = httpx2.AsyncClient,
+        on_invalidated: Callable[[str], None] = lambda account_id: None,
     ):
         self.credentials_store = credentials_store
         self.client_factory = client_factory
+        self.on_invalidated = on_invalidated
         self.providers: dict[str, AccountProvider] = {}
         self.clients: list[httpx2.AsyncClient] = []
         self.catalogs: dict[str, list[CatalogModel]] = {}
@@ -102,6 +104,7 @@ class ChatGPTAccountAdapter:
 
     def invalidate(self, account_id: str) -> None:
         self.forget_account_models(account_id)
+        self.on_invalidated(account_id)
         if provider := self.providers.pop(account_id, None):
             provider.source.invalidated = True
 

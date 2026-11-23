@@ -6,7 +6,7 @@ import {
 	fitTransform,
 	isImpNodeId,
 	labelAlpha,
-	pickNearest,
+	pickNode,
 	wrapRegionLabel,
 	zoomRatioOf,
 	LABELS_FADE_RATIO
@@ -149,36 +149,86 @@ describe('isImpNodeId (the pure-geometry law, rendering arc 2026-09-30)', () => 
 	});
 });
 
-describe('pickNearest (distance-check picking)', () => {
-	const nodes = [
-		{ id: 'a', x: 10, y: 10 },
-		{ id: 'b', x: 50, y: 50 },
-		{ id: 'c', x: 90, y: 10 }
-	];
+describe('pickNode (distance-check picking under the camera)', () => {
+	const at = (id: string, x: number, y: number) => ({ id, x, y, label: id });
+	const nodes = [at('a', 10, 10), at('b', 50, 50), at('c', 90, 10)];
+	const identity = { k: 1, x: 0, y: 0 };
 
 	test('picks the nearest node within the pad', () => {
-		equal(pickNearest(nodes, 12, 12, 16)?.id, 'a');
-		equal(pickNearest(nodes, 48, 52, 16)?.id, 'b');
-		equal(pickNearest(nodes, 88, 8, 16)?.id, 'c');
+		equal(pickNode(nodes, null, identity, 12, 12, 16)?.id, 'a');
+		equal(pickNode(nodes, null, identity, 48, 52, 16)?.id, 'b');
+		equal(pickNode(nodes, null, identity, 88, 8, 16)?.id, 'c');
 	});
 
 	test('the picking pad extends the hitbox beyond the disc', () => {
-		// 20px away, only reachable because the pad covers it.
-		equal(pickNearest(nodes, 28, 18, 25)?.id, 'a');
-		// Beyond the pad: nothing.
-		equal(pickNearest(nodes, 30, 40, 3), null);
+		equal(pickNode(nodes, null, identity, 28, 18, 25)?.id, 'a');
+		equal(pickNode(nodes, null, identity, 30, 40, 3), null);
+	});
+
+	test('a node exactly at the picking distance is not picked', () => {
+		equal(pickNode(nodes, null, identity, 10, 25, 15), null);
+		equal(pickNode(nodes, null, identity, 10, 24.9, 15)?.id, 'a');
 	});
 
 	test('ties resolve deterministically (first scanned wins)', () => {
-		const pair = [
-			{ id: 'first', x: 0, y: 0 },
-			{ id: 'second', x: 10, y: 0 }
-		];
-		equal(pickNearest(pair, 5, 0, 10)?.id, 'first');
+		const pair = [at('first', 0, 0), at('second', 10, 0)];
+		equal(pickNode(pair, null, identity, 5, 0, 10)?.id, 'first');
+		equal(pickNode([...pair].reverse(), null, identity, 5, 0, 10)?.id, 'second');
 	});
 
 	test('empty node list picks nothing', () => {
-		equal(pickNearest([], 0, 0, 100), null);
+		equal(pickNode([], null, identity, 0, 0, 100), null);
+	});
+
+	test('nodes are projected through the camera before measuring', () => {
+		const camera = { k: 2, x: 100, y: 50 };
+		equal(pickNode(nodes, null, camera, 120, 70, 5)?.id, 'a');
+		equal(pickNode(nodes, null, camera, 10, 10, 5), null);
+	});
+
+	test('hidden nodes are skipped even when they are nearest', () => {
+		const visible = new Set(['b']);
+		equal(pickNode(nodes, visible, identity, 11, 11, 100)?.id, 'b');
+		equal(pickNode(nodes, new Set<string>(), identity, 11, 11, 100), null);
+	});
+
+	test('implication nodes are pure geometry and never picked', () => {
+		const withImp = [at('arg_1', 12, 12), at('n_1', 30, 12)];
+		equal(pickNode(withImp, null, identity, 12, 12, 100)?.id, 'n_1');
+		equal(pickNode([at('arg_1', 12, 12)], null, identity, 12, 12, 100), null);
+	});
+
+	test('matches picking over a projected copy of the visible, non-implication nodes', () => {
+		let seed = 11;
+		const random = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
+		const scatter = Array.from({ length: 300 }, (_, i) =>
+			at(i % 7 === 0 ? `arg_${i}` : `n_${i}`, random() * 400 - 200, random() * 400 - 200)
+		);
+		const visible = new Set(scatter.filter((_, i) => i % 3 !== 0).map((node) => node.id));
+		const camera = { k: 0.8, x: 30, y: -20 };
+		const reference = (px: number, py: number, maxDist: number) => {
+			let best: string | null = null;
+			let bestDistance = maxDist * maxDist;
+			for (const node of scatter) {
+				if (!visible.has(node.id) || isImpNodeId(node.id)) continue;
+				const distance =
+					(node.x * camera.k + camera.x - px) ** 2 + (node.y * camera.k + camera.y - py) ** 2;
+				if (distance < bestDistance) {
+					bestDistance = distance;
+					best = node.id;
+				}
+			}
+			return best;
+		};
+		for (let i = 0; i < 200; i++) {
+			const px = random() * 400 - 100;
+			const py = random() * 400 - 100;
+			const maxDist = 4 + random() * 40;
+			equal(
+				pickNode(scatter, visible, camera, px, py, maxDist)?.id ?? null,
+				reference(px, py, maxDist)
+			);
+		}
 	});
 });
 

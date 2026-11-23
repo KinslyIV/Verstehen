@@ -363,6 +363,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/graph/titles': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Titles */
+		get: operations['get_titles_api_graph_titles_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/graph/nodes/{id}': {
 		parameters: {
 			query?: never;
@@ -924,10 +941,33 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** Get Models */
+		/**
+		 * Get Models
+		 * @description The saved catalog: no account is contacted.
+		 */
 		get: operations['get_models_api_models_get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/models/refresh': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Refresh Models
+		 * @description Contact every account and save its models; `force` drops cached lists first.
+		 */
+		post: operations['refresh_models_api_models_refresh_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1067,11 +1107,18 @@ export interface components {
 			/** Reason */
 			reason?: string | null;
 		};
-		/** AccountCatalog */
+		/**
+		 * AccountCatalog
+		 * @description One account's safe model list as last refreshed; `refresh_error` marks a stale list.
+		 */
 		AccountCatalog: {
 			account: components['schemas']['Account'];
 			/** Models */
 			models: components['schemas']['CatalogModel'][];
+			/** Refreshed At */
+			refreshed_at?: string | null;
+			/** Refresh Error */
+			refresh_error?: string | null;
 		};
 		/** AgentSettings */
 		AgentSettings: {
@@ -1539,6 +1586,20 @@ export interface components {
 			};
 			/** Revision */
 			revision: number;
+			/** Teach Sessions */
+			teach_sessions: number;
+			/** Practice Sessions */
+			practice_sessions: number;
+		};
+		/**
+		 * GraphTitles
+		 * @description Every session's current title, for retitling a drawn graph without refetching it.
+		 */
+		GraphTitles: {
+			/** Sessions */
+			sessions: {
+				[key: string]: string;
+			};
 		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
@@ -2045,6 +2106,8 @@ export interface components {
 			positions: {
 				[key: string]: components['schemas']['Position'];
 			};
+			/** Revision */
+			revision: number | null;
 		};
 		/** ProvenancePoint */
 		ProvenancePoint: {
@@ -4434,6 +4497,53 @@ export interface operations {
 			};
 		};
 	};
+	get_titles_api_graph_titles_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphTitles'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	delete_node_api_graph_nodes__id__delete: {
 		parameters: {
 			query?: never;
@@ -6461,9 +6571,7 @@ export interface operations {
 	};
 	get_models_api_models_get: {
 		parameters: {
-			query?: {
-				refresh?: boolean;
-			};
+			query?: never;
 			header?: never;
 			path?: never;
 			cookie?: never;
@@ -6478,6 +6586,44 @@ export interface operations {
 				content: {
 					'application/json': components['schemas']['ModelCatalog'];
 				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	refresh_models_api_models_refresh_post: {
+		parameters: {
+			query?: {
+				force?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
 			};
 			/** @description Bad Request */
 			400: {

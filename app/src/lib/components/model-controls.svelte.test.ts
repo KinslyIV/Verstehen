@@ -2,11 +2,13 @@ import { beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent } from 'vitest/browser';
 import * as api from '#lib/api/client.js';
+import { models } from '#lib/models/catalog.svelte.js';
 import { testCatalog, testSettings, mainPick } from '#lib/models/test-fixtures.js';
 import ModelControls from './model-controls.svelte';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getModels: vi.fn(),
+	refreshModels: vi.fn(),
 	getSettings: vi.fn(),
 	saveSettings: vi.fn(),
 	setDefaultModel: vi.fn(),
@@ -14,6 +16,8 @@ vi.mock('#lib/api/client.js', async (original) => ({
 }));
 beforeEach(() => {
 	vi.clearAllMocks();
+	models.reset();
+	vi.mocked(api.refreshModels).mockResolvedValue(undefined);
 	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
 	vi.mocked(api.getSettings).mockResolvedValue(structuredClone(testSettings));
 	vi.mocked(api.saveSettings).mockResolvedValue(testSettings);
@@ -84,4 +88,47 @@ test('an_in_flight_slot_pick_keeps_its_original_tab_target', async () => {
 	await expect.poll(() => vi.mocked(api.saveSettings).mock.calls.length).toBe(1);
 	expect(vi.mocked(api.saveSettings).mock.calls[0][0].models?.cheap?.model).toBe('fake');
 	expect(vi.mocked(api.saveSettings).mock.calls[0][0].models?.vision).toEqual(mainPick);
+});
+
+test('a_settings_picker_has_no_slot_tabs_and_writes_only_its_slot', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	const screen = await render(ModelControls, {
+		onpick: vi.fn(),
+		initialTab: 'cheap',
+		tabs: false,
+		shortcuts: false,
+		label: 'Choose Cheap model'
+	});
+	await screen.getByRole('button', { name: 'Choose Cheap model' }).click();
+	await expect.element(page.getByRole('tab')).not.toBeInTheDocument();
+	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
+	await expect.poll(() => vi.mocked(api.saveSettings).mock.calls.length).toBe(1);
+	const saved = vi.mocked(api.saveSettings).mock.calls[0][0].models;
+	expect(saved?.cheap?.model).toBe('fake');
+	expect(saved?.strong).toEqual(mainPick);
+});
+
+test('saved_models_stay_selectable_with_the_failure_noted_when_a_refresh_fails', async () => {
+	const catalog = structuredClone(testCatalog);
+	catalog.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue(catalog);
+	const onpick = vi.fn();
+	const screen = await render(ModelControls, { pick: mainPick, onpick });
+	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
+	await expect
+		.element(page.getByRole('status'))
+		.toHaveTextContent('Showing saved models. ChatGPT could not be reached. Try again.');
+	await page.getByRole('button', { name: 'Scripted title', exact: true }).click();
+	expect(onpick).toHaveBeenCalledOnce();
+});
+
+test('opening_the_menu_refreshes_the_accounts_without_replacing_the_saved_slots', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	const screen = await render(ModelControls, { onpick: vi.fn() });
+	await expect
+		.element(screen.getByRole('button', { name: 'Choose model', exact: true }))
+		.toHaveTextContent('Scripted teacher · Medium');
+	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
+	await expect.poll(() => vi.mocked(api.refreshModels).mock.calls.length).toBe(1);
+	expect(api.refreshModels).toHaveBeenCalledWith(false);
 });

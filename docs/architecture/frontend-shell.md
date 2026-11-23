@@ -23,6 +23,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | `src/lib/markdown/` | assistant markdown: Streamdown-style top-level blocks, each parsed by LH's unified/remark stack and sanitized; math, Shiki code, app-owned Mermaid; learner text stays plain |
 | `src/lib/components/ui/` | shadcn-svelte components, generated with its CLI (excluded from the comment check) |
 | `src/lib/components/reasoning.svelte` | the thinking row |
+| `src/lib/api/connection.svelte.ts`, `src/lib/api/startup.ts`, `src/lib/components/startup-status.svelte` | the desktop sidecar state (pending, ready, failed with the shell's reason) that every request waits on, the one-time startup milestone marks, and the pending/failure display mounted by the root layout |
 | `src-tauri/` | the Rust shell (`lib.rs`), `tauri.conf.json` (window, CSP, shell allow-list), icons |
 | `capacitor.config.ts`, `android/` | the Capacitor Android project around the static build (`webDir: build`, `androidScheme: 'http'`, app id `local.verstehen.app`): manifest, backup rules, and `CleartextGuard` / `GuardedWebViewClient` in `android/app/src/main/java/local/verstehen/app/`; generated parts (copied web assets, builds) are git-ignored |
 
@@ -46,10 +47,21 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   The right panel is hidden on `/graph`.
 - **Markdown streaming:** finished blocks keep their parse and DOM while the tail changes, so long
   replies stay responsive.
-- **Tauri shell:** starts the sidecar with a fresh token, waits for the port line and a 200 health
-  response (30 s, then a native error dialog naming the log), and exposes only
-  `sidecar_connection`. The shell plugin opens exactly the ChatGPT sign-in URLs and the Claude
-  Code setup page in the system browser. The CSP is relaxed for demos and allows `blob:` images.
+- **Tauri shell:** the window is visible at once and paints the lesson shell while the sidecar starts.
+  The shell starts the sidecar with a fresh token and waits for the port line and a 200 health
+  response carrying that token (30 s); `sidecar_connection` resolves only then, so every request
+  waits behind a quiet "Starting Verstehen…" status. On failure (or the 30 s limit) it stays open and
+  `sidecar_connection` rejects with the reason and the log path, which fills a full-window
+  "couldn't start" panel. The shell exposes `sidecar_connection` and `startup_mark`. The shell plugin
+  opens exactly the ChatGPT sign-in URLs and the Claude Code setup page in the system browser. The CSP
+  is relaxed for demos and allows `blob:` images.
+- **Startup timings:** the shell prints `startup <milestone>: <ms>` lines on stderr, counted from its
+  own start: `window_created`, `sidecar_spawned`, `sidecar_port`, `sidecar_healthy`. The UI reports
+  `ui_mounted`, `models_displayed` (saved models on screen), and `composer_usable` once each through
+  `startup_mark`, and also as `performance` marks (`verstehen:<name>`). Read them by running the
+  installed app from a terminal with `VERSTEHEN_DATA_DIR` set to a temporary folder.
+- **Settings → Models:** the slot pickers, then a refresh button with a status line (updated, which
+  accounts could not be reached, or the request failure); see [providers](providers.md).
 
 ## Remote mode and the Android app
 
@@ -87,6 +99,8 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 
 ## Traps found in M1–M9
 
+- **A hidden window hides a slow start.** The window used to stay hidden until the sidecar was
+  healthy, so a slow start looked like nothing happening. It is visible from the start now.
 - **Early desktop requests must wait for the sidecar connection.** Accounts once opened before the
   connection existed; requests now wait, and failed lookups are cleared for retry.
 - **Vite's Host rewrite** broke the backend's same-origin check for browser writes until the proxy

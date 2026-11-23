@@ -1,47 +1,33 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import SettingsAccounts from './settings-accounts.svelte';
-	import {
-		getModels,
-		getSettings,
-		saveSettings,
-		type ModelCatalog,
-		type ModelSlots
-	} from '#lib/api/client.js';
+	import { getSettings, saveSettings, type ModelSlots } from '#lib/api/client.js';
+	import { models } from '#lib/models/catalog.svelte.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ModelMenu from './model-menu.svelte';
 	import { modelTabs, setupStage, slotsComplete, type ModelTab } from '#lib/models/picks.js';
 	let { onclose, ondone }: { onclose: () => void; ondone: () => void } = $props();
-	let catalog = $state<ModelCatalog>();
+	let catalog = $derived(models.catalog);
 	let slots = $state<ModelSlots>({});
 	let tab = $state<ModelTab>('strong');
 	let error = $state<string | null>(null);
 	let busy = $state(false);
-	let accountsOpen = $state(false);
-	let stage = $derived(setupStage(catalog));
-	let initialized = false;
+	let connecting = $state(false);
+	let stage = $derived(setupStage(catalog, models.settled));
+	let accountsOpen = $derived(connecting && stage !== 'models');
 	let disposed = false;
-	async function refresh() {
-		try {
-			const result = await getModels();
-			if (disposed) return;
-			catalog = result;
-			if (setupStage(result) === 'models') accountsOpen = false;
-			if (!initialized) {
-				slots = structuredClone(result.slots);
-				tab = modelTabs.find((item) => !slots[item.key])?.key ?? 'strong';
-				initialized = true;
-			}
-			error = null;
-		} catch (cause) {
-			if (!disposed) error = (cause as Error).message;
-		}
+	async function initialize() {
+		const result = await models.load();
+		if (disposed || !result) return;
+		slots = $state.snapshot(result.slots);
+		tab = modelTabs.find((item) => !slots[item.key])?.key ?? 'strong';
 	}
 	onMount(() => {
-		void refresh();
+		void initialize();
+		void models.refresh();
 		const timer = setInterval(() => {
-			if (stage === 'connect') void refresh();
+			if (stage === 'connect') void models.refresh();
 		}, 1500);
 		return () => {
 			disposed = true;
@@ -54,7 +40,7 @@
 		try {
 			const settings = await getSettings();
 			await saveSettings({ ...settings, models: slots });
-			window.dispatchEvent(new Event('verstehen:models-changed'));
+			await models.load();
 			ondone();
 		} catch (cause) {
 			error = (cause as Error).message;
@@ -76,7 +62,9 @@
 				Connect an account, then choose Main, Cheap, and Vision. Your message will wait.
 			</Dialog.Description>
 		</Dialog.Header>
-		{#if stage === 'loading'}<p class="text-muted-foreground">Loading models…</p>
+		{#if stage === 'loading'}<p class="text-muted-foreground">
+				{models.error ?? 'Loading models…'}
+			</p>
 		{:else if stage === 'connect'}
 			<div class="space-y-4 rounded-lg border p-5">
 				<h3 class="font-medium">Connect a provider</h3>
@@ -84,7 +72,7 @@
 					Add a ChatGPT account or set up Claude Code in Settings. This dialog advances when an
 					account is ready.
 				</p>
-				<Button onclick={() => (accountsOpen = true)} variant="outline">Open Settings</Button>
+				<Button onclick={() => (connecting = true)} variant="outline">Open Settings</Button>
 			</div>
 		{:else if catalog}
 			<div class="overflow-x-auto rounded-lg border">
@@ -106,7 +94,7 @@
 			</div>
 		{/if}
 		{#if error}<div role="alert" class="text-sm text-destructive">
-				{error}<Button variant="ghost" size="sm" onclick={() => void refresh()}>Retry</Button>
+				{error}<Button variant="ghost" size="sm" onclick={() => void initialize()}>Retry</Button>
 			</div>{/if}
 		<Dialog.Footer>
 			<Button variant="ghost" onclick={onclose}>Cancel</Button><Button
@@ -119,7 +107,7 @@
 	</Dialog.Content>
 </Dialog.Root>
 
-<Dialog.Root open={accountsOpen} onOpenChange={(open) => (accountsOpen = open)}>
+<Dialog.Root open={accountsOpen} onOpenChange={(open) => (connecting = open)}>
 	<Dialog.Content class="max-h-[85vh] overflow-y-auto sm:max-w-xl">
 		<Dialog.Header>
 			<Dialog.Title>Settings · Accounts</Dialog.Title><Dialog.Description>
@@ -128,7 +116,7 @@
 		</Dialog.Header>
 		<SettingsAccounts />
 		<Dialog.Footer>
-			<Button variant="outline" onclick={() => (accountsOpen = false)}>Done</Button>
+			<Button variant="outline" onclick={() => (connecting = false)}>Done</Button>
 		</Dialog.Footer>
 	</Dialog.Content>
 </Dialog.Root>

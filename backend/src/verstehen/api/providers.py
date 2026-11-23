@@ -1,7 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from verstehen.api.sessions import ApiError, ModelUnavailable
 from verstehen.providers.resolve import ResolutionError
@@ -47,10 +47,18 @@ async def put_settings(
 
 
 @router.get("/api/models", response_model=ModelCatalog)
-async def get_models(
-    provider_service: ProviderServiceDependency, refresh: bool = False
-) -> ModelCatalog:
-    return await provider_service.catalog(refresh)
+async def get_models(provider_service: ProviderServiceDependency) -> ModelCatalog:
+    """The saved catalog: no account is contacted."""
+    return await provider_service.catalog()
+
+
+@router.post("/api/models/refresh", status_code=204)
+async def refresh_models(
+    provider_service: ProviderServiceDependency, force: bool = False
+) -> Response:
+    """Contact every account and save its models; `force` drops cached lists first."""
+    await provider_service.refresh(force)
+    return Response(status_code=204)
 
 
 @router.post("/api/settings/default-model", response_model=ModelPick)

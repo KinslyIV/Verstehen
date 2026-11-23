@@ -8,6 +8,7 @@ from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import source_file_label
 from verstehen.store.graph import (
     GraphLedger,
+    NotesSource,
     SourceFolder,
     SourceOrganization,
     SourcePlacement,
@@ -32,6 +33,12 @@ class SourceDirectory(BaseModel):
     revision: int = 0
 
 
+def notes_label(source: NotesSource, placement: SourcePlacement | None) -> str:
+    if placement and placement.name is not None:
+        return placement.name
+    return source_file_label(source.file_path)
+
+
 def source_directory(ledger: GraphLedger, sessions: list[Session]) -> SourceDirectory:
     entries = {
         session.id: SourceEntry(
@@ -48,9 +55,7 @@ def source_directory(ledger: GraphLedger, sessions: list[Session]) -> SourceDire
         entries[source.id] = SourceEntry(
             id=source.id,
             kind="notes",
-            label=placement.name
-            if placement and placement.name is not None
-            else source_file_label(source.file_path),
+            label=notes_label(source, placement),
             file_path=source.file_path,
             created_at=source.imported_at,
         )

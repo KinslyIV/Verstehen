@@ -100,6 +100,13 @@ merges.
   thousands of DOM nodes on open. Sidebar summary and coverage work reduces API costs, while
   loaded-host Chromium profiles still place most time in transcript rendering. Compare bounded
   rendering and finer per-entry updates in a separate change.
+- **Native graph pinch on Arch.** The Chromium flows cover wheel and Ctrl+wheel graph zoom.
+  A two-finger trackpad pinch in the Arch build can magnify the webview. WebKitGTK has a
+  separate native pinch path. An on-device reproduction and a graph-scoped native fix are
+  still needed.
+- **Node selection while the camera or physics is moving.** A click can be swallowed during
+  post-drag settling, and camera movement can immediately close a newly opened node card.
+  Both reproduce in the graph renderer inherited from LearnHarness.
 
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,

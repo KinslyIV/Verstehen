@@ -23,6 +23,22 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Compute practice badges from recent entries, widening as needed.** This avoids a schema
   change and keeps the entry log authoritative. Storing a separate badge projection would make
   reads cheaper for practice sessions whose history contains no problem state.
+- **Keep model catalog metadata in a local JSON file.** A SQLite table would require a schema
+  change for data that each installation refreshes independently. An offline installation
+  shows the last usable results until account state actually changes.
+- **Refresh models through one request with lightweight reads while it runs.** An SSE event
+  could replace the polling. This route supports progress as providers finish independently,
+  including on first load, and Settings can force refresh.
+- **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
+  would exit the app before the learner sees the shell. The in-app panel keeps the log path
+  visible and the timing marks distinguish desktop, sidecar, and composer readiness.
+- **Return graph summary counts with the snapshot and serve titles separately.** Counting
+  through the sidebar endpoint and rebuilding the snapshot after rename duplicate work.
+  Graph cost reads also use only source metadata and usage, so they can tolerate broken
+  folder organization.
+- **Identify a graph position save by the exact revision it created.** Refetching after every
+  drag reapplies work that the page already did. Other revisions still trigger a read, even
+  when their notifications arrive during a position save.
 
 **LearnHarness import:**
 

@@ -31,6 +31,7 @@ from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.jobs.workers.browser import BrowserDownloadService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
+from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
 from verstehen.providers.chatgpt.callback_port import CallbackPort
 from verstehen.providers.chatgpt.sign_in import ChatGPTSignInService
@@ -92,7 +93,10 @@ def create_app(settings: Settings) -> FastAPI:
             app.state.prompt_lock = prompt_lock
             claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
-            chatgpt_adapter = ChatGPTAccountAdapter(credentials_store)
+            catalog_store = ModelCatalogStore(settings.data_dir)
+            chatgpt_adapter = ChatGPTAccountAdapter(
+                credentials_store, on_invalidated=catalog_store.forget
+            )
             browser_download_service = BrowserDownloadService(settings.data_dir)
             app.state.browser_download_service = browser_download_service
             callback_port = CallbackPort()
@@ -122,7 +126,7 @@ def create_app(settings: Settings) -> FastAPI:
                 settings.provider_events,
             )
             app.state.provider_service = ProviderService(
-                settings_store, accounts_service, resolver_service
+                settings_store, accounts_service, resolver_service, catalog_store
             )
             jobs_store = JobsStore(database)
 
