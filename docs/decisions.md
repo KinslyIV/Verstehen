@@ -39,6 +39,13 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Identify a graph position save by the exact revision it created.** Refetching after every
   drag reapplies work that the page already did. Other revisions still trigger a read, even
   when their notifications arrive during a position save.
+- **Expose prompt editing in its own Settings section.** LearnHarness 0.7.0 groups the
+  editor under Agent. Verstehen's separate section follows its Settings navigation.
+  Saving text and enabling it remain separate operations so activation can be retried
+  without rewriting the saved draft. The editor uses a textarea and Markdown preview.
+- **Only regular prompt override files are composed and edited.** Symlinks were previously
+  readable by the composer, while sync skipped them. Using the shipped default for such a path
+  keeps runtime, the editor, and sync in agreement.
 
 **LearnHarness import:**
 

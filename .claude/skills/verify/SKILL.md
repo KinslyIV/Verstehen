@@ -5,7 +5,7 @@ description: Run Verstehen UI verification when changing anything the learner se
 
 Run from the repository root after `make setup`:
 
-- `make verify` builds both static SPAs (sidecar and remote) and runs all 53 flows in headless Playwright Chromium (`channel: 'chromium'`, also used by Vitest browser mode).
+- `make verify` builds both static SPAs (sidecar and remote) and runs all scripted flows in headless Playwright Chromium (`channel: 'chromium'`, also used by Vitest browser mode).
 - `make verify AREA=graph` or `make verify AREA='session teaching'` builds and runs all flows in the named architecture area(s) (`session`, `teaching`, `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`).
 - `make verify FLOW=shell-layout` builds and runs a single flow.
 - Batch affected flows in one invocation: `make verify FLOW='shell-layout settings'`.

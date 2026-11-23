@@ -77,6 +77,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	streamNotifications: (receive: (event: Notification) => void, signal: AbortSignal) =>
 		new Promise<void>((resolve) => {
 			subscribers.add(receive);
+			receive({ type: 'subscribed', session_id: '' });
 			signal.addEventListener('abort', () => {
 				subscribers.delete(receive);
 				resolve();
@@ -110,16 +111,16 @@ test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 
 test('a_session_event_reads_one_sidebar_row_and_other_events_read_none', async () => {
 	await render(Lesson);
-	await expect.poll(() => sessionRequests.mock.calls.length).toBe(1);
+	await expect.poll(() => sessionRequests.mock.calls.length).toBe(2);
 
 	for (const receive of subscribers) receive({ type: 'sync-status-changed', session_id: '' });
-	expect(sessionRequests).toHaveBeenCalledTimes(1);
+	expect(sessionRequests).toHaveBeenCalledTimes(2);
 	expect(itemRequests).not.toHaveBeenCalled();
 
 	for (const receive of subscribers) receive({ type: 'chats-changed', session_id: 'one' });
 	await expect.poll(() => itemRequests.mock.calls.length).toBe(1);
 	expect(itemRequests).toHaveBeenCalledWith('one', expect.any(AbortSignal));
-	expect(sessionRequests).toHaveBeenCalledTimes(1);
+	expect(sessionRequests).toHaveBeenCalledTimes(2);
 });
 
 test('root_shows_new_session_screen', async () => {

@@ -51,9 +51,9 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   catalog and slots at once and never contacts an account. `POST /api/models/refresh` (`?force=true`
   drops cached lists first) discovers every adapter concurrently and each account saves its own result
   the moment it finishes, so a slow account never holds back another or the display. The UI starts a
-  plain refresh after the first read, when a menu opens, and after a sign-in, and re-reads the saved
-  catalog while one runs; only Settings → Models' refresh button forces. LH's manual refresh (1cfb7ea2d)
-  is the model.
+  plain refresh after the first read and when a menu opens, and re-reads the saved catalog while
+  one runs. Settings → Models and successful sign-in start forced refreshes. An older refresh
+  cannot overwrite results or prune discovered accounts after a newer one starts.
 - **The saved catalog is display only.** Each account entry holds its safe `Account` metadata and
   model list, `refreshed_at`, and `refresh_error`; credentials never enter it. A transient failure
   (`state: unavailable`) keeps the last list and sets `refresh_error`; an unusable account

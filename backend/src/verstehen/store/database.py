@@ -6,6 +6,19 @@ from pathlib import Path
 import aiosqlite
 
 
+async def wait_for_completion(task: asyncio.Future) -> bool:
+    """Wait until work settles and report whether the caller was cancelled."""
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception:
+            pass
+    return cancelled
+
+
 class Database:
     """Serialize reads and transactions on one shared SQLite connection."""
 
@@ -53,7 +66,7 @@ class Database:
                                 f"Foreign key check failed: {violations}"
                             )
                 commit_task = asyncio.ensure_future(self._connection.commit())
-                cancelled = await self._wait(commit_task)
+                cancelled = await wait_for_completion(commit_task)
                 commit_error = commit_task.exception()
                 if commit_error is None:
                     self.last_tx_committed = True
@@ -75,23 +88,10 @@ class Database:
         if notify and self.on_sync_write is not None:
             self.on_sync_write()
 
-    @staticmethod
-    async def _wait(task: asyncio.Future) -> bool:
-        """Wait for the task however often we are cancelled; report whether we were."""
-        cancelled = False
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                cancelled = True
-            except Exception:
-                pass
-        return cancelled
-
     async def _complete(self, work) -> None:
         """Run work to the end, then raise its error or any cancellation received."""
         task = asyncio.ensure_future(work)
-        if await self._wait(task):
+        if await wait_for_completion(task):
             task.exception()
             raise asyncio.CancelledError
         task.result()

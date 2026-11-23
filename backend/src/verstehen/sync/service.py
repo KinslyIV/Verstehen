@@ -28,7 +28,7 @@ from verstehen.sync.images import (
 )
 from verstehen.sync.prompts import (
     make_prompt_tx_hooks,
-    scan_prompts,
+    record_prompt_snapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -167,7 +167,7 @@ class SyncService:
         try:
             if switching:
                 await self._stop_remote_loops()
-            async with self._sync_lock:
+            async with self._sync_lock, self._prompt_lock:
                 previous_token = self.credentials_store.sync_token()
                 self.credentials_store.set_sync_token(token)
                 try:
@@ -185,8 +185,10 @@ class SyncService:
                     if switching and self.sync_store.configure_committed:
                         self._deferred.clear()
                         self._seen_seq = 0
-                await self.sync_store.seed_initial_snapshot()
-                await self._scan_local_prompts()
+                await self.sync_store.seed_initial_snapshot(
+                    keep_prompt_changes=not switching
+                )
+                await record_prompt_snapshot(self.sync_store, self.data_dir)
                 self._seen_seq = state.last_pulled_seq
         finally:
             if self.sync_store.configure_committed or previous.server_url:
@@ -368,12 +370,7 @@ class SyncService:
 
     async def _scan_local_prompts(self) -> None:
         async with self._prompt_lock:
-            scan = await asyncio.to_thread(scan_prompts, self.data_dir)
-            await self.sync_store.sync_prompt_snapshot(
-                scan.files,
-                skipped_all=scan.skipped_all,
-                skipped_paths=scan.skipped_paths,
-            )
+            await record_prompt_snapshot(self.sync_store, self.data_dir)
 
     def _emit_summary_notifications(self, summary: ApplySummary) -> None:
         for sid in sorted(summary.chats_changed):

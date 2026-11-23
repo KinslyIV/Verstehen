@@ -118,6 +118,15 @@ def test_fake_script_exposes_catalog_but_does_not_configure_slots(tmp_path: Path
         )
 
 
+def test_patching_lesson_settings_keeps_model_slots(tmp_path: Path):
+    with configured_client(tmp_path) as client:
+        before = client.get("/api/settings").json()["models"]
+        response = client.patch("/api/settings", json={"quizzing": "free"})
+        assert response.status_code == 200
+        assert response.json()["models"] == before
+        assert response.json()["quizzing"] == "free"
+
+
 def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path):
     with configured_client(tmp_path) as client:
         before = client.get("/api/settings").json()

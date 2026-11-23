@@ -151,6 +151,7 @@ test('the_change_made_by_the_pages_own_position_save_is_not_refetched', async ()
 	graphChanged(6);
 	saved.resolve(6);
 	await saving;
+	expect(controller.graph?.positions.a).toEqual({ x: 9, y: 9 });
 	graphChanged(6);
 	await settle();
 	expect(api.getGraph).toHaveBeenCalledOnce();

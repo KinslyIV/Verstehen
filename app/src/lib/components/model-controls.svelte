@@ -3,8 +3,7 @@
 	import { Popover } from 'bits-ui';
 	import { ChevronDown } from '@lucide/svelte';
 	import {
-		getSettings,
-		saveSettings,
+		setModelSlot,
 		setDefaultModel,
 		setSessionModel,
 		type ModelPick
@@ -62,8 +61,7 @@
 				if (sessionId) await setSessionModel(sessionId, value);
 				onpick(value);
 			} else {
-				const settings = await getSettings();
-				await saveSettings({ ...settings, models: { ...settings.models, [target]: value } });
+				await setModelSlot(target, value);
 				await models.load();
 				onchanged?.();
 			}

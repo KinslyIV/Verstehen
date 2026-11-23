@@ -33,6 +33,10 @@
 			while (!lifetime.signal.aborted) {
 				try {
 					await streamNotifications((event) => {
+						if (event.type === 'subscribed') {
+							rows.reload();
+							return;
+						}
 						if (event.type === 'jobs-changed') {
 							window.dispatchEvent(
 								new CustomEvent('verstehen:jobs-changed', { detail: event.session_id })

@@ -16,41 +16,69 @@ PRACTICE_SHARED_FRAGMENTS = (
 )
 
 
+PromptKind = Literal["prober", "teacher", "practice"]
+PROMPT_KINDS: tuple[PromptKind, ...] = ("prober", "teacher", "practice")
+
+
+def segment_keys(kind: PromptKind) -> list[str]:
+    """The prompt fragment keys an agent composes, in order."""
+    keys = [] if kind == "practice" else ["system-prompt.md"]
+    for folder in (kind, "shared"):
+        keys.extend(
+            f"{folder}/{path.name}"
+            for path in sorted((PROMPTS_DIR / folder).iterdir())
+            if FRAGMENT_RE.fullmatch(path.name)
+            and (
+                kind != "practice"
+                or folder != "shared"
+                or path.name in PRACTICE_SHARED_FRAGMENTS
+            )
+        )
+    return keys
+
+
+def is_shared_segment(key: str) -> bool:
+    return key == "system-prompt.md" or key.startswith("shared/")
+
+
 async def compose_instructions(
-    settings_store: SettingsStore,
-    data_dir: Path,
-    kind: Literal["prober", "teacher", "practice"] = "teacher",
+    settings_store: SettingsStore, data_dir: Path, kind: PromptKind = "teacher"
 ) -> str:
     """Compose the agent’s source fragments with enabled, readable overrides."""
     switches = await settings_store.get("agent.prompts")
-    paths = [] if kind == "practice" else [PROMPTS_DIR / "system-prompt.md"]
-    paths.extend(
-        sorted(
-            path
-            for path in (PROMPTS_DIR / kind).iterdir()
-            if FRAGMENT_RE.fullmatch(path.name)
-        )
+    return join_fragments(
+        fragment_text(key, switches, data_dir) for key in segment_keys(kind)
     )
-    paths.extend(
-        sorted(
-            path
-            for path in (PROMPTS_DIR / "shared").iterdir()
-            if FRAGMENT_RE.fullmatch(path.name)
-            and (kind != "practice" or path.name in PRACTICE_SHARED_FRAGMENTS)
-        )
-    )
-    keys = [path.relative_to(PROMPTS_DIR).as_posix() for path in paths]
-    return join_fragments(fragment_text(key, switches, data_dir) for key in keys)
+
+
+def source_text(key: str) -> str:
+    """A prompt fragment's shipped default text."""
+    return (PROMPTS_DIR / key).read_text(encoding="utf-8")
+
+
+def read_override(data_dir: Path, key: str) -> str | None:
+    """A prompt override file's text, or None when it is missing or unreadable."""
+    try:
+        root = data_dir / "prompts"
+        target = root
+        if target.is_symlink():
+            return None
+        for part in Path(key).parts:
+            target = target / part
+            if target.is_symlink():
+                return None
+        return target.read_text(encoding="utf-8") if target.is_file() else None
+    except OSError, UnicodeError:
+        return None
 
 
 def fragment_text(key: str, switches: object, data_dir: Path) -> str:
     """A prompt fragment's source text, or its enabled, readable override."""
     if isinstance(switches, dict) and switches.get(key) is True:
-        try:
-            return (data_dir / "prompts" / key).read_text(encoding="utf-8")
-        except OSError, UnicodeError:
-            pass
-    return (PROMPTS_DIR / key).read_text(encoding="utf-8")
+        override = read_override(data_dir, key)
+        if override is not None:
+            return override
+    return source_text(key)
 
 
 def join_fragments(texts: Iterable[str]) -> str:

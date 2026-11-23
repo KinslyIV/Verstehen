@@ -535,17 +535,17 @@ def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
         async with turn_service_context(tmp_path) as (turn_service, session_id):
             first = notification_frames(session_service_for(turn_service).subscribe())
             second = notification_frames(session_service_for(turn_service).subscribe())
-            a = asyncio.create_task(anext(first))
-            b = asyncio.create_task(anext(second))
-            await asyncio.sleep(0)
+            ready = 'event: subscribed\ndata: {"session_id": ""}\n\n'
+            assert await anext(first) == ready
+            assert await anext(second) == ready
             turn_service.notifications.publish(
                 Notification(type="turn-started", session_id=session_id)
             )
             expected = (
                 f'event: turn-started\ndata: {{"session_id": "{session_id}"}}\n\n'
             )
-            assert await a == expected
-            assert await b == expected
+            assert await anext(first) == expected
+            assert await anext(second) == expected
             await first.aclose()
             assert len(turn_service.notifications.subscribers) == 1
             tail = asyncio.create_task(anext(second))

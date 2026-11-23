@@ -56,7 +56,7 @@
 					if (result.state === 'failed') error = result.reason ?? 'Sign-in failed.';
 					await refresh();
 					await models.load();
-					if (result.state === 'connected') void models.refresh();
+					if (result.state === 'connected') void models.refresh(true);
 				}
 			}
 		} catch (cause) {

@@ -29,6 +29,7 @@ class TurnEvent(BaseModel):
 
 class Notification(BaseModel):
     type: Literal[
+        "subscribed",
         "turn-started",
         "turn-settled",
         "chats-changed",
@@ -58,10 +59,14 @@ class Notifications:
         for queue in self.subscribers:
             queue.put_nowait(event)
 
-    async def subscribe(self) -> AsyncGenerator[Notification | None]:
+    async def subscribe(
+        self, *, announce: bool = False
+    ) -> AsyncGenerator[Notification | None]:
         queue: asyncio.Queue[Notification] = asyncio.Queue()
         self.subscribers.add(queue)
         try:
+            if announce:
+                yield Notification(type="subscribed")
             while True:
                 try:
                     yield await asyncio.wait_for(queue.get(), timeout=25)

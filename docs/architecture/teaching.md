@@ -15,8 +15,9 @@ Backend, `backend/src/verstehen/teaching/`:
 | File | What it holds |
 |---|---|
 | `prober.py`, `teacher.py` | `build_prober` (with `probe_done` and its assessment) and `build_teacher`; both use `build_question_agent` |
-| `prompts.py`, `prompts/` | `compose_instructions` and override reading (`fragment_text`, `join_fragments`); LH's prompt tree, copied (`system-prompt.md`, `prober/`, `teacher/`, `shared/`, `side-chat/`, `practice/`) |
+| `prompts.py`, `prompts/` | `segment_keys` (an agent's fragments in order), `compose_instructions`, and shipped/override reading (`source_text`, `read_override`, `fragment_text`, `join_fragments`); LH's prompt tree, copied (`system-prompt.md`, `prober/`, `teacher/`, `shared/`, `side-chat/`, `practice/`) |
 | `questions/` | `tools.py` (`QuestionTools`: validation and the retry limit, `defer_question`), `schemas.py`, `validation.py`, `pending.py` (pending detection, dismissal and recovery tails, `needs_continuation`), `inputs.py` (answers, dismissals, recovery, the model-facing compact answer) |
+| `prompts/` | `segments.ts` (segment names, the Teacher/Prober/Practice/Shared sections) and `segment-dialog.svelte` (view default, edit with Markdown or Preview, save and activate, delete, discard confirmation); `components/settings-prompts.svelte` is the Settings section that lists them |
 | `practice/` | the practitioner: `schemas.py` (`problem` and `conclude` inputs, ack texts), `healing.py` (weak-model argument healing, target id resolution against the whole graph), `state.py` (derived folds: active problem, pending dismissal, model solution), `tools.py` (`PracticeGate`, both tools, `build_practitioner`) |
 | `phases.py` | `has_probe_done`, `phase_at`, `handoff_owed`, tagged plan nodes |
 | `handoff.py` | `HANDOFF_TEXT`, the probe-handoff marker's model text |
@@ -47,6 +48,18 @@ Frontend, `app/src/lib/`:
   `shared/`. An override in `<data dir>/prompts/<segment>.md` applies only while its switch
   `agent.prompts[<segment>]` is on and the file is readable. The only deliberate prompt change
   from LH is the 5–15 node plan size in `teacher/10-planning.md`.
+- **Settings → Prompts** edits those overrides, as LH's per-segment editor does. `PromptOverridesService`
+  (`sync/prompt_overrides.py`, in `sync/` because it reuses sync's safe write and delete of override
+  files and its prompt lock) lists each agent's fragments (`GET /api/prompts`: shipped text, saved
+  override, in use, shared). Saving writes only the file and keeps the switch, so a failed write
+  changes nothing; the UI then switches the override on (**Save and activate**), and a failed
+  switch becomes **Retry activation** without rewriting the file. Switching on needs a readable
+  override. Deleting clears the switch first, then the file, so a crash leaves "off plus a file".
+  Only the fragments of the three agents are listed; `side-chat/` fragments stay overridable by
+  files and switches but have no editor. Prompt paths with symlinks and paths outside the listed
+  fragments are unavailable in the editor. Each file change is recorded with sync before returning.
+  An older push acknowledgement cannot overwrite a pending local edit. Pulls apply in server
+  sequence order, and a subsequent push reconciles the recorded local edit against that order.
 - **Practice sessions** (`kind = "practice"`) skip probing, planning, extraction, and graph
   mastery writes and run the practitioner: `practice/*.md` plus the allowlisted `shared/` fragments
   (voice, accuracy, mental model, side conversations, formatting), `problem` and `conclude`, the
@@ -90,7 +103,7 @@ Frontend, `app/src/lib/`:
 - Entries: question calls in `assistant` entries, answers in `tool_result.details`, markers
   `probe-handoff`, `plan-block`, `graph-context`, and for practice `practice-thinking`,
   `practice-next`, `problem-dismissed`.
-- Settings: `quizzing`, `file_access`, `compaction_limit`, `agent.prompts`, `agent.graph_tools`.
+- Settings: `quizzing`, `file_access`, `compaction_limit`, `agent.prompts` (switches, written only by `PromptOverridesService` and sync), `agent.graph_tools`.
 
 ## Collaborators
 

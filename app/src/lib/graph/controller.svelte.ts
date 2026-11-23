@@ -115,7 +115,11 @@ export class GraphController {
 			(revision) => {
 				if (revision === null) return;
 				this.ownRevisions.push(revision);
-				if (revision > this.lastSave.revision) this.lastSave = { revision, positions };
+				if (revision <= this.lastSave.revision) return;
+				this.lastSave = { revision, positions };
+				if (this.graph && revision > this.graph.snapshot.revision) {
+					Object.assign(this.graph.positions, positions);
+				}
 			},
 			() => {
 				/* The layout is rebuildable. */

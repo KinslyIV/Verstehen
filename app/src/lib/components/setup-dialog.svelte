@@ -39,7 +39,7 @@
 		busy = true;
 		try {
 			const settings = await getSettings();
-			await saveSettings({ ...settings, models: slots });
+			await saveSettings({ ...settings, models: slots }, true);
 			await models.load();
 			ondone();
 		} catch (cause) {

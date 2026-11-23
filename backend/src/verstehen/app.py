@@ -16,6 +16,7 @@ from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
+from verstehen.api.prompts import router as prompts_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.server_setup import router as server_setup_router
 from verstehen.api.sessions import router as sessions_router
@@ -61,6 +62,7 @@ from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
 from verstehen.store.sync import SyncStore
 from verstehen.store.usage import UsageStore
+from verstehen.sync.prompt_overrides import PromptOverridesService
 from verstehen.sync.provision import (
     ServerInstallService,
     ServerOAuthService,
@@ -273,6 +275,10 @@ def create_app(settings: Settings) -> FastAPI:
                 runtimes,
                 turn_service.delivery_service,
             )
+
+            app.state.prompt_overrides_service = PromptOverridesService(
+                settings_store, settings.data_dir, prompt_lock, sync_store
+            )
             sync_service = SyncService(
                 sync_store,
                 credentials_store,
@@ -404,6 +410,7 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(images_router)
     app.include_router(jobs_router)
     app.include_router(side_chats_router)
+    app.include_router(prompts_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

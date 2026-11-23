@@ -286,6 +286,47 @@ def test_one_failing_adapter_leaves_the_others_saved(tmp_path: Path):
     asyncio.run(scenario())
 
 
+def test_an_older_refresh_cannot_replace_the_latest_discovery(tmp_path: Path):
+    async def scenario():
+        release = asyncio.Event()
+        started = asyncio.Event()
+
+        class Changing(StubAdapter):
+            async def models(self, account: Account) -> list[CatalogModel]:
+                if account.id == "old":
+                    started.set()
+                    await release.wait()
+                return await super().models(account)
+
+        adapter = Changing("old")
+        async with provider_service(tmp_path, [adapter]) as (service, store):
+            first = asyncio.create_task(service.refresh())
+            await started.wait()
+            adapter.account = Account(id="new", kind="fake", label="New")
+            await service.refresh(force=True)
+            release.set()
+            await first
+            assert [entry.account.id for entry in store.read()] == ["new"]
+
+    asyncio.run(scenario())
+
+
+def test_writing_different_model_slots_concurrently_keeps_both(tmp_path: Path):
+    async def scenario():
+        async with provider_service(tmp_path, [StubAdapter("one")]) as (
+            service,
+            _store,
+        ):
+            pick = ModelPick(account="one", model="one-model")
+            await asyncio.gather(
+                service.set_slot("strong", pick), service.set_slot("cheap", pick)
+            )
+            slots = (await service.catalog()).slots
+            assert slots.strong == slots.cheap == pick
+
+    asyncio.run(scenario())
+
+
 def test_an_account_that_became_unavailable_keeps_models_only_when_transient(
     tmp_path: Path,
 ):

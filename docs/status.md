@@ -36,6 +36,11 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
   organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
   49. Milestone C and M10 bring the total to 52; Milestone D PR 1 adds `mobile-pair` for 53.
 
+The desktop responsiveness branch adds early shell paint, saved model catalogs and stable
+pickers, lighter sidebar and graph reads, and a prompt editor. It adds four scripted flows,
+bringing the total to 56. Native trackpad zoom on Arch and long-transcript rendering remain
+open.
+
 ## Next
 
 1. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), approved 2026-11-23): PR 1 (the

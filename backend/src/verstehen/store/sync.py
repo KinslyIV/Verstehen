@@ -410,6 +410,7 @@ async def _apply_one(
     summary: ApplySummary,
     *,
     strict_ownership: bool = False,
+    protect_local_prompt: bool = False,
 ) -> bool:
     entity = change.entity
     op = change.op
@@ -796,6 +797,14 @@ async def _apply_one(
         path = str(payload.get("path", change.entity_id))
         if not await _should_apply_lww(connection, entity, path, server_seq):
             return False
+        if protect_local_prompt:
+            async with connection.execute(
+                "SELECT 1 FROM sync_log WHERE entity = 'prompt_override' "
+                "AND entity_id = ? AND origin_device_id = ? AND pushed = 0 LIMIT 1",
+                (path, await local_device_id(connection)),
+            ) as cursor:
+                if await cursor.fetchone():
+                    return False
         summary.prompt_changes.append(change)
         return True
 
@@ -1460,7 +1469,13 @@ class SyncStore:
                         (change.change_seq,),
                     )
                     if change.entity in LWW_ENTITIES:
-                        await _apply_one(connection, change, server_seq, summary)
+                        await _apply_one(
+                            connection,
+                            change,
+                            server_seq,
+                            summary,
+                            protect_local_prompt=True,
+                        )
                 if summary.prompt_changes and on_prompt_winners is not None:
                     hashes = await on_prompt_winners(summary.prompt_changes)
                     prompts_written = True
@@ -1626,7 +1641,7 @@ class SyncStore:
         summary.deferred_session_ids = sorted(deferred_seen)
         return summary.applied, summary.skipped, latest_seq, summary
 
-    async def seed_initial_snapshot(self) -> int:
+    async def seed_initial_snapshot(self, *, keep_prompt_changes: bool = False) -> int:
         """Rebuild a dependency-ordered baseline in sync_log before first push."""
         added = 0
         async with self.database.transaction() as connection:
@@ -1644,15 +1659,20 @@ class SyncStore:
                 if await cursor.fetchone() is not None:
                     return 0
 
+            prompt_filter = (
+                " AND entity != 'prompt_override'" if keep_prompt_changes else ""
+            )
             async with connection.execute(
                 "SELECT entity, op, entity_id, session_id, payload, created_at "
-                "FROM sync_log WHERE origin_device_id = ? AND op = 'delete' ORDER BY change_seq",
+                "FROM sync_log WHERE origin_device_id = ? AND op = 'delete'"
+                f"{prompt_filter} ORDER BY change_seq",
                 (device_id,),
             ) as cursor:
                 saved_deletes = [tuple(r) for r in await cursor.fetchall()]
 
             await connection.execute(
-                "DELETE FROM sync_log WHERE origin_device_id = ? AND pushed = 0",
+                "DELETE FROM sync_log WHERE origin_device_id = ? AND pushed = 0"
+                f"{prompt_filter}",
                 (device_id,),
             )
 
@@ -1988,7 +2008,10 @@ class SyncStore:
                         summary.skipped += 1
                         continue
                     applied = await _apply_one(
-                        connection, change, change.change_seq, summary
+                        connection,
+                        change,
+                        change.change_seq,
+                        summary,
                     )
                     if applied:
                         summary.applied += 1

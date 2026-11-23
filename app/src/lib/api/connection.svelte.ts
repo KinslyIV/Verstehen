@@ -5,7 +5,7 @@ export interface SidecarConnection {
 	token?: string;
 }
 
-/** Desktop sidecar startup as the shell shows it; requests wait on connect(), and a failure can be retried. */
+/** Desktop sidecar startup as the shell shows it; requests share each connection lookup. */
 export class SidecarState {
 	status = $state<'pending' | 'ready' | 'failed'>('ready');
 	failure = $state<string | null>(null);
@@ -17,11 +17,11 @@ export class SidecarState {
 	}
 
 	private async lookUp(): Promise<SidecarConnection> {
-		this.status = 'pending';
-		this.failure = null;
+		if (this.status !== 'failed') this.status = 'pending';
 		try {
 			const value = await invoke<{ port: number; token: string }>('sidecar_connection');
 			this.status = 'ready';
+			this.failure = null;
 			return { base: `http://127.0.0.1:${value.port}`, token: value.token };
 		} catch (cause) {
 			this.connection = undefined;

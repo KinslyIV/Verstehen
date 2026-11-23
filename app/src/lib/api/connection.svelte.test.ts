@@ -26,17 +26,21 @@ test('the_shell_is_pending_until_the_sidecar_connection_arrives_then_ready', asy
 	expect(invoke).toHaveBeenCalledExactlyOnceWith('sidecar_connection');
 });
 
-test('a_failed_start_keeps_the_reason_and_a_retry_can_still_succeed', async () => {
+test('a_failed_start_remains_stable_when_other_requests_connect', async () => {
+	let recover!: (value: { port: number; token: string }) => void;
 	vi.mocked(invoke)
 		.mockImplementationOnce(() =>
 			Promise.reject('The sidecar did not start. See /tmp/verstehen.log')
 		)
-		.mockResolvedValueOnce({ port: 4321, token: 'secret' });
+		.mockImplementationOnce(() => new Promise((resolve) => (recover = resolve)));
 	const sidecar = new SidecarState();
 	await expect(sidecar.connect()).rejects.toThrow('did not start');
 	expect(sidecar.status).toBe('failed');
 	expect(sidecar.failure).toBe('The sidecar did not start. See /tmp/verstehen.log');
-	await sidecar.connect();
+	const retry = sidecar.connect();
+	expect(sidecar.status).toBe('failed');
+	recover({ port: 4321, token: 'secret' });
+	await retry;
 	expect(sidecar.status).toBe('ready');
 	expect(sidecar.failure).toBeNull();
 });

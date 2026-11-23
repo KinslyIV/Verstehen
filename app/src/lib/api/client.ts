@@ -67,6 +67,8 @@ export type ServerConnectInput = components['schemas']['ServerConnectInput'];
 export type ServerChatGPTSignInInput = components['schemas']['ServerChatGPTSignInInput'];
 export type Device = components['schemas']['Device'];
 export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
+export type PromptSegment = components['schemas']['PromptSegment'];
+export type PromptSegments = components['schemas']['PromptSegments'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
 let token: string | undefined;
 
@@ -309,14 +311,43 @@ export async function refreshModels(force = false): Promise<void> {
 export async function getSettings(): Promise<SettingsStatus> {
 	return (await request('/api/settings')).json();
 }
-export async function saveSettings(settings: SettingsStatus): Promise<Settings> {
+export async function saveSettings(
+	settings: SettingsStatus,
+	includeModels = false
+): Promise<Settings> {
 	const body = { ...settings };
 	delete body.file_access_error;
-	return (await request('/api/settings', { method: 'PUT', body: JSON.stringify(body) })).json();
+	if (!includeModels) delete body.models;
+	return (await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })).json();
+}
+const promptPath = (path: string) =>
+	`/api/prompts/${path.split('/').map(encodeURIComponent).join('/')}`;
+export async function getPrompts(signal?: AbortSignal): Promise<PromptSegments> {
+	return (await request('/api/prompts', { signal })).json();
+}
+export async function savePromptOverride(path: string, text: string): Promise<void> {
+	await request(`${promptPath(path)}/override`, { method: 'PUT', body: JSON.stringify({ text }) });
+}
+export async function deletePromptOverride(path: string): Promise<void> {
+	await request(`${promptPath(path)}/override`, { method: 'DELETE' });
+}
+export async function setPromptEnabled(path: string, enabled: boolean): Promise<void> {
+	await request(`${promptPath(path)}/enabled`, {
+		method: 'PUT',
+		body: JSON.stringify({ enabled })
+	});
 }
 export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
 	return (
 		await request('/api/settings/default-model', { method: 'POST', body: JSON.stringify(pick) })
+	).json();
+}
+export async function setModelSlot(
+	slot: keyof ModelCatalog['slots'],
+	pick: ModelPick
+): Promise<ModelPick> {
+	return (
+		await request(`/api/settings/models/${slot}`, { method: 'PUT', body: JSON.stringify(pick) })
 	).json();
 }
 export async function setSessionModel(id: string, model: ModelPick): Promise<void> {

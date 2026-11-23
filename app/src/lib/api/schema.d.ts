@@ -916,6 +916,58 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/prompts': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Prompts */
+		get: operations['get_prompts_api_prompts_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/prompts/{path}/override': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Prompt Override */
+		put: operations['put_prompt_override_api_prompts__path__override_put'];
+		post?: never;
+		/** Delete Prompt Override */
+		delete: operations['delete_prompt_override_api_prompts__path__override_delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/prompts/{path}/enabled': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Prompt Enabled */
+		put: operations['put_prompt_enabled_api_prompts__path__enabled_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/settings': {
 		parameters: {
 			query?: never;
@@ -925,13 +977,14 @@ export interface paths {
 		};
 		/** Get Settings */
 		get: operations['get_settings_api_settings_get'];
-		/** Put Settings */
-		put: operations['put_settings_api_settings_put'];
+		/** Write Settings */
+		put: operations['write_settings_api_settings_put'];
 		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
-		patch?: never;
+		/** Write Settings */
+		patch: operations['write_settings_api_settings_patch'];
 		trace?: never;
 	};
 	'/api/models': {
@@ -985,6 +1038,23 @@ export interface paths {
 		put?: never;
 		/** Set Default Model */
 		post: operations['set_default_model_api_settings_default_model_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/settings/models/{slot}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Model Slot */
+		put: operations['put_model_slot_api_settings_models__slot__put'];
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -1957,6 +2027,7 @@ export interface components {
 			 * @enum {string}
 			 */
 			type:
+				| 'subscribed'
 				| 'turn-started'
 				| 'turn-settled'
 				| 'chats-changed'
@@ -2000,6 +2071,16 @@ export interface components {
 			index: number;
 			/** Label */
 			label: string;
+		};
+		/** OverrideSwitch */
+		OverrideSwitch: {
+			/** Enabled */
+			enabled: boolean;
+		};
+		/** OverrideText */
+		OverrideText: {
+			/** Text */
+			text: string;
 		};
 		/** PairInput */
 		PairInput: {
@@ -2108,6 +2189,28 @@ export interface components {
 			};
 			/** Revision */
 			revision: number | null;
+		};
+		/** PromptSegment */
+		PromptSegment: {
+			/** Path */
+			path: string;
+			/** Source Text */
+			source_text: string;
+			/** Override Text */
+			override_text: string | null;
+			/** Enabled */
+			enabled: boolean;
+			/** Shared */
+			shared: boolean;
+		};
+		/** PromptSegments */
+		PromptSegments: {
+			/** Prober */
+			prober: components['schemas']['PromptSegment'][];
+			/** Teacher */
+			teacher: components['schemas']['PromptSegment'][];
+			/** Practice */
+			practice: components['schemas']['PromptSegment'][];
 		};
 		/** ProvenancePoint */
 		ProvenancePoint: {
@@ -6480,6 +6583,199 @@ export interface operations {
 			};
 		};
 	};
+	get_prompts_api_prompts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PromptSegments'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_prompt_override_api_prompts__path__override_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OverrideText'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	delete_prompt_override_api_prompts__path__override_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_prompt_enabled_api_prompts__path__enabled_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OverrideSwitch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	get_settings_api_settings_get: {
 		parameters: {
 			query?: never;
@@ -6518,7 +6814,58 @@ export interface operations {
 			};
 		};
 	};
-	put_settings_api_settings_put: {
+	write_settings_api_settings_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['Settings'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	write_settings_api_settings_patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -6659,6 +7006,59 @@ export interface operations {
 			query?: never;
 			header?: never;
 			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ModelPick'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelPick'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	put_model_slot_api_settings_models__slot__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				slot: 'strong' | 'cheap' | 'vision';
+			};
 			cookie?: never;
 		};
 		requestBody: {
