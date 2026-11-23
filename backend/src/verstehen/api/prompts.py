@@ -28,6 +28,10 @@ class OverrideSwitch(BaseModel):
     enabled: bool
 
 
+class PromptSwitched(BaseModel):
+    enabled: bool
+
+
 @router.get("/api/prompts", response_model=PromptSegments)
 async def get_prompts(service: PromptOverridesDependency) -> PromptSegments:
     return await service.segments()
@@ -57,12 +61,11 @@ async def delete_prompt_override(path: str, service: PromptOverridesDependency):
     return Ok()
 
 
-@router.put("/api/prompts/{path:path}/enabled", response_model=Ok)
+@router.put("/api/prompts/{path:path}/enabled", response_model=PromptSwitched)
 async def put_prompt_enabled(
     path: str, body: OverrideSwitch, service: PromptOverridesDependency
 ):
     try:
-        await service.set_enabled(path, body.enabled)
+        return PromptSwitched(enabled=await service.set_enabled(path, body.enabled))
     except ValueError as error:
         return JSONResponse({"error": str(error)}, status_code=400)
-    return Ok()

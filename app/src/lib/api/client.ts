@@ -338,11 +338,13 @@ export async function savePromptOverride(path: string, text: string): Promise<vo
 export async function deletePromptOverride(path: string): Promise<void> {
 	await request(`${promptPath(path)}/override`, { method: 'DELETE' });
 }
-export async function setPromptEnabled(path: string, enabled: boolean): Promise<void> {
-	await request(`${promptPath(path)}/enabled`, {
+/** Resolves with the switch as the server stored it. */
+export async function setPromptEnabled(path: string, enabled: boolean): Promise<boolean> {
+	const reply = await request(`${promptPath(path)}/enabled`, {
 		method: 'PUT',
 		body: JSON.stringify({ enabled })
 	});
+	return (await reply.json()).enabled;
 }
 export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
 	return (

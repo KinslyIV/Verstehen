@@ -2228,6 +2228,11 @@ export interface components {
 			/** Practice */
 			practice: components['schemas']['PromptSegment'][];
 		};
+		/** PromptSwitched */
+		PromptSwitched: {
+			/** Enabled */
+			enabled: boolean;
+		};
 		/** ProvenancePoint */
 		ProvenancePoint: {
 			/** Session Id */
@@ -6843,7 +6848,7 @@ export interface operations {
 					[name: string]: unknown;
 				};
 				content: {
-					'application/json': components['schemas']['Ok'];
+					'application/json': components['schemas']['PromptSwitched'];
 				};
 			};
 			/** @description Bad Request */

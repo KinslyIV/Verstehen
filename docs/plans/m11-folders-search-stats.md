@@ -145,7 +145,9 @@ LH refs: `f3f7f74f`, `6b1d2d14`, `7b685346` (`components/settings/agent-section.
   "Settings is still saving…" and keeps the dialog open.
 
 Behaviors that only exist because of LH's whole-section settings mirror and have no counterpart in
-Verstehen's per-prompt endpoints are reported, not invented.
+Verstehen's per-prompt endpoints are reported, not invented. Done: the name, states, aborted reads,
+acknowledged switch and activation (the enabled reply now carries the stored state), and row focus
+were ported or confirmed; the delete guard and the mirror ordering have no counterpart (decisions).
 
 ## Tests
 

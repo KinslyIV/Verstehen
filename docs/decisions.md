@@ -50,6 +50,15 @@ alternative, and the consequence, until the user reviews them at the end of the 
   in LH, and is empty until a Claude Code turn has run; the stats row then shows the numerator only.
 - **Calls that billed no tokens are ignored** when counting turns and steps, as LH logs only steps
   with usage; a turn whose only call billed nothing is not listed.
+- **`PUT /api/prompts/{path}/enabled` replies `{enabled}`, the switch as stored, not `{ok}`.**
+  LH counts a prompt switch as saved only when the write's acknowledgement shows the new state; the
+  per-prompt endpoint needed a state in its reply to do the same. The alternative was treating any
+  2xx as the acknowledgement, which cannot tell a refused or unchanged switch.
+- **A prompt delete is not guarded against a pending write.** LH declines a delete while a whole-
+  section Settings write is saving ("Settings is still saving…") because its mirror needs the
+  acknowledgements in order. Verstehen's prompt writes are separate per-prompt requests serialized
+  by the server's prompt lock, the dialog is modal over the row switches, and Edit waits while a
+  switch is saving, so there is no state to guard and no message was added.
 - **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
   organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
   follows LH and omits it instead of filing it at the top level.
