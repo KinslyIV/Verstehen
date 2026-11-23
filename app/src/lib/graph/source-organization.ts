@@ -1,4 +1,10 @@
-import type { SourceDirectory, SourceOrganization, SourcePlacement } from '#lib/api/client.js';
+import type {
+	OrganizationAction,
+	SourceDirectory,
+	SourceFolder,
+	SourceOrganization,
+	SourcePlacement
+} from '#lib/api/client.js';
 import { fuzzyScore } from './fuzzy.js';
 
 /** The drag payload type of a source or folder row. */
@@ -159,4 +165,149 @@ export function sourceNameMatches(
 		parent = folder.parent_id;
 	}
 	return false;
+}
+
+export interface DraggedEntry {
+	kind: 'source' | 'folder';
+	id: string;
+}
+
+/** The entry a drag payload names, or undefined when it is not one of ours. */
+export function parseDragPayload(raw: string): DraggedEntry | undefined {
+	try {
+		const item: { kind?: unknown; id?: unknown } | null = JSON.parse(raw);
+		if (!item || (item.kind !== 'source' && item.kind !== 'folder') || typeof item.id !== 'string')
+			return undefined;
+		return { kind: item.kind, id: item.id };
+	} catch {
+		return undefined;
+	}
+}
+
+/** The move a drop makes, or undefined when it would put a folder inside itself. */
+export function dropMove(
+	organization: SourceOrganization,
+	item: DraggedEntry,
+	parentId: string | null
+): OrganizationAction | undefined {
+	if (item.kind === 'folder' && !canMoveFolder(organization, item.id, parentId)) return undefined;
+	return { action: 'move', kind: item.kind, id: item.id, parent_id: parentId };
+}
+
+/** True when no session or notes source sits in the folder or any folder below it. */
+export const folderHoldsNoSources = (directory: SourceDirectory, id: string) =>
+	folderEntries(directory, id).sources.length === 0;
+
+export interface SidebarSession {
+	id: string;
+	title: string;
+	updated_at: string;
+}
+
+export type SessionTreeNode<T extends SidebarSession> =
+	| { type: 'session'; session: T; score: number }
+	| {
+			type: 'folder';
+			folder: SourceFolder;
+			children: SessionTreeNode<T>[];
+			activity: string | null;
+			score: number;
+	  };
+
+export type SessionTreeRow<T extends SidebarSession> =
+	| { type: 'session'; session: T; depth: number; parentId: string | null }
+	| { type: 'folder'; folder: SourceFolder; depth: number; open: boolean; parentId: string | null };
+
+const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
+
+/** The sidebar tree: folders above sessions, newest first, empty folders A-Z last; `include` is the kind filter. */
+export function buildSessionTree<T extends SidebarSession>(
+	sessions: readonly T[],
+	organization: SourceOrganization | undefined,
+	options: { query: string; include?: (session: T) => boolean }
+): SessionTreeNode<T>[] {
+	const query = options.query.trim();
+	const folders = organization?.folders ?? [];
+	const folderIds = new Set(folders.map((folder) => folder.id));
+	const sessionsByFolder = new Map<string | null, SessionTreeNode<T>[]>();
+	const occupied = new Set<string>();
+	for (const session of sessions) {
+		const placed = organization ? (placementOf(organization, session.id)?.folder_id ?? null) : null;
+		const parent = placed !== null && folderIds.has(placed) ? placed : null;
+		if (parent !== null) occupied.add(parent);
+		if (options.include && !options.include(session)) continue;
+		const score = query ? fuzzyScore(query, session.title) : 0;
+		if (score === null) continue;
+		const list = sessionsByFolder.get(parent) ?? [];
+		list.push({ type: 'session', session, score });
+		sessionsByFolder.set(parent, list);
+	}
+	const activityOf = (node: SessionTreeNode<T>) =>
+		node.type === 'session' ? node.session.updated_at : node.activity;
+	const nameOf = (node: SessionTreeNode<T>) =>
+		node.type === 'session' ? node.session.title : node.folder.name;
+	const idOf = (node: SessionTreeNode<T>) =>
+		node.type === 'session' ? node.session.id : node.folder.id;
+	const compare = (a: SessionTreeNode<T>, b: SessionTreeNode<T>): number => {
+		if (a.type !== b.type) return a.type === 'folder' ? -1 : 1;
+		const aActivity = activityOf(a);
+		const bActivity = activityOf(b);
+		if (aActivity === null || bActivity === null) {
+			if (aActivity !== bActivity) return aActivity === null ? 1 : -1;
+			return collator.compare(nameOf(a), nameOf(b)) || idOf(a).localeCompare(idOf(b));
+		}
+		if (query && a.score !== b.score) return b.score - a.score;
+		return bActivity.localeCompare(aActivity) || idOf(a).localeCompare(idOf(b));
+	};
+	const holdsSessions = (id: string, seen: Set<string>): boolean =>
+		occupied.has(id) ||
+		folders.some(
+			(folder) =>
+				folder.parent_id === id &&
+				!seen.has(folder.id) &&
+				holdsSessions(folder.id, new Set([...seen, folder.id]))
+		);
+	const build = (parentId: string | null, seen: Set<string>): SessionTreeNode<T>[] => {
+		const children: SessionTreeNode<T>[] = [...(sessionsByFolder.get(parentId) ?? [])];
+		for (const folder of folders) {
+			if (folder.parent_id !== parentId || seen.has(folder.id)) continue;
+			const within = new Set([...seen, folder.id]);
+			const inner = build(folder.id, within);
+			let activity: string | null = null;
+			let score = 0;
+			for (const child of inner) {
+				const childActivity = activityOf(child);
+				if (childActivity === null) continue;
+				if (activity === null || childActivity > activity) activity = childActivity;
+				score = Math.max(score, child.score);
+			}
+			const hiddenByFilter =
+				holdsSessions(folder.id, within) && !inner.some((child) => child.type === 'folder');
+			if (activity === null && (query || hiddenByFilter)) continue;
+			children.push({ type: 'folder', folder, children: inner, activity, score });
+		}
+		return children.sort(compare);
+	};
+	return build(null, new Set());
+}
+
+/** The rows to draw, in order: a closed folder hides everything below it. */
+export function flattenSessionTree<T extends SidebarSession>(
+	nodes: readonly SessionTreeNode<T>[],
+	isOpen: (folderId: string) => boolean
+): SessionTreeRow<T>[] {
+	const rows: SessionTreeRow<T>[] = [];
+	const walk = (level: readonly SessionTreeNode<T>[], depth: number, parentId: string | null) => {
+		for (const node of level) {
+			if (node.type === 'session') {
+				rows.push({ type: 'session', session: node.session, depth, parentId });
+				continue;
+			}
+			const open = isOpen(node.folder.id);
+			rows.push({ type: 'folder', folder: node.folder, depth, open, parentId });
+			if (open) walk(node.children, depth + 1, node.folder.id);
+		}
+	};
+	walk(nodes, 0, null);
+	return rows;
 }

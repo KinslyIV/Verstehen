@@ -15,6 +15,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, startup status, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
 | `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
+| `src/lib/components/session-list.svelte`, `sidebar-folder-row.svelte`, `new-folder-row.svelte`, `lib/graph/source-directory.svelte.ts`, `source-drop.svelte.ts` | the sidebar folder tree: rows, folder menu, drag and drop, and the shared directory reader |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
 | `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, and Sync on the desktop or Connection in remote mode (`?section=sync` deep-links; the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
 | `src/routes/pair/+page.svelte` | the pairing form (outside the lesson group): server address, code, device name |
@@ -42,6 +43,18 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   draft and the picked nodes stay. The kind filter is remembered in `localStorage`.
 - **Sidebar refresh:** session notifications update the list and its pending practice indicators.
   Sync-status notifications refresh the badge and Settings → Sync.
+- **Sidebar folders:** `session-list.svelte` draws `flattenSessionTree(buildSessionTree(...))`
+  (`graph/source-organization.ts`) over the shared source organization, read by
+  `SourceDirectoryReader` (`graph/source-directory.svelte.ts`) on mount and on `graph-changed` and
+  `sessions-changed` window events (the notification bridge also fires both after a reconnect).
+  Writes are queued operations (`/api/graph/sources`) that each end in a fresh read, never the POST
+  snapshot; a failed read keeps the last directory, and with none the list is flat and offers no
+  folder controls. Folder rows (`sidebar-folder-row.svelte`) only open or close on click; the open
+  set is saved in `localStorage` (`verstehen-sidebar-open-folders`). Right-click or long-press opens
+  Rename, New subfolder, and Delete, which is enabled only when `folderHoldsNoSources` and then
+  removes the folder with its empty subfolders (`DELETE /api/graph/sources`). Drag payload and drop
+  rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` (touch input)
+  turns every sidebar drag off.
 - **Layout state:** the sidebar collapses with Ctrl+B and remembers its state; the right panel
   starts closed; toggling it remembers its visibility, and it remembers its width (default 25%,
   20–40%). Opening it from code (a new plan, a plan block, Ctrl+J) changes only the live state.

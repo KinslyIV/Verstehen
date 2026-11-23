@@ -26,8 +26,28 @@ export function saveKindFilter(filter: KindFilter): void {
 	}
 }
 
-export const visibleSessions = (sessions: SessionItem[], filter: KindFilter) =>
-	filter === 'all' ? sessions : sessions.filter((session) => session.kind === filter);
+export const kindIncludes = (filter: KindFilter) => (session: SessionItem) =>
+	filter === 'all' || session.kind === filter;
+
+const openFoldersKey = 'verstehen-sidebar-open-folders';
+
+/** The folders the learner left open in this sidebar, remembered on this device. */
+export function readOpenFolders(): Set<string> {
+	try {
+		const stored: unknown = JSON.parse(localStorage.getItem(openFoldersKey) ?? '[]');
+		return new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === 'string') : []);
+	} catch {
+		return new Set();
+	}
+}
+
+export function saveOpenFolders(ids: ReadonlySet<string>): void {
+	try {
+		localStorage.setItem(openFoldersKey, JSON.stringify([...ids]));
+	} catch {
+		/* The folders stay open for this visit. */
+	}
+}
 
 /** The row's second line: what the session waits on or is doing, else how long ago. */
 export function sessionMeta(session: SessionItem, now: Date): string {

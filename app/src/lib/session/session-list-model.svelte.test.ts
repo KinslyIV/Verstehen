@@ -1,10 +1,12 @@
 import { beforeEach, expect, test } from 'vitest';
 import type { SessionItem } from '#lib/api/client.js';
 import {
+	kindIncludes,
 	readKindFilter,
 	saveKindFilter,
-	sessionMeta,
-	visibleSessions
+	readOpenFolders,
+	saveOpenFolders,
+	sessionMeta
 } from './session-list-model.js';
 
 const now = new Date('2026-01-01T01:00:00Z');
@@ -21,9 +23,9 @@ beforeEach(() => localStorage.clear());
 
 test('the_kind_filter_keeps_all_sessions_or_only_one_kind', () => {
 	const sessions = [session({ id: 'a' }), session({ id: 'b', kind: 'practice' })];
-	expect(visibleSessions(sessions, 'all')).toHaveLength(2);
-	expect(visibleSessions(sessions, 'teach').map(({ id }) => id)).toEqual(['a']);
-	expect(visibleSessions(sessions, 'practice').map(({ id }) => id)).toEqual(['b']);
+	expect(sessions.filter(kindIncludes('all'))).toHaveLength(2);
+	expect(sessions.filter(kindIncludes('teach')).map(({ id }) => id)).toEqual(['a']);
+	expect(sessions.filter(kindIncludes('practice')).map(({ id }) => id)).toEqual(['b']);
 });
 
 test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
@@ -32,6 +34,16 @@ test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
 	expect(readKindFilter()).toBe('practice');
 	localStorage.setItem('verstehen-session-kind-filter', 'nonsense');
 	expect(readKindFilter()).toBe('all');
+});
+
+test('the_open_folders_are_remembered_and_a_corrupt_value_means_none', () => {
+	expect(readOpenFolders().size).toBe(0);
+	saveOpenFolders(new Set(['f1', 'f2']));
+	expect([...readOpenFolders()]).toEqual(['f1', 'f2']);
+	localStorage.setItem('verstehen-sidebar-open-folders', '{nonsense');
+	expect(readOpenFolders().size).toBe(0);
+	localStorage.setItem('verstehen-sidebar-open-folders', '[1,"f3"]');
+	expect([...readOpenFolders()]).toEqual(['f3']);
 });
 
 test('the_row_meta_names_what_the_session_waits_on', () => {

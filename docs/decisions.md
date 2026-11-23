@@ -14,6 +14,21 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**M11a sidebar folders:**
+
+- **Folder Delete removes the folder with its empty subfolders.** It is enabled when no session or
+  notes source sits anywhere below the folder, and sends the whole subtree to
+  `DELETE /api/graph/sources` (empty folders only, as in Chains). The alternative, the
+  `delete-folder` action behind `folderIsEmpty`, refuses any folder that still has a subfolder, so
+  the learner would delete bottom-up. LH also removes a session-free folder with its subfolders.
+- **Touch input, not the width tier, turns sidebar drags off.** The check is `pointer: coarse`
+  (`layout.coarse`), so a narrow desktop window with a mouse can still drag, and a touch laptop's
+  touchscreen cannot start one. The alternative, `tier !== 'desktop'`, would block mouse drags in
+  a narrow window.
+- **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
+  organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
+  follows LH and omits it instead of filing it at the top level.
+
 **Desktop responsiveness:**
 
 - **A missing sidebar row returns null.** Treat deletion as an ordinary row update. Returning

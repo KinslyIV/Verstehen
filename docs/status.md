@@ -47,7 +47,7 @@ rendering remain open.
 ## Next
 
 1. **M11a** ([plan](plans/m11-folders-search-stats.md)) on `m11-folders-search-stats`: sidebar
-   folders, title search, graph folder filter, stats bar. The specification is now LH `069a6a11`;
+   folders (built), title search, graph folder filter, stats bar. The specification is now LH `069a6a11`;
    the other changes since `cb25c8e` are the [LH catch-up list](roadmap.md#lh-catch-up).
 2. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
 3. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
