@@ -32,6 +32,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
   including on first load, and Settings can force refresh. A refresh superseded by a newer
   one reports the newer one's outcome, because the backend skips the older one's writes. The
   backend still answers 204, so a refresh superseded by a different client reports success.
+  Only two remote clients of one server can hit this (each desktop sidecar has its own catalog);
+  Setup may then show "Connect a provider" until the next refresh. Accepted as is.
 - **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** At `cb25c8e`
   LearnHarness exports only `GET /api/models`, which refreshes the subscription connection catalogs
   on every read over static bundled metadata. v0.7.0 (commit `1cfb7ea2d`) adds persisted pi.dev
