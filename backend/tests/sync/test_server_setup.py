@@ -29,13 +29,17 @@ from verstehen.sync.provision import (
     INVOCATION_HEADER,
     NO_PENDING_RECOVERY_COMMAND,
     ROLLBACK_LISTENER_CHECK,
+    ROLLBACK_TIMEOUT,
     SCHEMA_HEADER,
+    SERVER_RESTART_DELAY,
+    SERVER_STOP_TIMEOUT,
     SYSTEMD_INVOCATION_COMMAND,
     AsyncSshBackend,
     HostKeyChallenge,
     HostKeyMismatchError,
     HostKeyRevokedError,
     ProbedHostKey,
+    ServerInstallService,
     SshAuthError,
     SshCommandResult,
     SshPasswordRequiredError,
@@ -1029,6 +1033,7 @@ def test_install_checks_user_manager_first_stages_venv_and_mints_in_server_data_
             unit = base64.b64decode(unit_b64.group(1).strip("'")).decode()
             assert "/venv/bin/python -m verstehen --server" in unit
             assert "Environment=VERSTEHEN_DATA_DIR=%h/.local/share/verstehen\n" in unit
+            assert f"TimeoutStopSec={SERVER_STOP_TIMEOUT}\n" in unit
             assert (
                 'cd "$HOME/.local/share/verstehen-server" && rm -rf venv.prev unit.prev rollback.pending'
                 in commands
@@ -1853,6 +1858,46 @@ def test_rollback_that_fails_or_stays_unhealthy_is_a_clear_error(tmp_path: Path)
     for failure in (True, False):
         error = asyncio.run(run(failure))
         assert "Rolling back to the previous version also failed" in error
+
+
+def test_health_wait_outlasts_a_stop_that_takes_the_full_stop_limit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            configured = laptop_app.state.server_install_service
+            service = ServerInstallService(
+                configured.sync_store,
+                configured.credentials_store,
+                configured.sync_service,
+            )
+            waited = 0.0
+
+            async def fake_sleep(seconds: float) -> None:
+                nonlocal waited
+                waited += seconds
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                new_server_listening = (
+                    waited > SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY
+                )
+                return httpx2.Response(
+                    200 if new_server_listening else 503, json={"status": "ok"}
+                )
+
+            async def accept(response: httpx2.Response) -> bool:
+                return True
+
+            monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+            service._client_factory = lambda: httpx2.AsyncClient(
+                transport=httpx2.MockTransport(handler)
+            )
+            assert await service._wait_healthy("http://100.64.0.10:8420", accept) == (
+                "healthy"
+            )
+            assert ROLLBACK_TIMEOUT > SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY
+
+    asyncio.run(run())
 
 
 def test_cancelled_install_after_the_swap_rolls_back(tmp_path: Path):

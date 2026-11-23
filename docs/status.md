@@ -26,6 +26,8 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
   sign-in, and device pairing and revocation. The server-side install lock serializes deployment
   and recovery. Updates verify the responding systemd invocation and schema. Rollback retains
   recovery files when the previous wheel cannot read the upgraded database.
+  Server updates survive a slow stop of the old server: the unit stops within 15 s, the server
+  binds with `SO_REUSEADDR` and bounds its graceful shutdown, and the installer waits past both.
   Two UI races are deferred: a delayed poll from a replaced sign-in on the same
   pairing, and a stale password prompt after reopening Settings and reconnecting during an update.
 - **M10 practice sessions** ([plan](plans/m10.md)): the practitioner, practice dock and cards,

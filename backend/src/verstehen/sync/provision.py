@@ -632,7 +632,15 @@ UNIT_PATH = "$HOME/.config/systemd/user/verstehen-server.service"
 USER_MANAGER_ENV = 'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"'
 ROLLBACK_RECONNECTS = 2
 ISSUED_SIGN_INS_KEPT = 8
-ROLLBACK_TIMEOUT = 30.0
+SERVER_STOP_TIMEOUT = 15
+SERVER_RESTART_DELAY = 5
+SERVER_START_ALLOWANCE = 20
+SERVER_SETTLE_SECONDS = (
+    SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY + SERVER_START_ALLOWANCE
+)
+HEALTH_INTERVAL = 0.5
+HEALTH_ATTEMPTS = round(SERVER_SETTLE_SECONDS / HEALTH_INTERVAL)
+ROLLBACK_TIMEOUT = float(SERVER_SETTLE_SECONDS)
 NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
@@ -793,8 +801,8 @@ class ServerInstallService:
         client_factory: Callable[[], httpx2.AsyncClient] = lambda: httpx2.AsyncClient(
             trust_env=False
         ),
-        health_attempts: int = 20,
-        health_interval: float = 0.5,
+        health_attempts: int = HEALTH_ATTEMPTS,
+        health_interval: float = HEALTH_INTERVAL,
         deployment_id_factory: Callable[[], str] = lambda: uuid4().hex,
     ):
         self.sync_store = sync_store
@@ -1369,7 +1377,8 @@ class ServerInstallService:
             f"Environment=VERSTEHEN_DEPLOYMENT_ID={deployment_id}\n"
             f"ExecStart=%h/.local/share/verstehen-server/venv/bin/python -m verstehen --server --host {shlex.quote(host)} --port {int(server_port)}\n"
             "Restart=on-failure\n"
-            "RestartSec=5\n\n"
+            f"RestartSec={SERVER_RESTART_DELAY}\n"
+            f"TimeoutStopSec={SERVER_STOP_TIMEOUT}\n\n"
             "[Install]\n"
             "WantedBy=default.target\n"
         )
