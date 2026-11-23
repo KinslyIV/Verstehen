@@ -132,7 +132,8 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 - `npx cap add android` with the app id `local.verstehen.app`; `network_security_config.xml`
   for release (`100.64.0.0/10` only) and a debug variant adding `10.0.2.2`; Android auto-backup
   excludes the connection file.
-- `make android-setup` (command-line SDK, build tools, JDK 17, emulator, system image, and S24 and Tab S9
+- `make android-setup` (command-line SDK, build tools, JDK 21 for Capacitor 8, emulator, system
+  image, and S24 and Tab S9
   virtual devices), `make android-debug` (debug `.apk`), `make android` (release `.apk`, signed
   with the user's key when present), and `make android-key` (decision 12).
 - GitHub Actions: build and attach the signed `.apk` to tagged releases alongside the Arch package.
