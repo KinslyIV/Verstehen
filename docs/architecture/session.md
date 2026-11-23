@@ -21,6 +21,7 @@ Backend, `backend/src/verstehen/session/`:
 | `delivery.py` | `DeliveryService`: restores saved deliveries and starts wake turns for idle sessions |
 | `compactions.py` | `CompactionService`: one summary task per runtime, the turn gate and the settle kick |
 | `jobs.py` | `JobService`: the session-facing job list, recovery sweep, and abort |
+| `stats.py` | `StatsService` and `session_stats`: the stats route's numbers, folded from the saved entries and the session's usage rows |
 | `titles.py` | `TitleService`: the one-shot model-written title |
 | `cause.py` | whether a `continue` was caused by the learner or by automatic input |
 | `events.py` | `TurnEvent` (turn stream), `Notification` and `Notifications` (`/api/events`) |
@@ -33,6 +34,7 @@ Frontend, `app/src/`:
 | `lib/session/controller.svelte.ts` | `SessionController`: send, follow the stream, bounded 409 wait, one read-only recovery, append-only adoption of the saved record, question actions |
 | `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the dock |
 | `lib/components/composer.svelte` | text input, Send/Stop, steering while a turn runs |
+| `lib/components/stats-bar.svelte`, `lib/session/session-stats.svelte.ts`, `stats-format.ts` | the usage row under the composer and its Session stats popover; `SessionStatsReader` reads one session's stats single-flight |
 | `lib/components/session-list.svelte`, `new-session.svelte`, `rename-session.svelte` | sidebar rows, the new-session screen, rename |
 | `lib/session/session-rows.svelte.ts` | `SessionRows`: the sidebar's rows; one full read to start or recover, then one row read per changed session, one round at a time |
 | `lib/session/compaction.ts`, `opening.ts`, `time-ago.ts` | compaction dividers, the stashed opening prompt, relative times |
@@ -86,6 +88,33 @@ Frontend, `app/src/`:
   the turn. A successful title replaces the current one, including a rename made before it
   arrived; a failure keeps whatever title the session has, with no retry.
 
+## Session stats
+
+`GET /api/sessions/{id}/stats` reads, never writes (404 for an unknown session).
+- **Turns.** One per LH `appendTurnUsage` site, from the usage rows with the roles `prober`,
+  `teacher`, `practice` (a run), `compaction` (the summary, request id = the marker's entry id), and
+  `sideQuestion` (the answer); titles, workers, and extraction are left out. `TurnRun.id` is
+  passed to `UsageModel`, which names each call `<run id>#<n>`, so a run's calls group by the
+  prefix (the LearnHarness import already writes `<turn id>#<n>`). A row without `#`, as saved
+  before this, is a one-step turn of its own; a call that billed no token is ignored. Turns order by
+  their first call. A retry, a wake, and a handoff are each their own run.
+- **Labels and totals.** `graph/costs.py`'s `subscription_provider` maps `claude_code` to `CLI`
+  and `chatgpt:…` to `ChatGPT`; anything else is unpriced and has no label (the UI shows `—`,
+  never `$0`; Verstehen has no priced provider yet). `CostTotals` is folded once per turn, so
+  `runs`, `subscription_runs`, and `unpriced_runs` count turns, and `tokens` count every call.
+- **Context** is LH's `measuredContextTokens`: the newest assistant entry with positive
+  `EntryUsage.context_tokens`, skipping aborted, failed, and unmeasured replies, and `null` at or
+  after a compaction marker. **Cache hit rate** is LH's `sessionCacheHitRate`
+  (reads over input, reads, and writes; `null` until reads are positive).
+- **`claude_code_limits`** is the Claude Code adapter's runtime-limit cache (`seen_limits()`, never
+  a probe). It belongs to the server process, not to the session, and is empty until a Claude Code
+  turn has run; without a limit the UI shows the numerator only.
+- **The row** (`stats-bar.svelte`) appears under the composer or dock on `/session/{id}` once the
+  session has a turn or a context number. It reads at mount, when the lesson stops being busy or
+  compacting, on `sessions-changed` for this session (or after a reconnect) while idle, and on
+  `side-chats-changed`. The window comes from the catalog for the session's model (or the default
+  slot), or from `claude_code_limits` for Claude Code.
+
 ## Compaction
 
 LH's compaction, ported with its constants (`teaching/compaction.py`): keep about 20,000 recent
@@ -132,7 +161,8 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
 
 ## Data and events
 
-- Tables: `sessions`, `entries`, `usage` ([store](store.md)).
+- Tables: `sessions`, `entries`, `usage` ([store](store.md)); a lesson call's `usage.request_id` is
+  `<TurnRun.id>#<n>`, opaque to sync and the importer.
 - Turn stream events: `message_start`, `message_update`, `message_end`, `context_update`, `error`,
   `turn-settled`.
 - Notifications: `turn-started`, `turn-settled`, `chats-changed`, `compaction-changed`

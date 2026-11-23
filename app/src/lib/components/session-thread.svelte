@@ -46,6 +46,7 @@
 	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
+	import StatsBar from './stats-bar.svelte';
 	import ModelControls from './model-controls.svelte';
 	import SetupDialog from './setup-dialog.svelte';
 	import Reasoning from './reasoning.svelte';
@@ -486,6 +487,17 @@
 			{models}
 		/>
 	{/if}
+	<StatsBar
+		sessionId={id}
+		busy={controller.busy || controller.compacting}
+		pick={controller.record?.model_account && controller.record?.model_id
+			? {
+					account: controller.record.model_account,
+					model: controller.record.model_id,
+					thinking_level: controller.record.thinking_level
+				}
+			: null}
+	/>
 	{#if abortTarget}
 		<AbortTurnDialog
 			mode={abortTarget === 'turn' ? 'turn' : 'key' in abortTarget ? 'question' : 'problem'}

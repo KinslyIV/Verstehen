@@ -15,6 +15,7 @@ import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
+export type SessionStats = components['schemas']['SessionStats'];
 export type SessionKind = SessionItem['kind'];
 export type Entry = SessionDetail['entries'][number];
 export type ToolResult = components['schemas']['ToolResultEntry'];
@@ -201,6 +202,9 @@ export async function createSession(
 const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 export async function getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {
 	return (await request(sessionPath(id), { signal })).json();
+}
+export async function getSessionStats(id: string, signal?: AbortSignal): Promise<SessionStats> {
+	return (await request(`${sessionPath(id)}/stats`, { signal })).json();
 }
 export async function getSessionItem(
 	id: string,

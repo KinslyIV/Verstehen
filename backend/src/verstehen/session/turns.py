@@ -503,6 +503,7 @@ class TurnService:
             state.session_id,
             role,
             self.provider_events,
+            turn_id=state.run.id if state.run else None,
         )
         deliver = needs_send_to_user(state.resolved.kind, state.resolved.pick.model)
         files = file_tools(

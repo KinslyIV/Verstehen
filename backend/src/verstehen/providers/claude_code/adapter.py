@@ -140,6 +140,10 @@ class ClaudeCodeAccountAdapter:
     def forget_models(self) -> None:
         pass
 
+    def seen_limits(self) -> dict[str, int]:
+        """The runtime context limits this process has read, by model; never probes."""
+        return {model: limit for (_, _, model), limit in self.runtime_limits.items()}
+
     async def context_limit(self, account: Account, model: str) -> int | None:
         status = await self.status()
         if (

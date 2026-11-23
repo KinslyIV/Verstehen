@@ -106,16 +106,19 @@ LH refs: `components/stats-bar.tsx`, `src/core/prices.ts` (`sessionCacheHitRate`
   - `context_tokens`: LH `measuredContextTokens` over the session's entries: scanning backwards,
     stop (null) at a compaction marker; skip assistant entries that are aborted or failed or lack
     usage; return the first positive `EntryUsage.context_tokens`.
-  - `turns`: one row per conversation turn (prober, teacher, practitioner calls; not titles,
-    compaction, or workers, matching LH's chat `turns`), each with time, model, step (call) count,
-    and its cost label. If no stored boundary identifies a turn, the implementer proposes the
-    grouping to the orchestrator before coding.
+  - `turns`: one row per LH `appendTurnUsage` site, from the session's usage rows: lesson runs
+    (prober, teacher, practitioner), each compaction summary, and each side answer (the last two are
+    one-step turns, as in LH's `compaction.ts` and `side-chat.ts`); not titles, workers, or
+    extraction. A run's calls share the request id prefix `<run id>#<n>`; rows without a `#` and
+    rows that billed nothing are handled as described in decisions. Each turn has its time, model,
+    step (call) count, and cost label.
   - Totals with `graph/costs.py`'s `CostTotals`/`add_usage` fold: Claude Code → `CLI`, ChatGPT →
     `ChatGPT`, anything else unpriced. Verstehen has no priced (API-key) provider yet, so dollars
     stay 0 and the label is the plan label or `—`, never `$0`.
   - `cache_hit_rate`: LH `sessionCacheHitRate` (null until positive cache reads).
-- **Limit:** the composer's selected model's `context_limit` from the frontend catalog (for Claude
-  Code this is the runtime limit the adapter has seen, else none → numerator only).
+- **Limit:** the composer's selected model's `context_limit` from the frontend catalog; for Claude
+  Code the route's `claude_code_limits` (the adapter's runtime limits this process has read), else
+  none → numerator only.
 - **Frontend** `stats-bar.svelte` under the composer on `/session/{id}` (not on `/` or
   `/session/new`): a button `41k / 200k · ChatGPT` (`?` when the numerator is unknown) toggling the
   popover: Session stats — Context (last call), the Claude Code window note, Total cost or Usage,

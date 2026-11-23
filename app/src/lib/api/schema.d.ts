@@ -658,6 +658,23 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sessions/{session_id}/stats': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Session Stats */
+		get: operations['get_session_stats_api_sessions__session_id__stats_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/sessions/{session_id}/coverage': {
 		parameters: {
 			query?: never;
@@ -2647,6 +2664,20 @@ export interface components {
 			/** Sessions */
 			sessions: components['schemas']['SessionItem'][];
 		};
+		/** SessionStats */
+		SessionStats: {
+			/** Context Tokens */
+			context_tokens: number | null;
+			/** Cache Hit Rate */
+			cache_hit_rate: number | null;
+			/** Claude Code Limits */
+			claude_code_limits: {
+				[key: string]: number;
+			};
+			totals: components['schemas']['CostTotals'];
+			/** Turns */
+			turns: components['schemas']['TurnStats'][];
+		};
 		/** Settings */
 		Settings: {
 			graph?: components['schemas']['GraphSettings'];
@@ -3130,6 +3161,26 @@ export interface components {
 			content_index?: number | null;
 			/** Problem Call Id */
 			problem_call_id?: string | null;
+		};
+		/** TurnStats */
+		TurnStats: {
+			/** Id */
+			id: string;
+			/**
+			 * At
+			 * Format: date-time
+			 */
+			at: string;
+			/** Role */
+			role: string;
+			/** Account */
+			account: string;
+			/** Model */
+			model: string;
+			/** Steps */
+			steps: number;
+			/** Cost Label */
+			cost_label: string | null;
 		};
 		/** UserEntry */
 		UserEntry: {
@@ -5547,6 +5598,55 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['SessionItem'] | null;
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_session_stats_api_sessions__session_id__stats_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SessionStats'];
 				};
 			};
 			/** @description Bad Request */

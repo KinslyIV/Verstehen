@@ -2,11 +2,11 @@ import { test, expect } from '../fixtures';
 test.use({ script: 'verify/scripts/error-retry.json', expectedStatuses: [503] });
 test('session-error-retry', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('textbox').fill('Derivatives');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
 	await expect(page.getByRole('alert')).toContainText('Scripted provider failure');
-	await page.getByRole('textbox').fill('Unsent follow-up');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Unsent follow-up');
 	await page.route('**/api/sessions/*/input', (route) =>
 		route.fulfill({
 			status: 503,
@@ -30,6 +30,8 @@ test('session-error-retry', async ({ page }) => {
 		page.getByText('Retry succeeded. What do you know about slope?', { exact: true })
 	).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-	await expect(page.getByRole('textbox')).toHaveValue('Unsent follow-up');
+	await expect(page.getByRole('textbox', { name: 'What do you want to learn?' })).toHaveValue(
+		'Unsent follow-up'
+	);
 	await expect(page.getByRole('alert')).toHaveCount(0);
 });

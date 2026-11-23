@@ -2,7 +2,9 @@ import { test, expect } from '../fixtures';
 test.use({ script: 'verify/scripts/markdown.json' });
 test(`markdown-rendering`, async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('textbox').fill('Show **plain learner text**');
+	await page
+		.getByRole('textbox', { name: 'What do you want to learn?' })
+		.fill('Show **plain learner text**');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();

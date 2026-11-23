@@ -47,6 +47,7 @@ from verstehen.session.events import Notification, Notifications
 from verstehen.session.jobs import JobService
 from verstehen.session.runtime import RuntimeRegistry
 from verstehen.session.sessions import SessionService
+from verstehen.session.stats import StatsService
 from verstehen.session.titles import TitleService
 from verstehen.session.turns import TurnService
 from verstehen.sidechat.service import SideChatService
@@ -215,6 +216,13 @@ def create_app(settings: Settings) -> FastAPI:
                 extraction_service,
                 graph_store,
                 side_chat_service,
+            )
+
+            app.state.stats_service = StatsService(
+                sessions_store,
+                entries_store,
+                usage_store,
+                claude_code_adapter.seen_limits,
             )
 
             async def check_graph_session(session_id: str) -> None:

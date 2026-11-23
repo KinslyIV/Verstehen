@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from typing import List
+from uuid import uuid4
 
 from verstehen.session.context_updates import SessionDelivery
 from verstehen.session.events import TurnEvent
@@ -13,6 +14,7 @@ class TurnRun:
     """
 
     def __init__(self):
+        self.id = uuid4().hex
         self.task: asyncio.Task[None] | None = None
         self.aborted = False
         self.started = False

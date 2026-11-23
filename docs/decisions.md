@@ -35,6 +35,21 @@ alternative, and the consequence, until the user reviews them at the end of the 
   screens. The alternative, a header slot filled by the graph page, would couple the layout to it.
 - **Touch rows are 44 px; the checkbox itself is 20 px.** Each folder row is one label, so a tap
   anywhere on it toggles the folder; a literal 44 px checkbox would look out of place.
+- **Session stats turns follow LH's three `appendTurnUsage` sites.** Lesson runs, each compaction
+  summary, and each side answer are turns; titles, workers, and extraction are not. The plan said
+  compaction and side answers were excluded, which is not what LH's code does (`compaction.ts:267`,
+  `side-chat.ts:215`).
+- **A lesson call's usage `request_id` is `<TurnRun.id>#<n>`.** No migration and no new column:
+  the id stays unique and opaque to sync, and it is the form the LearnHarness import already writes
+  (`<turn id>#<n>`). `UsageModel` takes the run id optionally, so worker calls keep random ids.
+- **Usage rows saved before this change count as one-step turns each,** so an older session's turn
+  list is longer than LH would show. A migration adding a turn id column would regroup them but
+  pauses sync until both backends update.
+- **The Claude Code window comes from the adapter's runtime-limit cache** (`claude_code_limits`,
+  read only, no probe). It is per server process, not the session's latest Claude Code report as
+  in LH, and is empty until a Claude Code turn has run; the stats row then shows the numerator only.
+- **Calls that billed no tokens are ignored** when counting turns and steps, as LH logs only steps
+  with usage; a turn whose only call billed nothing is not listed.
 - **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
   organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
   follows LH and omits it instead of filing it at the top level.

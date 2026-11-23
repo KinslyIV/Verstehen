@@ -55,6 +55,7 @@ class UsageModel(WrapperModel):
         session_id: str,
         role: ModelRole,
         provider_events: bool = False,
+        turn_id: str | None = None,
     ):
         super().__init__(resolved.model)
         self.resolved = resolved
@@ -62,6 +63,13 @@ class UsageModel(WrapperModel):
         self.session_id = session_id
         self.role = role
         self.provider_events = provider_events
+        self.turn_id = turn_id
+        self.calls = 0
+
+    def next_request_id(self) -> str:
+        """`<turn id>#<n>` groups a turn's calls; without a turn id each call is its own."""
+        self.calls += 1
+        return uuid4().hex if self.turn_id is None else f"{self.turn_id}#{self.calls}"
 
     async def record(self, request_id: str, response: ModelResponse) -> None:
         await self.usage_store.append(
@@ -77,7 +85,7 @@ class UsageModel(WrapperModel):
         model_settings: ModelSettings | None,
         model_request_parameters: ModelRequestParameters,
     ) -> ModelResponse:
-        request_id = uuid4().hex
+        request_id = self.next_request_id()
         response = await self.wrapped.request(
             messages, model_settings, model_request_parameters
         )
@@ -92,7 +100,7 @@ class UsageModel(WrapperModel):
         model_request_parameters: ModelRequestParameters,
         run_context: RunContext[Any] | None = None,
     ) -> AsyncIterator[StreamedResponse]:
-        request_id = uuid4().hex
+        request_id = self.next_request_id()
         async with self.wrapped.request_stream(
             messages, model_settings, model_request_parameters, run_context
         ) as stream:
