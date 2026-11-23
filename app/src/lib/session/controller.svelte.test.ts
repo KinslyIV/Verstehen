@@ -112,6 +112,15 @@ test('a_dropped_network_waits_and_reattaches_without_failing_the_turn', async ()
 	expect(controller.busy).toBe(false);
 	wait.mockRestore();
 });
+test('leaving_the_lesson_while_reconnecting_opens_no_new_stream', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockImplementation(async () => controller.dispose());
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.attach();
+	expect(api.streamTurn).toHaveBeenCalledOnce();
+	wait.mockRestore();
+});
 test('a_refetch_that_hits_a_dropped_network_shows_no_error', async () => {
 	await controller.load();
 	vi.mocked(api.getSession).mockRejectedValue(new TypeError('Failed to fetch'));

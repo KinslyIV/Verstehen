@@ -100,7 +100,8 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
   8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.
   The node card is capped to the canvas height and scrolls inside.
-- **Android Back:** `session/android-back.ts` hands Back to the lesson's `requestAbort` first, the
+- **Android Back:** `session/android-back.ts` closes an open overlay first (the phone drawer, a
+  dialog, or a menu) by pressing Escape; otherwise it hands Back to the lesson's `requestAbort`, the
   same function as Escape, so a pending question, an active problem, or a running turn opens its
   confirmation; otherwise Back goes back in history or leaves the app.
 - **Phone Settings:** a section list; a section opens full screen and the back button returns to

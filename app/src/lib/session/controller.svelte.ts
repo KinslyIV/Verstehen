@@ -250,6 +250,7 @@ export class SessionController {
 			let strikes = 0;
 			let outages = 0;
 			while (strikes < 2) {
+				if (this.lifetime.signal.aborted) return;
 				this.live = [];
 				this.streamingEntryId = undefined;
 				this.entries = [...this.saved];

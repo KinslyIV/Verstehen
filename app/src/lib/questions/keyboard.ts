@@ -87,6 +87,6 @@ export function escAbortTarget({
 
 export function hasOpenOverlay(): boolean {
 	return !!document.querySelector(
-		'[data-slot="dialog-content"]:not([data-state="closed"]), [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"], [data-mermaid-focus]'
+		'[data-slot="dialog-content"]:not([data-state="closed"]), [data-slot="sidebar"][data-mobile="true"]:not([data-state="closed"]), [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"], [data-mermaid-focus]'
 	);
 }

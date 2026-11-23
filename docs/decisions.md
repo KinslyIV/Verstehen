@@ -162,8 +162,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Android Back acts as Escape** (user decision, 2026-11-23). LearnHarness dismisses a question,
   discards a problem, or aborts a turn with Escape only. In the Android app, Back opens the same
   confirmation when a question is pending, a problem is active, or a turn is running; with none of
-  these, or with a dialog, menu, or overlay open, Back goes back in history or leaves the app as
-  before. It shares `requestAbort` with the Escape handler. Alternative: a dismiss button on the
+  these, Back goes back in history or leaves the app as before; with the drawer, a dialog, or a
+  menu open, Back closes it as Escape would. It shares `requestAbort` with the Escape handler. Alternative: a dismiss button on the
   card on coarse pointers (not built); other phones and the browser have no Back button.
 
 ## Constraints
