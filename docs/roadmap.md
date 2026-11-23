@@ -67,8 +67,10 @@ All of this is merged into `main`.
    graph tools and problem targets, practice blocks in the side chat's lesson document, the
    practice dock, `Next problem →`, sidebar and graph creation flows, and LearnHarness import of
    practice sessions.
-3. **M11 Smaller features and later providers.** LH's stats bar below the composer (context against
-   the model's limit, session cost, per-turn usage); session search (SQLite FTS5); the activity
+3. **M11 Smaller features and later providers.** First, M11a ([plan](plans/m11-folders-search-stats.md)):
+   LH's shared sidebar folders and graph folder filter, sidebar title search (LH's fuzzy match), and
+   the stats bar below the composer (context against the model's limit, session cost, per-turn
+   usage). Then the [LH catch-up list](#lh-catch-up); the activity
    dock (the right panel's Activity tab is a placeholder until then); themes as shadcn theme
    variables; a prompt-override UI if needed; API keys, a custom endpoint, Copilot (Pydantic AI has
    a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a subscription login
@@ -81,6 +83,39 @@ All of this is merged into `main`.
    [mobile-sync-d](plans/mobile-sync-d.md). Its PR 1 (the Android app, remote mode, and `/pair`) is
    in `dev`; PR 2 (phone and tablet layouts, graph touch, phone Settings, SSE recovery) is built
    and waits for review.
+
+## LH catch-up
+
+The specification moved from LearnHarness `cb25c8e` to `069a6a11` (2026-11-23). Every behavior
+change in between, grouped, with its status here. **Port later** items are known gaps until a
+milestone ports them or a decision records the difference.
+
+| LH change (commits) | Status |
+|---|---|
+| Shared sidebar folders and graph folder filter (`76f04ab3`, `81d7206d`, `bfd6c408`, `d3633312`, `d4e6fca8`, `97454cba`, `252b587f`, `6493a4b2`, `80803ce3`) | M11a |
+| Delete a sidebar folder with its sessions (`0f6c47d0`, `7c65e370`) | not ported ([decision](decisions.md#frontend)) |
+| Compact session sidebar setting (`530cc9f0`) | not ported ([decision](decisions.md#frontend)) |
+| Probing: evidence-led bracketing, plan-changing probes, independence from quizzing (`c4f5a09f`, `ca196470`, `6842bd02`) | port later (prompt text) |
+| Questions: blocking-tool wait instructions removed, reasoning read across answer modes, confidence calibration (`d2214b4c`, `0a8c0445`) | port later (prompt text) |
+| Single-select option letters, historical letters, centered marks (`c3ff55ff`, `7fa9e1fc`) | port later |
+| Side chat: dock selection mode, answers matched to the preceding question call (`55482a9b`, `60b831d5`) | port later (check first) |
+| Transcript width setting and adaptive question layout, reading position kept (`a1442fe5`, `f9d51783`, `22c51bdc`, `09d2caa3`) | port later |
+| Long transcript rendering, latest learner turn exempt (`f715f6f2`, `7ff1505b`) | port later (matches the known gap below) |
+| Session stats refresh without the transcript (`3077538c`) | M11a (separate stats route) |
+| Plan diagram labels: real-font layout, caps, scaling, font changes, layout reuse (`120c964f`, `25922a5a`, `4c500181`, `a2a1b1a5`, `eca98d22`, `3a8d4d9f`, `c3d36827`) | port later (check first) |
+| Graph labels split between whole characters (`8ff4e990`) | port later (check first) |
+| Copy TeX from display equations; TeX omission healing in code blocks (`44bae34a`, `399d6a74`) | port later (check first) |
+| Background agents: implicit turn caps removed (`c7dd027b`) | port later (workers use request limits) |
+| Claude Code: parked processes handed off between worker requests, late errors can't restore retired continuations, Fable in the model list (`62a2da58`, `4070d53d`, `39babf15`) | port later (check first) |
+| PDF figure annotation from learner PDFs (`00316ab1`, `6123decd`, `f20aff1c`, `3e6aafcc`) | port later |
+| Prompt editor per segment and its fixes (`53f92387`, `f3f7f74f`, `6b1d2d14`, `7b685346`) | already equivalent (Settings → Prompts; check the three fixes) |
+| Manual model catalog refresh; imported model metadata validated (`1cfb7ea2`, `1f77ebc9`) | already equivalent (`POST /api/models`); validation check first |
+| Startup announcements (`7f8ac6b3`, `93133de6`, `ecff87ca`, `710d10d8`, `dd773e4b`) | not ported (LH's own release channel) |
+| Activity task card stop button (`c0291f4b`) | with the activity dock |
+| Drawing pad (`f2cb91b0` and its fixes) | not ported (not in scope) |
+| Flashcards, plugin inference routing (`e5343132`, `4dfcbd4c`) | deferred with flashcards and plugins |
+| OpenCode side-chat routing, custom-model nested token limits (`7aee3722`, `90535c9c`) | with those providers |
+| Releases, website, dependencies, CI, Pi libraries, Next.js, IPC hardening (`0292b85b`, `069a6a11`, `fcad626f`, `2c580d91`, `9cf2a2f0`, `d3b5ddb9`, …) | not applicable |
 
 ## Not ported (by decision)
 

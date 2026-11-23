@@ -352,3 +352,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Touch on `/graph`:** a tap opens the card, a press and hold the menu, any drag pans, and a pinch
   zooms; touch never drags a node. Mouse input is LH's.
 - **The look is new** (sleek, T3 Code style); behavior is LH's.
+- **Sidebar folders without delete-with-contents:** the sidebar folder menu's Delete works only
+  when no session or notes source sits anywhere in the folder's subtree, as in Chains. LH
+  (`0f6c47d0`, `7c65e370`) deletes the folder with its sessions after a scoped confirmation.
+- **No compact sidebar setting:** LH's Appearance → compact session sidebar (`530cc9f0`) is not
+  ported; the sidebar has one row density.
+- **Touch layouts browse folders only:** phones and tablets open, close, search, and use the folder
+  menu, but cannot move sessions or folders (LH's moves are HTML5 drags, desktop only).
