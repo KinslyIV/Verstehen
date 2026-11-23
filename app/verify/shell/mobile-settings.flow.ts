@@ -20,8 +20,12 @@ test('mobile-settings', async ({ page, baseURL, serverAdmin }) => {
 	await page.goto('/pair');
 	await page.getByLabel('Server address').fill(address);
 	await page.getByLabel('Pairing code').fill(code);
+	const refreshed = page.waitForResponse((response) =>
+		response.url().endsWith('/api/models/refresh')
+	);
 	await page.getByRole('button', { name: 'Pair' }).tap();
 	await expect(page).toHaveURL(/\/$/);
+	await refreshed;
 
 	await page.goto('/settings');
 	const sections = page.getByRole('navigation', { name: 'Settings sections' });
