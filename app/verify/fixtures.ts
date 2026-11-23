@@ -172,6 +172,8 @@ export const test = base.extend<{
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
 	expectedStatuses: number[];
+	/** The flow goes offline on purpose, so refused requests are not browser errors. */
+	goesOffline: boolean;
 	client: 'sidecar' | 'remote';
 	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
@@ -181,6 +183,7 @@ export const test = base.extend<{
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
+	goesOffline: [false, { option: true }],
 	client: ['sidecar', { option: true }],
 	serverAdmin: async ({ client, dataDirectory }, use) => {
 		await use({ token: client === 'remote' ? await mintAdminToken(dataDirectory) : '' });
@@ -313,11 +316,12 @@ export const test = base.extend<{
 		}
 	},
 	browserErrors: [
-		async ({ page, expectedStatuses }, use, testInfo) => {
+		async ({ page, expectedStatuses, goesOffline }, use, testInfo) => {
 			const errors: string[] = [];
 			page.on('console', (message) => {
 				if (
 					message.type() === 'error' &&
+					!(goesOffline && message.text().includes('ERR_INTERNET_DISCONNECTED')) &&
 					!expectedStatuses.some((status) =>
 						message
 							.text()
@@ -332,6 +336,7 @@ export const test = base.extend<{
 			page.on(
 				'requestfailed',
 				(request) =>
+					!(goesOffline && request.failure()?.errorText.includes('ERR_INTERNET_DISCONNECTED')) &&
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&

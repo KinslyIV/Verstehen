@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { placeContextMenu } from './card-placement.js';
+
 	let {
 		x,
 		y,
@@ -6,6 +8,19 @@
 		onclose
 	}: { x: number; y: number; ondelete: () => void; onclose: () => void } = $props();
 	let menu = $state<HTMLDivElement>();
+
+	$effect(() => {
+		const element = menu;
+		const container = element?.parentElement;
+		if (!element || !container) return;
+		const { left, top } = placeContextMenu(
+			{ x, y },
+			{ width: element.offsetWidth, height: element.offsetHeight },
+			{ width: container.clientWidth, height: container.clientHeight }
+		);
+		element.style.left = `${left}px`;
+		element.style.top = `${top}px`;
+	});
 
 	function outside(event: PointerEvent) {
 		if (!menu?.contains(event.target as Node)) onclose();

@@ -13,7 +13,7 @@ const { sessionRequests, subscribers } = vi.hoisted(() => ({
 	subscribers: new Set<(event: Notification) => void>()
 }));
 
-vi.mock('$app/navigation', () => ({ goto: async () => {} }));
+vi.mock('$app/navigation', () => ({ goto: async () => {}, afterNavigate: () => {} }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
 	getSession: async () => ({

@@ -10,6 +10,7 @@
 	} from '#lib/api/client.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { compactionLimitDefault, parseCompactionLimit } from '#lib/session/compaction.js';
+	import { clientMode } from '#lib/api/connection.js';
 	import SettingsFileAccess from './settings-file-access.svelte';
 	import { openFileAccess } from '#lib/teaching/file-access.js';
 
@@ -96,12 +97,14 @@
 		{/each}
 	</div>
 </div>
-<SettingsFileAccess
-	fileAccess={current ? (current.file_access ?? openFileAccess) : undefined}
-	configError={current?.file_access_error}
-	{saving}
-	onsave={saveFileAccess}
-/>
+{#if clientMode() === 'sidecar'}
+	<SettingsFileAccess
+		fileAccess={current ? (current.file_access ?? openFileAccess) : undefined}
+		configError={current?.file_access_error}
+		{saving}
+		onsave={saveFileAccess}
+	/>
+{/if}
 <div class="mt-4 flex flex-wrap items-center justify-between gap-4 rounded-xl border bg-card p-4">
 	<div>
 		<h3 id="compaction-limit" class="text-sm font-medium">Compaction limit</h3>

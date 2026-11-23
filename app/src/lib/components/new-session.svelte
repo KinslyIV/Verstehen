@@ -59,7 +59,7 @@
 </script>
 
 <section class="relative flex h-full min-w-0 flex-col" aria-label="Lesson">
-	<div class="flex flex-1 flex-col items-center justify-center px-6 pb-10 text-center">
+	<div class="flex flex-1 flex-col items-center justify-center px-6 pb-10 text-center max-md:px-4">
 		<h1 class="text-2xl font-semibold tracking-tight">New session</h1>
 		<p class="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
 			{kind === 'practice'
@@ -96,10 +96,10 @@
 			</Button>
 		</div>
 	</div>
-	{#if error}<p role="alert" class="mx-auto max-w-3xl px-6 text-sm text-destructive">
+	{#if error}<p role="alert" class="mx-auto max-w-3xl px-6 text-sm text-destructive max-md:px-4">
 			{error}
 		</p>{/if}
-	<div class="mx-auto w-full max-w-3xl px-6">
+	<div class="mx-auto w-full max-w-3xl px-6 max-md:px-4">
 		<NodePicker
 			count={picks.items.length}
 			onopen={() => (picking = true)}

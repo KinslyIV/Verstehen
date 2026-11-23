@@ -24,6 +24,7 @@ import {
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
 import { activeProblemOf, hasProblemCall, type ActiveProblem } from '#lib/practice/state.js';
+import { isNetworkFailure, live } from '#lib/api/live.svelte.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
@@ -240,37 +241,73 @@ export class SessionController {
 		this.entries = [...this.saved, ...this.live];
 	}
 
+	/** Follows the running turn's stream; after a network failure it waits, then reattaches. */
 	async attach(): Promise<void> {
 		if (this.consuming || this.lifetime.signal.aborted) return;
 		this.consuming = true;
 		this.busy = true;
 		try {
-			for (let attempt = 0; attempt < 2;) {
+			let strikes = 0;
+			let outages = 0;
+			while (strikes < 2) {
 				this.live = [];
 				this.streamingEntryId = undefined;
 				this.entries = [...this.saved];
+				const stream = new AbortController();
+				const stopStream = () => stream.abort();
+				const stopOnResume = live.onResume(stopStream);
+				this.lifetime.signal.addEventListener('abort', stopStream);
 				let done = false;
 				try {
-					done = await streamTurn(this.id, (event) => this.apply(event), this.lifetime.signal);
+					done = await streamTurn(
+						this.id,
+						(event) => this.apply(event),
+						stream.signal,
+						() => live.markDown(this, false)
+					);
 				} catch (error) {
-					if (this.lifetime.signal.aborted || attempt === 1) throw error;
+					if (this.lifetime.signal.aborted) throw error;
+					if (stream.signal.aborted) continue;
+					if (isNetworkFailure(error)) {
+						await this.awaitNetwork(outages++);
+						continue;
+					}
+					if (strikes === 1) throw error;
+				} finally {
+					stopOnResume();
+					this.lifetime.signal.removeEventListener('abort', stopStream);
 				}
-				const record = await this.refresh();
+				let record: SessionDetail;
+				try {
+					record = await this.refresh();
+				} catch (error) {
+					if (this.lifetime.signal.aborted || !isNetworkFailure(error)) throw error;
+					await this.awaitNetwork(outages++);
+					continue;
+				}
+				live.markDown(this, false);
+				outages = 0;
 				if (!record.turn_in_flight) {
 					this.error = record.turn_error ?? this.savedFailure(record);
 					this.busy = false;
 					return;
 				}
-				attempt = done ? 0 : attempt + 1;
+				strikes = done ? 0 : strikes + 1;
 			}
 			throw new Error('The connection dropped before the turn completed.');
 		} catch (error) {
 			this.fail(error);
 			this.busy = false;
 		} finally {
+			live.markDown(this, false);
 			this.streamingEntryId = undefined;
 			this.consuming = false;
 		}
+	}
+
+	private async awaitNetwork(attempt: number): Promise<void> {
+		live.markDown(this, true);
+		await live.wait(attempt, this.lifetime.signal);
 	}
 
 	async send(type: 'text' | 'retry' = 'text'): Promise<void> {

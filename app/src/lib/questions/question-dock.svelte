@@ -262,7 +262,10 @@
 	</div>
 {/snippet}
 
-<div class="mx-auto w-full max-w-3xl shrink-0 px-6 pt-2 pb-6" bind:this={root}>
+<div
+	class="mx-auto w-full max-w-3xl shrink-0 px-6 pt-2 pb-6 max-md:px-3 max-md:pb-[calc(0.75rem+var(--safe-bottom))]"
+	bind:this={root}
+>
 	{#if requiresReveal}
 		<InputGroup.Root class="mb-2 bg-card" data-testid="reading-thinking-field">
 			<InputGroup.Addon align="block-start" class="text-xs font-medium uppercase">
