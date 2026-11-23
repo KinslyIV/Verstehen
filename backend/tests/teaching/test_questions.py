@@ -988,7 +988,7 @@ def test_prober_composition_uses_base_prober_and_shared_fragments(tmp_path: Path
     async def scenario():
         async with turn_service_context(tmp_path) as (service, session):
             instructions = await compose_instructions(
-                service.settings_store, tmp_path, "prober"
+                service.settings_store, tmp_path, "prober", asyncio.Lock()
             )
             paths = [PROMPTS_DIR / "system-prompt.md"]
             for kind in ("prober", "shared"):

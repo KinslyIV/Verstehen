@@ -57,13 +57,13 @@ class PromptOverridesService:
         data_dir: Path,
         prompt_lock: asyncio.Lock,
         sync_store: SyncStore,
-        edit_lock: asyncio.Lock | None = None,
+        edit_lock: asyncio.Lock,
     ):
         self.settings_store = settings_store
         self.data_dir = data_dir
         self.prompt_lock = prompt_lock
         self.sync_store = sync_store
-        self.edit_lock = edit_lock or asyncio.Lock()
+        self.edit_lock = edit_lock
 
     async def segments(self) -> PromptSegments:
         async with self.prompt_lock:
@@ -87,7 +87,7 @@ class PromptOverridesService:
             await self._write_switch(path, enabled)
 
     async def delete(self, path: str) -> None:
-        """Clear the switch first, then remove the file: a crash between leaves off plus a file."""
+        """Remove the file, then clear the switch and record the snapshot in one transaction."""
         await self._edit_file(path, None)
 
     async def _edit_file(self, path: str, text: str | None) -> None:

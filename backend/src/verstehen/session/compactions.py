@@ -51,7 +51,7 @@ class CompactionService:
         runtimes: RuntimeRegistry,
         notifications: Notifications,
         provider_events: bool,
-        prompt_edit_lock: asyncio.Lock | None = None,
+        prompt_edit_lock: asyncio.Lock,
     ):
         self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store

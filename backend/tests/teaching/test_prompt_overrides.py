@@ -8,6 +8,9 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings
+from verstehen.providers.credentials import CredentialsStore
+from verstehen.session.events import Notifications
+from verstehen.session.runtime import RuntimeRegistry
 from verstehen.store.database import open_database
 from verstehen.store.migrate import migrate
 from verstehen.store.settings import SettingsStore
@@ -18,6 +21,7 @@ from verstehen.sync.prompt_overrides import (
     UnknownPromptSegment,
 )
 from verstehen.sync.prompts import make_prompt_tx_hooks, write_prompt_file
+from verstehen.sync.service import SyncService
 from verstehen.teaching.prompts import (
     PRACTICE_SHARED_FRAGMENTS,
     PROMPTS_DIR,
@@ -105,8 +109,8 @@ def test_save_writes_the_file_and_activation_makes_the_agent_compose_it(
         async with open_database(tmp_path / "verstehen.db") as database:
             store = SettingsStore(database)
             return (
-                await compose_instructions(store, tmp_path),
-                await compose_instructions(store, tmp_path, "prober"),
+                await compose_instructions(store, tmp_path, "teacher", asyncio.Lock()),
+                await compose_instructions(store, tmp_path, "prober", asyncio.Lock()),
             )
 
     teacher, prober = asyncio.run(composed())
@@ -237,7 +241,11 @@ def test_edits_use_the_shared_prompt_lock_and_announce_file_changes(tmp_path: Pa
             changes: list[str] = []
             database.on_sync_write = lambda: changes.append("x")
             service = PromptOverridesService(
-                SettingsStore(database), tmp_path, lock, SyncStore(database)
+                SettingsStore(database),
+                tmp_path,
+                lock,
+                SyncStore(database),
+                asyncio.Lock(),
             )
             async with lock:
                 saving = asyncio.create_task(service.save(SEGMENT, "NEW"))
@@ -266,7 +274,7 @@ def test_saved_and_deleted_overrides_reach_the_sync_log_immediately(
             settings_store = SettingsStore(database)
             sync_store = SyncStore(database)
             service = PromptOverridesService(
-                settings_store, tmp_path, asyncio.Lock(), sync_store
+                settings_store, tmp_path, asyncio.Lock(), sync_store, asyncio.Lock()
             )
             await service.save(SEGMENT, "NEW")
             first = await sync_store.list_pending_push()
@@ -342,7 +350,7 @@ def test_cancelled_prompt_save_cannot_write_after_a_second_save(
             await migrate(database)
             store = SyncStore(database)
             service = PromptOverridesService(
-                SettingsStore(database), tmp_path, asyncio.Lock(), store
+                SettingsStore(database), tmp_path, asyncio.Lock(), store, asyncio.Lock()
             )
             first = asyncio.create_task(service.save(SEGMENT, "old"))
             await started.wait()
@@ -372,11 +380,13 @@ def test_an_edit_whose_sync_record_fails_leaves_prompts_switches_and_the_whole_o
             settings_store = SettingsStore(database)
             sync_store = SyncStore(database)
             service = PromptOverridesService(
-                settings_store, tmp_path, asyncio.Lock(), sync_store
+                settings_store, tmp_path, asyncio.Lock(), sync_store, asyncio.Lock()
             )
             await service.save(SEGMENT, "KEPT")
             await service.set_enabled(SEGMENT, True)
-            before = await compose_instructions(settings_store, tmp_path)
+            before = await compose_instructions(
+                settings_store, tmp_path, "teacher", asyncio.Lock()
+            )
             outbox = await sync_store.list_pending_push()
             assert outbox
 
@@ -388,7 +398,12 @@ def test_an_edit_whose_sync_record_fails_leaves_prompts_switches_and_the_whole_o
                 await service.save(SEGMENT, "LOST")
             with pytest.raises(RuntimeError):
                 await service.delete(SEGMENT)
-            assert await compose_instructions(settings_store, tmp_path) == before
+            assert (
+                await compose_instructions(
+                    settings_store, tmp_path, "teacher", asyncio.Lock()
+                )
+                == before
+            )
             segment = next(
                 item
                 for item in (await service.segments()).teacher
@@ -410,7 +425,7 @@ def test_a_turn_composing_during_a_failing_edit_reads_only_the_committed_prompt(
             settings_store = SettingsStore(database)
             sync_store = SyncStore(database)
             service = PromptOverridesService(
-                settings_store, tmp_path, asyncio.Lock(), sync_store
+                settings_store, tmp_path, asyncio.Lock(), sync_store, asyncio.Lock()
             )
             await service.save(SEGMENT, "COMMITTED")
             await service.set_enabled(SEGMENT, True)
@@ -439,5 +454,69 @@ def test_a_turn_composing_during_a_failing_edit_reads_only_the_committed_prompt(
                 await saving
             composed = await composing
             assert "COMMITTED" in composed and "UNCOMMITTED" not in composed
+
+    asyncio.run(run())
+
+
+def test_a_turn_composing_during_a_sync_rollback_reads_the_restored_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            sync_store = SyncStore(database)
+            edit_lock = asyncio.Lock()
+            overrides = PromptOverridesService(
+                settings_store, tmp_path, asyncio.Lock(), sync_store, edit_lock
+            )
+            await overrides.save(SEGMENT, "COMMITTED")
+            await overrides.set_enabled(SEGMENT, True)
+            local = (await sync_store.list_pending_push())[0]
+            remote = local.model_copy(
+                update={
+                    "change_seq": 3,
+                    "origin_device_id": "remote",
+                    "payload": {**local.payload, "content": "REMOTE"},
+                }
+            )
+            service = SyncService(
+                sync_store,
+                CredentialsStore(tmp_path),
+                RuntimeRegistry(),
+                Notifications(),
+                tmp_path,
+                prompt_edit_lock=edit_lock,
+            )
+            service._deferred["s"] = [remote]
+            write, rollback = make_prompt_tx_hooks(tmp_path)
+            rolling_back, release = asyncio.Event(), asyncio.Event()
+
+            async def paused_rollback():
+                rolling_back.set()
+                await release.wait()
+                await rollback()
+
+            monkeypatch.setattr(
+                service, "_make_prompt_hooks", lambda: (write, paused_rollback)
+            )
+            monkeypatch.setattr(
+                "verstehen.store.sync._write_prompt_hashes",
+                Mock(side_effect=RuntimeError("apply failed")),
+            )
+            flushing = asyncio.create_task(service._flush_deferred_unlocked("s"))
+            await rolling_back.wait()
+            assert (tmp_path / "prompts" / SEGMENT).read_text() == "REMOTE"
+            composing = asyncio.create_task(
+                compose_instructions(settings_store, tmp_path, "teacher", edit_lock)
+            )
+            await asyncio.sleep(0.05)
+            assert not composing.done()
+            release.set()
+            with pytest.raises(RuntimeError):
+                await flushing
+            composed = await composing
+            assert "COMMITTED" in composed and "REMOTE" not in composed
 
     asyncio.run(run())

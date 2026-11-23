@@ -51,7 +51,9 @@ def test_teacher_composition_matches_learnharness_byte_for_byte_except_approved_
     async def run():
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
-            composed = await compose_instructions(SettingsStore(database), tmp_path)
+            composed = await compose_instructions(
+                SettingsStore(database), tmp_path, "teacher", asyncio.Lock()
+            )
             assert (
                 hashlib.sha256(composed.encode()).hexdigest()
                 == (FIXTURES / "teacher-composition.sha256").read_text().strip()
@@ -82,7 +84,9 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
             settings_store = SettingsStore(database)
-            default = await compose_instructions(settings_store, tmp_path)
+            default = await compose_instructions(
+                settings_store, tmp_path, "teacher", asyncio.Lock()
+            )
             source = (PROMPTS_DIR / segment).read_text().strip()
             override = tmp_path / "prompts" / segment
             override.parent.mkdir(parents=True)
@@ -104,7 +108,9 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
                 }
             )
             await settings_store.set("agent.prompts", switches)
-            composed = await compose_instructions(settings_store, tmp_path)
+            composed = await compose_instructions(
+                settings_store, tmp_path, "teacher", asyncio.Lock()
+            )
             if case in {
                 "switch_off",
                 "switch_absent",
@@ -124,7 +130,7 @@ def test_prompt_override_rules(tmp_path: Path, segment: str, case: str):
                 if case == "fresh_edit":
                     override.write_text("UPDATED")
                     assert await compose_instructions(
-                        settings_store, tmp_path
+                        settings_store, tmp_path, "teacher", asyncio.Lock()
                     ) == default.replace(source, "UPDATED")
 
     asyncio.run(run())
@@ -158,7 +164,9 @@ def test_prompt_discovery_filters_filenames_orders_segments_and_drops_empty_text
                 "agent.prompts", {"../outside.md": True, "teacher/README.md": True}
             )
             assert (
-                await compose_instructions(settings_store, tmp_path)
+                await compose_instructions(
+                    settings_store, tmp_path, "teacher", asyncio.Lock()
+                )
                 == "BASE\n\n---\n\nFIRST\n\n---\n\nSECOND\n\n---\n\nAPPENDIX"
             )
 
@@ -172,7 +180,9 @@ def test_practice_composition_omits_system_prompt_and_filters_shared_fragments(
         async with open_database(tmp_path / "test.db") as database:
             await migrate(database)
             settings_store = SettingsStore(database)
-            practice = await compose_instructions(settings_store, tmp_path, "practice")
+            practice = await compose_instructions(
+                settings_store, tmp_path, "practice", asyncio.Lock()
+            )
             system_text = (PROMPTS_DIR / "system-prompt.md").read_text().strip()
             assert system_text not in practice
 
@@ -223,7 +233,9 @@ def test_practice_prompt_overrides_replace_or_drop_segments(tmp_path: Path):
                     "shared/10-voice.md": True,
                 },
             )
-            practice = await compose_instructions(settings_store, tmp_path, "practice")
+            practice = await compose_instructions(
+                settings_store, tmp_path, "practice", asyncio.Lock()
+            )
             assert "CUSTOM PRACTICE LOOP" in practice
             assert (
                 PROMPTS_DIR / "practice" / "10-doctrine.md"

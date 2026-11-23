@@ -115,6 +115,7 @@ async def core(tmp_path: Path):
             lambda session_id: asyncio.sleep(0, []),
             extraction_service,
             graph_store,
+            asyncio.Lock(),
         )
         try:
             yield settings_store, adapter, resolver, session_service, turn_service

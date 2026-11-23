@@ -94,6 +94,7 @@ def create_app(settings: Settings) -> FastAPI:
             prompt_lock = asyncio.Lock()
             app.state.prompt_lock = prompt_lock
             prompt_edit_lock = asyncio.Lock()
+            app.state.prompt_edit_lock = prompt_edit_lock
             claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
             catalog_store = ModelCatalogStore(settings.data_dir)
@@ -266,8 +267,8 @@ def create_app(settings: Settings) -> FastAPI:
                 side_chat_service.snapshot,
                 extraction_service,
                 graph_store,
-                settings.provider_events,
                 prompt_edit_lock,
+                settings.provider_events,
             )
 
             app.state.job_service = JobService(
@@ -292,6 +293,7 @@ def create_app(settings: Settings) -> FastAPI:
                 notifications,
                 settings.data_dir,
                 prompt_lock=prompt_lock,
+                prompt_edit_lock=prompt_edit_lock,
             )
             app.state.sync_service = sync_service
             server_proxy = ServerProxy(sync_service)

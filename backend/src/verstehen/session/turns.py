@@ -198,8 +198,8 @@ class TurnService:
         side_threads: Callable[[str], Awaitable[list[SideThread]]],
         extraction_service: ExtractionService,
         graph_store: GraphStore,
+        prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
-        prompt_edit_lock: asyncio.Lock | None = None,
     ):
         self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store

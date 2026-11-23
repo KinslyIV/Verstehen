@@ -1,7 +1,6 @@
 import asyncio
 import re
 from collections.abc import Iterable
-from contextlib import nullcontext
 from pathlib import Path
 from typing import Literal
 
@@ -46,13 +45,13 @@ def is_shared_segment(key: str) -> bool:
 async def compose_instructions(
     settings_store: SettingsStore,
     data_dir: Path,
-    kind: PromptKind = "teacher",
-    edit_lock: asyncio.Lock | None = None,
+    kind: PromptKind,
+    edit_lock: asyncio.Lock,
 ) -> str:
     """Compose the agent’s source fragments with enabled, readable overrides.
-    With `edit_lock` it waits for a running prompt edit, so only committed prompts are read.
+    It waits for `edit_lock` (held by prompt edits and sync applies), so only committed prompts are read.
     """
-    async with edit_lock or nullcontext():
+    async with edit_lock:
         switches = await settings_store.get("agent.prompts")
         return join_fragments(
             fragment_text(key, switches, data_dir) for key in segment_keys(kind)
