@@ -51,6 +51,7 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 	});
 	await toggle.click();
 	await expect(toggle).toBeChecked();
+	await expect.poll(async () => (await segments()).enabled).toBe(true);
 
 	await page.reload();
 	await expect(toggle).toBeChecked();
