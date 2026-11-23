@@ -206,6 +206,18 @@ const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 export async function getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {
 	return (await request(sessionPath(id), { signal })).json();
 }
+export async function getSessionItem(
+	id: string,
+	signal?: AbortSignal
+): Promise<SessionItem | null> {
+	return (await request(`${sessionPath(id)}/item`, { signal })).json();
+}
+export async function getSessionCoverage(
+	id: string,
+	signal?: AbortSignal
+): Promise<SessionCoverage | null> {
+	return (await request(`${sessionPath(id)}/coverage`, { signal })).json();
+}
 export async function renameSession(
 	id: string,
 	title: string

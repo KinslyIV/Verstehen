@@ -35,7 +35,7 @@ from verstehen.graph.prompts import (
 from verstehen.providers.policy import ProviderPolicy, RequestPurpose
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.providers.usage import UsageModel
-from verstehen.store.entries import EntriesStore, EntryUsage
+from verstehen.store.entries import EntriesStore, Entry, EntryUsage
 from verstehen.store.graph import CoverageEntry, GraphStore, NotesSource, timestamp
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -144,9 +144,13 @@ class ExtractionService:
     def statuses(self) -> list[RunningExtraction]:
         return sorted(self.runs.values(), key=lambda r: r.started_at)
 
-    async def coverage(self, session_id: str) -> SessionCoverage:
+    async def coverage(
+        self, session_id: str, messages: list[Entry] | None = None
+    ) -> SessionCoverage:
+        """Coverage of the saved entries; pass them when the caller already loaded them."""
         ledger = await self.graph_store.read()
-        messages = await self.entries_store.list(session_id)
+        if messages is None:
+            messages = await self.entries_store.list(session_id)
         cov = coverage_of(messages, ledger.coverage, session_id)
         return SessionCoverage(
             total_messages=len(messages),

@@ -23,7 +23,7 @@ types stay behind the client.
 
 | Area | Routes |
 |---|---|
-| Sessions | `GET POST /api/sessions` (`POST` takes `kind`: `teach` or `practice`; list items carry `kind`, `pending_question`, `pending_problem`); `GET PATCH DELETE /api/sessions/{id}`; `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
+| Sessions | `GET POST /api/sessions` (`POST` takes `kind`: `teach` or `practice`; list items carry `kind`, `pending_question`, `pending_problem`); `GET PATCH DELETE /api/sessions/{id}`; `GET …/item` (one list row, built as the list builds it; `null` once the session is gone) and `GET …/coverage` (the snapshot's coverage alone); `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
 | Events | `GET /api/events` (SSE) |
 | Jobs | `GET /api/jobs?session=…` (also runs the recovery sweep); `POST /api/jobs/{id}/abort` |
 | Side chat | `GET POST /api/sessions/{id}/side-chats`; `GET …/side-chats/{thread}/stream` (SSE); `POST …/side-chats/{thread}/stop` |

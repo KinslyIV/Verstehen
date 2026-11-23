@@ -14,6 +14,16 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Desktop responsiveness:**
+
+- **A missing sidebar row returns null.** Treat deletion as an ordinary row update. Returning
+  404 would also let the sidebar remove the row but produces a browser error for an expected event.
+- **The sidebar refreshes on stream reconnection.** One summary request recovers missed events.
+  Waiting for future events could leave a deleted or renamed row stale.
+- **Compute practice badges from recent entries, widening as needed.** This avoids a schema
+  change and keeps the entry log authoritative. Storing a separate badge projection would make
+  reads cheaper for practice sessions whose history contains no problem state.
+
 **LearnHarness import:**
 
 - **Replacement requires an unpaired local data directory.** Dry runs still work. Replacing a

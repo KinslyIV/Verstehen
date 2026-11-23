@@ -4,6 +4,7 @@ import {
 	dismissQuestion,
 	ApiError,
 	getSession,
+	getSessionCoverage,
 	postInput,
 	setArtifactView,
 	steerSession,
@@ -466,7 +467,7 @@ export class SessionController {
 		clearTimeout(this.coverageTimer);
 		this.coverageTimer = setTimeout(async () => {
 			try {
-				const { coverage } = await getSession(this.id, this.lifetime.signal);
+				const coverage = await getSessionCoverage(this.id, this.lifetime.signal);
 				if (this.record) this.record.coverage = coverage;
 			} catch {
 				/* The next refresh carries the coverage. */

@@ -56,6 +56,12 @@ test('graph-coverage', async ({ page, request, appendEntries }) => {
 		body.coverage.failure_reason = 'ChatGPT authorization expired. Sign in again.';
 		await route.fulfill({ response, json: body });
 	});
+	await page.route(`**/api/sessions/${id}/coverage`, async (route) => {
+		const response = await route.fetch();
+		const body = await response.json();
+		body.failure_reason = 'ChatGPT authorization expired. Sign in again.';
+		await route.fulfill({ response, json: body });
+	});
 	await page.reload();
 	await ring.click();
 	await expect(popover.getByTestId('coverage-extract-error')).toHaveText(
@@ -67,6 +73,7 @@ test('graph-coverage', async ({ page, request, appendEntries }) => {
 		animations: 'disabled'
 	});
 	await page.unroute(`**/api/sessions/${id}`);
+	await page.unroute(`**/api/sessions/${id}/coverage`);
 	await page.reload();
 	await ring.click();
 

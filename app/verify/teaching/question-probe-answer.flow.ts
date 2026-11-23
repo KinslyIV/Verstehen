@@ -6,6 +6,8 @@ test.use({ script: 'verify/scripts/question-probe-answer.json' });
 test('question-probe-answer', async ({ page }) => {
 	await startLesson(page);
 	const dock = page.getByTestId('question-dock');
+	const row = page.getByRole('link', { name: /Derivatives and slope/ });
+	await expect(row).toContainText('Waiting for input');
 	await expect(dock).toContainText('What is the slope of a horizontal line?');
 	await expect(dock.getByText('↵ submits · ⇧↵ newline', { exact: true })).toBeVisible();
 	await expect(dock.getByRole('button', { name: 'Choose model' })).toBeVisible();
@@ -30,4 +32,6 @@ test('question-probe-answer', async ({ page }) => {
 	await expect(card.getByText('The height is constant, so the slope is zero.')).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
 	await expect(page.getByText(/This is the derivative of a constant/)).toBeInViewport();
+	await expect(row).toContainText('just now');
+	await expect(row).not.toContainText('Waiting for input');
 });

@@ -14,7 +14,7 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md).
 |---|---|
 | `database.py` | `Database`: one aiosqlite connection (WAL, foreign keys) behind one asyncio lock; `transaction()` (BEGIN, commit, rollback on any exception) and `read()` |
 | `migrate.py`, `migration_files.py`, `migrations/*.sql`, `migrations.lock` | the migration runner; numbered `NNNN_name.sql` files; SHA-256 lock entries that `make check` verifies |
-| `entries.py` | the entry models (`UserEntry`, `AssistantEntry`, `ToolResultEntry`, `MarkerEntry`) and `EntriesStore` (append-only; `append_compaction` saves a checkpoint with its usage) |
+| `entries.py` | the entry models (`UserEntry`, `AssistantEntry`, `ToolResultEntry`, `MarkerEntry`) and `EntriesStore` (append-only; `append_compaction` saves a checkpoint with its usage; `list` reads a whole transcript, `since_last_assistant` and `tail` read only a window of it) |
 | `model_identity.py` | `ModelIdentity`: provider and requested model id shared by projection and token estimates; no Pydantic AI dependency |
 | `sessions.py` | `Session` and `SessionsStore` (including image references for deletion) |
 | `settings.py` | the typed `Settings` model and `SettingsStore` (`read`/`write` whole top-level fields; `get`/`set` for prompt switches) |
@@ -57,6 +57,7 @@ browsers in `<data dir>/browsers/`.
 
 ## Rules
 
+- **Sidebar reads.** The question badge uses the `(session_id, seq)` key to find each session's newest assistant entry and following tool results. Practice badges scan a growing window of recent history.
 - **Short transactions.** A transaction is never held across a model call.
 - **Payloads are JSON validated by Pydantic** on the way in and out. Assistant entries save the
   requested provider and model id; thinking keeps its signature and optional Responses reasoning

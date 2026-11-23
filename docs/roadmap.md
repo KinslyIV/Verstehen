@@ -96,6 +96,11 @@ All of this is merged into `main`.
 Open problems found along the way. Each is fixed or decided before the milestone that touches it
 merges.
 
+- **Long transcript rendering.** Synthetic teaching sessions with hundreds of entries still mount
+  thousands of DOM nodes on open. Sidebar summary and coverage work reduces API costs, while
+  loaded-host Chromium profiles still place most time in transcript rendering. Compare bounded
+  rendering and finer per-entry updates in a separate change.
+
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,
   `right_panel_open_state_and_width_are_remembered`,
