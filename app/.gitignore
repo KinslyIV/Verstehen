@@ -31,3 +31,4 @@ vite.config.ts.timestamp-*
 /build-remote
 /.svelte-kit-android
 /build-android
+/.android-build.lock

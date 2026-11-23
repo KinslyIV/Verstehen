@@ -68,9 +68,10 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   are set, as in CI), otherwise unsigned with a warning. `make android-key` creates that key once and
   prints the `gh secret set` commands for `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, and
   `ANDROID_KEY_ALIAS`; agents never run it or read the key. `debug`, `release`, and the `web`
-  subcommand hold an exclusive `flock` on `app/android/build/android.lock` from the web sync to the
-  `.apk` copy, because they share `app/android/app/src/main/assets/public`; a second build prints a
-  notice and waits for the first (`ANDROID_BUILD_LOCK` overrides the lock path, for tests).
+  subcommand hold an exclusive `flock` on `app/.android-build.lock` from the web sync to the `.apk`
+  copy, because they share `app/android/app/src/main/assets/public`; a second build prints a notice
+  and waits for the first. The lock sits outside Gradle's `build` directory, which `clean` deletes
+  (`ANDROID_BUILD_LOCK` overrides the lock path, for tests).
 - **Emulator loop for agents** (the verify skill has the commands): a fake-model `--server` backend
   on a temporary data directory, a pairing code minted through the API, the debug `.apk` installed
   on a virtual device opened in the T3 Code Device panel, pairing at `10.0.2.2:<port>`, one lesson
