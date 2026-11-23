@@ -93,6 +93,7 @@ def create_app(settings: Settings) -> FastAPI:
             app.state.sync_store = sync_store
             prompt_lock = asyncio.Lock()
             app.state.prompt_lock = prompt_lock
+            prompt_edit_lock = asyncio.Lock()
             claude_code_adapter = ClaudeCodeAccountAdapter(settings.provider_events)
             credentials_store = CredentialsStore(settings.data_dir)
             catalog_store = ModelCatalogStore(settings.data_dir)
@@ -266,6 +267,7 @@ def create_app(settings: Settings) -> FastAPI:
                 extraction_service,
                 graph_store,
                 settings.provider_events,
+                prompt_edit_lock,
             )
 
             app.state.job_service = JobService(
@@ -277,7 +279,11 @@ def create_app(settings: Settings) -> FastAPI:
             )
 
             app.state.prompt_overrides_service = PromptOverridesService(
-                settings_store, settings.data_dir, prompt_lock, sync_store
+                settings_store,
+                settings.data_dir,
+                prompt_lock,
+                sync_store,
+                prompt_edit_lock,
             )
             sync_service = SyncService(
                 sync_store,

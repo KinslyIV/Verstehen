@@ -54,7 +54,10 @@ Frontend, `app/src/lib/`:
   override, in use, shared). Saving writes only the file and keeps the switch, so a failed write
   changes nothing; the UI then switches the override on (**Save and activate**), and a failed
   switch becomes **Retry activation** without rewriting the file. Switching on needs a readable
-  override. Deleting clears the switch first, then the file, so a crash leaves "off plus a file".
+  override. Deleting removes the file, then clears the switch and records the prompt snapshot in one
+  transaction, so a failure restores the file and leaves the sync outbox unchanged. An edit holds an
+  edit lock that prompt composition (turns, compaction) also takes, so a turn never reads an
+  uncommitted edit.
   Only the fragments of the three agents are listed; `side-chat/` fragments stay overridable by
   files and switches but have no editor. Prompt paths with symlinks and paths outside the listed
   fragments are unavailable in the editor. Each file change is recorded with sync before returning.

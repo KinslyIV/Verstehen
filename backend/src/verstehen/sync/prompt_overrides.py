@@ -47,7 +47,9 @@ class MissingPromptOverride(ValueError):
 
 
 class PromptOverridesService:
-    """Edits and records prompt files under the lock shared with sync."""
+    """Edits and records prompt files under the lock shared with sync.
+    `edit_lock` also guards prompt composition, so a turn never reads an uncommitted edit.
+    """
 
     def __init__(
         self,
@@ -55,11 +57,13 @@ class PromptOverridesService:
         data_dir: Path,
         prompt_lock: asyncio.Lock,
         sync_store: SyncStore,
+        edit_lock: asyncio.Lock | None = None,
     ):
         self.settings_store = settings_store
         self.data_dir = data_dir
         self.prompt_lock = prompt_lock
         self.sync_store = sync_store
+        self.edit_lock = edit_lock or asyncio.Lock()
 
     async def segments(self) -> PromptSegments:
         async with self.prompt_lock:
@@ -90,42 +94,44 @@ class PromptOverridesService:
         self._require_segment(path)
 
         async def apply() -> None:
-            previous_text = await asyncio.to_thread(
-                read_prompt_file, self.data_dir, path
-            )
-            previous_enabled = (await self._switches()).get(path) is True
+            previous = await asyncio.to_thread(read_prompt_file, self.data_dir, path)
             try:
                 if text is None:
                     await asyncio.to_thread(prompt_file_path, self.data_dir, path)
-                    await self._write_switch(path, False)
                     await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
                 else:
                     await asyncio.to_thread(
                         write_prompt_file, self.data_dir, path, text
                     )
-                await record_prompt_snapshot(self.sync_store, self.data_dir)
+                await self._commit(path, clear_switch=text is None)
             except Exception:
-                await self._restore(path, previous_text, previous_enabled)
+                await self._restore_file(path, previous)
                 raise
 
-        async with self.prompt_lock:
+        async with self.prompt_lock, self.edit_lock:
             edit = asyncio.create_task(apply())
             if await wait_for_completion(edit):
                 edit.exception()
                 raise asyncio.CancelledError
             edit.result()
 
-    async def _restore(
-        self, path: str, previous_text: str | None, previous_enabled: bool
-    ) -> None:
-        """Put the file and switch back so a failed edit changes neither the tutor nor the sync log."""
-        if previous_text is None:
+    async def _commit(self, path: str, *, clear_switch: bool) -> None:
+        """Record the prompt snapshot, with the cleared switch in one transaction, so a failure leaves the outbox unchanged."""
+        switches = await self._switches()
+        if not clear_switch or path not in switches:
+            await record_prompt_snapshot(self.sync_store, self.data_dir)
+            return
+        del switches[path]
+        await record_prompt_snapshot(
+            self.sync_store, self.data_dir, (SWITCHES_KEY, switches)
+        )
+
+    async def _restore_file(self, path: str, previous: str | None) -> None:
+        """Put the override file back so the tutor keeps the prompt that was committed."""
+        if previous is None:
             await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
         else:
-            await asyncio.to_thread(
-                write_prompt_file, self.data_dir, path, previous_text
-            )
-        await self._write_switch(path, previous_enabled)
+            await asyncio.to_thread(write_prompt_file, self.data_dir, path, previous)
 
     async def _switches(self) -> dict[str, JsonValue]:
         stored = await self.settings_store.get(SWITCHES_KEY)

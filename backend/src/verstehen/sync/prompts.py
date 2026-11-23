@@ -5,6 +5,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
+from pydantic import JsonValue
+
 from verstehen.store.database import wait_for_completion
 from verstehen.store.sync import (
     PromptApplyHook,
@@ -116,10 +118,17 @@ def scan_prompts(data_dir: Path) -> PromptScan:
     )
 
 
-async def record_prompt_snapshot(sync_store: SyncStore, data_dir: Path) -> None:
+async def record_prompt_snapshot(
+    sync_store: SyncStore,
+    data_dir: Path,
+    setting: tuple[str, JsonValue] | None = None,
+) -> None:
     scan = await asyncio.to_thread(scan_prompts, data_dir)
     await sync_store.sync_prompt_snapshot(
-        scan.files, skipped_all=scan.skipped_all, skipped_paths=scan.skipped_paths
+        scan.files,
+        skipped_all=scan.skipped_all,
+        skipped_paths=scan.skipped_paths,
+        setting=setting,
     )
 
 

@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Literal
 
+from aiosqlite import Connection
 from aiosqlite import Error as DatabaseError
 from pydantic import (
     BaseModel,
@@ -302,27 +303,36 @@ class SettingsStore:
                 row = await cursor.fetchone()
             return None if row is None else JSON.validate_json(row[0])
 
-    async def set(self, key: str, value: JsonValue) -> None:
+    async def set(
+        self, key: str, value: JsonValue, connection: Connection | None = None
+    ) -> None:
+        """Store a setting; pass the connection of an open transaction to join it."""
         if value is None:
             raise ValueError(
                 f"Setting {key!r} cannot be stored as null: None from get() means "
                 "the key is missing. Store a non-null value instead."
             )
+        if connection is not None:
+            await self._set_in(connection, key, value)
+            return
+        async with self.database.transaction() as own:
+            await self._set_in(own, key, value)
+
+    async def _set_in(self, connection: Connection, key: str, value: JsonValue) -> None:
         validated = JSON.validate_python(value)
         encoded = JSON.dump_json(validated).decode()
         now = utc_now()
-        async with self.database.transaction() as connection:
-            await connection.execute(
-                "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                (key, encoded, now),
+        await connection.execute(
+            "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+            (key, encoded, now),
+        )
+        if key in SYNCED_SETTINGS_KEYS:
+            await append_sync_log(
+                connection,
+                entity="setting",
+                op="upsert",
+                entity_id=key,
+                payload={"key": key, "value": validated, "updated_at": now},
             )
-            if key in SYNCED_SETTINGS_KEYS:
-                await append_sync_log(
-                    connection,
-                    entity="setting",
-                    op="upsert",
-                    entity_id=key,
-                    payload={"key": key, "value": validated, "updated_at": now},
-                )
-                self.database.mark_sync_dirty()
+            self.database.mark_sync_dirty()

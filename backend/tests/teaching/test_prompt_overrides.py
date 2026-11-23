@@ -362,15 +362,7 @@ def test_cancelled_prompt_save_cannot_write_after_a_second_save(
     asyncio.run(run())
 
 
-async def prompt_changes_of(sync_store: SyncStore):
-    return [
-        change
-        for change in await sync_store.list_pending_push()
-        if change.entity != "setting"
-    ]
-
-
-def test_an_edit_whose_sync_record_fails_restores_the_prompt_the_tutor_uses(
+def test_an_edit_whose_sync_record_fails_leaves_prompts_switches_and_the_whole_outbox_unchanged(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ):
@@ -385,12 +377,13 @@ def test_an_edit_whose_sync_record_fails_restores_the_prompt_the_tutor_uses(
             await service.save(SEGMENT, "KEPT")
             await service.set_enabled(SEGMENT, True)
             before = await compose_instructions(settings_store, tmp_path)
-            prompt_changes = await prompt_changes_of(sync_store)
-            assert prompt_changes
-            monkeypatch.setattr(
-                "verstehen.sync.prompt_overrides.record_prompt_snapshot",
-                Mock(side_effect=RuntimeError("sync unavailable")),
-            )
+            outbox = await sync_store.list_pending_push()
+            assert outbox
+
+            async def failing(*args, **kwargs):
+                raise RuntimeError("sync unavailable")
+
+            monkeypatch.setattr("verstehen.store.sync.append_sync_log", failing)
             with pytest.raises(RuntimeError):
                 await service.save(SEGMENT, "LOST")
             with pytest.raises(RuntimeError):
@@ -402,6 +395,49 @@ def test_an_edit_whose_sync_record_fails_restores_the_prompt_the_tutor_uses(
                 if item.path == SEGMENT
             )
             assert (segment.override_text, segment.enabled) == ("KEPT", True)
-            assert await prompt_changes_of(sync_store) == prompt_changes
+            assert await sync_store.list_pending_push() == outbox
+
+    asyncio.run(run())
+
+
+def test_a_turn_composing_during_a_failing_edit_reads_only_the_committed_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            sync_store = SyncStore(database)
+            service = PromptOverridesService(
+                settings_store, tmp_path, asyncio.Lock(), sync_store
+            )
+            await service.save(SEGMENT, "COMMITTED")
+            await service.set_enabled(SEGMENT, True)
+            entered, release = asyncio.Event(), asyncio.Event()
+
+            async def blocked(*args, **kwargs):
+                entered.set()
+                await release.wait()
+                raise RuntimeError("sync unavailable")
+
+            monkeypatch.setattr(
+                "verstehen.sync.prompt_overrides.record_prompt_snapshot", blocked
+            )
+            saving = asyncio.create_task(service.save(SEGMENT, "UNCOMMITTED"))
+            await entered.wait()
+            assert (tmp_path / "prompts" / SEGMENT).read_text() == "UNCOMMITTED"
+            composing = asyncio.create_task(
+                compose_instructions(
+                    settings_store, tmp_path, "teacher", service.edit_lock
+                )
+            )
+            await asyncio.sleep(0.05)
+            assert not composing.done()
+            release.set()
+            with pytest.raises(RuntimeError):
+                await saving
+            composed = await composing
+            assert "COMMITTED" in composed and "UNCOMMITTED" not in composed
 
     asyncio.run(run())

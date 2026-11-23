@@ -7,13 +7,14 @@ from typing import Any, Literal
 from uuid import uuid4
 
 from aiosqlite import Connection, IntegrityError
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, JsonValue, ValidationError
 
 from verstehen.store.database import Database
 from verstehen.store.entries import ENTRY, MarkerEntry, delivered_job_id
 from verstehen.store.graph import SourcePlacement
 from verstehen.store.jobs import JobKind, JobUsage, mark_delivered
 from verstehen.store.settings import Settings as AppSettings
+from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideAnchor
 from verstehen.store.sync_log import (
     GRAPH_LEDGER_TABLES,
@@ -2048,57 +2049,72 @@ class SyncStore:
         *,
         skipped_all: bool = False,
         skipped_paths: frozenset[str] = frozenset(),
+        setting: tuple[str, JsonValue] | None = None,
     ) -> list[str]:
-        """Diff confirmed on-disk prompt overrides against sync_prompt_state."""
-        if skipped_all:
+        """Diff confirmed on-disk prompt overrides against sync_prompt_state.
+        A `setting` is stored in the same transaction, so both reach the outbox or neither does.
+        """
+        if skipped_all and setting is None:
             return []
-        changed: list[str] = []
         async with self.database.transaction() as connection:
-            async with connection.execute(
-                "SELECT path, sha256 FROM sync_prompt_state"
-            ) as cursor:
-                previous = {str(r[0]): str(r[1]) for r in await cursor.fetchall()}
-            now = utc_now()
-            for rel_path, (content, digest) in sorted(current.items()):
-                if previous.get(rel_path) == digest:
-                    continue
-                await connection.execute(
-                    "INSERT INTO sync_prompt_state (path, sha256) VALUES (?, ?) "
-                    "ON CONFLICT(path) DO UPDATE SET sha256 = excluded.sha256",
-                    (rel_path, digest),
-                )
-                await append_sync_log(
-                    connection,
-                    entity="prompt_override",
-                    op="upsert",
-                    entity_id=rel_path,
-                    payload={
-                        "path": rel_path,
-                        "content": content,
-                        "sha256": digest,
-                        "updated_at": now,
-                    },
-                )
-                self.database.mark_sync_dirty()
-                changed.append(rel_path)
-            for rel_path in sorted(set(previous) - set(current)):
-                if rel_path in skipped_paths or any(
-                    rel_path.startswith(f"{prefix}/") for prefix in skipped_paths
-                ):
-                    continue
-                await connection.execute(
-                    "DELETE FROM sync_prompt_state WHERE path = ?", (rel_path,)
-                )
-                await record_tombstone(
-                    connection, entity="prompt_override", entity_id=rel_path
-                )
-                await append_sync_log(
-                    connection,
-                    entity="prompt_override",
-                    op="delete",
-                    entity_id=rel_path,
-                    payload={"path": rel_path},
-                )
-                self.database.mark_sync_dirty()
-                changed.append(rel_path)
+            if setting is not None:
+                await SettingsStore(self.database).set(*setting, connection)
+            if skipped_all:
+                return []
+            return await self._diff_prompts(connection, current, skipped_paths)
+
+    async def _diff_prompts(
+        self,
+        connection: Connection,
+        current: dict[str, tuple[str, str]],
+        skipped_paths: frozenset[str],
+    ) -> list[str]:
+        changed: list[str] = []
+        async with connection.execute(
+            "SELECT path, sha256 FROM sync_prompt_state"
+        ) as cursor:
+            previous = {str(r[0]): str(r[1]) for r in await cursor.fetchall()}
+        now = utc_now()
+        for rel_path, (content, digest) in sorted(current.items()):
+            if previous.get(rel_path) == digest:
+                continue
+            await connection.execute(
+                "INSERT INTO sync_prompt_state (path, sha256) VALUES (?, ?) "
+                "ON CONFLICT(path) DO UPDATE SET sha256 = excluded.sha256",
+                (rel_path, digest),
+            )
+            await append_sync_log(
+                connection,
+                entity="prompt_override",
+                op="upsert",
+                entity_id=rel_path,
+                payload={
+                    "path": rel_path,
+                    "content": content,
+                    "sha256": digest,
+                    "updated_at": now,
+                },
+            )
+            self.database.mark_sync_dirty()
+            changed.append(rel_path)
+        for rel_path in sorted(set(previous) - set(current)):
+            if rel_path in skipped_paths or any(
+                rel_path.startswith(f"{prefix}/") for prefix in skipped_paths
+            ):
+                continue
+            await connection.execute(
+                "DELETE FROM sync_prompt_state WHERE path = ?", (rel_path,)
+            )
+            await record_tombstone(
+                connection, entity="prompt_override", entity_id=rel_path
+            )
+            await append_sync_log(
+                connection,
+                entity="prompt_override",
+                op="delete",
+                entity_id=rel_path,
+                payload={"path": rel_path},
+            )
+            self.database.mark_sync_dirty()
+            changed.append(rel_path)
         return changed
