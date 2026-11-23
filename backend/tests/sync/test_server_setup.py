@@ -130,14 +130,14 @@ class FakeSshBackend:
         tunnel_gate: asyncio.Event | None = None,
         uv_kind: str = "standalone",
         uv_version: str = "uv 0.13.9",
-        uv_python_list: str = "cpython-3.15.2-linux-x86_64-gnu    <download available>\n",
+        uv_update_probe: str = "stopped",
     ):
         self.drop_after = drop_after
         self.fail_reconnect = fail_reconnect
         self.tunnel_gate = tunnel_gate
         self.uv_kind = uv_kind
         self.uv_version = uv_version
-        self.uv_python_list = uv_python_list
+        self.uv_update_probe = uv_update_probe
         self.tunnel_started = asyncio.Event()
         self.connections = 0
         self.command_results = command_results or {}
@@ -225,12 +225,12 @@ class FakeSshBackend:
             return SshCommandResult(exit_status=0, stdout=self.uname_output)
         if "echo symlink" in command:
             return SshCommandResult(exit_status=0, stdout=f"{self.uv_kind}\n")
+        if "pgrep" in command and "uv self update" in command:
+            return SshCommandResult(exit_status=0, stdout=f"{self.uv_update_probe}\n")
         if "self update" in command:
             return SshCommandResult(exit_status=0, stdout="")
         if "uv" in command and "--version" in command:
             return SshCommandResult(exit_status=0, stdout=f"{self.uv_version}\n")
-        if "python list 3.15" in command:
-            return SshCommandResult(exit_status=0, stdout=self.uv_python_list)
         if 'printf "%s" "$HOME"' in command:
             return SshCommandResult(exit_status=0, stdout="/home/ubuntu")
         if "python install 3.15" in command:
@@ -1032,10 +1032,19 @@ def test_install_checks_user_manager_first_stages_venv_and_mints_in_server_data_
             assert index("enable-linger") < index("systemctl --user restart")
             assert "XDG_RUNTIME_DIR" in commands[index("show-environment")]
             assert "echo symlink" in commands[index("echo symlink")]
-            assert "timeout 25" in commands[index("self update")]
-            assert "python list 3.15" in commands[index("python list 3.15")]
-            build = commands[index("python install 3.15")]
-            assert "import verstehen.cli" in build and "--clear" not in build
+            update_cmd = commands[index("self update")]
+            assert "timeout -k 5 25" in update_cmd and "else" not in update_cmd
+            assert (
+                index("python install 3.15")
+                < index('rm -rf "$HOME/.local/share/verstehen-server/bundle"')
+                < index("venv.new")
+            )
+            build = commands[index("venv.new")]
+            assert (
+                "venv --managed-python --no-python-downloads --python 3.15" in build
+                and "import verstehen.cli" in build
+                and "--clear" not in build
+            )
             swap_index = index("mv venv.new venv")
             assert index("venv.new") < swap_index
             for earlier in commands[:swap_index]:
@@ -2767,21 +2776,26 @@ def test_update_mints_a_new_device_only_when_the_server_rejects_the_old_token(
     asyncio.run(run())
 
 
-def test_stalled_uv_self_update_continues_with_usable_uv_and_releases_lock(
-    tmp_path: Path,
+@pytest.mark.parametrize(
+    "updater_error",
+    [TimeoutError("stalled"), SshUnreachableError("channel interrupted")],
+)
+def test_stalled_uv_self_update_continues_when_stopped_and_releases_lock(
+    tmp_path: Path, updater_error: Exception
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
             minted: list[str] = []
             ssh = FakeSshBackend(
                 mint_callback=minting(apps["server"], minted),
-                raise_once={"self update": TimeoutError("stalled")},
+                raise_once={"self update": updater_error},
+                uv_update_probe="stopped",
             )
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
             async with laptop_client(laptop_app) as client:
                 status = await run_install(client, service)
             assert status["state"] == "complete"
-            assert any("timed out" in line for line in status["logs"])
+            assert any("has stopped" in line for line in status["logs"])
             assert any(
                 'rm -- "$HOME/.local/share/verstehen-server/install.lock"' in c
                 for c in ssh.commands
@@ -2791,18 +2805,61 @@ def test_stalled_uv_self_update_continues_with_usable_uv_and_releases_lock(
 
 
 @pytest.mark.parametrize(
-    "python_list_output",
-    ["", "cpython-3.15.0b3-linux-x86_64-gnu    <download available>\n"],
+    ("updater_error", "probe_state", "probe_error"),
+    [
+        (TimeoutError("stalled"), "running", None),
+        (SshUnreachableError("channel interrupted"), "running", None),
+        (
+            TimeoutError("stalled"),
+            "stopped",
+            SshUnreachableError("probe failed"),
+        ),
+    ],
 )
+def test_stalled_uv_self_update_retains_lock_when_updater_may_still_run(
+    tmp_path: Path,
+    updater_error: Exception,
+    probe_state: str,
+    probe_error: Exception | None,
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            raise_once: dict[str, Exception] = {"self update": updater_error}
+            if probe_error is not None:
+                raise_once["pgrep"] = probe_error
+            ssh = FakeSshBackend(
+                raise_once=raise_once,
+                uv_update_probe=probe_state,
+            )
+            service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
+            async with laptop_client(laptop_app) as client:
+                status = await run_install(client, service)
+            assert status["state"] == "failed"
+            assert status["error_code"] == "install_failed"
+            assert "install.lock" in status["error"]
+            assert ssh.uploaded == []
+            assert not any(
+                'rm -- "$HOME/.local/share/verstehen-server/install.lock"' in c
+                for c in ssh.commands
+            )
+
+    asyncio.run(run())
+
+
 def test_outdated_symlinked_system_uv_skips_self_update_fails_before_upload_and_releases_lock(
-    tmp_path: Path, python_list_output: str
+    tmp_path: Path,
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
             ssh = FakeSshBackend(
                 uv_kind="symlink",
                 uv_version="uv 0.11.25",
-                uv_python_list=python_list_output,
+                command_results={
+                    "python install 3.15": SshCommandResult(
+                        exit_status=1,
+                        stderr="error: No download found for request: cpython-3.15",
+                    )
+                },
             )
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
             async with laptop_client(laptop_app) as client:
@@ -2829,8 +2886,14 @@ def test_outdated_standalone_uv_fails_before_upload_after_failed_self_update_and
             ssh = FakeSshBackend(
                 uv_kind="standalone",
                 uv_version="uv 0.11.25",
-                uv_python_list="cpython-3.15.0rc1-linux-x86_64-gnu    <download available>\n",
+                uv_update_probe="stopped",
                 raise_once={"self update": TimeoutError("network stalled")},
+                command_results={
+                    "python install 3.15": SshCommandResult(
+                        exit_status=1,
+                        stderr="error: No download found for request: cpython-3.15",
+                    )
+                },
             )
             service = prepare_install(laptop_app, apps["server"], tmp_path, ssh)
             async with laptop_client(laptop_app) as client:

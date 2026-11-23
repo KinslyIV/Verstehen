@@ -37,13 +37,6 @@ logger = logging.getLogger(__name__)
 
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 USER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
-PYTHON_315_PATTERN = re.compile(
-    r"(?:^|[\s/])(?:cpython-)?3\.15\.\d+(?:[-+\s]|$)", re.MULTILINE
-)
-
-
-def _supports_python_315(output: str) -> bool:
-    return bool(PYTHON_315_PATTERN.search(output))
 
 
 InstallStepId = Literal[
@@ -1188,15 +1181,39 @@ class ServerInstallService:
             try:
                 await session.run(
                     "if command -v timeout >/dev/null 2>&1; then "
-                    'timeout 25 "$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
-                    "else "
-                    '"$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
+                    'timeout -k 5 25 "$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
                     "fi",
-                    timeout=35.0,
+                    timeout=40.0,
                 )
-            except TimeoutError:
+            except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:
+                try:
+                    probe = await session.run(
+                        "if command -v pgrep >/dev/null 2>&1; then "
+                        "pgrep -f '[/]uv self update' >/dev/null 2>&1 && echo running || echo stopped; "
+                        "else echo unknown; fi",
+                        timeout=15.0,
+                    )
+                except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:
+                    probe = None
+                probe_state = (
+                    probe.stdout.strip().splitlines()[-1]
+                    if probe is not None
+                    and probe.exit_status == 0
+                    and probe.stdout.strip()
+                    else "unknown"
+                )
+                if probe_state != "stopped":
+                    self._retain_install_lock = True
+                    self._fail(
+                        "install_uv",
+                        "install_failed",
+                        "uv self update did not stop cleanly and may still be running on the server. "
+                        "Confirm no remote 'uv self update' process is running before removing "
+                        "~/.local/share/verstehen-server/install.lock and retrying.",
+                    )
+                    return False
                 self._append_log(
-                    "uv self update timed out; checking installed uv version."
+                    "uv self update did not finish but has stopped; checking installed uv version."
                 )
         version_result = await session.run('"$HOME/.local/bin/uv" --version')
         self._append_log(version_result.stdout or version_result.stderr)
@@ -1212,9 +1229,11 @@ class ServerInstallService:
             if version_result.stdout.strip()
             else "uv ready"
         )
-        py_list = await session.run('"$HOME/.local/bin/uv" python list 3.15')
-        if py_list.exit_status != 0 or not _supports_python_315(py_list.stdout):
-            self._append_log(py_list.stdout or py_list.stderr)
+        py_install = await session.run(
+            '"$HOME/.local/bin/uv" python install 3.15', timeout=300.0
+        )
+        self._append_log(py_install.stdout or py_install.stderr)
+        if py_install.exit_status != 0:
             if is_symlink:
                 message = (
                     f"The server's system uv ({version}) cannot install Python 3.15. "
@@ -1271,8 +1290,7 @@ class ServerInstallService:
         python = f'"{SERVER_DIR}/venv.new/bin/python"'
         result = await session.run(
             f'rm -rf "{SERVER_DIR}/venv.new" && '
-            f"{uv} python install 3.15 && "
-            f'{uv} venv --python 3.15 "{SERVER_DIR}/venv.new" && '
+            f'{uv} venv --managed-python --no-python-downloads --python 3.15 "{SERVER_DIR}/venv.new" && '
             f'{uv} pip install --python {python} -r "{SERVER_DIR}/bundle/requirements.txt" && '
             f'{uv} pip install --python {python} --no-deps "{SERVER_DIR}/bundle/"{shlex.quote(wheel_name)} && '
             f'{python} -c "import verstehen.cli, verstehen.app"',

@@ -1,5 +1,6 @@
 import json
 import os
+import selectors
 import subprocess
 import sys
 import urllib.request
@@ -79,42 +80,57 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
         "VERSTEHEN_DESKTOP": "1",
         "VERSTEHEN_TOKEN": token,
     }
-    with (
-        stderr_log.open("wb") as err_file,
-        subprocess.Popen(
-            [
-                sys.executable,
-                "-X",
-                "importtime",
-                "-c",
-                "from verstehen.cli import main; main()",
-                "--port",
-                "0",
-            ],
-            env=env,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=err_file,
-            text=True,
-        ) as proc,
-    ):
-        try:
-            assert proc.stdout is not None and proc.stdin is not None
-            line = proc.stdout.readline().strip()
-            assert line, stderr_log.read_text(encoding="utf-8", errors="replace")
-            port = json.loads(line)["port"]
-            request = urllib.request.Request(
-                f"http://127.0.0.1:{port}/api/health",
-                headers={"x-verstehen-token": token},
+    err_file = stderr_log.open("wb")
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-X",
+            "importtime",
+            "-c",
+            "from verstehen.cli import main; main()",
+            "--port",
+            "0",
+        ],
+        env=env,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=err_file,
+        text=True,
+    )
+    shutdown_timed_out = False
+    try:
+        assert proc.stdout is not None and proc.stdin is not None
+        with selectors.DefaultSelector() as selector:
+            selector.register(proc.stdout, selectors.EVENT_READ)
+            assert selector.select(timeout=15), (
+                "sidecar did not print its handshake\n"
+                + stderr_log.read_text(encoding="utf-8", errors="replace")
             )
-            with urllib.request.urlopen(request, timeout=10) as response:
-                assert response.status == 200
-                assert json.loads(response.read().decode("utf-8")) == {"status": "ok"}
-        finally:
-            if proc.stdin is not None:
-                proc.stdin.close()
+        line = proc.stdout.readline().strip()
+        assert line, stderr_log.read_text(encoding="utf-8", errors="replace")
+        port = json.loads(line)["port"]
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/api/health",
+            headers={"x-verstehen-token": token},
+        )
+        with urllib.request.urlopen(request, timeout=10) as response:
+            assert response.status == 200
+            assert json.loads(response.read().decode("utf-8")) == {"status": "ok"}
+    finally:
+        if proc.stdin is not None and not proc.stdin.closed:
+            proc.stdin.close()
+        try:
             proc.wait(timeout=15)
+        except subprocess.TimeoutExpired:
+            shutdown_timed_out = True
+            proc.kill()
+            proc.wait(timeout=5)
+        for stream in (proc.stdin, proc.stdout):
+            if stream and not stream.closed:
+                stream.close()
+        err_file.close()
 
+    assert not shutdown_timed_out, "sidecar did not shut down within 15s on stdin EOF"
     assert proc.returncode == 0, stderr_log.read_text(
         encoding="utf-8", errors="replace"
     )

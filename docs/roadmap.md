@@ -117,8 +117,11 @@ merges.
   are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
   `reasoning-resend`: its initial Send assertion could match before the opening turn started,
   so deletion returned 409 during the turn. It now waits for the completed reply's thinking
-  button before Send confirms settlement; the full 49-flow verification suite passes. The other timing
-  bugs remain open. Under heavy host load (other worktrees running verify,
+  button before Send confirms settlement; the full 49-flow verification suite passes. On
+  `t3/python315-lazy-imports`, the `composer-steer` race (steering before the opening `POST /input`
+  created the live turn), the `settings-prompts` race (reloading before the `PUT .../enabled`
+  response settled), and the `graph-extraction` race (navigating to `/graph` before the post-turn
+  `/coverage` fetch settled) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
