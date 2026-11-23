@@ -81,7 +81,8 @@ In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation
   and cross-site write check; `VERSTEHEN_ALLOWED_HOSTS` adds names.
 - **Startup handshake:** the sidecar prints exactly one stdout line, `{"port": N}`, once it listens.
   In desktop mode it exits when stdin closes or on SIGTERM.
-- SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header.
+- SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header. A stream
+  cut by the network is reopened with backoff; see [frontend-shell](frontend-shell.md).
 - **Remote clients** (the Android app, or a build with `PUBLIC_VERSTEHEN_CLIENT=remote`) send
   `Authorization: Bearer <token>` to the stored server URL. A `401` or a missing connection drops
   the token, keeps the server address, and routes to `/pair` ([frontend shell](frontend-shell.md)).

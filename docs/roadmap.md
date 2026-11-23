@@ -79,7 +79,8 @@ All of this is merged into `main`.
    [mobile-and-sync](plans/mobile-and-sync.md). Milestones A–C are in `dev`; Milestone D (the
    Android app, phone and tablet UI, and SSE recovery, with the former E folded in) is planned in
    [mobile-sync-d](plans/mobile-sync-d.md). Its PR 1 (the Android app, remote mode, and `/pair`) is
-   built; PR 2 (phone and tablet layouts, graph touch, phone Settings, SSE recovery) is next.
+   in `dev`; PR 2 (phone and tablet layouts, graph touch, phone Settings, SSE recovery) is built
+   and waits for review.
 
 ## Not ported (by decision)
 

@@ -59,7 +59,9 @@
 </script>
 
 <section class="relative flex h-full min-w-0 flex-col" aria-label="Lesson">
-	<div class="flex flex-1 flex-col items-center justify-center px-6 pb-10 text-center max-md:px-4">
+	<div
+		class="flex min-h-0 flex-1 flex-col items-center justify-center-safe overflow-y-auto px-6 pb-10 text-center max-md:px-4 max-md:pb-4"
+	>
 		<h1 class="text-2xl font-semibold tracking-tight">New session</h1>
 		<p class="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
 			{kind === 'practice'
