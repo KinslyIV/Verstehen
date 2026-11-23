@@ -123,6 +123,27 @@ LH refs: `components/stats-bar.tsx`, `src/core/prices.ts` (`sessionCacheHitRate`
   (`#n · model`, `k steps`, `CLI` / `ChatGPT` / cost / `—`). Outside pointerdown or Esc closes it.
   Re-read after each turn settles, compaction finishes, and on reconnect.
 
+### 6. Prompt editor follow-ups (user addition, 2026-11-23)
+
+LH refs: `f3f7f74f`, `6b1d2d14`, `7b685346` (`components/settings/agent-section.tsx`,
+`prompt-segment-row.tsx`, `prompt-segment-dialog.tsx`, `prompt-text.tsx`, `settings-dialog.tsx`,
+`tests/prompt-segment-settings.test.tsx`). Compare each behavior with Settings → Prompts
+(`settings-prompts.svelte`, `backend/src/verstehen/api/prompts.py`) and port what is missing:
+
+- Rows show a name derived from the path (`promptSegmentName`: last segment, extension, leading
+  digits and dashes dropped, dashes to spaces, capitalized); the switch label uses the name.
+- The list has loading / refreshing / failed states with Retry; a background refresh after a write
+  never dims or clears the list. Out-of-date reads are aborted, not merely ignored.
+- A switch counts as saved only when the write's acknowledgement shows the new state; Edit and the
+  switch are disabled while a switch is in flight.
+- Activation after a save requires the acknowledged switch, never a mirrored one.
+- Closing the view or edit dialog returns focus to the segment's row.
+- A delete never races a pending settings write: it waits for earlier writes, or reports
+  "Settings is still saving…" and keeps the dialog open.
+
+Behaviors that only exist because of LH's whole-section settings mirror and have no counterpart in
+Verstehen's per-prompt endpoints are reported, not invented.
+
 ## Tests
 
 - Vitest: tree build and flatten (order, filter, search, empty folders, cycles), search-fold state,
