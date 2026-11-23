@@ -122,10 +122,13 @@ async def record_prompt_snapshot(
     sync_store: SyncStore,
     data_dir: Path,
     setting: tuple[str, JsonValue] | None = None,
+    omit: str | None = None,
 ) -> None:
+    """Record the on-disk prompts; `omit` records one file as already deleted."""
     scan = await asyncio.to_thread(scan_prompts, data_dir)
+    files = {path: file for path, file in scan.files.items() if path != omit}
     await sync_store.sync_prompt_snapshot(
-        scan.files,
+        files,
         skipped_all=scan.skipped_all,
         skipped_paths=scan.skipped_paths,
         setting=setting,

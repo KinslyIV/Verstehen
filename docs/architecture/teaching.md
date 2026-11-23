@@ -54,8 +54,9 @@ Frontend, `app/src/lib/`:
   override, in use, shared). Saving writes only the file and keeps the switch, so a failed write
   changes nothing; the UI then switches the override on (**Save and activate**), and a failed
   switch becomes **Retry activation** without rewriting the file. Switching on needs a readable
-  override. Deleting removes the file, then clears the switch and records the prompt snapshot in one
-  transaction, so a failure restores the file and leaves the sync outbox unchanged. An edit holds an
+  override. Deleting clears the switch and records the file as deleted in one transaction, then unlinks it
+  (LearnHarness's order), so a failed record changes nothing and a failed unlink leaves the file with
+  the switch off. An edit holds an
   edit lock that prompt composition (turns, compaction) also takes, so a turn never reads an
   uncommitted edit. Sync applies that write prompt files take the same lock. The order is prompt lock,
   session locks, then edit lock, so compaction (session, then edit) and the editor (prompt, then edit)

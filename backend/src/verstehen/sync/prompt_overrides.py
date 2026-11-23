@@ -72,7 +72,7 @@ class PromptOverridesService:
 
     async def save(self, path: str, text: str) -> None:
         """Write and record the override without changing its switch."""
-        await self._edit_file(path, text)
+        await self._edit(path, text)
 
     async def set_enabled(self, path: str, enabled: bool) -> None:
         """Use the override or the default; switching on needs a readable override."""
@@ -87,23 +87,22 @@ class PromptOverridesService:
             await self._write_switch(path, enabled)
 
     async def delete(self, path: str) -> None:
-        """Remove the file, then clear the switch and record the snapshot in one transaction."""
-        await self._edit_file(path, None)
+        """Clear the switch and record the deletion in one transaction, then unlink the file."""
+        await self._edit(path, None)
 
-    async def _edit_file(self, path: str, text: str | None) -> None:
+    async def _edit(self, path: str, text: str | None) -> None:
         self._require_segment(path)
 
         async def apply() -> None:
+            if text is None:
+                await asyncio.to_thread(prompt_file_path, self.data_dir, path)
+                await self._record_deletion(path)
+                await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
+                return
             previous = await asyncio.to_thread(read_prompt_file, self.data_dir, path)
             try:
-                if text is None:
-                    await asyncio.to_thread(prompt_file_path, self.data_dir, path)
-                    await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
-                else:
-                    await asyncio.to_thread(
-                        write_prompt_file, self.data_dir, path, text
-                    )
-                await self._commit(path, clear_switch=text is None)
+                await asyncio.to_thread(write_prompt_file, self.data_dir, path, text)
+                await record_prompt_snapshot(self.sync_store, self.data_dir)
             except Exception:
                 await self._restore_file(path, previous)
                 raise
@@ -115,16 +114,14 @@ class PromptOverridesService:
                 raise asyncio.CancelledError
             edit.result()
 
-    async def _commit(self, path: str, *, clear_switch: bool) -> None:
-        """Record the prompt snapshot, with the cleared switch in one transaction, so a failure leaves the outbox unchanged."""
+    async def _record_deletion(self, path: str) -> None:
+        """Clear the switch and record the file as deleted in one transaction, so a failure leaves the outbox unchanged."""
         switches = await self._switches()
-        if not clear_switch or path not in switches:
-            await record_prompt_snapshot(self.sync_store, self.data_dir)
-            return
-        del switches[path]
-        await record_prompt_snapshot(
-            self.sync_store, self.data_dir, (SWITCHES_KEY, switches)
-        )
+        setting = None
+        if path in switches:
+            del switches[path]
+            setting = (SWITCHES_KEY, switches)
+        await record_prompt_snapshot(self.sync_store, self.data_dir, setting, omit=path)
 
     async def _restore_file(self, path: str, previous: str | None) -> None:
         """Put the override file back so the tutor keeps the prompt that was committed."""

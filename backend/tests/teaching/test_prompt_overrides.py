@@ -586,3 +586,38 @@ def test_a_cancelled_sync_apply_keeps_the_edit_lock_until_the_prompt_is_restored
             assert "COMMITTED" in composed and "REMOTE" not in composed
 
     asyncio.run(run())
+
+
+def test_a_delete_whose_unlink_fails_is_reported_with_the_switch_off_and_the_deletion_recorded(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            sync_store = SyncStore(database)
+            service = PromptOverridesService(
+                settings_store, tmp_path, asyncio.Lock(), sync_store, asyncio.Lock()
+            )
+            await service.save(SEGMENT, "KEPT")
+            await service.set_enabled(SEGMENT, True)
+            monkeypatch.setattr(
+                "verstehen.sync.prompt_overrides.delete_prompt_file",
+                Mock(side_effect=PermissionError("read-only")),
+            )
+            with pytest.raises(PermissionError):
+                await service.delete(SEGMENT)
+            segment = next(
+                item
+                for item in (await service.segments()).teacher
+                if item.path == SEGMENT
+            )
+            assert (segment.override_text, segment.enabled) == ("KEPT", False)
+            outbox = await sync_store.list_pending_push()
+            assert any(
+                change.entity == "prompt_override" and change.op == "delete"
+                for change in outbox
+            )
+
+    asyncio.run(run())
