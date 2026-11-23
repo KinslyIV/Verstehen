@@ -25,7 +25,7 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
 | `app/verify/<area>/*.flow.ts`, `fixtures.ts`, helpers | fake-model Playwright flows grouped by the 9 architecture areas; `playwright.config.ts` |
 | `app/verify-live/`, `playwright.live.config.ts` | the one real-model flow (Claude Code Haiku) |
 | `packaging/` | `Dockerfile` (the prepared `verstehen-build` Arch image), `build.sh`, `container.sh`, `compile.sh`, `PKGBUILD`, `smoke.py`, the desktop entry, and `android.sh` (the `make android-*` targets) |
-| `.github/workflows/ci.yml`, `release.yml` | CI on PRs and pushes to `main`; releases on a `vX.Y.Z` tag (the Arch package, then the signed Android `.apk`) |
+| `.github/workflows/ci.yml`, `release.yml` | CI on PRs and pushes to `main` (plus the debug `.apk` on PRs); releases on a `vX.Y.Z` tag (the Arch package, then the signed Android `.apk`) |
 | `.claude/skills/verify/SKILL.md` (also `.agents/skills/verify`) | the verify skill: how to run flows and what evidence to keep |
 
 ## How it works
@@ -67,7 +67,10 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   `~/.config/verstehen/android-release.jks` and its password file exist (or `VERSTEHEN_ANDROID_KEYSTORE*`
   are set, as in CI), otherwise unsigned with a warning. `make android-key` creates that key once and
   prints the `gh secret set` commands for `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, and
-  `ANDROID_KEY_ALIAS`; agents never run it or read the key.
+  `ANDROID_KEY_ALIAS`; agents never run it or read the key. `debug`, `release`, and the `web`
+  subcommand hold an exclusive `flock` on `app/android/build/android.lock` from the web sync to the
+  `.apk` copy, because they share `app/android/app/src/main/assets/public`; a second build prints a
+  notice and waits for the first.
 - **Emulator loop for agents** (the verify skill has the commands): a fake-model `--server` backend
   on a temporary data directory, a pairing code minted through the API, the debug `.apk` installed
   on a virtual device opened in the T3 Code Device panel, pairing at `10.0.2.2:<port>`, one lesson
@@ -92,7 +95,10 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   and after stopping the attempted service. It keeps recovery files until the restored unit owns
   the listener and answers the health check.
 - **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
-  uploads `app/verify-output` on failure. Flows never retry, in CI or locally.
+  uploads `app/verify-output` on failure. Flows never retry, in CI or locally. On pull requests
+  into `main` a second job, `android-debug`, sets up JDK 21 (Temurin) and the Android SDK, runs
+  `make android-debug`, and uploads the debug `.apk` as the `verstehen-debug-apk` artifact; it uses
+  no secrets.
 - **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,
   `app/src-tauri/Cargo.toml`, and `app/src-tauri/tauri.conf.json`, merge, then push `vX.Y.Z`; the
   workflow checks the versions, runs `make app`, and publishes a GitHub Release; a second job then

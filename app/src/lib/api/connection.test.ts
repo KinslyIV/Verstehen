@@ -46,7 +46,9 @@ test('the Android app keeps its connection in Capacitor Preferences', async () =
 	vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
 	const { loadConnection, saveConnection } = await import('./connection');
 	await saveConnection(paired);
-	expect(Object.fromEntries(preferenceFiles)).toEqual(paired);
+	expect([...preferenceFiles.keys()]).toEqual(['verstehen-connection']);
+	expect(JSON.parse(preferenceFiles.get('verstehen-connection')!)).toEqual(paired);
+	expect(Preferences.set).toHaveBeenCalledTimes(1);
 	vi.resetModules();
 	expect(await (await import('./connection')).loadConnection()).toEqual(paired);
 	expect(await loadConnection()).toEqual(paired);
@@ -69,7 +71,9 @@ test('dropping the token keeps the server address', async () => {
 	await saveConnection(paired);
 	expect(await dropToken(paired.token)).toBe(true);
 	expect(await loadConnection()).toEqual({ server_url: paired.server_url });
-	expect(Object.fromEntries(preferenceFiles)).toEqual({ server_url: paired.server_url });
+	expect(JSON.parse(preferenceFiles.get('verstehen-connection')!)).toEqual({
+		server_url: paired.server_url
+	});
 	expect(isPaired(await loadConnection())).toBe(false);
 });
 
@@ -99,7 +103,8 @@ test.each([
 	'100.64.1',
 	'100.64.0.1.',
 	'100.64.0.+1',
-	'user@100.64.0.1'
+	'user@100.64.0.1',
+	'100.64.0.7:mistyped@100.64.0.7'
 ])('the server address "%s" is refused', async (input) => {
 	const { parseServerAddress } = await import('./connection');
 	expect(() => parseServerAddress(input)).toThrow();
@@ -120,5 +125,31 @@ test('a rejection of an old token does not erase a newer pairing', async () => {
 	expect(await dropToken(paired.token)).toBe(false);
 	await saving;
 	expect(await loadConnection()).toEqual(newer);
-	expect(Object.fromEntries(preferenceFiles)).toEqual(newer);
+	expect(JSON.parse(preferenceFiles.get('verstehen-connection')!)).toEqual(newer);
+});
+
+test.each([
+	[
+		'per-field keys from an older build',
+		{ server_url: paired.server_url, device_id: 'd', token: 't' }
+	],
+	[
+		'a token without a device id',
+		{ 'verstehen-connection': JSON.stringify({ server_url: paired.server_url, token: 't' }) }
+	],
+	[
+		'a device id without a token',
+		{ 'verstehen-connection': JSON.stringify({ server_url: paired.server_url, device_id: 'd' }) }
+	],
+	[
+		'a record without a server address',
+		{ 'verstehen-connection': JSON.stringify({ device_id: 'd', token: 't' }) }
+	],
+	['an unreadable record', { 'verstehen-connection': '{"server_url"' }]
+])('%s loads as no connection and is deleted', async (_name, files) => {
+	vi.mocked(Capacitor.isNativePlatform).mockReturnValue(true);
+	for (const [key, value] of Object.entries(files)) preferenceFiles.set(key, value);
+	const { loadConnection } = await import('./connection');
+	expect(await loadConnection()).toEqual({});
+	expect(preferenceFiles.size).toBe(0);
 });

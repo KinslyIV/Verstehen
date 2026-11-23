@@ -66,6 +66,17 @@ create_avd() {
   set_avd_option "$name" hw.keyboard yes
 }
 
+# Holds the exclusive Android build lock until the script exits; concurrent builds wait their turn.
+lock_android_build() {
+  local lock="$root/app/android/build/android.lock"
+  mkdir -p "$(dirname "$lock")"
+  exec 9>"$lock"
+  flock --nonblock 9 || {
+    echo "Another Android build is running; waiting for it to finish." >&2
+    flock 9
+  }
+}
+
 # Builds the SPA for `debug` (also trusts the emulator host) or `release` into a fresh
 # app/build-android and copies it into the Android project.
 build_web() {
@@ -84,6 +95,7 @@ build_web() {
 build_apk() {
   local task="$1" output="$2" destination="$3" mode="$4"
   require_java
+  lock_android_build
   build_web "$mode"
   local release_version
   release_version="$(version)"
@@ -129,6 +141,7 @@ case "${1:-}" in
     build_apk assembleRelease "app/build/outputs/apk/release/app-release${suffix}.apk" "verstehen-$(version)${suffix}.apk" release
     ;;
   web)
+    lock_android_build
     build_web "${2:-}"
     ;;
   key)

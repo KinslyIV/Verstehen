@@ -67,14 +67,17 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   to `/pair`; the root `+layout.ts` also redirects every other route there when no
   connection is stored.
 - **`/pair`** takes the server's Tailscale address (`100.x.y.z:port`, `http://` implied; anything
-  outside `100.64.0.0/10`, or typed in any non-canonical form (hex, octal, short, `1.2.3.4e0`), is
+  outside `100.64.0.0/10`, or typed in any non-canonical form (hex, octal, short, `1.2.3.4e0`) or with `user@`, is
   refused, plus the hosts in `PUBLIC_VERSTEHEN_EXTRA_HOSTS`, which only
   the debug `.apk` and the headless flows set), the 8-character code (any case), and a device name
   (default "Phone"), then calls `POST /api/auth/pair`, saves the connection, and opens `/`. Wrong
   or expired codes, rate limiting, and an unreachable server each show their own message.
 - **The connection** (`server_url`, `device_id`, `token`) lives in Capacitor Preferences, the app's
   private `CapacitorStorage` file, which the backup rules exclude (not the Keystore: a rooted phone
-  or backup tool could read it, and revoking the device on the laptop is the remedy).
+  or backup tool could read it, and revoking the device on the laptop is the remedy). It is one
+  JSON value, so a re-pair that is interrupted never leaves a new address beside an old token; a
+  record that is not an address alone or all three fields (including per-field keys) loads as no
+  connection and is deleted.
 - **Cleartext is Tailscale-only, enforced natively.** The page is served from `http://localhost`
   (`androidScheme: 'http'`) so it can call the server's plain-`http` address. Android's network
   security config cannot express a CIDR range, so it allows cleartext and `GuardedWebViewClient`

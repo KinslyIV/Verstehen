@@ -89,3 +89,27 @@ def test_signing_secrets_reach_only_the_check_and_build_steps():
         "      - name: Check the Android signing secrets",
         "      - name: Build the signed .apk",
     ]
+
+
+def android_debug_job() -> str:
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    return workflow.split("\n  android-debug:\n")[1]
+
+
+def test_ci_builds_the_debug_apk_only_for_pull_requests_without_secrets():
+    job = android_debug_job()
+    assert "if: github.event_name == 'pull_request'" in job
+    assert "secrets." not in job
+    assert "distribution: temurin" in job and "java-version: '21'" in job
+    assert "android-actions/setup-android@v3" in job
+    assert "run: make android-debug" in job
+    assert "path: dist/verstehen-*-debug.apk" in job
+
+
+def test_ci_keeps_its_triggers_and_original_job():
+    workflow = (ROOT / ".github/workflows/ci.yml").read_text()
+    assert (
+        "on:\n  pull_request:\n    branches: [main]\n  push:\n    branches: [main]\n"
+        in workflow
+    )
+    assert "\n  ci:\n" in workflow and "      - run: make verify\n" in workflow

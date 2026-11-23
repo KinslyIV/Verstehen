@@ -16,46 +16,53 @@ export interface ConnectionStorage {
 	clear(): Promise<void>;
 }
 
-const FIELDS = ['server_url', 'device_id', 'token'] as const;
+const RECORD_KEY = 'verstehen-connection';
 
-/** The Android app's private storage (excluded from Android backup). */
+const isText = (value: unknown): value is string => typeof value === 'string' && value !== '';
+
+/** A record is a server address, with a device id and token together or not at all. */
+function validRecord(value: unknown): StoredConnection | undefined {
+	if (typeof value !== 'object' || value === null) return undefined;
+	const { server_url, device_id, token } = value as Record<string, unknown>;
+	if (!isText(server_url) || isText(device_id) !== isText(token)) return undefined;
+	return isText(token) ? { server_url, device_id: device_id as string, token } : { server_url };
+}
+
+/** The Android app's private storage (excluded from Android backup); one value, so writes are atomic. */
 const preferencesStorage: ConnectionStorage = {
 	async load() {
-		const stored: StoredConnection = {};
-		for (const field of FIELDS) {
-			const { value } = await Preferences.get({ key: field });
-			if (value) stored[field] = value;
+		const { value } = await Preferences.get({ key: RECORD_KEY });
+		try {
+			const record = validRecord(JSON.parse(value ?? 'null'));
+			if (record) return record;
+		} catch {
+			// an unreadable value is treated as no connection
 		}
-		return stored;
+		await Preferences.clear();
+		return {};
 	},
 	async save(connection) {
-		for (const field of FIELDS) {
-			const value = connection[field];
-			if (value) await Preferences.set({ key: field, value });
-			else await Preferences.remove({ key: field });
-		}
+		await Preferences.set({ key: RECORD_KEY, value: JSON.stringify(connection) });
 	},
 	async clear() {
 		await Preferences.clear();
 	}
 };
 
-const BROWSER_KEY = 'verstehen-connection';
-
 /** The headless verify flows' storage; a real browser never selects remote mode. */
 const browserStorage: ConnectionStorage = {
 	async load() {
 		try {
-			return JSON.parse(localStorage.getItem(BROWSER_KEY) ?? '{}');
+			return JSON.parse(localStorage.getItem(RECORD_KEY) ?? '{}');
 		} catch {
 			return {};
 		}
 	},
 	async save(connection) {
-		localStorage.setItem(BROWSER_KEY, JSON.stringify(connection));
+		localStorage.setItem(RECORD_KEY, JSON.stringify(connection));
 	},
 	async clear() {
-		localStorage.removeItem(BROWSER_KEY);
+		localStorage.removeItem(RECORD_KEY);
 	}
 };
 
@@ -127,6 +134,7 @@ export function parseServerAddress(
 	extraHosts = __VERSTEHEN_EXTRA_HOSTS__.split(',').filter(Boolean)
 ): string {
 	const text = input.trim();
+	if (text.includes('@')) throw new Error('Enter the server address as 100.x.y.z:port.');
 	let url: URL;
 	try {
 		url = new URL(/^https?:\/\//i.test(text) ? text : `http://${text}`);
@@ -134,7 +142,15 @@ export function parseServerAddress(
 		throw new Error('Enter the server address as 100.x.y.z:port.');
 	}
 	const typedHost = text.replace(/^https?:\/\//i, '').split(/[:/?#]/)[0];
-	if (!url.hostname || typedHost !== url.hostname || url.pathname !== '/' || url.search || url.hash)
+	if (
+		!url.hostname ||
+		url.username ||
+		url.password ||
+		typedHost !== url.hostname ||
+		url.pathname !== '/' ||
+		url.search ||
+		url.hash
+	)
 		throw new Error('Enter the server address as 100.x.y.z:port.');
 	if (!isTailscaleAddress(url.hostname) && !extraHosts.includes(url.hostname))
 		throw new Error('The server must be at its Tailscale address, 100.x.y.z (100.64.0.0/10).');
