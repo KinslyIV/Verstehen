@@ -5,7 +5,7 @@ description: Run Verstehen UI verification when changing anything the learner se
 
 Run from the repository root after `make setup`:
 
-- `make verify` builds the static SPA and runs all 52 flows in headless Playwright Chromium (`channel: 'chromium'`, also used by Vitest browser mode).
+- `make verify` builds both static SPAs (sidecar and remote) and runs all 53 flows in headless Playwright Chromium (`channel: 'chromium'`, also used by Vitest browser mode).
 - `make verify AREA=graph` or `make verify AREA='session teaching'` builds and runs all flows in the named architecture area(s) (`session`, `teaching`, `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`).
 - `make verify FLOW=shell-layout` builds and runs a single flow.
 - Batch affected flows in one invocation: `make verify FLOW='shell-layout settings'`.
@@ -32,6 +32,29 @@ When to run what:
 - **Docs-only and offline tooling work:** `make check AREA=shell` on commits and full `make check`
   before the PR; no UI flows (CI still runs `make verify`).
 - **Packaging changes:** `make app`; other changes don't need it.
+- **Android app changes:** `make android-debug`, then the emulator loop below on both virtual devices.
+
+Emulator loop (Android app changes; `make android-setup` once creates `Galaxy_S24` 360×780 and
+`Galaxy_Tab_S9` 800×1280):
+
+1. Start a fake-model server on a temporary data directory, never `~/.local/share/verstehen`:
+   `VERSTEHEN_DATA_DIR=<tmp> VERSTEHEN_FAKE_MODEL_SCRIPT=app/verify/scripts/session-new-and-stream.json
+   verstehen --server --port <port>`. Mint the first device with `verstehen mint-token <name>`
+   (same data dir), then a pairing code with `POST /api/auth/pairing-code` (bearer token).
+   The script holds one turn, so restart the server for each new device; wait for old sockets to
+   leave `TIME-WAIT` before reusing the port.
+2. `device_open` the AVD (T3 Code Device panel), then with its `agent-device`: `install
+   local.verstehen.app dist/verstehen-<version>-debug.apk`, `open local.verstehen.app --relaunch`.
+3. Pair at `10.0.2.2:<port>` with the code; the WebView is not in the accessibility tree, so
+   `fill <x> <y> <text>` and `press <x> <y>` use screenshot coordinates. Send one lesson turn.
+4. Take screenshots with `agent-device screenshot` and look at them; check
+   `adb logcat -d | grep -E 'FATAL EXCEPTION|ANR in'` is empty. Use the SDK's
+   `~/Android/Sdk/platform-tools/adb`.
+5. To prove the cleartext guard, run a second plain HTTP server on another port, forward the
+   WebView DevTools socket (`adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>`) and
+   `fetch` both `http://10.0.2.2:<port>/` (succeeds) and the host's LAN address (blocked, and the
+   server logs no request).
+6. Stop the servers and `device_close` every device you opened.
 
 The rerun guard requires a successful build from `make verify` or `make verify-live`, unchanged
 frontend `src/` and `static/` paths/content, package and installed npm lockfiles, Node version, and frontend configuration

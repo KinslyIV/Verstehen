@@ -404,9 +404,14 @@ def test_pairing_code_manager_per_ip_rate_limit_isolation_and_pruning():
 
 @pytest.mark.parametrize(
     "origin",
-    ["tauri://localhost", "http://tauri.localhost", "https://tauri.localhost"],
+    [
+        "tauri://localhost",
+        "http://tauri.localhost",
+        "https://tauri.localhost",
+        "http://localhost",
+    ],
 )
-def test_server_mode_cors_allows_tauri_origins(tmp_path: Path, origin: str):
+def test_server_mode_cors_allows_app_origins(tmp_path: Path, origin: str):
     with TestClient(create_app(Settings(tmp_path, server=True))) as client:
         response = client.options(
             "/api/sessions",

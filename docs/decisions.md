@@ -106,6 +106,30 @@ alternative, and the consequence, until the user reviews them at the end of the 
   receiving notifications and streamed lesson or side-chat content until that stream closes or
   reconnects, and a separate refetch returning 401 does not close the open stream).
 
+**Mobile & sync (Milestone D, PR 1):**
+
+- **A native WebView guard enforces the Tailscale-only cleartext rule.** Android's
+  `network_security_config.xml` cannot express `100.64.0.0/10` (only hostnames and exact IPs), so it
+  allows cleartext and `GuardedWebViewClient` (about 30 lines of Java in `app/android`) blocks every
+  `http://` request except `localhost` (the page), `100.64.0.0/10`, and `10.0.2.2` in debug builds
+  only (`BuildConfig.DEBUG`). It only blocks: allowed requests go through Capacitor's own client, so
+  POST bodies and SSE stream as before; `https` is untouched. `/pair` also refuses addresses outside
+  that range, with a clear message (`10.0.2.2` only in the debug build's SPA, which `make
+  android-debug` builds with `PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2`); the guard stays the real
+  enforcement. Alternatives: a JS-only guard (leaves other WebView requests, such as http images,
+  unguarded) or MagicDNS names under a `ts.net` rule (contradicts the `/pair` address decision).
+  Consequence: a debug-only `10.0.2.2` and the range live in Java, checked by a JVM unit test, a
+  Python config test, and a blocked-request check on the emulator.
+  **Redirects (review round 1; the user accepted this 2026-11-23).** `shouldInterceptRequest` sees only the first
+  URL of a request, so an allowed host could redirect to an off-range `http` address. The fix does
+  not change the guard: in remote mode every API `fetch` (and the pairing `fetch`) uses
+  `redirect: 'error'`, and `plugins.CapacitorHttp.enabled = false` in `capacitor.config.ts` makes it
+  explicit that `fetch` is never patched. Residual risks, accepted for now: (1) Capacitor's native
+  HTTP bridge is still registered in the app but unused by our code, and a future change that
+  calls it would bypass the guard; (2) WebSocket is not used, and a future use would need its own
+  check; (3) subresource redirects beyond our API requests (such as images) are not re-checked.
+  Alternative: a native redirect check in the WebView client (more Java).
+
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
@@ -118,9 +142,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
   offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
   to the server.
-- **Tauri 2 Mobile, Android only (v1).** Signed `.apk` connecting directly to the server's
-  Tailscale IP (`http://100.x.y.z:<port>`, no `tailscale serve`), with Android cleartext HTTP
-  allowlisted only for `100.64.0.0/10`.
+- **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
+  connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
+  `tailscale serve`), with cleartext HTTP limited to `100.64.0.0/10` by a native WebView guard.
 - **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
   SHA-256 hashed on the server and individually revocable.
 - **Server SSH install & ChatGPT OAuth from laptop UI only (v1).** SSH password is used once in
@@ -131,6 +155,21 @@ alternative, and the consequence, until the user reviews them at the end of the 
   has an active turn or compaction; sync prompt overrides (`prompts/`); leave raw laptop PDF paths
   laptop-only for v1; never sync `credentials.json`, Claude Code login, `file_access`, or
   `demo_browser`.
+
+**Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), 2026-11-23):**
+
+- **D and E merged:** PR 1 (the Android app and pairing) is implemented and documented in
+  [frontend-shell](architecture/frontend-shell.md) and [tooling](architecture/tooling.md); PR 2 is
+  the phone UI and recovery.
+- **Layouts by width:** phone below 768 px (sidebar drawer, right-panel tabs full screen), tablet
+  768–1279 px (drawer, lesson and closable panel side by side), desktop from 1280 px; touch sizing
+  and `/graph` gestures under `pointer: coarse`. Sized to a Galaxy S24 and Tab S9.
+- **`/graph` touch:** tap opens the card, long-press the context menu, any drag pans, pinch zooms;
+  no node dragging by touch. Mouse input stays as in LearnHarness.
+- **Phone Settings:** the server's settings; Models edits the server's slots; Accounts read-only;
+  File access hidden; Connection (address, device name, Disconnect) replaces Sync.
+- **Connection recovery:** streams reconnect on foreground and network return with backoff; a
+  running turn reattaches instead of failing after two attempts; a quiet "Reconnecting…" line.
 
 ## Deliberate differences from LearnHarness
 
