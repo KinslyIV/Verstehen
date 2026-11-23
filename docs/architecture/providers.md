@@ -28,7 +28,7 @@ Backend, `backend/src/verstehen/providers/`:
 
 Frontend, `app/src/lib/`: `models/catalog.svelte.ts` (`ModelCatalogState`, the one shared
 catalog: read, refresh, stale-read guard), `components/model-menu.svelte` (the account rail, models,
-and levels, shared by the composer, Settings, and setup; one fixed size), `components/model-controls.svelte`
+and a full-width Thinking slider under them, shared by the composer, Settings, and setup; one fixed size), `components/model-controls.svelte`
 (popover, shortcuts, which target a pick writes; `tabs={false}` is Settings' slot picker),
 `models/picks.ts` (pure selection rules), `components/settings-models.svelte` (slot pickers and the
 manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog.svelte`.
@@ -51,12 +51,17 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   catalog and slots at once and never contacts an account. `POST /api/models/refresh` (`?force=true`
   drops cached lists first) discovers every adapter concurrently and each account saves its own result
   the moment it finishes, so a slow account never holds back another or the display. The UI starts a
-  plain refresh after the first read and when a menu opens, and re-reads the saved catalog while
-  one runs. Settings → Models and successful sign-in start forced refreshes. An older refresh
-  cannot overwrite results or prune discovered accounts after a newer one starts.
+  plain refresh after the first read (app launch), as LearnHarness 0.7.0 does, and re-reads the saved
+  catalog while one runs. Opening a model menu only re-reads the saved catalog. Settings → Models
+  (on open and by its button) and successful sign-in start refreshes. An older refresh cannot
+  overwrite results or prune discovered accounts after a newer one starts; the UI reports the
+  newer refresh's outcome for the older request. A refresh reports a failed final read of the saved
+  catalog instead of success. Setup shows model selection as soon as any account lists a model and
+  asks to connect a provider only after a refresh finished with none.
 - **The saved catalog is display only.** Each account entry holds its safe `Account` metadata and
   model list, `refreshed_at`, and `refresh_error`; credentials never enter it. A transient failure
-  (`state: unavailable`) keeps the last list and sets `refresh_error`; an unusable account
+  (`state: unavailable`) keeps the last list and sets `refresh_error`, also on first discovery when
+  there is no list to keep; an unusable account
   (`needs_sign_in`, `not_installed`, `too_old`) drops its models and takes the new state. The
   resolver, Set as default, and every settings write validate against the account itself, never this
   file. Removing or signing in again calls `ModelCatalogStore.forget`, which deletes the entry and bumps

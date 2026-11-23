@@ -20,15 +20,17 @@ alternative, and the consequence, until the user reviews them at the end of the 
   404 would also let the sidebar remove the row but produces a browser error for an expected event.
 - **The sidebar refreshes on stream reconnection.** One summary request recovers missed events.
   Waiting for future events could leave a deleted or renamed row stale.
-- **Compute practice badges from recent entries, widening as needed.** This avoids a schema
-  change and keeps the entry log authoritative. Storing a separate badge projection would make
-  reads cheaper for practice sessions whose history contains no problem state.
+- **Compute practice badges from the entries that decide them.** LearnHarness runs
+  `activeProblemOf` over each full transcript. A SQL read returns only problem calls and results
+  and dismissal markers, and `scan_problem` runs on those rows, so the badge is identical without a
+  schema change. A stored badge projection would be cheaper still but a second source of truth.
 - **Keep model catalog metadata in a local JSON file.** A SQLite table would require a schema
   change for data that each installation refreshes independently. An offline installation
   shows the last usable results until account state actually changes.
 - **Refresh models through one request with lightweight reads while it runs.** An SSE event
   could replace the polling. This route supports progress as providers finish independently,
-  including on first load, and Settings can force refresh.
+  including on first load, and Settings can force refresh. A refresh superseded by a newer
+  one reports the newer one's outcome, because the backend skips the older one's writes.
 - **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
   would exit the app before the learner sees the shell. The in-app panel keeps the log path
   visible and the timing marks distinguish desktop, sidecar, and composer readiness.

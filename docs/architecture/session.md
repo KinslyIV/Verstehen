@@ -69,8 +69,7 @@ Frontend, `app/src/`:
   `TurnRun` and applied at settlement.
 - **Sidebar reads.** The pending question is decided by the newest assistant entry and any
   following tool results (`EntriesStore.since_last_assistant`),
-  which is all `dangling_question_of` reads. A practice session's pending problem reads its newest
-  16 entries and widens fourfold until a pose, conclusion, or dismissal decides it (`scan_problem`);
+  which is all `dangling_question_of` reads. A practice session's pending problem reads only the problem calls and their results and dismissal markers (`EntriesStore.problem_entries`) and runs `scan_problem` on them;
   teaching sessions report none (the sidebar shows a problem for practice only). Both give what the
   whole-transcript rules give; `test_session_list.py` compares them.
 - **One row per event.** The sidebar re-reads the full list at start and after the event stream
@@ -78,8 +77,9 @@ Frontend, `app/src/`:
   for a deleted session drops the row). `SessionRows` runs one read round at a time: an event during a read queues a
   later read, a full read covers queued row events, and a deleted id is never re-added.
 - **Coverage.** `get` passes the entries it loaded to `ExtractionService.coverage`; refreshes of
-  the ring and the session menu use `GET …/coverage`, which reads the entries once and sends no
-  transcript.
+  the ring and the session menu use `GET …/coverage`, which reads this session's coverage rows, the
+  entry count, and only the entries with teacher prose (`EntriesStore.coverage_entries`), and sends no
+  transcript. Other entries have no tokens, so the counts match the whole-transcript rules.
 - **Deletion** is refused while a turn or job runs (409) or while extraction winds down (503). It
   stops side answers, removes graph traces by mode, and deletes images no other session uses.
 - **Titles.** The first accepted text input starts a foreground cheap-slot call in parallel with

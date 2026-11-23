@@ -38,7 +38,7 @@ added:
   49. Milestone C and M10 bring the total to 52; Milestone D PR 1 adds `mobile-pair` for 53.
 
 The desktop responsiveness branch adds early shell paint, saved model catalogs and stable
-pickers, lighter sidebar and graph reads, and a prompt editor. It adds four scripted flows,
+pickers with a Thinking slider, lighter sidebar and graph reads, and a prompt editor. It adds four scripted flows,
 bringing the total to 57 after Android pairing. Native trackpad zoom on Arch and
 long-transcript rendering remain open.
 

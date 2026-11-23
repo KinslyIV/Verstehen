@@ -57,7 +57,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   is relaxed for demos and allows `blob:` images.
 - **Startup timings:** the shell prints `startup <milestone>: <ms>` lines on stderr, counted from its
   own start: `window_created`, `sidecar_spawned`, `sidecar_port`, `sidecar_healthy`. The UI reports
-  `ui_mounted`, `models_displayed` (saved models on screen), and `composer_usable` once each through
+  `ui_mounted`, `models_displayed` (saved models on screen), and `composer_usable` (sidecar ready and the saved catalog loaded, so the composer can send or open Setup) once each through
   `startup_mark`, and also as `performance` marks (`verstehen:<name>`). Read them by running the
   installed app from a terminal with `VERSTEHEN_DATA_DIR` set to a temporary folder.
 - **Settings → Models:** the slot pickers, then a refresh button with a status line (updated, which
