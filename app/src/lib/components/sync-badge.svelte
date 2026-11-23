@@ -4,6 +4,7 @@
 	import { LoaderCircle } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { getSyncStatus, streamNotifications, type SyncStatusResponse } from '#lib/api/client.js';
+	import { live } from '#lib/api/live.svelte.js';
 
 	let status = $state<SyncStatusResponse | null>(null);
 	let requestNumber = 0;
@@ -41,22 +42,18 @@
 	onMount(() => {
 		const lifetime = new AbortController();
 		void refresh(lifetime.signal);
-		void (async () => {
-			while (!lifetime.signal.aborted) {
-				try {
-					await streamNotifications((event) => {
-						if (event.type === 'sync-status-changed') {
-							void refresh(lifetime.signal);
-						}
-					}, lifetime.signal);
-				} catch {
-					if (lifetime.signal.aborted) break;
-				}
-				if (lifetime.signal.aborted) break;
-				await new Promise((r) => setTimeout(r, 1000));
-				if (!lifetime.signal.aborted) void refresh(lifetime.signal);
-			}
-		})();
+		void live.follow(
+			(signal, opened) =>
+				streamNotifications(
+					(event) => {
+						if (event.type === 'sync-status-changed') void refresh(lifetime.signal);
+					},
+					signal,
+					opened
+				),
+			() => void refresh(lifetime.signal),
+			lifetime.signal
+		);
 		return () => {
 			lifetime.abort();
 		};

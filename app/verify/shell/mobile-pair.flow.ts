@@ -4,6 +4,9 @@ test.use({
 	script: 'verify/scripts/session-new-and-stream.json',
 	client: 'remote',
 	viewport: { width: 360, height: 780 },
+	screen: { width: 360, height: 780 },
+	hasTouch: true,
+	isMobile: true,
 	expectedStatuses: [400, 401]
 });
 

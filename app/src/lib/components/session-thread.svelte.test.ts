@@ -4,6 +4,21 @@ import { questionBatch } from '#lib/questions/question-fixtures.js';
 import { render } from 'vitest-browser-svelte';
 import * as api from '#lib/api/client.js';
 import SessionThread from './session-thread.svelte';
+const backListeners = vi.hoisted(() => new Set<(event: { canGoBack: boolean }) => void>());
+vi.mock('@capacitor/core', async (original) => ({
+	...(await original<typeof import('@capacitor/core')>()),
+	Capacitor: { getPlatform: () => 'android' }
+}));
+vi.mock('@capacitor/app', () => ({
+	App: {
+		addListener: (_: string, listener: (event: { canGoBack: boolean }) => void) => {
+			backListeners.add(listener);
+			return Promise.resolve({ remove: () => backListeners.delete(listener) });
+		},
+		exitApp: vi.fn()
+	}
+}));
+const pressBack = () => backListeners.forEach((listener) => listener({ canGoBack: true }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getModels: async () => ({ accounts: [], slots: {} }),
@@ -17,6 +32,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	streamTurn: vi.fn()
 }));
 beforeEach(() => {
+	vi.spyOn(history, 'back').mockImplementation(() => {});
 	sessionStorage.clear();
 	vi.mocked(api.getJobs).mockReset().mockResolvedValue({ jobs: [], turn_in_flight: false });
 	vi.mocked(api.getSession).mockReset();
@@ -259,4 +275,65 @@ test('dispatch_card_follows_the_session_feed_by_tool_call_id', async () => {
 	});
 	window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: 'one' }));
 	await expect.element(screen.getByTestId('dispatch-settled')).toMatchTextContent('finished');
+});
+
+test('android_back_opens_the_dismiss_confirmation_for_a_pending_question_like_escape', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [questionBatch('one')]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByRole('radio', { name: 'Two' })).toBeVisible();
+	pressBack();
+	await expect.element(screen.getByText('Dismiss this question?')).toBeVisible();
+	expect(history.back).not.toHaveBeenCalled();
+});
+
+test('android_back_closes_the_open_drawer_instead_of_asking_to_dismiss', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [questionBatch('one')]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByRole('radio', { name: 'Two' })).toBeVisible();
+	const drawer = document.createElement('div');
+	drawer.dataset.slot = 'sidebar';
+	drawer.dataset.mobile = 'true';
+	drawer.dataset.state = 'open';
+	document.body.append(drawer);
+	const escapes = vi.fn((event: KeyboardEvent) => event.key === 'Escape');
+	document.addEventListener('keydown', escapes);
+	pressBack();
+	document.removeEventListener('keydown', escapes);
+	drawer.remove();
+	expect(escapes).toHaveReturnedWith(true);
+	expect(history.back).not.toHaveBeenCalled();
+	await expect.element(screen.getByText('Dismiss this question?')).not.toBeInTheDocument();
+});
+
+test('android_back_goes_back_when_nothing_is_pending', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Algebra',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [{ kind: 'user', entry_id: 'u', text: 'Hello' }]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByText('Hello', { exact: true })).toBeVisible();
+	pressBack();
+	expect(history.back).toHaveBeenCalledOnce();
+	await expect.element(screen.getByText('Dismiss this question?')).not.toBeInTheDocument();
 });

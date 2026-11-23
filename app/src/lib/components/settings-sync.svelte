@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
+	import { live } from '#lib/api/live.svelte.js';
 	import {
 		ApiError,
 		connectServer,
@@ -369,21 +370,18 @@
 	onMount(() => {
 		const lifetime = new AbortController();
 		void refreshAll();
-		void (async () => {
-			while (!lifetime.signal.aborted) {
-				try {
-					await streamNotifications((event) => {
-						if (event.type === 'sync-status-changed') {
-							void refreshStatus(false);
-						}
-					}, lifetime.signal);
-				} catch {
-					if (lifetime.signal.aborted) break;
-				}
-				if (lifetime.signal.aborted) break;
-				await new Promise((r) => setTimeout(r, 1000));
-			}
-		})();
+		void live.follow(
+			(signal, opened) =>
+				streamNotifications(
+					(event) => {
+						if (event.type === 'sync-status-changed') void refreshStatus(false);
+					},
+					signal,
+					opened
+				),
+			() => void refreshAll(),
+			lifetime.signal
+		);
 		const timer = setInterval(() => {
 			nowMs = Date.now();
 			void pollInstall();

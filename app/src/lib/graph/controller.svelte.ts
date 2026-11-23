@@ -46,7 +46,7 @@ export class GraphController {
 	loadError = $state<string>();
 
 	private lifetime = new AbortController();
-	private renderingKnown: Promise<void>;
+	private renderingKnown: Promise<void> = Promise.resolve();
 	private graphRequest = 0;
 	private requestClock = 0;
 	private snapshotStarted = 0;
@@ -64,11 +64,11 @@ export class GraphController {
 	private revisionsDuringSave: number[] = [];
 
 	constructor() {
-		this.renderingKnown = getSettings().then((settings) => {
-			this.rendering = settings.graph?.rendering ?? true;
-		});
-		this.renderingKnown.catch(() => {});
 		const refresh = (event: Event) => {
+			if (this.rendering === undefined && this.loadError) {
+				void this.start();
+				return;
+			}
 			const { detail } = event as CustomEvent<number | null>;
 			this.graphChanged(typeof detail === 'number' ? detail : undefined);
 		};
@@ -85,8 +85,13 @@ export class GraphController {
 		void this.start();
 	}
 
-	/** The graph and the render settings load together; costs and status follow the first paint. */
+	/** The graph and the render settings load together; costs and status follow the first paint.
+	 * A graph event runs it again while that first load has failed. */
 	private async start(): Promise<void> {
+		this.renderingKnown = getSettings().then((settings) => {
+			this.rendering = settings.graph?.rendering ?? true;
+		});
+		this.renderingKnown.catch(() => {});
 		void this.loadSettings();
 		await this.refreshGraph();
 		void this.refreshCosts();

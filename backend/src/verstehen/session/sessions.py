@@ -321,7 +321,7 @@ class SessionService:
                     yield event
 
     def subscribe(self) -> AsyncGenerator[Notification | None]:
-        return self.notifications.subscribe(announce=True)
+        return self.notifications.subscribe()
 
 
 def remove_images(data_dir: Path, hashes: set[str]) -> None:

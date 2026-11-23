@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (desktop responsiveness).
+> PRs. Last update: 2026-11-23 (desktop responsiveness, merged with `dev` after Milestone D PR 2).
 
 ## Where we are
 
@@ -27,6 +27,8 @@ added:
   sign-in, and device pairing and revocation. The server-side install lock serializes deployment
   and recovery. Updates verify the responding systemd invocation and schema. Rollback retains
   recovery files when the previous wheel cannot read the upgraded database.
+  Server updates survive a slow stop of the old server: the unit stops within 15 s, the server
+  binds with `SO_REUSEADDR` and bounds its graceful shutdown, and the installer waits past both, including the 60 s TIME_WAIT of a first upgrade.
   Two UI races are deferred: a delayed poll from a replaced sign-in on the same
   pairing, and a stale password prompt after reopening Settings and reconnecting during an update.
 - **M10 practice sessions** ([plan](plans/m10.md)): the practitioner, practice dock and cards,
@@ -35,19 +37,19 @@ added:
   the same schema version. LearnHarness replacement requires an unpaired local data directory.
 - **Test organization:** backend pytest files, frontend Vitest globs, and browser flows are
   organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
-  49. Milestone C and M10 bring the total to 52; Milestone D PR 1 adds `mobile-pair` for 53.
+  49. Milestone C and M10 bring the total to 52; Milestone D adds `mobile-pair` and six phone flows for 59.
 
 The desktop responsiveness branch adds early shell paint, saved model catalogs and stable
-pickers with a Thinking slider, lighter sidebar and graph reads, and a prompt editor. It adds four scripted flows,
-bringing the total to 57 after Android pairing. Native trackpad zoom on Arch and
-long-transcript rendering remain open.
+pickers with a Thinking slider, lighter sidebar and graph reads, and a prompt editor. It adds four
+scripted flows, bringing the total to 63. Native trackpad zoom on Arch and long-transcript
+rendering remain open.
 
 ## Next
 
 1. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
-2. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 added the Capacitor Android
-   app, remote mode, `/pair`, and Android build tooling to `dev` after emulator tests. Next is
-   the phone and tablet UI and SSE recovery, followed by M11.
+2. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
+   remote mode, `/pair`, and Android build tooling) and PR #16 (the phone and tablet layouts,
+   `/graph` touch, phone Settings, and stream recovery) are merged into `dev`. Next is M11.
 3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions

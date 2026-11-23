@@ -311,3 +311,30 @@ test('a_snapshot_that_arrives_while_a_position_save_is_in_flight_waits_for_it', 
 	await saving;
 	await vi.waitFor(() => expect(controller.graph?.positions.a).toEqual({ x: 9, y: 9 }));
 });
+
+test('a_failed_first_load_recovers_when_the_connection_returns', async () => {
+	vi.mocked(api.getSettings).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.loadError).toBe('Failed to fetch'));
+	expect(controller.graph).toBeUndefined();
+	graphChanged();
+	await vi.waitFor(() => expect(controller.graph?.snapshot.revision).toBe(5));
+	expect(controller.loadError).toBeUndefined();
+	expect(controller.rendering).toBe(true);
+});
+
+test('a_disposed_controller_ignores_graph_events_and_late_failures', async () => {
+	vi.mocked(api.getSettings).mockRejectedValueOnce(new TypeError('Failed to fetch'));
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.loadError).toBe('Failed to fetch'));
+	const slow = deferred<api.GraphSnapshot>();
+	vi.mocked(api.getGraph).mockReturnValueOnce(slow.promise);
+	graphChanged();
+	controller.dispose();
+	slow.reject(new TypeError('Failed to fetch'));
+	await vi.waitFor(() => expect(api.getGraph).toHaveBeenCalledTimes(2));
+	graphChanged();
+	await new Promise((done) => setTimeout(done, 20));
+	expect(api.getGraph).toHaveBeenCalledTimes(2);
+	expect(controller.loadError).toBe('Failed to fetch');
+});

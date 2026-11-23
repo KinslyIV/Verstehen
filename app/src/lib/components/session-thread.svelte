@@ -18,6 +18,7 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { onAndroidBack } from '#lib/session/android-back.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
@@ -100,6 +101,11 @@
 	function escape(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat)
 			return;
+		if (requestAbort()) event.preventDefault();
+	}
+
+	/** Escape and Android Back: ask to abort the pending question, problem, or turn; false if none. */
+	function requestAbort(): boolean {
 		const target = escAbortTarget({
 			overlay:
 				!!abortTarget || controller.setupOpen || controller.modelMenuOpen || hasOpenOverlay(),
@@ -107,10 +113,10 @@
 			problem: !!controller.activeProblem,
 			busy: controller.busy
 		});
-		if (!target) return;
-		event.preventDefault();
+		if (!target) return false;
 		abortTarget =
 			target === 'question' ? pending : target === 'problem' ? controller.activeProblem : target;
+		return true;
 	}
 
 	function confirmAbort() {
@@ -139,7 +145,8 @@
 			}
 		})();
 		const sync = (event: Event) => {
-			if ((event as CustomEvent<string>).detail === id) void controller.synchronize();
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') void controller.synchronize();
 		};
 		const syncSideChats = (event: Event) => {
 			const detail = (event as CustomEvent<string>).detail;
@@ -162,7 +169,9 @@
 		void controller.jobs.refresh();
 		void controller.jobs.refreshExtractions();
 		void controller.side.refresh();
+		const stopAndroidBack = onAndroidBack(requestAbort);
 		return () => {
+			stopAndroidBack();
 			window.removeEventListener('verstehen:sessions-changed', sync);
 			window.removeEventListener('verstehen:jobs-changed', syncJobs);
 			window.removeEventListener('verstehen:side-chats-changed', syncSideChats);
@@ -178,7 +187,7 @@
 
 <section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
 	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3"
+			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
 		>
 			<RenameSession
 				{id}
@@ -219,7 +228,7 @@
 				onwheel={handleWheel}
 				aria-label="Conversation"
 			>
-				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6">
+				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6 max-md:px-4">
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
@@ -389,7 +398,7 @@
 	</Scroller.Provider>
 	{#if controller.error}<div
 			role="alert"
-			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive"
+			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
 		>
 			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
 					variant="outline"

@@ -14,8 +14,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | Path | What it holds |
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, startup status, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
-| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
+| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
+| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, and Sync on the desktop or Connection in remote mode (`?section=sync` deep-links; the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
 | `src/routes/pair/+page.svelte` | the pairing form (outside the lesson group): server address, code, device name |
 | `src/lib/api/connection.ts` | `ServerConnection`, the storage behind it (Capacitor Preferences on Android, `localStorage` for headless flows), the client mode, and server-address rules |
 | `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, Sync (`?section=sync` deep-links; Prompts is owned by [teaching](teaching.md); the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
@@ -82,7 +83,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   outside `100.64.0.0/10`, or typed in any non-canonical form (hex, octal, short, `1.2.3.4e0`) or with `user@`, is
   refused, plus the hosts in `PUBLIC_VERSTEHEN_EXTRA_HOSTS`, which only
   the debug `.apk` and the headless flows set), the 8-character code (any case), and a device name
-  (default "Phone"), then calls `POST /api/auth/pair`, saves the connection, and opens `/`. Wrong
+  (default "Phone", or "Tablet" when the shorter screen side is at least 600 px), then calls `POST /api/auth/pair`, saves the connection, and opens `/`. Wrong
   or expired codes, rate limiting, and an unreachable server each show their own message.
 - **The connection** (`server_url`, `device_id`, `token`) lives in Capacitor Preferences, the app's
   private `CapacitorStorage` file, which the backup rules exclude (not the Keystore: a rooted phone
@@ -96,6 +97,52 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   blocks every `http://` request except `localhost`, `100.64.0.0/10`, and `10.0.2.2` in debug
   builds; `https` is untouched. The guard only blocks: allowed requests are made by the WebView
   itself, so POST bodies and SSE are unchanged.
+
+## Layouts and touch
+
+- **Width tiers** (`layout.tier` in `lib/layout/tiers.svelte.ts`): phone below 768 px, tablet
+  768–1279 px, desktop from 1280 px. Tailwind's `max-md:` and `md:` carry the phone styling; the
+  tablet and desktop split is the sidebar (a drawer below 1280 px, inline above) and the panel.
+- **Phone:** a top bar (drawer button, session heading, then the four right-panel buttons). A panel
+  button opens that tab full screen over the inert lesson and the bar shows a "Lesson" back
+  button; a new plan does not switch screens. The drawer closes on navigation (`DrawerCloser`), and
+  navigating to another lesson or the new-session screen returns to the lesson screen.
+- **Tablet:** the drawer plus the right panel beside the lesson, closable; the width is
+  remembered. **Desktop** is unchanged.
+- **Touch** (`pointer: coarse`, a custom Tailwind `coarse:` variant): buttons and icon buttons get
+  44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
+  8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.
+  The node card is capped to the canvas height and scrolls inside.
+- **Android Back:** `session/android-back.ts` keeps one native listener for every caller; the root
+  layout registers it so every page is covered. It closes an open overlay first (the phone drawer,
+  a dialog, a menu, or the graph's context menu) by pressing Escape; otherwise it offers Back to the
+  lesson's `requestAbort`, the same function as Escape, so a pending question, an active problem, or
+  a running turn opens its confirmation; otherwise Back goes back in history or leaves the app.
+- **Phone Settings:** a section list; a section opens full screen and the back button returns to
+  the list. Models edits the server's slots, Accounts is read-only, File access is hidden, and
+  Connection (server address, device name, Disconnect) replaces Sync. Disconnect waits at most 5 s
+  for the server to revoke the device, then forgets the token anyway.
+- **Safe areas and the keyboard:** `viewport-fit=cover` and `interactive-widget=resizes-content`;
+  `--safe-top` and `--safe-bottom` pad the bars and docks. The composer, docks, and the empty
+  new-session screen shrink with the keyboard instead of overflowing.
+- **Android system bars:** `SystemBars.setStyle` follows the theme, and a dark native window
+  background keeps them from flashing white while the page loads.
+
+## Stream recovery
+
+`lib/api/live.svelte.ts` owns the foreground and network state. A stream that fails with a
+network error waits 1, 2, 5, then 10 s (paused while the app is hidden, restarted at once on
+`visibilitychange`, `pageshow`, or `online`) and reopens. `live.follow` keeps notification and
+side-chat streams open, refetching after each reconnect. A lesson turn reattaches to its run and
+replays the log; server errors still fail the turn. A side-chat answer does the same: its feed
+waits and reattaches to `GET …/side-chats/{thread}/stream`, which replays the text so far, and stops on
+`done`, `error`, or dispose. While a stream is down and the app is in front,
+`ReconnectingLine` shows "Reconnecting…" at the top of the main column. The notification stream
+lives in `NotificationBridge` in the lesson layout, because the phone drawer unmounts the sidebar.
+The graph page reruns its first load on the next `graph-changed` event while it has failed, and a
+later successful refresh clears its error. On the remote client the Settings sections that read
+the server (`settings-reconnect.ts`) follow the same stream and load a failed read once the
+connection returns; a section that already has its data is left alone, so edits are kept.
 
 ## Traps found in M1–M9
 

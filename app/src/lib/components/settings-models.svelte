@@ -6,6 +6,7 @@
 	import type { ModelPick } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import ModelControls from './model-controls.svelte';
+	import { onReconnect } from './settings-reconnect.js';
 	let main = $state<ModelPick | null>(null);
 	let manual = $state<'idle' | 'refreshing' | 'done'>('idle');
 	let manualFailure = $state<string | null>(null);
@@ -29,6 +30,9 @@
 	onMount(() => {
 		void models.load();
 		void models.refresh();
+		return onReconnect(() => {
+			if (!catalog) void models.load();
+		});
 	});
 	async function refreshNow() {
 		manual = 'refreshing';

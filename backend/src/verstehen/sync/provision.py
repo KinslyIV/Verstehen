@@ -632,7 +632,20 @@ UNIT_PATH = "$HOME/.config/systemd/user/verstehen-server.service"
 USER_MANAGER_ENV = 'export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"'
 ROLLBACK_RECONNECTS = 2
 ISSUED_SIGN_INS_KEPT = 8
-ROLLBACK_TIMEOUT = 30.0
+SERVER_STOP_TIMEOUT = 15
+SERVER_RESTART_DELAY = 5
+TIME_WAIT_ALLOWANCE = 60
+SERVER_START_ALLOWANCE = 10
+SERVER_SETTLE_SECONDS = (
+    SERVER_STOP_TIMEOUT
+    + SERVER_RESTART_DELAY
+    + TIME_WAIT_ALLOWANCE
+    + SERVER_START_ALLOWANCE
+)
+HEALTH_INTERVAL = 0.5
+HEALTH_ATTEMPTS = round(SERVER_SETTLE_SECONDS / HEALTH_INTERVAL)
+ROLLBACK_TIMEOUT = float(SERVER_SETTLE_SECONDS)
+TOKEN_CHECK_ATTEMPTS = 5
 NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
@@ -793,8 +806,8 @@ class ServerInstallService:
         client_factory: Callable[[], httpx2.AsyncClient] = lambda: httpx2.AsyncClient(
             trust_env=False
         ),
-        health_attempts: int = 20,
-        health_interval: float = 0.5,
+        health_attempts: int = HEALTH_ATTEMPTS,
+        health_interval: float = HEALTH_INTERVAL,
         deployment_id_factory: Callable[[], str] = lambda: uuid4().hex,
     ):
         self.sync_store = sync_store
@@ -1369,7 +1382,8 @@ class ServerInstallService:
             f"Environment=VERSTEHEN_DEPLOYMENT_ID={deployment_id}\n"
             f"ExecStart=%h/.local/share/verstehen-server/venv/bin/python -m verstehen --server --host {shlex.quote(host)} --port {int(server_port)}\n"
             "Restart=on-failure\n"
-            "RestartSec=5\n\n"
+            f"RestartSec={SERVER_RESTART_DELAY}\n"
+            f"TimeoutStopSec={SERVER_STOP_TIMEOUT}\n\n"
             "[Install]\n"
             "WantedBy=default.target\n"
         )
@@ -1621,6 +1635,16 @@ class ServerInstallService:
         self._secrets.append(token)
         return device_id, token
 
+    async def _verify_token(self, server_url: str, token: str) -> TokenCheck:
+        """Check a device token with its own short retry budget, apart from the health wait."""
+        return await verify_bearer_token(
+            self._client_factory,
+            server_url,
+            token,
+            attempts=max(min(self._health_attempts, TOKEN_CHECK_ATTEMPTS), 1),
+            interval=self._health_interval,
+        )
+
     async def _pair_device(
         self,
         session: SshSession,
@@ -1637,13 +1661,7 @@ class ServerInstallService:
         existing_token = snapshot.token if snapshot.server_url == server_url else None
         reused: TokenCheck | None = None
         if mode == "update" and existing_token:
-            check = await verify_bearer_token(
-                self._client_factory,
-                server_url,
-                existing_token,
-                attempts=max(self._health_attempts, 1),
-                interval=self._health_interval,
-            )
+            check = await self._verify_token(server_url, existing_token)
             if check.outcome == "unavailable":
                 self._fail(
                     "pair_device",
@@ -1663,13 +1681,7 @@ class ServerInstallService:
             if minted is None:
                 return False
             server_device_id, token = minted
-            verified = await verify_bearer_token(
-                self._client_factory,
-                server_url,
-                token,
-                attempts=max(self._health_attempts, 1),
-                interval=self._health_interval,
-            )
+            verified = await self._verify_token(server_url, token)
             if verified.outcome != "accepted":
                 self._fail(
                     "pair_device",

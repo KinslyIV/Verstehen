@@ -49,6 +49,10 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   errors, page errors, and failed requests, except expected HTTP errors and requests a reload
   aborts.
   `make verify-run` reuses an unchanged SPA build behind the build guard.
+- **Touch and phone flows.** The `mobile-*` flows set `isMobile`, `hasTouch`, and a phone `screen`;
+  `verify/touch.ts` sends taps, long presses, drags, and pinches through CDP. The `goesOffline`
+  fixture option lets `mobile-reconnect` take the browser offline mid-stream without that failing
+  the flow.
 - **Remote flows.** A flow that declares `test.use({ client: 'remote' })` gets the backend in
   `--server` mode (an admin device minted with `verstehen mint-token`, exposed as `serverAdmin`) and
   a preview of the second SPA build, made with `PUBLIC_VERSTEHEN_CLIENT=remote` and
@@ -95,6 +99,11 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   service and recovery files in place. Rollback checks the previous wheel's migrations before
   and after stopping the attempted service. It keeps recovery files until the restored unit owns
   the listener and answers the health check.
+  The generated unit stops within 15 s (`TimeoutStopSec=15`) and the server bounds its graceful
+  shutdown to 5 s, so open SSE streams cannot hold the port. The server binds with `SO_REUSEADDR`,
+  so later restarts rebind at once; the first upgrade from a version without it waits out Linux's
+  60 s TIME_WAIT. The health and rollback waits (90 s) cover the stop, `RestartSec=5`, TIME_WAIT,
+  and startup. Device-token checks keep their own 5-attempt budget.
 - **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
   uploads `app/verify-output` on failure. Flows never retry, in CI or locally. On pull requests
   into `main` a second job, `android-debug`, sets up JDK 21 (Temurin) and the Android SDK, runs

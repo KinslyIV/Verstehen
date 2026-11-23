@@ -8,6 +8,8 @@
 	import { models } from '#lib/models/catalog.svelte.js';
 	import { markStartup } from '#lib/api/startup.js';
 	import StartupStatus from '#lib/components/startup-status.svelte';
+	import SystemBars from '#lib/components/system-bars.svelte';
+	import { onAndroidBack } from '#lib/session/android-back.js';
 	import type { LayoutProps } from './$types';
 
 	let { children }: LayoutProps = $props();
@@ -15,12 +17,14 @@
 	const pairing = $derived(page.route.id === '/pair');
 
 	onMount(() => {
-		if (remote) return;
-		markStartup('ui_mounted');
-		void connectSidecar().then(
-			() => models.start(),
-			() => {}
-		);
+		if (!remote) {
+			markStartup('ui_mounted');
+			void connectSidecar().then(
+				() => models.start(),
+				() => {}
+			);
+		}
+		return onAndroidBack();
 	});
 
 	$effect(() => {
@@ -31,6 +35,7 @@
 </script>
 
 <ModeWatcher defaultMode="dark" />
+<SystemBars />
 
 {@render children()}
 <StartupStatus />

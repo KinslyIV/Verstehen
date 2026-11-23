@@ -2027,7 +2027,6 @@ export interface components {
 			 * @enum {string}
 			 */
 			type:
-				| 'subscribed'
 				| 'turn-started'
 				| 'turn-settled'
 				| 'chats-changed'

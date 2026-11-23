@@ -175,6 +175,43 @@ alternative, and the consequence, until the user reviews them at the end of the 
   check; (3) subresource redirects beyond our API requests (such as images) are not re-checked.
   Alternative: a native redirect check in the WebView client (more Java).
 
+**Mobile & sync (Milestone D, PR 2):**
+
+- **Accounts is fully read-only on the phone**, including the background-use switches, which are
+  disabled. Only the laptop signs accounts in or out. Alternative: let the phone toggle background
+  use; consequence: one more writer to the server's account settings.
+- **No screen switch when a plan appears on the phone.** The plan stays reachable from the top bar.
+  Alternative: open the Plan screen on a new plan, which would pull the learner out of the lesson.
+- **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
+  node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
+  Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
+- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
+  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
+  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **Device type by screen size:** the device-name default is "Tablet" when
+  `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
+  query; consequence: a large foldable's inner screen reads as a tablet.
+- **Disconnect keeps the server address** (`dropToken`), revokes this device on the server when
+  it answers within 5 s, and opens `/pair`. Alternative: forget the address too; consequence: re-pairing
+  needs only a new code.
+- **Android system bars** follow the theme through `SystemBars.setStyle`; a dark native window
+  background and Capacitor's `backgroundColor` stop a white flash. On WebView below 140 the bars
+  stay dark in light mode (the old WebView pads its own area). Alternative: edge-to-edge only.
+- **Phone Settings uses push navigation:** choosing a section pushes it, back replaces it with the
+  list. Alternative: a stack of history entries.
+- **`mobile-reconnect` goes offline mid-stream:** it waits for the first chunk of the reply, takes
+  the whole browser context offline, and checks that the open stream failed, that "Reconnecting…"
+  shows while the server finishes the turn, and that going online shows the reply once from one
+  input request. Alternative: refuse the stream request before it opens, which never delivers a
+  chunk before the cut.
+- **Android Back acts as Escape** (user decision, 2026-11-23). LearnHarness dismisses a question,
+  discards a problem, or aborts a turn with Escape only. In the Android app, Back opens the same
+  confirmation when a question is pending, a problem is active, or a turn is running; with none of
+  these, Back goes back in history or leaves the app as before; with the drawer, a dialog, or a
+  menu open (on any page, including the graph's context menu), Back closes it as Escape would. It
+  shares `requestAbort` with the Escape handler. Alternative: a dismiss button on the
+  card on coarse pointers (not built); other phones and the browser have no Back button.
+
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
@@ -200,21 +237,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   has an active turn or compaction; sync prompt overrides (`prompts/`); leave raw laptop PDF paths
   laptop-only for v1; never sync `credentials.json`, Claude Code login, `file_access`, or
   `demo_browser`.
-
-**Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), 2026-11-23):**
-
-- **D and E merged:** PR 1 (the Android app and pairing) is implemented and documented in
-  [frontend-shell](architecture/frontend-shell.md) and [tooling](architecture/tooling.md); PR 2 is
-  the phone UI and recovery.
-- **Layouts by width:** phone below 768 px (sidebar drawer, right-panel tabs full screen), tablet
-  768–1279 px (drawer, lesson and closable panel side by side), desktop from 1280 px; touch sizing
-  and `/graph` gestures under `pointer: coarse`. Sized to a Galaxy S24 and Tab S9.
-- **`/graph` touch:** tap opens the card, long-press the context menu, any drag pans, pinch zooms;
-  no node dragging by touch. Mouse input stays as in LearnHarness.
-- **Phone Settings:** the server's settings; Models edits the server's slots; Accounts read-only;
-  File access hidden; Connection (address, device name, Disconnect) replaces Sync.
-- **Connection recovery:** streams reconnect on foreground and network return with backoff; a
-  running turn reattaches instead of failing after two attempts; a quiet "Reconnecting…" line.
 
 ## Deliberate differences from LearnHarness
 
@@ -327,4 +349,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
 ### Frontend
 
 - **`/session/new`** instead of LH's `/chat/new`.
+- **Touch on `/graph`:** a tap opens the card, a press and hold the menu, any drag pans, and a pinch
+  zooms; touch never drags a node. Mouse input is LH's.
 - **The look is new** (sleek, T3 Code style); behavior is LH's.

@@ -99,7 +99,7 @@
 					variant={pick?.account === account?.account.id && pick?.model === item.id
 						? 'secondary'
 						: 'ghost'}
-					class="w-full justify-between"
+					class="h-auto min-h-8 w-full justify-between py-1.5 text-left whitespace-normal"
 					size="sm"
 					disabled={busy}
 					onclick={() => account && onpick(pickModel(account.account.id, item, pick))}

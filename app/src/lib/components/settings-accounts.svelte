@@ -3,6 +3,7 @@
 	import { Switch } from 'bits-ui';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { models } from '#lib/models/catalog.svelte.js';
+	import { clientMode } from '#lib/api/connection.js';
 	import {
 		getSettings,
 		saveSettings,
@@ -17,6 +18,8 @@
 		type BinaryStatus,
 		type Settings
 	} from '#lib/api/client.js';
+	import { onReconnect } from './settings-reconnect.js';
+	const readOnly = clientMode() === 'remote';
 	let accounts = $state<Account[]>([]);
 	let claude = $state<BinaryStatus>();
 	let settings = $state<Settings>();
@@ -68,9 +71,15 @@
 	onMount(() => {
 		void refresh();
 		const timer = setInterval(() => void poll(), 1000);
+		const stopReconnect = onReconnect(() => {
+			if (settings) return;
+			error = null;
+			void refresh();
+		});
 		return () => {
 			disposed = true;
 			clearInterval(timer);
+			stopReconnect();
 		};
 	});
 	async function signIn(account?: string) {
@@ -135,17 +144,20 @@
 </script>
 
 <div class="mt-6 space-y-8">
+	{#if readOnly}<p class="text-sm text-muted-foreground">
+			Sign in from the laptop: Settings → Sync.
+		</p>{/if}
 	<section class="space-y-4" aria-label="ChatGPT accounts">
 		<div class="flex items-center justify-between">
 			<h3 class="font-medium">ChatGPT</h3>
-			<Button
-				variant="outline"
-				size="sm"
-				disabled={busy || !!pending}
-				onclick={() => void signIn()}
-			>
-				Add account
-			</Button>
+			{#if !readOnly}<Button
+					variant="outline"
+					size="sm"
+					disabled={busy || !!pending}
+					onclick={() => void signIn()}
+				>
+					Add account
+				</Button>{/if}
 		</div>
 		{#each accounts as account (account.id)}
 			<div class="rounded-lg border p-4">
@@ -156,23 +168,23 @@
 							{stateLabels[account.state ?? 'ready'] ?? account.state}
 						</p>
 					</div>
-					<div class="flex gap-2">
-						<Button
-							variant="ghost"
-							size="sm"
-							disabled={busy || !!pending}
-							onclick={() => void signIn(account.id)}
-						>
-							Sign in again
-						</Button><Button
-							variant="ghost"
-							size="sm"
-							disabled={busy}
-							onclick={() => void remove(account.id)}
-						>
-							Remove
-						</Button>
-					</div>
+					{#if !readOnly}<div class="flex gap-2">
+							<Button
+								variant="ghost"
+								size="sm"
+								disabled={busy || !!pending}
+								onclick={() => void signIn(account.id)}
+							>
+								Sign in again
+							</Button><Button
+								variant="ghost"
+								size="sm"
+								disabled={busy}
+								onclick={() => void remove(account.id)}
+							>
+								Remove
+							</Button>
+						</div>{/if}
 				</div>
 				{#if account.reason}<p class="mt-2 text-xs text-muted-foreground">{account.reason}</p>{/if}
 			</div>
@@ -193,7 +205,7 @@
 				<span id="chatgpt-background">Allow background use</span><Switch.Root
 					aria-labelledby="chatgpt-background"
 					checked={settings.background?.chatgpt ?? true}
-					disabled={busy}
+					disabled={busy || readOnly}
 					onCheckedChange={(value) => void background('chatgpt', value)}
 					class="h-5 w-9 rounded-full bg-muted p-0.5 data-[state=checked]:bg-primary"
 				>
@@ -220,7 +232,7 @@
 						Uses your Claude Code login. Run claude to sign in.
 					</p>{/if}
 			</div>
-			{#if claude.state === 'not_installed' || claude.state === 'too_old'}<Button
+			{#if !readOnly && (claude.state === 'not_installed' || claude.state === 'too_old')}<Button
 					variant="outline"
 					size="sm"
 					onclick={() => void openExternal(CLAUDE_CODE_INSTALL_URL)}
@@ -231,7 +243,7 @@
 				<span id="claude-background">Allow background use</span><Switch.Root
 					aria-labelledby="claude-background"
 					checked={settings.background?.claude_code ?? true}
-					disabled={busy}
+					disabled={busy || readOnly}
 					onCheckedChange={(value) => void background('claude_code', value)}
 					class="h-5 w-9 rounded-full bg-muted p-0.5 data-[state=checked]:bg-primary"
 				>

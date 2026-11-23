@@ -49,6 +49,7 @@ export default defineConfig({
 				extends: './vite.config.ts',
 				optimizeDeps: {
 					include: [
+						'@capacitor/app',
 						'@lucide/svelte',
 						'@lucide/svelte/icons/panel-left',
 						'@lucide/svelte/icons/x',
