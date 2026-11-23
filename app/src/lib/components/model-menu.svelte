@@ -82,7 +82,7 @@
 					{#if item.account.kind === 'chatgpt'}<Sparkles class="size-4 shrink-0" />{:else}<Bot
 							class="size-4 shrink-0"
 						/>{/if}
-					<span>
+					<span class="min-w-0 wrap-anywhere">
 						{item.account.kind === 'chatgpt'
 							? `ChatGPT · ${item.account.label}`
 							: item.account.label}
