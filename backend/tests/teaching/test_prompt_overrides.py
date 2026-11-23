@@ -360,3 +360,48 @@ def test_cancelled_prompt_save_cannot_write_after_a_second_save(
             assert (await store.list_pending_push())[-1].payload["content"] == "new"
 
     asyncio.run(run())
+
+
+async def prompt_changes_of(sync_store: SyncStore):
+    return [
+        change
+        for change in await sync_store.list_pending_push()
+        if change.entity != "setting"
+    ]
+
+
+def test_an_edit_whose_sync_record_fails_restores_the_prompt_the_tutor_uses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            sync_store = SyncStore(database)
+            service = PromptOverridesService(
+                settings_store, tmp_path, asyncio.Lock(), sync_store
+            )
+            await service.save(SEGMENT, "KEPT")
+            await service.set_enabled(SEGMENT, True)
+            before = await compose_instructions(settings_store, tmp_path)
+            prompt_changes = await prompt_changes_of(sync_store)
+            assert prompt_changes
+            monkeypatch.setattr(
+                "verstehen.sync.prompt_overrides.record_prompt_snapshot",
+                Mock(side_effect=RuntimeError("sync unavailable")),
+            )
+            with pytest.raises(RuntimeError):
+                await service.save(SEGMENT, "LOST")
+            with pytest.raises(RuntimeError):
+                await service.delete(SEGMENT)
+            assert await compose_instructions(settings_store, tmp_path) == before
+            segment = next(
+                item
+                for item in (await service.segments()).teacher
+                if item.path == SEGMENT
+            )
+            assert (segment.override_text, segment.enabled) == ("KEPT", True)
+            assert await prompt_changes_of(sync_store) == prompt_changes
+
+    asyncio.run(run())

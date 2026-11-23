@@ -158,4 +158,9 @@ class ProviderService:
         failed = account.model_copy(
             update={"state": error.state, "reason": error.reason}
         )
-        return AccountCatalog(account=failed, models=[], refreshed_at=datetime.now(UTC))
+        return AccountCatalog(
+            account=failed,
+            models=[],
+            refreshed_at=datetime.now(UTC),
+            refresh_error=error.reason if error.state == TRANSIENT_STATE else None,
+        )

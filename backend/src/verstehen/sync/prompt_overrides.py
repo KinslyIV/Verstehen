@@ -90,13 +90,23 @@ class PromptOverridesService:
         self._require_segment(path)
 
         async def apply() -> None:
-            if text is None:
-                await asyncio.to_thread(prompt_file_path, self.data_dir, path)
-                await self._write_switch(path, False)
-                await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
-            else:
-                await asyncio.to_thread(write_prompt_file, self.data_dir, path, text)
-            await record_prompt_snapshot(self.sync_store, self.data_dir)
+            previous_text = await asyncio.to_thread(
+                read_prompt_file, self.data_dir, path
+            )
+            previous_enabled = (await self._switches()).get(path) is True
+            try:
+                if text is None:
+                    await asyncio.to_thread(prompt_file_path, self.data_dir, path)
+                    await self._write_switch(path, False)
+                    await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
+                else:
+                    await asyncio.to_thread(
+                        write_prompt_file, self.data_dir, path, text
+                    )
+                await record_prompt_snapshot(self.sync_store, self.data_dir)
+            except Exception:
+                await self._restore(path, previous_text, previous_enabled)
+                raise
 
         async with self.prompt_lock:
             edit = asyncio.create_task(apply())
@@ -104,6 +114,18 @@ class PromptOverridesService:
                 edit.exception()
                 raise asyncio.CancelledError
             edit.result()
+
+    async def _restore(
+        self, path: str, previous_text: str | None, previous_enabled: bool
+    ) -> None:
+        """Put the file and switch back so a failed edit changes neither the tutor nor the sync log."""
+        if previous_text is None:
+            await asyncio.to_thread(delete_prompt_file, self.data_dir, path)
+        else:
+            await asyncio.to_thread(
+                write_prompt_file, self.data_dir, path, previous_text
+            )
+        await self._write_switch(path, previous_enabled)
 
     async def _switches(self) -> dict[str, JsonValue]:
         stored = await self.settings_store.get(SWITCHES_KEY)

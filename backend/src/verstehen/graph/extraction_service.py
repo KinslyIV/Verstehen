@@ -147,20 +147,22 @@ class ExtractionService:
     async def coverage(
         self, session_id: str, messages: list[Entry] | None = None
     ) -> SessionCoverage:
-        """Coverage of the saved entries; pass them when the caller already loaded them."""
-        ledger = await self.graph_store.read()
+        """Coverage of the saved entries; reads only what coverage needs unless the caller passes them."""
+        coverage_rows = await self.graph_store.read_coverage(session_id)
         if messages is None:
-            messages = await self.entries_store.list(session_id)
-        cov = coverage_of(messages, ledger.coverage, session_id)
+            total, messages = await self.entries_store.coverage_entries(session_id)
+        else:
+            total = len(messages)
+        cov = coverage_of(messages, coverage_rows, session_id)
         return SessionCoverage(
-            total_messages=len(messages),
+            total_messages=total,
             covered_count=cov.covered_count,
             uncovered_count=cov.uncovered_count,
             covered_tokens=cov.covered_tokens,
             uncovered_tokens=cov.uncovered_tokens,
             running=self.running(session_id),
             last_folded_at=max(
-                (c.folded_at for c in ledger.coverage if c.session_id == session_id),
+                (c.folded_at for c in coverage_rows),
                 default=None,
             ),
             failure_reason=self.failure_reasons.get(session_id),

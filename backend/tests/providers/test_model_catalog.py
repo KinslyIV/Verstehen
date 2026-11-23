@@ -353,3 +353,20 @@ def test_an_account_that_became_unavailable_keeps_models_only_when_transient(
             assert dropped.account.state == "needs_sign_in"
 
     asyncio.run(scenario())
+
+
+def test_an_account_offline_on_first_discovery_reports_the_refresh_failure(
+    tmp_path: Path,
+):
+    class Offline(StubAdapter):
+        async def models(self, account: Account) -> list[CatalogModel]:
+            raise AccountUnavailable("down", "unavailable")
+
+    async def scenario():
+        async with provider_service(tmp_path, [Offline("one")]) as (service, store):
+            await service.refresh()
+            entry = store.get("one")
+            assert entry is not None and entry.models == []
+            assert entry.refresh_error == "down"
+
+    asyncio.run(scenario())

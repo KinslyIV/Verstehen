@@ -238,13 +238,43 @@ class EntriesStore:
             windows[session_id].append(ENTRY.validate_json(payload))
         return windows
 
-    async def tail(self, session_id: str, count: int) -> List[Entry]:
-        """The session's newest `count` entries, oldest first."""
+    async def coverage_entries(self, session_id: str) -> tuple[int, List[Entry]]:
+        """The entry count, and the entries that carry teacher prose (assistant replies and send_to_user results)."""
         async with self.database.read() as connection:
             async with connection.execute(
-                "SELECT payload FROM (SELECT seq, payload FROM entries "
-                "WHERE session_id = ? ORDER BY seq DESC LIMIT ?) ORDER BY seq",
-                (session_id, count),
+                "SELECT COUNT(*) FROM entries WHERE session_id = ?", (session_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            async with connection.execute(
+                "SELECT payload FROM entries WHERE session_id = ? AND (kind = 'assistant' "
+                "OR (kind = 'tool_result' AND json_extract(payload, '$.tool_name') = 'send_to_user')) "
+                "ORDER BY seq",
+                (session_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        assert row is not None
+        return row[0], [ENTRY.validate_json(item[0]) for item in rows]
+
+    async def problem_entries(
+        self, session_id: str, tool_names: Sequence[str]
+    ) -> List[Entry]:
+        """Only the entries that decide a practice problem: dismissals, calls to `tool_names`, their results."""
+        calls = (
+            "SELECT a.seq, json_extract(p.value, '$.tool_call_id') AS call_id "
+            "FROM entries a, json_each(a.payload, '$.parts') p "
+            "WHERE a.session_id = ? AND a.kind = 'assistant' "
+            "AND json_extract(p.value, '$.tool_name') IN (SELECT value FROM json_each(?))"
+        )
+        async with self.database.read() as connection:
+            async with connection.execute(
+                f"WITH calls AS ({calls}) SELECT payload FROM entries e "
+                "WHERE e.session_id = ? AND ("
+                "(e.kind = 'marker' AND json_extract(e.payload, '$.marker_type') = 'problem-dismissed') "
+                "OR e.seq IN (SELECT seq FROM calls) "
+                "OR (e.kind = 'tool_result' "
+                "AND json_extract(e.payload, '$.tool_call_id') IN (SELECT call_id FROM calls))"
+                ") ORDER BY e.seq",
+                (session_id, json.dumps(list(tool_names)), session_id),
             ) as cursor:
                 rows = await cursor.fetchall()
         return [ENTRY.validate_json(row[0]) for row in rows]

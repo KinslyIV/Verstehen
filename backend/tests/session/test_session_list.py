@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings
+from verstehen.graph.coverage import coverage_of
 from verstehen.store.entries import (
     AssistantEntry,
     Entry,
@@ -14,6 +15,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.graph import CoverageEntry
 from verstehen.teaching.practice.state import active_problem_of
 from verstehen.teaching.questions.pending import dangling_question_of
 
@@ -150,6 +152,22 @@ PRACTICE_LOGS: dict[str, list[Entry]] = {
         result("conclude", "c1"),
         *filler(60),
     ],
+    "problem_posed_after_a_dismissal": [
+        calls(call("problem", "p1", PROBLEM)),
+        result("problem", "p1"),
+        marker("problem-dismissed", {"problem_call_id": "p1"}),
+        *filler(30),
+        calls(call("problem", "p2", PROBLEM)),
+        result("problem", "p2"),
+        calls(call("read", "r1", {})),
+        result("read", "r1"),
+    ],
+    "dismissed_under_a_long_discussion": [
+        calls(call("problem", "p1", PROBLEM)),
+        result("problem", "p1"),
+        marker("problem-dismissed", {"problem_call_id": "p1"}),
+        *filler(60),
+    ],
     "no_problem_in_a_long_log": filler(70),
     "unanswered_question_with_no_problem": [calls(call("probe", "q1"))],
 }
@@ -265,6 +283,67 @@ def test_coverage_route_matches_the_session_snapshot_and_skips_practice(tmp_path
         assert coverage["total_messages"] == 2 and coverage["uncovered_count"] == 1
         assert client.get(f"/api/sessions/{practice}/coverage").json() is None
         assert client.get("/api/sessions/missing/coverage").status_code == 404
+
+
+def test_coverage_read_without_the_transcript_matches_the_whole_transcript_rules(
+    tmp_path: Path,
+):
+    async def scenario(app):
+        service = app.state.session_service
+        extraction = service.extraction_service
+        session = await service.sessions_store.create("T")
+        other = await service.sessions_store.create("O")
+        entries = [
+            *filler(40),
+            calls(call("send_to_user", "m1", {"message": "A failed message."})),
+            result("send_to_user", "m1", error=True),
+            marker("compaction"),
+            calls(call("send_to_user", "m2", {"message": "A delivered message."})),
+            result("send_to_user", "m2"),
+        ]
+        await service.entries_store.append(session.id, entries)
+        await service.entries_store.append(other.id, [reply("Unrelated prose.")])
+        slots = coverage_of(
+            await service.entries_store.list(session.id), [], session.id
+        ).slots
+        folded = [slots[1], slots[-2]]
+        async with service.graph_store.transaction() as ledger:
+            ledger.coverage.extend(
+                CoverageEntry(
+                    session_id=session.id, fp=slot.fp, tokens=slot.tokens, folded_at="t"
+                )
+                for slot in folded
+            )
+            ledger.coverage.append(
+                CoverageEntry(
+                    session_id=other.id, fp=slots[3].fp, tokens=1, folded_at="u"
+                )
+            )
+        whole = coverage_of(
+            await service.entries_store.list(session.id),
+            (await service.graph_store.read()).coverage,
+            session.id,
+        )
+        narrow = await extraction.coverage(session.id)
+        assert narrow == await extraction.coverage(
+            session.id, await service.entries_store.list(session.id)
+        )
+        assert narrow.total_messages == len(entries)
+        assert (narrow.covered_count, narrow.uncovered_count) == (
+            whole.covered_count,
+            whole.uncovered_count,
+        )
+        assert (narrow.covered_tokens, narrow.uncovered_tokens) == (
+            whole.covered_tokens,
+            whole.uncovered_tokens,
+        )
+        assert narrow.covered_count and narrow.uncovered_count
+        assert narrow.last_folded_at == "t"
+
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        assert client.portal is not None
+        client.portal.call(scenario, app)
 
 
 def test_session_snapshot_loads_the_transcript_once(tmp_path: Path):

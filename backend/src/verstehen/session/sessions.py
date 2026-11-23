@@ -23,11 +23,12 @@ from verstehen.store.graph import GraphLedger, GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
 from verstehen.teaching.practice.state import scan_problem
 from verstehen.teaching.questions.pending import dangling_question_of
-
-PROBLEM_WINDOW = 16
-PROBLEM_WINDOW_GROWTH = 4
 
 
 @dataclass
@@ -110,14 +111,11 @@ class SessionService:
         )
 
     async def has_active_problem(self, session_id: str) -> bool:
-        """Read the newest entries, widening the window until the problem state is decided."""
-        count = PROBLEM_WINDOW
-        while True:
-            entries = await self.entries_store.tail(session_id, count)
-            scan = scan_problem(entries)
-            if scan.decided or len(entries) < count:
-                return scan.problem is not None
-            count *= PROBLEM_WINDOW_GROWTH
+        """Scan only the entries that can decide the problem state, not the transcript."""
+        entries = await self.entries_store.problem_entries(
+            session_id, (PRACTICE_PROBLEM_TOOL, PRACTICE_CONCLUDE_TOOL)
+        )
+        return scan_problem(entries).problem is not None
 
     async def create(
         self,
@@ -174,8 +172,7 @@ class SessionService:
             return Refused(404, {"error": "Not found"})
         if session.kind == "practice":
             return None
-        entries = await self.entries_store.list(session_id)
-        return await self.extraction_service.coverage(session_id, entries)
+        return await self.extraction_service.coverage(session_id)
 
     async def set_artifact_view(
         self, session_id: str, entry_id: str, inverted: bool
