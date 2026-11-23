@@ -132,6 +132,23 @@ alternative, and the consequence, until the user reviews them at the end of the 
   laptop-only for v1; never sync `credentials.json`, Claude Code login, `file_access`, or
   `demo_browser`.
 
+**Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), 2026-11-23):**
+
+- **D and E merged:** PR 1 the Android app and pairing, PR 2 the phone UI and recovery. Agents test
+  on an Android emulator (T3 Code Device panel) before the user.
+- **Phone connection in a private app file** (Tauri `store` plugin, excluded from backup), not the
+  Android Keystore. Debug builds also allow cleartext to `10.0.2.2`; release stays
+  `100.64.0.0/10` only. One release signing key, created by the user with `make android-key`.
+- **Layouts by width:** phone below 768 px (sidebar drawer, right-panel tabs full screen), tablet
+  768–1279 px (drawer, lesson and closable panel side by side), desktop from 1280 px; touch sizing
+  and `/graph` gestures under `pointer: coarse`. Sized to a Galaxy S24 and Tab S9.
+- **`/graph` touch:** tap opens the card, long-press the context menu, any drag pans, pinch zooms;
+  no node dragging by touch. Mouse input stays as in LearnHarness.
+- **Phone Settings:** the server's settings; Models edits the server's slots; Accounts read-only;
+  File access hidden; Connection (address, device name, Disconnect) replaces Sync.
+- **Connection recovery:** streams reconnect on foreground and network return with backoff; a
+  running turn reattaches instead of failing after two attempts; a quiet "Reconnecting…" line.
+
 ## Deliberate differences from LearnHarness
 
 ### Session and turns

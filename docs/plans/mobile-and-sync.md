@@ -45,7 +45,8 @@ flowchart LR
     touch-friendly question dock and `/graph`, SSE reconnect on app resume) and adds Settings → Sync
     / Server on desktop + a pairing screen on mobile.
   - `app/src-tauri/` splits desktop-only sidecar code behind `#[cfg(desktop)]`, adds
-    `#[cfg(mobile)]` Android Keystore storage, and scaffolds Tauri 2 Android with a Tailscale-only
+    `#[cfg(mobile)]` connection storage (a private app file; the user dropped the Keystore on
+    2026-11-23), and scaffolds Tauri 2 Android with a Tailscale-only
     cleartext network security config.
 - **What the user notices:**
   - From the laptop UI, they add their Linux server (Tailscale IP + one-time SSH credentials),
@@ -271,44 +272,34 @@ laptop's Settings UI.*
 - **Verification:** Mocked-SSH pytest tests + Vitest component tests for sync/setup states +
   Playwright verify flow for Settings → Sync + `docs/feature-map.md` entry.
 
-### Milestone D — Mobile-responsive SvelteKit UI & SSE resilience
+### Milestone D — Android app, pairing, mobile-responsive UI & SSE resilience *(detailed plan: [mobile-sync-d.md](mobile-sync-d.md))*
 
-*Goal: The existing `app/` SPA is comfortable on a phone screen and recovers cleanly from mobile
-network drops and app backgrounding.*
+*Goal: A signed Android `.apk` pairs with the server, and the existing `app/` SPA is comfortable on
+a phone screen and recovers cleanly from mobile network drops and app backgrounding.*
 
-- **Remote client & pairing (`app/src/lib/api/client.ts`, pairing route):**
-  - Support remote server mode (server URL + bearer token loaded from Tauri mobile storage or web
-    config) alongside existing desktop `sidecar_connection`.
-  - Route to `/pair` on missing config or `401` (enter Tailscale IP:port + 8-char short code →
-    `POST /api/auth/pair`).
-- **Responsive layout (`app/src/routes/(lesson)/+layout.svelte`, question dock, composer, `/graph`):**
-  - Sidebar collapses to a slide-over drawer on narrow viewports.
-  - Right panel (Plan / Jobs / Side chat) adapts to a bottom sheet or full-screen tab switcher.
-  - Touch-friendly Question Dock, Composer, safe-area insets (`env(safe-area-inset-*)`), and mobile
-    keyboard handling.
-  - `/graph`: pinch-zoom, touch pan, and tap/long-press node actions.
-- **SSE reconnect:**
-  - Auto-reconnect `/api/events` and active turn stream on `visibilitychange` / `online` + refetch
-    session list and active session state so resuming the app never shows stale data.
-- **Verification:** Playwright mobile-viewport (`390×844`) verify flows covering pairing, lesson
-  turn, question dock, Plan/Side-chat sheet, and `/graph` + `docs/feature-map.md` entries.
+The user merged the former Milestones D and E on 2026-11-23 so the app can be tried on a real phone
+early. D ships as two PRs into `dev`, in order:
 
-### Milestone E — Tauri 2 Mobile (Android `.apk`) packaging & release
-
-*Goal: Build a signed Android `.apk` from `app/` with Android Keystore token storage and Tailscale
-HTTP access.*
-
-- **Desktop/mobile Rust split (`app/src-tauri/`):**
-  - Gate sidecar startup, `externalBin`, `sidecar_connection`, and `tauri-plugin-shell` behind
-    `#[cfg(desktop)]`.
-  - Add `#[cfg(mobile)]` commands for Android Keystore storage (`get_server_connection`,
-    `save_server_connection`, `clear_server_connection`).
-- **Android project & network security:**
-  - Scaffold Android via `tauri android init`.
-  - Add `network_security_config.xml` permitting cleartext HTTP **only** for Tailscale's
-    `100.64.0.0/10` range (public cleartext stays blocked).
-- **Build & CI:**
-  - Add `make android` target and a GitHub Actions job building & attaching the signed `.apk` on
-    tagged releases alongside the Arch package.
-- **Verification:** Clean `.apk` build in CI + manual smoke test on the user's Android phone over
-  Tailscale (pair with short code → run live lesson turn → verify sync on laptop).
+1. **Android app and pairing** (formerly E plus D's remote client):
+   - Remote server mode in `app/src/lib/api/client.ts` (server URL + device token from the app's
+     private storage via Tauri's `store` plugin) alongside the desktop `sidecar_connection`; route to `/pair` on missing
+     config or `401` (Tailscale IP:port + 8-char short code → `POST /api/auth/pair`).
+   - Desktop/mobile Rust split in `app/src-tauri/`: sidecar startup, `externalBin`,
+     `sidecar_connection`, and `tauri-plugin-shell` behind `#[cfg(desktop)]`; the connection
+     stored with Tauri's `store` plugin in the app's private storage, excluded from Android backup.
+   - Android project via `tauri android init`, with `network_security_config.xml` permitting
+     cleartext HTTP **only** for Tailscale's `100.64.0.0/10` range.
+   - `make android` and a GitHub Actions job attaching the signed `.apk` to tagged releases
+     alongside the Arch package.
+   - Verification: clean `.apk` build + manual smoke test on the user's phone over Tailscale (pair
+     with short code → live lesson turn → sync visible on the laptop).
+2. **Phone UI and connection recovery:**
+   - Responsive layout (`app/src/routes/(lesson)/+layout.svelte`, question dock, composer,
+     `/graph`): sidebar drawer, right-panel tabs full screen, touch-friendly question dock and
+     composer, safe-area insets, keyboard handling; `/graph` pinch-zoom, touch pan, tap and
+     long-press node actions.
+   - Phone-adapted Settings, including the server's model slots.
+   - SSE reconnect of `/api/events` and the active turn stream on `visibilitychange` / `online`,
+     refetching session list and active session state.
+   - Verification: Playwright flows at the S24 (`360×780`) and Tab S9 (`800×1280`, `1280×800`) sizes (pairing, lesson turn, question dock, right-panel
+     tabs, `/graph`, Settings, reconnect) + `docs/feature-map.md` entries, and checks on the phone.

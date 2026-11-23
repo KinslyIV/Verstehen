@@ -76,7 +76,9 @@ All of this is merged into `main`.
 4. **Mobile app (Android) and two-way sync.** Independent of M10/M11 (can be scheduled before or
    after them): local-first laptop backend syncing automatically with an always-on Tailscale server
    backend, plus a client-only Tauri 2 Android `.apk` paired by short code. Approved plan:
-   [mobile-and-sync](plans/mobile-and-sync.md).
+   [mobile-and-sync](plans/mobile-and-sync.md). Milestones A–C are in `dev`; Milestone D (the
+   Android app, phone and tablet UI, and SSE recovery, with the former E folded in) is planned in
+   [mobile-sync-d](plans/mobile-sync-d.md).
 
 ## Not ported (by decision)
 
