@@ -118,6 +118,36 @@ test('a_renamed_session_retitles_its_cluster_without_refetching_the_graph', asyn
 	expect(controller.graph?.snapshot.revision).toBe(5);
 });
 
+test('a_title_response_that_arrives_before_the_first_snapshot_is_applied_to_it', async () => {
+	const graph = deferred<api.GraphSnapshot>();
+	vi.mocked(api.getGraph).mockReturnValue(graph.promise);
+	vi.mocked(api.getGraphTitles).mockResolvedValue({ sessions: { s1: 'Renamed' } });
+	controller = new GraphController();
+	window.dispatchEvent(new CustomEvent('verstehen:sessions-changed'));
+	await vi.waitFor(() => expect(api.getGraphTitles).toHaveBeenCalledOnce());
+	await settle();
+	graph.resolve(snapshot(5));
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	expect(controller.titles).toEqual({ s1: 'Renamed' });
+	expect(controller.clusterLabels).toEqual({ s1: 'Renamed' });
+});
+
+test('a_snapshot_fetched_before_a_rename_does_not_undo_the_fresher_title', async () => {
+	const stale = deferred<api.GraphSnapshot>();
+	vi.mocked(api.getGraph).mockResolvedValueOnce(snapshot(5)).mockReturnValueOnce(stale.promise);
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	graphChanged(6);
+	await vi.waitFor(() => expect(api.getGraph).toHaveBeenCalledTimes(2));
+	vi.mocked(api.getGraphTitles).mockResolvedValue({ sessions: { s1: 'Renamed' } });
+	window.dispatchEvent(new CustomEvent('verstehen:sessions-changed'));
+	await vi.waitFor(() => expect(controller.titles).toEqual({ s1: 'Renamed' }));
+	stale.resolve(snapshot(6, { sessions: { s1: 'Algebra' } }));
+	await vi.waitFor(() => expect(controller.graph?.snapshot.revision).toBe(6));
+	expect(controller.titles).toEqual({ s1: 'Renamed' });
+	expect(controller.clusterLabels).toEqual({ s1: 'Renamed' });
+});
+
 test('unchanged_titles_leave_the_drawn_labels_untouched', async () => {
 	controller = new GraphController();
 	await vi.waitFor(() => expect(controller.graph).toBeDefined());

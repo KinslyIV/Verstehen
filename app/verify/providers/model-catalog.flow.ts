@@ -82,4 +82,29 @@ test('model-catalog', async ({ page, request }) => {
 		path: test.info().outputPath('catalog-crowded-stable.png'),
 		animations: 'disabled'
 	});
+
+	await page.keyboard.press('Escape');
+	await page.setViewportSize({ width: 360, height: 780 });
+	await page.keyboard.press('Control+k');
+	await expect(menu).toBeVisible();
+	await menu.getByRole('button', { name: 'Scripted model' }).click();
+	const level = menu.getByRole('slider', { name: 'Thinking level' });
+	await expect(level).toHaveAttribute('aria-valuetext', 'medium');
+	for (const name of ['low', 'medium', 'high'])
+		await expect(menu.getByLabel('Thinking levels').getByText(name, { exact: true })).toBeVisible();
+	const narrow = (await menu.boundingBox())!;
+	expect(narrow.x).toBeGreaterThanOrEqual(0);
+	expect(narrow.x + narrow.width).toBeLessThanOrEqual(360);
+	expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360);
+	for (const element of await menu.locator('*').all()) {
+		const box = await element.boundingBox();
+		if (box) expect(box.x + box.width).toBeLessThanOrEqual(narrow.x + narrow.width + 0.5);
+	}
+	await level.focus();
+	await page.keyboard.press('ArrowLeft');
+	await expect(level).toHaveAttribute('aria-valuetext', 'low');
+	await page.screenshot({
+		path: test.info().outputPath('catalog-narrow-levels.png'),
+		animations: 'disabled'
+	});
 });

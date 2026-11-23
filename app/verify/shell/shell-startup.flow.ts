@@ -31,6 +31,13 @@ test('shell-startup', async ({ page, baseURL }) => {
 	});
 	const marks = () => page.evaluate(() => window.__startupMarks);
 
+	let releaseCatalog!: () => void;
+	const catalogHeld = new Promise<void>((resolve) => (releaseCatalog = resolve));
+	await page.route('**/api/models', async (route) => {
+		if (route.request().method() !== 'GET') return route.fallback();
+		await catalogHeld;
+		await route.fallback();
+	});
 	await page.goto('/');
 	await expect(page.getByRole('status')).toHaveText('Starting Verstehen…');
 	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
@@ -44,10 +51,12 @@ test('shell-startup', async ({ page, baseURL }) => {
 	await page.evaluate((port) => window.__settleSidecar.ready(port), port);
 	await expect(page.getByRole('status')).toHaveCount(0);
 	await expect(page.getByText('No sessions yet')).toBeVisible();
+	expect(await marks()).toEqual(['ui_mounted']);
+	releaseCatalog();
 	await expect(page.getByRole('button', { name: 'Choose model', exact: true })).toContainText(
 		'Scripted teacher'
 	);
-	await expect.poll(marks).toEqual(['ui_mounted', 'composer_usable', 'models_displayed']);
+	await expect.poll(marks).toEqual(['ui_mounted', 'models_displayed', 'composer_usable']);
 	await page.screenshot({
 		path: test.info().outputPath('startup-ready.png'),
 		animations: 'disabled'

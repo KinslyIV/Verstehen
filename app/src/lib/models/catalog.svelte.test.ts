@@ -29,11 +29,10 @@ test('the_saved_catalog_shows_before_any_account_is_contacted', async () => {
 	await state.load();
 	expect(label(state)).toBe('saved');
 	expect(api.refreshModels).not.toHaveBeenCalled();
-	expect(state.settled).toBe(true);
 });
 
-test('an_empty_catalog_is_not_settled_until_a_refresh_finishes', async () => {
-	vi.mocked(api.getModels).mockResolvedValue({ accounts: [], slots: {} });
+test('a_saved_catalog_is_not_settled_until_a_refresh_finishes', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(saved('saved'));
 	const state = new ModelCatalogState();
 	await state.load();
 	expect(state.settled).toBe(false);
@@ -116,4 +115,27 @@ test('a_failed_refresh_resolves_to_its_message_and_still_rereads_the_saved_catal
 	const state = new ModelCatalogState();
 	expect(await state.refresh(true)).toBe('HTTP 500');
 	expect(label(state)).toBe('saved');
+});
+
+test('a_failed_final_read_is_reported_instead_of_claiming_the_refresh_succeeded', async () => {
+	vi.mocked(api.getModels).mockResolvedValueOnce(saved('saved'));
+	const state = new ModelCatalogState();
+	await state.load();
+	vi.mocked(api.refreshModels).mockResolvedValue(undefined);
+	vi.mocked(api.getModels).mockRejectedValue(new Error('offline'));
+	expect(await state.refresh(true)).toBe('offline');
+});
+
+test('a_superseded_refresh_reports_the_outcome_of_the_newest_one', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(saved('saved'));
+	let finishFirst!: () => void;
+	vi.mocked(api.refreshModels)
+		.mockImplementationOnce(() => new Promise<void>((resolve) => (finishFirst = resolve)))
+		.mockRejectedValueOnce(new Error('HTTP 500'));
+	const state = new ModelCatalogState();
+	const first = state.refresh();
+	const second = state.refresh(true);
+	finishFirst();
+	expect(await first).toBe('HTTP 500');
+	expect(await second).toBe('HTTP 500');
 });

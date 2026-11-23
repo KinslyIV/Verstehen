@@ -48,7 +48,7 @@
 		if (value) {
 			tab = initialTab;
 			onopened?.();
-			void models.refresh();
+			void models.load();
 		}
 	}
 	async function apply(value: ModelPick) {

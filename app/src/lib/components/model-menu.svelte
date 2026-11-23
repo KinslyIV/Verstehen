@@ -3,6 +3,7 @@
 	import type { ModelCatalog, ModelPick } from '#lib/api/client.js';
 	import { modelTabs, modelFor, pickModel, type ModelTab } from '#lib/models/picks.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { Slider } from '#lib/components/ui/slider/index.js';
 	let {
 		catalog,
 		pick,
@@ -35,6 +36,10 @@
 		account?.models.filter((model) => tab !== 'vision' || model.accepts_images) ?? []
 	);
 	let model = $derived(modelFor(catalog, pick));
+	let levels = $derived(model?.thinking_levels ?? []);
+	let levelIndex = $derived(
+		pick?.thinking_level ? Math.max(0, levels.indexOf(pick.thinking_level)) : 0
+	);
 	let status = $derived(
 		notice ??
 			(refreshing
@@ -66,9 +71,7 @@
 				</Button>
 			{/each}
 		</div>{/if}
-	<div
-		class="grid h-[min(20rem,50vh)] grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.3fr)_7rem] grid-rows-1"
-	>
+	<div class="grid h-[min(20rem,50vh)] grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.3fr)] grid-rows-1">
 		<div class="space-y-1 overflow-y-auto border-r bg-muted/20 p-2" aria-label="Accounts">
 			{#each catalog.accounts as item (item.account.id)}
 				<Button
@@ -113,23 +116,38 @@
 							: 'No models available. Manage accounts in Settings.')}
 				</p>{/if}
 		</div>
-		<div class="overflow-y-auto border-l p-2" aria-label="Thinking levels">
-			<p class="px-2 pb-2 text-xs text-muted-foreground">Thinking</p>
-			{#each model?.thinking_levels ?? [] as level (level)}
-				<Button
-					variant="ghost"
-					class="w-full justify-between capitalize"
-					size="sm"
-					disabled={busy}
-					onclick={() => pick && onpick({ ...pick, thinking_level: level })}
-				>
-					{level}{#if pick?.thinking_level === level}<Check class="size-3" />{/if}
-				</Button>
-			{/each}
-			{#if !model?.thinking_levels?.length}<p class="px-2 text-xs text-muted-foreground">
-					No levels
-				</p>{/if}
+	</div>
+	<div class="h-24 border-t px-6 py-3" aria-label="Thinking levels">
+		<div class="flex items-center justify-between text-xs">
+			<span class="text-muted-foreground">Thinking</span>
+			<span class="font-medium capitalize">{pick?.thinking_level ?? ''}</span>
 		</div>
+		{#if levels.length}
+			<div class="pt-3">
+				<Slider
+					type="single"
+					min={0}
+					max={Math.max(1, levels.length - 1)}
+					step={1}
+					value={levelIndex}
+					disabled={busy || !pick || levels.length < 2}
+					onValueChange={(index) => pick && onpick({ ...pick, thinking_level: levels[index] })}
+					thumbProps={{ 'aria-label': 'Thinking level', 'aria-valuetext': levels[levelIndex] }}
+				/>
+				<div class="relative mt-2 h-4 text-xs text-muted-foreground">
+					{#each levels as level, index (level)}
+						<span
+							class="absolute -translate-x-1/2 capitalize"
+							style:left={`${levels.length > 1 ? (index / (levels.length - 1)) * 100 : 0}%`}
+						>
+							{level}
+						</span>
+					{/each}
+				</div>
+			</div>
+		{:else}
+			<p class="pt-4 text-center text-xs text-muted-foreground">No thinking levels</p>
+		{/if}
 	</div>
 	<div class="flex h-14 items-center justify-between gap-3 border-t px-4">
 		<p role="status" class="line-clamp-2 min-w-0 text-xs text-muted-foreground" title={status}>

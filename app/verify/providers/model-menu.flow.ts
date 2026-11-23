@@ -14,7 +14,8 @@ test('model-menu', async ({ page }) => {
 		'Scripted title · Low'
 	);
 	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
-	await page.getByRole('button', { name: 'high', exact: true }).click();
+	await page.getByRole('slider', { name: 'Thinking level' }).focus();
+	await page.keyboard.press('End');
 	await page.keyboard.press('Escape');
 	await page.getByRole('textbox').fill('Understanding derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -59,7 +60,8 @@ test('model-menu', async ({ page }) => {
 		.toBe('fake');
 	await page.getByRole('tab', { name: 'Vision', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Scripted title', exact: true })).toHaveCount(0);
-	await page.getByRole('button', { name: 'high', exact: true }).click();
+	await page.getByRole('slider', { name: 'Thinking level' }).focus();
+	await page.keyboard.press('End');
 	await expect
 		.poll(
 			async () =>

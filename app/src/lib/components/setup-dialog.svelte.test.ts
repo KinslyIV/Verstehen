@@ -45,6 +45,23 @@ test('saving_setup_keeps_the_draft_unsent_and_requires_all_three_slots', async (
 	expect(api.createSession).not.toHaveBeenCalled();
 	expect(api.saveSettings).toHaveBeenCalledOnce();
 });
+test('saving_setup_sends_only_the_model_slots', async () => {
+	vi.mocked(api.getSettings).mockResolvedValue({
+		...structuredClone(testSettings),
+		quizzing: 'free',
+		models: {}
+	});
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
+	await page.getByRole('tab', { name: 'Cheap', exact: true }).click();
+	await page.getByRole('button', { name: 'Scripted title', exact: true }).click();
+	await page.getByRole('tab', { name: 'Vision', exact: true }).click();
+	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
+	await page.getByRole('button', { name: 'Save models', exact: true }).click();
+	await expect.poll(() => vi.mocked(api.saveSettings).mock.calls.length).toBe(1);
+	const body = vi.mocked(api.saveSettings).mock.calls[0][0];
+	expect(Object.keys(body)).toEqual(['models']);
+});
 test('connection_stage_advances_when_an_account_becomes_ready_and_is_closable', async () => {
 	let connected = false;
 	vi.mocked(api.getModels).mockImplementation(async () =>
@@ -78,4 +95,24 @@ test('saved_models_open_the_slot_choices_without_waiting_for_the_refresh', async
 	vi.mocked(api.refreshModels).mockImplementation(() => new Promise(() => {}));
 	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
 	await expect.element(page.getByRole('tab', { name: 'Main', exact: true })).toBeVisible();
+});
+test('an_account_saved_without_models_waits_for_discovery_and_then_shows_the_models', async () => {
+	const waiting = structuredClone(testCatalog);
+	waiting.accounts[0].models = [];
+	vi.mocked(api.getModels).mockResolvedValue({ ...waiting, slots: {} });
+	vi.mocked(api.refreshModels).mockImplementation(() => new Promise(() => {}));
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByText('Loading models…')).toBeVisible();
+	await expect
+		.element(page.getByRole('heading', { name: 'Connect a provider' }))
+		.not.toBeInTheDocument();
+	vi.mocked(api.getModels).mockResolvedValue({ ...structuredClone(testCatalog), slots: {} });
+	await expect.element(page.getByRole('tab', { name: 'Main', exact: true })).toBeVisible();
+});
+test('an_account_saved_without_models_asks_to_connect_once_discovery_finished', async () => {
+	const empty = structuredClone(testCatalog);
+	empty.accounts[0].models = [];
+	vi.mocked(api.getModels).mockResolvedValue({ ...empty, slots: {} });
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
 });

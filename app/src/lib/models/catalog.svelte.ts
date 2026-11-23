@@ -13,10 +13,12 @@ export class ModelCatalogState {
 	private applied = 0;
 	private generation = 0;
 	private inflight: Promise<string | null> | undefined;
+	private latest: Promise<string | null> | undefined;
+	private runs = 0;
 	refreshing = $derived(this.pending > 0);
 
-	/** True once the catalog can be trusted to be complete: accounts are saved or a refresh finished. */
-	settled = $derived(!!this.catalog && (this.catalog.accounts.length > 0 || this.refreshedOnce));
+	/** True once a refresh has finished, so a catalog with no usable models is final, not partial. */
+	settled = $derived(!!this.catalog && this.refreshedOnce);
 
 	async load(): Promise<ModelCatalog | undefined> {
 		const generation = this.generation;
@@ -44,11 +46,11 @@ export class ModelCatalogState {
 		if (generation === this.generation) void this.refresh();
 	}
 
-	/** Refresh accounts, re-reading the saved catalog meanwhile; resolves to a request failure message or null. */
+	/** Refresh accounts; resolves to a failure message or null (the newest refresh's if superseded). */
 	refresh(force = false): Promise<string | null> {
 		if (this.inflight && !force) return this.inflight;
 		const run = this.run(force);
-		this.inflight = run;
+		this.inflight = this.latest = run;
 		void run.finally(() => {
 			if (this.inflight === run) this.inflight = undefined;
 		});
@@ -62,11 +64,12 @@ export class ModelCatalogState {
 		this.refreshedOnce = false;
 		this.pending = 0;
 		this.started = this.applied = 0;
-		this.inflight = undefined;
+		this.inflight = this.latest = undefined;
 	}
 
 	private async run(force: boolean): Promise<string | null> {
 		const generation = this.generation;
+		const sequence = ++this.runs;
 		this.pending++;
 		const poll = setInterval(() => {
 			if (generation === this.generation) void this.load();
@@ -81,9 +84,11 @@ export class ModelCatalogState {
 			if (generation === this.generation) this.pending--;
 		}
 		if (generation !== this.generation) return failure;
+		if (sequence !== this.runs && this.latest) return this.latest;
 		await this.load();
-		if (generation === this.generation) this.refreshedOnce = true;
-		return failure;
+		if (generation !== this.generation) return failure;
+		this.refreshedOnce = true;
+		return failure ?? this.error;
 	}
 }
 

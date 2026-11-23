@@ -48,6 +48,8 @@ export class GraphController {
 	private lifetime = new AbortController();
 	private renderingKnown: Promise<void>;
 	private graphRequest = 0;
+	private requestClock = 0;
+	private freshTitles: { sessions: Record<string, string>; started: number } | undefined;
 	private settingsTouched = false;
 	private settingsLoaded = false;
 	private settingsSavePending = false;
@@ -136,6 +138,7 @@ export class GraphController {
 
 	async refreshGraph(): Promise<void> {
 		const request = ++this.graphRequest;
+		const started = ++this.requestClock;
 		try {
 			const [fetched] = await Promise.all([getGraph(this.lifetime.signal), this.renderingKnown]);
 			await Promise.all(this.savesInFlight);
@@ -143,14 +146,16 @@ export class GraphController {
 			const snapshot = this.withOwnPositions(fetched);
 			this.ownRevisions = this.ownRevisions.filter((revision) => revision > snapshot.revision);
 			this.titles = snapshot.sessions;
+			this.clusterLabels = {};
 			picks.prune(snapshot.propositions);
-			if (this.rendering === false || !hasUnplacedNodes(snapshot)) {
-				this.graph = { snapshot, positions: snapshot.positions };
-				return;
-			}
-			const positions = settleSnapshotLayout(snapshot);
+			const positions =
+				this.rendering === false || !hasUnplacedNodes(snapshot)
+					? snapshot.positions
+					: settleSnapshotLayout(snapshot);
 			this.graph = { snapshot, positions };
-			void this.savePositions(positions);
+			if (this.freshTitles && this.freshTitles.started > started)
+				this.applyTitles(this.freshTitles.sessions);
+			if (positions !== snapshot.positions) void this.savePositions(positions);
 		} catch (cause) {
 			if (!this.lifetime.signal.aborted) this.loadError = (cause as Error).message;
 		}
@@ -177,20 +182,28 @@ export class GraphController {
 	}
 
 	private async refreshTitles(): Promise<void> {
+		const started = ++this.requestClock;
 		try {
 			const { sessions } = await getGraphTitles(this.lifetime.signal);
-			const graph = this.graph;
-			if (!graph) return;
-			const current = Object.keys(this.titles).filter((id) => id in sessions);
-			const titles = Object.fromEntries(current.map((id) => [id, sessions[id]]));
-			if (sameTitles(this.titles, titles)) return;
-			this.titles = titles;
-			this.clusterLabels = Object.fromEntries(
-				graph.snapshot.clusters.map((cluster) => [cluster.id, titles[cluster.id] ?? cluster.label])
-			);
+			if (this.freshTitles && this.freshTitles.started > started) return;
+			this.freshTitles = { sessions, started };
+			this.applyTitles(sessions);
 		} catch {
 			/* The next graph refetch carries the titles. */
 		}
+	}
+
+	/** Titles for the sessions the drawn graph has; without a graph they wait in `freshTitles`. */
+	private applyTitles(sessions: Record<string, string>): void {
+		const graph = this.graph;
+		if (!graph) return;
+		const current = Object.keys(this.titles).filter((id) => id in sessions);
+		const titles = Object.fromEntries(current.map((id) => [id, sessions[id]]));
+		if (sameTitles(this.titles, titles)) return;
+		this.titles = titles;
+		this.clusterLabels = Object.fromEntries(
+			graph.snapshot.clusters.map((cluster) => [cluster.id, titles[cluster.id] ?? cluster.label])
+		);
 	}
 
 	private scheduleStatus(): void {

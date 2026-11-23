@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import SettingsAccounts from './settings-accounts.svelte';
-	import { getSettings, saveSettings, type ModelSlots } from '#lib/api/client.js';
+	import { saveSettings, type ModelSlots } from '#lib/api/client.js';
 	import { models } from '#lib/models/catalog.svelte.js';
 	import * as Dialog from '#lib/components/ui/dialog/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
@@ -38,8 +38,7 @@
 		if (!slotsComplete(slots) || busy) return;
 		busy = true;
 		try {
-			const settings = await getSettings();
-			await saveSettings({ ...settings, models: slots }, true);
+			await saveSettings({ models: slots }, true);
 			await models.load();
 			ondone();
 		} catch (cause) {

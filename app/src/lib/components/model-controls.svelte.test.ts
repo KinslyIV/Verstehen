@@ -127,13 +127,35 @@ test('saved_models_stay_selectable_with_the_failure_noted_when_a_refresh_fails',
 	expect(onpick).toHaveBeenCalledOnce();
 });
 
-test('opening_the_menu_refreshes_the_accounts_without_replacing_the_saved_slots', async () => {
+test('opening_the_menu_rereads_the_saved_catalog_without_contacting_accounts', async () => {
 	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
 	const screen = await render(ModelControls, { onpick: vi.fn() });
 	await expect
 		.element(screen.getByRole('button', { name: 'Choose model', exact: true }))
 		.toHaveTextContent('Scripted teacher · Medium');
+	const reads = vi.mocked(api.getModels).mock.calls.length;
 	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
-	await expect.poll(() => vi.mocked(api.refreshModels).mock.calls.length).toBe(1);
-	expect(api.refreshModels).toHaveBeenCalledWith(false);
+	await expect.poll(() => vi.mocked(api.getModels).mock.calls.length).toBeGreaterThan(reads);
+	expect(api.refreshModels).not.toHaveBeenCalled();
+});
+
+test('the_thinking_slider_steps_through_the_models_own_levels_and_reports_the_current_one', async () => {
+	const onpick = vi.fn();
+	const screen = await render(ModelControls, { pick: mainPick, onpick });
+	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
+	const slider = page.getByRole('slider', { name: 'Thinking level' });
+	await expect.element(slider).toHaveAttribute('aria-valuetext', 'medium');
+	(slider.element() as HTMLElement).focus();
+	await userEvent.keyboard('{ArrowRight}');
+	expect(onpick).toHaveBeenLastCalledWith({ ...mainPick, thinking_level: 'high' });
+});
+
+test('a_model_without_thinking_levels_keeps_the_strip_and_says_so', async () => {
+	const catalog = structuredClone(testCatalog);
+	catalog.accounts[0].models[0].thinking_levels = [];
+	vi.mocked(api.getModels).mockResolvedValue(catalog);
+	const screen = await render(ModelControls, { pick: mainPick, onpick: vi.fn() });
+	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
+	await expect.element(page.getByText('No thinking levels')).toBeVisible();
+	await expect.element(page.getByRole('slider')).not.toBeInTheDocument();
 });
