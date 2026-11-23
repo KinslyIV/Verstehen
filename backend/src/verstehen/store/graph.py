@@ -330,6 +330,40 @@ class GraphStore:
         async with self.database.read() as connection:
             return await read_ledger(connection)
 
+    async def read_coverage(self, session_id: str) -> list[CoverageEntry]:
+        """One session's coverage rows, without reading the rest of the ledger."""
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT payload FROM graph_coverage "
+                "WHERE json_extract(payload, '$.session_id') = ? ORDER BY seq",
+                (session_id,),
+            ) as cursor:
+                return [
+                    CoverageEntry.model_validate_json(row[0])
+                    for row in await cursor.fetchall()
+                ]
+
+    async def read_notes_sources(
+        self,
+    ) -> tuple[list[NotesSource], dict[str, SourcePlacement]]:
+        """The imported notes and source placements, without reading the rest of the ledger."""
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT payload FROM graph_sources ORDER BY seq"
+            ) as cursor:
+                sources = [
+                    NotesSource.model_validate_json(row[0])
+                    for row in await cursor.fetchall()
+                ]
+            async with connection.execute(
+                "SELECT id, payload FROM graph_source_placements"
+            ) as cursor:
+                placements = {
+                    row[0]: SourcePlacement.model_validate_json(row[1])
+                    for row in await cursor.fetchall()
+                }
+        return sources, placements
+
     @asynccontextmanager
     async def transaction(self) -> AsyncGenerator[GraphLedger]:
         changed = False

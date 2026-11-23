@@ -1,6 +1,9 @@
-use std::{path::PathBuf, sync::Mutex, time::Duration};
+use std::{
+    path::PathBuf,
+    sync::Mutex,
+    time::{Duration, Instant},
+};
 use tauri::{Manager, State};
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri_plugin_shell::{
     ShellExt,
     process::{CommandChild, CommandEvent},
@@ -13,19 +16,47 @@ struct Connection {
     token: String,
 }
 
+#[derive(Clone)]
+enum Startup {
+    Starting,
+    Ready(Connection),
+    Failed(String),
+}
+
 struct Sidecar {
-    connection: watch::Sender<Option<Connection>>,
+    startup: watch::Sender<Startup>,
     child: Mutex<Option<CommandChild>>,
+    began: Instant,
+}
+
+impl Sidecar {
+    fn log_timing(&self, milestone: &str) {
+        eprintln!(
+            "startup {milestone}: {} ms",
+            self.began.elapsed().as_millis()
+        );
+    }
 }
 
 #[tauri::command]
 async fn sidecar_connection(state: State<'_, Sidecar>) -> Result<Connection, String> {
-    let mut connection = state.connection.subscribe();
-    let ready = connection
-        .wait_for(Option::is_some)
+    let mut startup = state.startup.subscribe();
+    let settled = startup
+        .wait_for(|startup| !matches!(startup, Startup::Starting))
         .await
         .map_err(|_| "Sidecar connection closed".to_string())?;
-    ready.clone().ok_or_else(|| "Sidecar is not ready".into())
+    match settled.clone() {
+        Startup::Ready(connection) => Ok(connection),
+        Startup::Failed(reason) => Err(reason),
+        Startup::Starting => Err("Sidecar is not ready".into()),
+    }
+}
+
+#[tauri::command]
+fn startup_mark(state: State<'_, Sidecar>, name: String) {
+    if name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+        state.log_timing(&format!("ui {name}"));
+    }
 }
 
 fn stop(app: &tauri::AppHandle) {
@@ -54,7 +85,7 @@ fn log_path() -> PathBuf {
     directory.join("logs/verstehen.log")
 }
 
-async fn start(app: &tauri::AppHandle) -> Result<(), String> {
+async fn start(app: &tauri::AppHandle) -> Result<Connection, String> {
     let mut random = [0u8; 32];
     getrandom::fill(&mut random).map_err(|e| e.to_string())?;
     let token: String = random.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -67,10 +98,9 @@ async fn start(app: &tauri::AppHandle) -> Result<(), String> {
         .env("VERSTEHEN_PORT", "0")
         .spawn()
         .map_err(|e| e.to_string())?;
-    *app.state::<Sidecar>()
-        .child
-        .lock()
-        .map_err(|e| e.to_string())? = Some(child);
+    let state = app.state::<Sidecar>();
+    *state.child.lock().map_err(|e| e.to_string())? = Some(child);
+    state.log_timing("sidecar_spawned");
     let (sender, receiver) = oneshot::channel();
     let (exit_sender, mut exited) = oneshot::channel();
     tauri::async_runtime::spawn(async move {
@@ -98,6 +128,7 @@ async fn start(app: &tauri::AppHandle) -> Result<(), String> {
     let port = receiver
         .await
         .map_err(|_| "Sidecar exited before announcing its port")??;
+    state.log_timing("sidecar_port");
     let client = reqwest::Client::builder()
         .no_proxy()
         .timeout(Duration::from_secs(1))
@@ -118,41 +149,39 @@ async fn start(app: &tauri::AppHandle) -> Result<(), String> {
             _ = tokio::time::sleep(Duration::from_millis(100)) => {}
         }
     }
-    app.state::<Sidecar>()
-        .connection
-        .send_replace(Some(Connection { port, token }));
-    app.get_webview_window("main")
-        .ok_or("Main window missing")?
-        .show()
-        .map_err(|e| e.to_string())
+    state.log_timing("sidecar_healthy");
+    Ok(Connection { port, token })
 }
 
 pub fn run() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_dialog::init())
         .manage(Sidecar {
-            connection: watch::channel(None).0,
+            startup: watch::channel(Startup::Starting).0,
             child: Mutex::new(None),
+            began: Instant::now(),
         })
-        .invoke_handler(tauri::generate_handler![sidecar_connection])
+        .invoke_handler(tauri::generate_handler![sidecar_connection, startup_mark])
         .setup(|app| {
             let handle = app.handle().clone();
+            handle.state::<Sidecar>().log_timing("window_created");
             tauri::async_runtime::spawn(async move {
                 let result = tokio::time::timeout(Duration::from_secs(30), start(&handle)).await;
-                if !matches!(result, Ok(Ok(()))) {
-                    stop(&handle);
-                    handle
-                        .dialog()
-                        .message(format!(
-                            "The sidecar didn't start. See {}",
+                let startup = match result {
+                    Ok(Ok(connection)) => Startup::Ready(connection),
+                    failure => {
+                        stop(&handle);
+                        let reason = match failure {
+                            Ok(Err(reason)) => reason,
+                            _ => "it took longer than 30 seconds".to_string(),
+                        };
+                        Startup::Failed(format!(
+                            "The sidecar didn't start: {reason}. See {}",
                             log_path().display()
                         ))
-                        .title("Verstehen")
-                        .kind(MessageDialogKind::Error)
-                        .blocking_show();
-                    handle.exit(1);
-                }
+                    }
+                };
+                handle.state::<Sidecar>().startup.send_replace(startup);
             });
             Ok(())
         })

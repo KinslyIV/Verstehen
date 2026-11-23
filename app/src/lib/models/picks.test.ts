@@ -20,6 +20,10 @@ test('setup_waits_for_catalog_then_connection_then_requires_all_three_slots', ()
 	expect(setupStage(undefined)).toBe('loading');
 	expect(setupStage({ accounts: [], slots: {} })).toBe('connect');
 	expect(setupStage(testCatalog)).toBe('models');
+	const offline = structuredClone(testCatalog);
+	offline.accounts[0].models = [];
+	offline.accounts[0].refresh_error = 'ChatGPT could not be reached.';
+	expect(setupStage(offline)).toBe('failed');
 	expect(slotsComplete({ strong: mainPick, cheap: mainPick })).toBe(false);
 	expect(slotsComplete(testCatalog.slots)).toBe(true);
 });

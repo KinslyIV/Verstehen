@@ -13,7 +13,7 @@ from verstehen.graph.context import GraphContext
 from verstehen.graph.coverage import SessionCoverage
 from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
-from verstehen.session.sessions import SessionService
+from verstehen.session.sessions import ListedSession, SessionService
 from verstehen.session.turns import TurnInput, TurnService
 from verstehen.sidechat.segments import SideSegments
 from verstehen.store.entries import Entry
@@ -117,21 +117,41 @@ class ParkedDismissal(Ok):
     parked: Literal[True] = True
 
 
+def session_item(listed: ListedSession) -> SessionItem:
+    return SessionItem(
+        **listed.session.model_dump(),
+        busy=listed.busy,
+        compacting=listed.compacting,
+        pending_question=listed.pending_question,
+        pending_problem=listed.pending_problem,
+    )
+
+
 @router.get("/api/sessions", response_model=SessionList)
 async def list_sessions(session_service: SessionServiceDependency) -> SessionList:
-    result = await session_service.list()
     return SessionList(
-        sessions=[
-            SessionItem(
-                **item.session.model_dump(),
-                busy=item.busy,
-                compacting=item.compacting,
-                pending_question=item.pending_question,
-                pending_problem=item.pending_problem,
-            )
-            for item in result
-        ]
+        sessions=[session_item(listed) for listed in await session_service.list()]
     )
+
+
+@router.get("/api/sessions/{session_id}/item", response_model=SessionItem | None)
+async def get_session_item(
+    session_id: str, session_service: SessionServiceDependency
+) -> SessionItem | None:
+    result = await session_service.item(session_id)
+    return None if result is None else session_item(result)
+
+
+@router.get(
+    "/api/sessions/{session_id}/coverage", response_model=SessionCoverage | None
+)
+async def get_session_coverage(
+    session_id: str, session_service: SessionServiceDependency
+):
+    result = await session_service.coverage(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return result
 
 
 @router.post(

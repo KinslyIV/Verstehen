@@ -51,7 +51,9 @@ class CompactionService:
         runtimes: RuntimeRegistry,
         notifications: Notifications,
         provider_events: bool,
+        prompt_edit_lock: asyncio.Lock,
     ):
+        self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.settings_store = settings_store
@@ -105,7 +107,7 @@ class CompactionService:
             entries = await self.entries_store.list(session_id)
             settings = await self.settings_store.read()
             instructions = await compose_instructions(
-                self.settings_store, self.data_dir, role
+                self.settings_store, self.data_dir, role, self.prompt_edit_lock
             )
             if resolved is None:
                 session = await self.sessions_store.get(session_id)

@@ -27,6 +27,23 @@ test('settings', async ({ page, request }) => {
 	await expect(page.getByRole('button', { name: 'Choose Vision model' })).toContainText(
 		'Scripted teacher'
 	);
+	const forced = page.waitForRequest(
+		(item) => item.method() === 'POST' && item.url().endsWith('/api/models/refresh?force=true')
+	);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await forced;
+	await expect(page.getByText('Models are up to date.')).toBeVisible();
+	await page.getByRole('button', { name: 'Choose Cheap model' }).click();
+	await expect(page.getByRole('tab')).toHaveCount(0);
+	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
+	await expect.poll(async () => (await saved()).models?.cheap?.model).toBe('fake');
+	await page.getByRole('button', { name: 'Scripted title', exact: true }).click();
+	await expect.poll(async () => (await saved()).models?.cheap?.model).toBe('fake-title');
+	await page.screenshot({
+		path: test.info().outputPath('settings-models-picker.png'),
+		animations: 'disabled'
+	});
+	await page.keyboard.press('Escape');
 
 	await page.getByRole('button', { name: 'Lesson', exact: true }).click();
 	const limit = page.getByRole('spinbutton', { name: 'Compaction limit' });

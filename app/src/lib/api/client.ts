@@ -10,6 +10,7 @@ import {
 	saveConnection,
 	type ServerConnection
 } from './connection';
+import { connectSidecar } from './connection.svelte';
 import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
@@ -34,6 +35,7 @@ export type Account = components['schemas']['Account'];
 export type BinaryStatus = components['schemas']['BinaryStatus'];
 export type SignInStatus = components['schemas']['SignInStatus'];
 export type GraphSnapshot = components['schemas']['GraphSnapshot'];
+export type GraphTitles = components['schemas']['GraphTitles'];
 export type GraphNode = components['schemas']['GraphNode'];
 export type GraphChain = components['schemas']['GraphChain'];
 export type GraphRenderSettings = components['schemas']['GraphRenderSettings'];
@@ -65,25 +67,19 @@ export type ServerConnectInput = components['schemas']['ServerConnectInput'];
 export type ServerChatGPTSignInInput = components['schemas']['ServerChatGPTSignInInput'];
 export type Device = components['schemas']['Device'];
 export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
+export type PromptSegment = components['schemas']['PromptSegment'];
+export type PromptSegments = components['schemas']['PromptSegments'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
 let token: string | undefined;
-let connection: Promise<string> | undefined;
 
 export function setToken(value: string | undefined): void {
 	token = value;
 }
 
-function baseUrl(): Promise<string> {
-	if (!isTauri()) return Promise.resolve('');
-	return (connection ??= invoke<{ port: number; token: string }>('sidecar_connection')
-		.then((value) => {
-			setToken(value.token);
-			return `http://127.0.0.1:${value.port}`;
-		})
-		.catch((cause: unknown) => {
-			connection = undefined;
-			throw cause instanceof Error ? cause : new Error(String(cause));
-		}));
+async function baseUrl(): Promise<string> {
+	const connection = await connectSidecar();
+	if (connection.token) setToken(connection.token);
+	return connection.base;
 }
 
 export class ApiError extends Error {
@@ -206,6 +202,18 @@ const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 export async function getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {
 	return (await request(sessionPath(id), { signal })).json();
 }
+export async function getSessionItem(
+	id: string,
+	signal?: AbortSignal
+): Promise<SessionItem | null> {
+	return (await request(`${sessionPath(id)}/item`, { signal })).json();
+}
+export async function getSessionCoverage(
+	id: string,
+	signal?: AbortSignal
+): Promise<SessionCoverage | null> {
+	return (await request(`${sessionPath(id)}/coverage`, { signal })).json();
+}
 export async function renameSession(
 	id: string,
 	title: string
@@ -295,20 +303,54 @@ export async function streamNotifications(
 	await readEvents(response, (type, data) => receive({ ...JSON.parse(data), type }));
 }
 
-export async function getModels(options: { refresh?: boolean } = {}): Promise<ModelCatalog> {
-	return (await request(options.refresh ? '/api/models?refresh=true' : '/api/models')).json();
+export async function getModels(): Promise<ModelCatalog> {
+	return (await request('/api/models')).json();
+}
+export async function refreshModels(force = false): Promise<void> {
+	await request(force ? '/api/models/refresh?force=true' : '/api/models/refresh', {
+		method: 'POST'
+	});
 }
 export async function getSettings(): Promise<SettingsStatus> {
 	return (await request('/api/settings')).json();
 }
-export async function saveSettings(settings: SettingsStatus): Promise<Settings> {
+export async function saveSettings(
+	settings: SettingsStatus,
+	includeModels = false
+): Promise<Settings> {
 	const body = { ...settings };
 	delete body.file_access_error;
-	return (await request('/api/settings', { method: 'PUT', body: JSON.stringify(body) })).json();
+	if (!includeModels) delete body.models;
+	return (await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })).json();
+}
+const promptPath = (path: string) =>
+	`/api/prompts/${path.split('/').map(encodeURIComponent).join('/')}`;
+export async function getPrompts(signal?: AbortSignal): Promise<PromptSegments> {
+	return (await request('/api/prompts', { signal })).json();
+}
+export async function savePromptOverride(path: string, text: string): Promise<void> {
+	await request(`${promptPath(path)}/override`, { method: 'PUT', body: JSON.stringify({ text }) });
+}
+export async function deletePromptOverride(path: string): Promise<void> {
+	await request(`${promptPath(path)}/override`, { method: 'DELETE' });
+}
+export async function setPromptEnabled(path: string, enabled: boolean): Promise<void> {
+	await request(`${promptPath(path)}/enabled`, {
+		method: 'PUT',
+		body: JSON.stringify({ enabled })
+	});
 }
 export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
 	return (
 		await request('/api/settings/default-model', { method: 'POST', body: JSON.stringify(pick) })
+	).json();
+}
+export async function setModelSlot(
+	slot: keyof ModelCatalog['slots'],
+	pick: ModelPick
+): Promise<ModelPick> {
+	return (
+		await request(`/api/settings/models/${slot}`, { method: 'PUT', body: JSON.stringify(pick) })
 	).json();
 }
 export async function setSessionModel(id: string, model: ModelPick): Promise<void> {
@@ -443,10 +485,18 @@ export async function stopSideChat(id: string, threadId: string): Promise<void> 
 export async function getGraph(signal?: AbortSignal): Promise<GraphSnapshot> {
 	return (await request('/api/graph', { signal })).json();
 }
+export async function getGraphTitles(signal?: AbortSignal): Promise<GraphTitles> {
+	return (await request('/api/graph/titles', { signal })).json();
+}
+/** Saves the layout; resolves with the graph revision the save produced. */
 export async function putGraphPositions(
 	positions: Record<string, { x: number; y: number }>
-): Promise<void> {
-	await request('/api/graph/positions', { method: 'PUT', body: JSON.stringify(positions) });
+): Promise<number | null> {
+	const response = await request('/api/graph/positions', {
+		method: 'PUT',
+		body: JSON.stringify(positions)
+	});
+	return (await response.json()).revision;
 }
 export async function getGraphRenderSettings(
 	signal?: AbortSignal

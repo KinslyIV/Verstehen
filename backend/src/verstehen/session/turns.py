@@ -198,8 +198,10 @@ class TurnService:
         side_threads: Callable[[str], Awaitable[list[SideThread]]],
         extraction_service: ExtractionService,
         graph_store: GraphStore,
+        prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
     ):
+        self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.settings_store = settings_store
@@ -234,6 +236,7 @@ class TurnService:
             runtimes,
             notifications,
             provider_events,
+            prompt_edit_lock,
         )
 
     @staticmethod
@@ -407,7 +410,7 @@ class TurnService:
     async def fits_side_context(self, state: TurnState, entries: list[Entry]) -> bool:
         assert state.resolved is not None
         instructions = await compose_instructions(
-            self.settings_store, self.data_dir, state.role
+            self.settings_store, self.data_dir, state.role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
         request = [entry for entry in entries if entry.entry_id not in state.dropped]
@@ -490,7 +493,7 @@ class TurnService:
         assert state.resolved is not None
         role = state.role
         instructions = await compose_instructions(
-            self.settings_store, self.data_dir, role
+            self.settings_store, self.data_dir, role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
         quizzing = settings.quizzing

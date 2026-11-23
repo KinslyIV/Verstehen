@@ -22,6 +22,7 @@ const pressBack = () => backListeners.forEach((listener) => listener({ canGoBack
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	getModels: async () => ({ accounts: [], slots: {} }),
+	refreshModels: async () => {},
 	getJobs: vi.fn(),
 	getExtractionStatus: async () => [],
 	getSettings: async () => ({}),

@@ -5,7 +5,15 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from verstehen.store.sync import PromptApplyHook, PromptRollbackHook, SyncChange
+from pydantic import JsonValue
+
+from verstehen.store.database import wait_for_completion
+from verstehen.store.sync import (
+    PromptApplyHook,
+    PromptRollbackHook,
+    SyncChange,
+    SyncStore,
+)
 
 
 @dataclass(frozen=True)
@@ -110,29 +118,44 @@ def scan_prompts(data_dir: Path) -> PromptScan:
     )
 
 
-def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | None]:
-    """Write or delete one remote prompt override file, returning (rel_path, sha256 | None)."""
-    raw_path = str(change.payload.get("path", change.entity_id))
-    pure = validate_prompt_rel_path(raw_path)
-    rel = pure.as_posix()
+async def record_prompt_snapshot(
+    sync_store: SyncStore,
+    data_dir: Path,
+    setting: tuple[str, JsonValue] | None = None,
+    omit: str | None = None,
+) -> None:
+    """Record the on-disk prompts; `omit` records one file as already deleted."""
+    scan = await asyncio.to_thread(scan_prompts, data_dir)
+    files = {path: file for path, file in scan.files.items() if path != omit}
+    await sync_store.sync_prompt_snapshot(
+        files,
+        skipped_all=scan.skipped_all,
+        skipped_paths=scan.skipped_paths,
+        setting=setting,
+    )
+
+
+def prompt_file_path(data_dir: Path, rel_path: str) -> Path:
+    """Find an override path within the prompt directory without following symlinks."""
+    pure = validate_prompt_rel_path(rel_path)
     root = data_dir / "prompts"
     target = _ensure_no_symlinks(root, pure)
-    resolved_root = root.resolve()
-    resolved_target = target.resolve()
-    if not resolved_target.is_relative_to(resolved_root):
-        raise ValueError(f"Prompt override escapes prompts directory: {raw_path!r}")
-    if change.op == "delete":
-        target.unlink(missing_ok=True)
-        parent = target.parent
-        while parent != root and parent.is_dir() and not parent.is_symlink():
-            try:
-                parent.rmdir()
-            except OSError:
-                break
-            parent = parent.parent
-        return rel, None
-    content = str(change.payload["content"])
-    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    if not target.resolve().is_relative_to(root.resolve()):
+        raise ValueError(f"Prompt override escapes prompts directory: {rel_path!r}")
+    return target
+
+
+def read_prompt_file(data_dir: Path, rel_path: str) -> str | None:
+    try:
+        target = prompt_file_path(data_dir, rel_path)
+        return target.read_text(encoding="utf-8") if target.is_file() else None
+    except OSError, ValueError:
+        return None
+
+
+def write_prompt_file(data_dir: Path, rel_path: str, content: str) -> str:
+    """Atomically write one prompt override file and return its sha256."""
+    target = prompt_file_path(data_dir, rel_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temp_name = tempfile.mkstemp(dir=target.parent, prefix=".prompt-")
     try:
@@ -143,7 +166,31 @@ def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | 
         os.replace(temp_name, target)
     finally:
         Path(temp_name).unlink(missing_ok=True)
-    return rel, digest
+    return hashlib.sha256(content.encode("utf-8")).hexdigest()
+
+
+def delete_prompt_file(data_dir: Path, rel_path: str) -> None:
+    """Delete one prompt override file and its emptied parent folders."""
+    root = data_dir / "prompts"
+    target = prompt_file_path(data_dir, rel_path)
+    target.unlink(missing_ok=True)
+    parent = target.parent
+    while parent != root and parent.is_dir() and not parent.is_symlink():
+        try:
+            parent.rmdir()
+        except OSError:
+            break
+        parent = parent.parent
+
+
+def apply_prompt_change(data_dir: Path, change: SyncChange) -> tuple[str, str | None]:
+    """Write or delete one remote prompt override file, returning (rel_path, sha256 | None)."""
+    raw_path = str(change.payload.get("path", change.entity_id))
+    rel = validate_prompt_rel_path(raw_path).as_posix()
+    if change.op == "delete":
+        delete_prompt_file(data_dir, rel)
+        return rel, None
+    return rel, write_prompt_file(data_dir, rel, str(change.payload["content"]))
 
 
 def apply_prompt_winners_with_rollback(
@@ -208,15 +255,7 @@ def make_prompt_tx_hooks(
                 apply_prompt_winners_with_rollback, data_dir, winners, backups
             )
         )
-        cancelled = False
-        while not worker.done():
-            try:
-                await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                cancelled = True
-            except Exception:
-                pass
-        if cancelled:
+        if await wait_for_completion(worker):
             if backups:
                 await asyncio.to_thread(restore_prompt_backups, data_dir, backups)
             raise asyncio.CancelledError

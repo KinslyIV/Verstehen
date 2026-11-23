@@ -17,6 +17,7 @@ from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
 from verstehen.providers.accounts import Account, AccountsService, AccountUnavailable
 from verstehen.providers.catalog import context_limit, default_thinking_level
+from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.credentials import CredentialsStore
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.fake import FakeAccountAdapter
@@ -114,6 +115,7 @@ async def core(tmp_path: Path):
             lambda session_id: asyncio.sleep(0, []),
             extraction_service,
             graph_store,
+            asyncio.Lock(),
         )
         try:
             yield settings_store, adapter, resolver, session_service, turn_service
@@ -214,7 +216,10 @@ def test_sessions_stamp_strong_menu_pick_is_local_and_set_default_is_explicit(
             assert not isinstance(second, Refused) and second.model_pick == chosen
             assert (await settings_store.read()).models.strong == first.model_pick
             providers = ProviderService(
-                settings_store, resolver.accounts_service, resolver
+                settings_store,
+                resolver.accounts_service,
+                resolver,
+                ModelCatalogStore(tmp_path),
             )
             settings = await settings_store.read()
             settings.background.chatgpt = False
@@ -681,8 +686,12 @@ def test_catalog_refresh_failure_reports_account_state_and_reason_without_mutati
             adapter.models = models
             await settings_store.write(Settings.model_validate({"models": picks()}))
             service = ProviderService(
-                settings_store, resolver.accounts_service, resolver
+                settings_store,
+                resolver.accounts_service,
+                resolver,
+                ModelCatalogStore(tmp_path),
             )
+            await service.refresh()
             catalog = await service.catalog()
             assert catalog.accounts[0].models == []
             assert catalog.accounts[0].account.state == state

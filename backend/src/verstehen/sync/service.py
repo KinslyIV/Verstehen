@@ -28,7 +28,7 @@ from verstehen.sync.images import (
 )
 from verstehen.sync.prompts import (
     make_prompt_tx_hooks,
-    scan_prompts,
+    record_prompt_snapshot,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,7 @@ class SyncService:
         data_dir: Path,
         *,
         prompt_lock: asyncio.Lock | None = None,
+        prompt_edit_lock: asyncio.Lock,
         client_factory: Callable[[], httpx2.AsyncClient] = lambda: httpx2.AsyncClient(
             trust_env=False
         ),
@@ -73,6 +74,7 @@ class SyncService:
         self.notifications = notifications
         self.data_dir = data_dir
         self._prompt_lock = prompt_lock or asyncio.Lock()
+        self._edit_lock = prompt_edit_lock
         self._client_factory = client_factory
         self._debounce_seconds = debounce_seconds
         self._fallback_seconds = fallback_seconds
@@ -167,7 +169,7 @@ class SyncService:
         try:
             if switching:
                 await self._stop_remote_loops()
-            async with self._sync_lock:
+            async with self._sync_lock, self._prompt_lock:
                 previous_token = self.credentials_store.sync_token()
                 self.credentials_store.set_sync_token(token)
                 try:
@@ -185,8 +187,10 @@ class SyncService:
                     if switching and self.sync_store.configure_committed:
                         self._deferred.clear()
                         self._seen_seq = 0
-                await self.sync_store.seed_initial_snapshot()
-                await self._scan_local_prompts()
+                await self.sync_store.seed_initial_snapshot(
+                    keep_prompt_changes=not switching
+                )
+                await record_prompt_snapshot(self.sync_store, self.data_dir)
                 self._seen_seq = state.last_pulled_seq
         finally:
             if self.sync_store.configure_committed or previous.server_url:
@@ -368,12 +372,7 @@ class SyncService:
 
     async def _scan_local_prompts(self) -> None:
         async with self._prompt_lock:
-            scan = await asyncio.to_thread(scan_prompts, self.data_dir)
-            await self.sync_store.sync_prompt_snapshot(
-                scan.files,
-                skipped_all=scan.skipped_all,
-                skipped_paths=scan.skipped_paths,
-            )
+            await record_prompt_snapshot(self.sync_store, self.data_dir)
 
     def _emit_summary_notifications(self, summary: ApplySummary) -> None:
         for sid in sorted(summary.chats_changed):
@@ -421,12 +420,13 @@ class SyncService:
                     return 0
                 remaining = {k: v for k, v in self._deferred.items() if k != session_id}
                 cursor = self._compute_db_cursor(remaining, self._seen_seq)
-                summary = await self.sync_store.apply_pulled_changes(
-                    queued,
-                    advance_pulled_seq=cursor,
-                    on_prompt_winners=write_winners,
-                    on_prompt_rollback=rollback_winners,
-                )
+                async with self._edit_lock:
+                    summary = await self.sync_store.apply_pulled_changes(
+                        queued,
+                        advance_pulled_seq=cursor,
+                        on_prompt_winners=write_winners,
+                        on_prompt_rollback=rollback_winners,
+                    )
                 self._deferred.pop(session_id, None)
         self._emit_summary_notifications(summary)
         return summary.applied
@@ -618,12 +618,13 @@ class SyncService:
                         provisional_deferred, provisional_seen
                     )
 
-                    summary = await self.sync_store.apply_pulled_changes(
-                        ready,
-                        advance_pulled_seq=db_cursor,
-                        on_prompt_winners=write_winners,
-                        on_prompt_rollback=rollback_winners,
-                    )
+                    async with self._edit_lock:
+                        summary = await self.sync_store.apply_pulled_changes(
+                            ready,
+                            advance_pulled_seq=db_cursor,
+                            on_prompt_winners=write_winners,
+                            on_prompt_rollback=rollback_winners,
+                        )
                     self._seen_seq = provisional_seen
                     self._deferred = provisional_deferred
 
@@ -680,12 +681,13 @@ class SyncService:
             if accepted:
                 async with self._prompt_lock:
                     write_winners, rollback_winners = self._make_prompt_hooks()
-                    summary = await self.sync_store.mark_pushed_and_reconcile(
-                        batch,
-                        accepted,
-                        on_prompt_winners=write_winners,
-                        on_prompt_rollback=rollback_winners,
-                    )
+                    async with self._edit_lock:
+                        summary = await self.sync_store.mark_pushed_and_reconcile(
+                            batch,
+                            accepted,
+                            on_prompt_winners=write_winners,
+                            on_prompt_rollback=rollback_winners,
+                        )
                 self._emit_summary_notifications(summary)
             elif len(server_deferred) > prev_deferred_count:
                 continue

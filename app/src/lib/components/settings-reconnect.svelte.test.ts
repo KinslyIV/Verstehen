@@ -20,6 +20,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getSettings: vi.fn(),
 	saveSettings: vi.fn(),
 	getModels: vi.fn(),
+	refreshModels: vi.fn(),
 	listChatGPTAccounts: vi.fn(),
 	getClaudeCode: vi.fn(),
 	getOwnDeviceName: vi.fn(),
@@ -58,6 +59,7 @@ beforeEach(() => {
 	vi.mocked(api.getSettings).mockReset().mockResolvedValue(stored);
 	vi.mocked(api.saveSettings).mockReset();
 	vi.mocked(api.getModels).mockReset().mockResolvedValue({ accounts: [], slots: {} });
+	vi.mocked(api.refreshModels).mockReset().mockResolvedValue();
 	vi.mocked(api.listChatGPTAccounts).mockReset().mockResolvedValue([]);
 	vi.mocked(api.getClaudeCode)
 		.mockReset()
@@ -112,7 +114,8 @@ test('graph_settings_load_once_the_connection_returns_after_a_failed_first_read'
 });
 
 test('models_load_once_the_connection_returns_after_a_failed_first_read', async () => {
-	vi.mocked(api.getModels).mockRejectedValueOnce(offline());
+	vi.mocked(api.getModels).mockRejectedValueOnce(offline()).mockRejectedValueOnce(offline());
+	vi.mocked(api.refreshModels).mockRejectedValueOnce(offline());
 	const screen = await render(SettingsModels);
 	await expect.element(screen.getByRole('alert')).toHaveTextContent('Failed to fetch');
 

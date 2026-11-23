@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from dataclasses import dataclass
 
 from pydantic import JsonValue
 
@@ -28,13 +29,21 @@ def _clean_tool_call_ids(entries: Sequence[Entry]) -> set[str]:
     }
 
 
-def active_problem_of(entries: Sequence[Entry]) -> ActiveProblem | None:
-    """Find the newest cleanly posed problem with no clean conclusion or dismissal after it."""
+@dataclass(frozen=True)
+class ProblemScan:
+    """The active problem, and whether a pose, conclusion, or dismissal decided it."""
+
+    problem: ActiveProblem | None
+    decided: bool
+
+
+def scan_problem(entries: Sequence[Entry]) -> ProblemScan:
+    """Scan newest first; an undecided scan may change when older entries are added."""
     clean_ids = _clean_tool_call_ids(entries)
     for entry in reversed(entries):
         if isinstance(entry, MarkerEntry):
             if entry.marker_type == "problem-dismissed":
-                return None
+                return ProblemScan(None, True)
             continue
         if isinstance(entry, AssistantEntry):
             for part in reversed(entry.parts):
@@ -42,16 +51,22 @@ def active_problem_of(entries: Sequence[Entry]) -> ActiveProblem | None:
                     continue
                 if part.tool_name == PRACTICE_CONCLUDE_TOOL:
                     if part.tool_call_id in clean_ids:
-                        return None
+                        return ProblemScan(None, True)
                     continue
                 if (
                     part.tool_name == PRACTICE_PROBLEM_TOOL
                     and part.tool_call_id in clean_ids
                 ):
-                    return ActiveProblem(
+                    problem = ActiveProblem(
                         tool_call_id=part.tool_call_id, input=part.arguments
                     )
-    return None
+                    return ProblemScan(problem, True)
+    return ProblemScan(None, False)
+
+
+def active_problem_of(entries: Sequence[Entry]) -> ActiveProblem | None:
+    """Find the newest cleanly posed problem with no clean conclusion or dismissal after it."""
+    return scan_problem(entries).problem
 
 
 def pending_problem_dismissal_of(entries: Sequence[Entry]) -> str | None:

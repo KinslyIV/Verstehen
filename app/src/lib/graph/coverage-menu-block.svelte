@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { getSession, type SessionCoverage } from '#lib/api/client.js';
+	import { getSessionCoverage, type SessionCoverage } from '#lib/api/client.js';
 	import { formatTokens } from './costs.js';
 	import { coverageState } from './coverage.js';
 	import ExtractNowButton from './extract-now-button.svelte';
@@ -11,7 +11,7 @@
 
 	async function load() {
 		try {
-			coverage = (await getSession(sessionId)).coverage ?? null;
+			coverage = await getSessionCoverage(sessionId);
 		} catch {
 			coverage = null;
 		}

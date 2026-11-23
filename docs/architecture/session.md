@@ -13,7 +13,7 @@ Backend, `backend/src/verstehen/session/`:
 
 | File | What it holds |
 |---|---|
-| `sessions.py` | `SessionService`: list, create (with an optional graph context), get the snapshot, rename, set model, delete, abort, streams |
+| `sessions.py` | `SessionService`: list and one list row, create (with an optional graph context), get the snapshot, coverage alone, rename, set model, delete, abort, streams |
 | `turns.py` | `TurnService`: the turn stages (`validate` → `model_gate` → `compaction_gate` → `claim_and_write_ahead` → `build_agent` → `run_background`), `run`, `settle`, dismissal |
 | `runtime.py` | `SessionRuntime` (lock, claim, compaction task, failure, deletion, delivery queue), `TurnRun` (task, abort, replayable event log, ~100 ms coalescing), `RuntimeRegistry` |
 | `projection.py` | `to_llm_messages`: the one place deciding what the model sees; `retry_drops` and `side_budget_retry_drops` |
@@ -34,6 +34,7 @@ Frontend, `app/src/`:
 | `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the dock |
 | `lib/components/composer.svelte` | text input, Send/Stop, steering while a turn runs |
 | `lib/components/session-list.svelte`, `new-session.svelte`, `rename-session.svelte` | sidebar rows, the new-session screen, rename |
+| `lib/session/session-rows.svelte.ts` | `SessionRows`: the sidebar's rows; one full read to start or recover, then one row read per changed session, one round at a time |
 | `lib/session/compaction.ts`, `opening.ts`, `time-ago.ts` | compaction dividers, the stashed opening prompt, relative times |
 
 ## How it works
@@ -66,6 +67,19 @@ Frontend, `app/src/`:
 - **Dismissal** (`POST …/dismiss`) saves a skip, or with `problem_call_id` a `problem-dismissed`
   marker for a practice problem (sending it with `tool_call_id` or `answer` is a 400). During a running turn it is parked on the
   `TurnRun` and applied at settlement.
+- **Sidebar reads.** The pending question is decided by the newest assistant entry and any
+  following tool results (`EntriesStore.since_last_assistant`),
+  which is all `dangling_question_of` reads. A practice session's pending problem reads only the problem calls and their results and dismissal markers (`EntriesStore.problem_entries`) and runs `scan_problem` on them;
+  teaching sessions report none (the sidebar shows a problem for practice only). Both give what the
+  whole-transcript rules give; `test_session_list.py` compares them.
+- **One row per event.** The sidebar re-reads the full list at start and after the event stream
+  reconnects, and otherwise only the session an event names (`GET /api/sessions/{id}/item`; `null`
+  for a deleted session drops the row). `SessionRows` runs one read round at a time: an event during a read queues a
+  later read, a full read covers queued row events, and a deleted id is never re-added.
+- **Coverage.** `get` passes the entries it loaded to `ExtractionService.coverage`; refreshes of
+  the ring and the session menu use `GET …/coverage`, which reads this session's coverage rows, the
+  entry count, and only the entries with teacher prose (`EntriesStore.coverage_entries`), and sends no
+  transcript. Other entries have no tokens, so the counts match the whole-transcript rules.
 - **Deletion** is refused while a turn or job runs (409) or while extraction winds down (503). It
   stops side answers, removes graph traces by mode, and deletes images no other session uses.
 - **Titles.** The first accepted text input starts a foreground cheap-slot call in parallel with

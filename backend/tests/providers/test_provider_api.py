@@ -59,7 +59,10 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
             "file_access": {"restricted": False, "folders": []},
             "compaction_limit": None,
         }
-        assert client.get("/api/models").json() == {
+        assert client.post("/api/models/refresh").status_code == 204
+        saved = client.get("/api/models").json()
+        assert saved["accounts"][0].pop("refreshed_at") is not None
+        assert saved == {
             "accounts": [
                 {
                     "account": {
@@ -70,6 +73,7 @@ def test_catalog_has_no_fake_account_without_script_and_settings_have_defaults(
                         "reason": "Install Claude Code, then run claude to sign in.",
                     },
                     "models": [],
+                    "refresh_error": None,
                 }
             ],
             "slots": settings["models"],
@@ -91,6 +95,7 @@ def test_fake_script_exposes_catalog_but_does_not_configure_slots(tmp_path: Path
         create_app(Settings(tmp_path, fake_model_script=path)),
         base_url="http://localhost",
     ) as client:
+        client.post("/api/models/refresh")
         catalog = client.get("/api/models").json()
         assert catalog["slots"] == {"strong": None, "cheap": None, "vision": None}
         assert catalog["accounts"][0]["account"] == {
@@ -111,6 +116,15 @@ def test_fake_script_exposes_catalog_but_does_not_configure_slots(tmp_path: Path
             response.status_code == 503
             and response.json()["code"] == "models_not_configured"
         )
+
+
+def test_patching_lesson_settings_keeps_model_slots(tmp_path: Path):
+    with configured_client(tmp_path) as client:
+        before = client.get("/api/settings").json()["models"]
+        response = client.patch("/api/settings", json={"quizzing": "free"})
+        assert response.status_code == 200
+        assert response.json()["models"] == before
+        assert response.json()["quizzing"] == "free"
 
 
 def test_settings_writes_validate_catalog_vision_and_whole_fields(tmp_path: Path):

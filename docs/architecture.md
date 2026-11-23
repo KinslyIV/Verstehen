@@ -31,8 +31,9 @@ flowchart LR
   (`<data dir>/verstehen.db`) and the data directory (`~/.local/share/verstehen`, or
   `VERSTEHEN_DATA_DIR`).
 - **The shell stays thin.** [`app/src-tauri/src/lib.rs`](../app/src-tauri/src/lib.rs) starts the
-  sidecar with a per-launch token, waits for its port line and a healthy `/api/health`, then shows
-  the window. The webview may call one command, `sidecar_connection`.
+  sidecar with a per-launch token, shows the window at once, and waits for its port line and a healthy `/api/health`. The
+  webview may call two commands: `sidecar_connection` (resolves only when the sidecar is healthy)
+  and `startup_mark` (timing lines).
 - **Development and the app run on different machines.** Agents work on Pixal (Ubuntu) and build
   the Arch package in a container; the user installs it on the Arch laptop. See
   [tooling](architecture/tooling.md).

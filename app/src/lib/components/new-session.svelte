@@ -5,7 +5,8 @@
 	import { Dumbbell } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { cn } from '#lib/utils.js';
-	import { ApiError, getModels, type ModelPick, createSession } from '#lib/api/client.js';
+	import { ApiError, type ModelPick, createSession } from '#lib/api/client.js';
+	import { models as modelCatalog } from '#lib/models/catalog.svelte.js';
 	import ChainTable from '#lib/graph/chain-table.svelte';
 	import NodePicker from '#lib/graph/node-picker.svelte';
 	import { picks } from '#lib/graph/picks.svelte.js';
@@ -34,7 +35,8 @@
 		busy = true;
 		error = null;
 		try {
-			const catalog = await getModels();
+			const catalog = await modelCatalog.load();
+			if (!catalog) throw new Error(modelCatalog.error ?? 'Models could not be loaded.');
 			if (!slotsComplete(catalog.slots)) {
 				setup = true;
 				return;

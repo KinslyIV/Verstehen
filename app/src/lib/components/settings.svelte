@@ -13,6 +13,7 @@
 	import SettingsModels from './settings-models.svelte';
 	import SettingsGraph from './settings-graph.svelte';
 	import SettingsLesson from './settings-lesson.svelte';
+	import SettingsPrompts from './settings-prompts.svelte';
 	import SettingsAccounts from './settings-accounts.svelte';
 	import SettingsSync from './settings-sync.svelte';
 	import SettingsConnection from './settings-connection.svelte';
@@ -22,6 +23,7 @@
 		'Models',
 		'Accounts',
 		'Lesson',
+		'Prompts',
 		'Graph',
 		'Tools',
 		clientMode() === 'remote' ? 'Connection' : 'Sync'
@@ -115,6 +117,8 @@
 					<SettingsModels />
 				{:else if section === 'Accounts'}
 					<SettingsAccounts />
+				{:else if section === 'Prompts'}
+					<SettingsPrompts />
 				{:else if section === 'Graph'}
 					<SettingsGraph />
 				{:else if section === 'Tools'}

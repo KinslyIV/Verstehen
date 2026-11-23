@@ -3,6 +3,9 @@
 	import { ArrowRight, ArrowUp, Square } from '@lucide/svelte';
 	import * as InputGroup from '#lib/components/ui/input-group/index.js';
 	import { isPlainEnterOutsideFields } from '#lib/questions/keyboard.js';
+	import { sidecar } from '#lib/api/connection.svelte.js';
+	import { markStartup } from '#lib/api/startup.js';
+	import { models as modelCatalog } from '#lib/models/catalog.svelte.js';
 	let {
 		draft = $bindable(''),
 		busy = false,
@@ -36,6 +39,10 @@
 		event.preventDefault();
 		onnext?.();
 	}
+
+	$effect(() => {
+		if (sidecar.status === 'ready' && modelCatalog.catalog) markStartup('composer_usable');
+	});
 
 	onMount(() => {
 		window.addEventListener('keydown', windowEnter);

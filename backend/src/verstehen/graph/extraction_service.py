@@ -35,7 +35,7 @@ from verstehen.graph.prompts import (
 from verstehen.providers.policy import ProviderPolicy, RequestPurpose
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.providers.usage import UsageModel
-from verstehen.store.entries import EntriesStore, EntryUsage
+from verstehen.store.entries import EntriesStore, Entry, EntryUsage
 from verstehen.store.graph import CoverageEntry, GraphStore, NotesSource, timestamp
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -144,19 +144,25 @@ class ExtractionService:
     def statuses(self) -> list[RunningExtraction]:
         return sorted(self.runs.values(), key=lambda r: r.started_at)
 
-    async def coverage(self, session_id: str) -> SessionCoverage:
-        ledger = await self.graph_store.read()
-        messages = await self.entries_store.list(session_id)
-        cov = coverage_of(messages, ledger.coverage, session_id)
+    async def coverage(
+        self, session_id: str, messages: list[Entry] | None = None
+    ) -> SessionCoverage:
+        """Coverage of the saved entries; reads only what coverage needs unless the caller passes them."""
+        coverage_rows = await self.graph_store.read_coverage(session_id)
+        if messages is None:
+            total, messages = await self.entries_store.coverage_entries(session_id)
+        else:
+            total = len(messages)
+        cov = coverage_of(messages, coverage_rows, session_id)
         return SessionCoverage(
-            total_messages=len(messages),
+            total_messages=total,
             covered_count=cov.covered_count,
             uncovered_count=cov.uncovered_count,
             covered_tokens=cov.covered_tokens,
             uncovered_tokens=cov.uncovered_tokens,
             running=self.running(session_id),
             last_folded_at=max(
-                (c.folded_at for c in ledger.coverage if c.session_id == session_id),
+                (c.folded_at for c in coverage_rows),
                 default=None,
             ),
             failure_reason=self.failure_reasons.get(session_id),

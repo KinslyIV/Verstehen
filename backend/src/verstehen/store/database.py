@@ -6,6 +6,19 @@ from pathlib import Path
 import aiosqlite
 
 
+async def wait_for_completion(task: asyncio.Future) -> bool:
+    """Wait until work settles and report whether the caller was cancelled."""
+    cancelled = False
+    while not task.done():
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            cancelled = True
+        except Exception:
+            pass
+    return cancelled
+
+
 class Database:
     """Serialize reads and transactions on one shared SQLite connection."""
 
@@ -29,69 +42,60 @@ class Database:
     async def transaction(
         self, *, script: str | None = None, foreign_keys: bool = True
     ) -> AsyncGenerator[aiosqlite.Connection]:
-        """Hold exclusive access for an atomic write, running any script before yielding."""
+        """Hold exclusive access for an atomic write, running any script before yielding.
+        A durable commit always notifies sync, after the lock is released, even if cancelled.
+        """
         notify = False
-        async with self._lock:
-            self._sync_dirty = False
-            self.last_tx_committed = False
-            try:
-                if not foreign_keys:
-                    await self._complete(
-                        self._connection.execute("PRAGMA foreign_keys=OFF")
-                    )
-                if script is None:
-                    await self._connection.execute("BEGIN")
-                else:
-                    await self._connection.executescript("BEGIN;\n" + script)
-                yield self._connection
-                if not foreign_keys:
-                    async with self._connection.execute(
-                        "PRAGMA foreign_key_check"
-                    ) as cursor:
-                        if violations := await cursor.fetchall():
-                            raise RuntimeError(
-                                f"Foreign key check failed: {violations}"
-                            )
-                commit_task = asyncio.ensure_future(self._connection.commit())
-                cancelled = await self._wait(commit_task)
-                commit_error = commit_task.exception()
-                if commit_error is None:
-                    self.last_tx_committed = True
-                if cancelled:
-                    raise asyncio.CancelledError
-                if commit_error is not None:
-                    raise commit_error
-                notify = self._sync_dirty
-            except BaseException:
-                if not self.last_tx_committed:
-                    await self._complete(self._connection.rollback())
-                raise
-            finally:
+        try:
+            async with self._lock:
                 self._sync_dirty = False
-                if not foreign_keys:
-                    await self._complete(
-                        self._connection.execute("PRAGMA foreign_keys=ON")
-                    )
-        if notify and self.on_sync_write is not None:
-            self.on_sync_write()
-
-    @staticmethod
-    async def _wait(task: asyncio.Future) -> bool:
-        """Wait for the task however often we are cancelled; report whether we were."""
-        cancelled = False
-        while not task.done():
-            try:
-                await asyncio.shield(task)
-            except asyncio.CancelledError:
-                cancelled = True
-            except Exception:
-                pass
-        return cancelled
+                self.last_tx_committed = False
+                try:
+                    if not foreign_keys:
+                        await self._complete(
+                            self._connection.execute("PRAGMA foreign_keys=OFF")
+                        )
+                    if script is None:
+                        await self._connection.execute("BEGIN")
+                    else:
+                        await self._connection.executescript("BEGIN;\n" + script)
+                    yield self._connection
+                    if not foreign_keys:
+                        async with self._connection.execute(
+                            "PRAGMA foreign_key_check"
+                        ) as cursor:
+                            if violations := await cursor.fetchall():
+                                raise RuntimeError(
+                                    f"Foreign key check failed: {violations}"
+                                )
+                    commit_task = asyncio.ensure_future(self._connection.commit())
+                    cancelled = await wait_for_completion(commit_task)
+                    commit_error = commit_task.exception()
+                    if commit_error is None:
+                        self.last_tx_committed = True
+                        notify = self._sync_dirty
+                    if cancelled:
+                        raise asyncio.CancelledError
+                    if commit_error is not None:
+                        raise commit_error
+                except BaseException:
+                    if not self.last_tx_committed:
+                        await self._complete(self._connection.rollback())
+                    raise
+                finally:
+                    self._sync_dirty = False
+                    if not foreign_keys:
+                        await self._complete(
+                            self._connection.execute("PRAGMA foreign_keys=ON")
+                        )
+        finally:
+            if notify and self.on_sync_write is not None:
+                self.on_sync_write()
 
     async def _complete(self, work) -> None:
         """Run work to the end, then raise its error or any cancellation received."""
         task = asyncio.ensure_future(work)
-        if await self._wait(task):
+        if await wait_for_completion(task):
             task.exception()
             raise asyncio.CancelledError
         task.result()

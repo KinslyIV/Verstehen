@@ -13,6 +13,11 @@ test.use({
 test('mobile-pair', async ({ page, baseURL, serverAdmin }) => {
 	const admin = { authorization: `Bearer ${serverAdmin.token}` };
 	const address = new URL(baseURL ?? '').host;
+	const catalogRequests: string[] = [];
+	page.on('request', (request) => {
+		const path = new URL(request.url()).pathname;
+		if (path.startsWith('/api/models')) catalogRequests.push(path);
+	});
 	const fill = async (code: string) => {
 		await page.getByLabel('Server address').fill(address);
 		await page.getByLabel('Pairing code').fill(code);
@@ -32,6 +37,7 @@ test('mobile-pair', async ({ page, baseURL, serverAdmin }) => {
 	await fill('ZZZZZZZZ');
 	await page.getByRole('button', { name: 'Pair' }).click();
 	await expect(page.getByRole('alert')).toContainText('invalid or has expired');
+	expect(catalogRequests).toEqual([]);
 	await page.screenshot({ path: test.info().outputPath('pair-bad-code.png') });
 
 	const created = await page.request.post('/api/auth/pairing-code', { headers: admin });
@@ -40,6 +46,7 @@ test('mobile-pair', async ({ page, baseURL, serverAdmin }) => {
 	await page.getByRole('button', { name: 'Pair' }).click();
 	await expect(page).toHaveURL(/\/$/);
 	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
+	await expect.poll(() => catalogRequests.includes('/api/models')).toBe(true);
 
 	await page.getByRole('textbox').fill('Understanding derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();

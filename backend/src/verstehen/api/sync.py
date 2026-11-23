@@ -143,18 +143,19 @@ async def sync_push(
                     if runtimes.get(sid).run is not None
                     or runtimes.get(sid).compaction is not None
                 }
-                (
-                    accepted,
-                    skipped,
-                    server_seq,
-                    summary,
-                ) = await sync_store.apply_server_push(
-                    body.changes,
-                    origin_device_id=origin_device_id,
-                    busy_sessions=busy_sessions,
-                    on_prompt_winners=write_winners,
-                    on_prompt_rollback=rollback_winners,
-                )
+                async with request.app.state.prompt_edit_lock:
+                    (
+                        accepted,
+                        skipped,
+                        server_seq,
+                        summary,
+                    ) = await sync_store.apply_server_push(
+                        body.changes,
+                        origin_device_id=origin_device_id,
+                        busy_sessions=busy_sessions,
+                        on_prompt_winners=write_winners,
+                        on_prompt_rollback=rollback_winners,
+                    )
     except InvalidSyncPayloadError as error:
         return JSONResponse(
             InvalidSyncPayloadResponse(error=str(error)).model_dump(),

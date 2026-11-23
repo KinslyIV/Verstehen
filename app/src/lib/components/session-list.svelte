@@ -4,11 +4,12 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Dumbbell, LoaderCircle } from '@lucide/svelte';
-	import { listSessions, type SessionItem } from '#lib/api/client.js';
+	import type { SessionItem } from '#lib/api/client.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
 	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
 	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
 	import RenameSession from './rename-session.svelte';
+	import { SessionRows } from '#lib/session/session-rows.svelte.js';
 	import {
 		kindFilters,
 		readKindFilter,
@@ -19,49 +20,34 @@
 	} from '#lib/session/session-list-model.js';
 	import { markLeaving, unmarkLeaving } from '#lib/session/leaving-sessions.js';
 	import { cn } from '#lib/utils.js';
-	let sessions = $state<SessionItem[]>([]);
+	const rows = new SessionRows();
 	let filter = $state<KindFilter>(readKindFilter());
-	const shown = $derived(visibleSessions(sessions, filter));
-	let error = $state<string | null>(null);
+	const shown = $derived(visibleSessions(rows.rows, filter));
 	let deleting = $state<SessionItem | null>(null);
 	let renaming = $state<string | null>(null);
 	let now = $state(new Date());
-	let requestNumber = 0;
-	async function refresh(signal?: AbortSignal) {
-		const ticket = ++requestNumber;
-		try {
-			const result = await listSessions(signal);
-			if (ticket === requestNumber) {
-				sessions = result;
-				error = null;
-			}
-		} catch (cause) {
-			if (!signal?.aborted) error = (cause as Error).message;
-		}
-	}
 	onMount(() => {
-		const lifetime = new AbortController();
-		void refresh(lifetime.signal);
-		const refreshList = () => void refresh(lifetime.signal);
+		rows.reload();
+		const refreshList = (event: Event) => rows.changed((event as CustomEvent<string>).detail ?? '');
 		window.addEventListener('verstehen:session-list-changed', refreshList);
 		const timer = setInterval(() => {
 			now = new Date();
 		}, 30_000);
 		return () => {
-			lifetime.abort();
+			rows.dispose();
 			window.removeEventListener('verstehen:session-list-changed', refreshList);
 			clearInterval(timer);
 		};
 	});
 	async function removed(id: string) {
 		markLeaving(id);
-		sessions = sessions.filter((session) => session.id !== id);
+		rows.removed(id);
 		deleting = null;
 		if (page.params.id === id) await goto(resolve('/(lesson)/session/new'));
 	}
 </script>
 
-{#if error}<p role="alert" class="px-3 text-xs text-destructive">{error}</p>{/if}
+{#if rows.error}<p role="alert" class="px-3 text-xs text-destructive">{rows.error}</p>{/if}
 <div
 	role="group"
 	aria-label="Session kind"
@@ -88,8 +74,8 @@
 		</button>
 	{/each}
 </div>
-{#if !shown.length && !error}<p class="px-3 text-xs text-muted-foreground">
-		{sessions.length ? 'No sessions of this kind' : 'No sessions yet'}
+{#if !shown.length && !rows.error}<p class="px-3 text-xs text-muted-foreground">
+		{rows.rows.length ? 'No sessions of this kind' : 'No sessions yet'}
 	</p>{/if}
 {#each shown as session (session.id)}
 	<ContextMenu.Root>
@@ -101,7 +87,7 @@
 						title={session.title}
 						onrenamed={() => {
 							renaming = null;
-							void refresh();
+							rows.changed(session.id);
 						}}
 						initiallyEditing
 						oncancel={() => (renaming = null)}

@@ -27,8 +27,8 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
 
 | File | What it holds |
 |---|---|
-| `graph-page.svelte`, `controller.svelte.ts` | the page and its snapshot: `graph-changed` refetches the snapshot and costs, `extractions-changed` refreshes the extraction status |
-| `canvas.ts`, `graph-canvas.svelte` | the TypeScript port of LH's Canvas 2D renderer with a d3-zoom camera |
+| `graph-page.svelte`, `controller.svelte.ts` | the page and its data: the snapshot and render settings load together, costs and status after the first paint; `graph-changed` refetches the snapshot and costs unless the page's own position save made it; `sessions-changed` retitles clusters from `GET /api/graph/titles`; `extractions-changed` refreshes the extraction status |
+| `canvas.ts`, `graph-canvas.svelte` | the TypeScript port of LH's Canvas 2D renderer with a d3-zoom camera; the live d3-force simulation is built on the first node press or physics change, and `pickNode` hit-tests without allocating |
 | `layout.ts`, `layout-settle.ts` | the d3-force layout and the page-side settle |
 | `chain-table*.ts/.svelte`, `source-*.svelte`, `tree-*.ts` | the chains table, folders, drag moves, keyboard navigation |
 | `picks*.ts`, `node-picker.svelte` | the shared pick selection for starting a session |
@@ -48,6 +48,13 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   link rows. `GET /api/graph` merges identities, aliases, and chains at read time, as LH does.
 - **The page settles the layout.** The server only stores positions. When nodes lack one and
   Graph rendering is on, the page runs the settle and saves it with `PUT /api/graph/positions`.
+- **Position saves return their revision.** The page skips the refetch for revisions created
+  by its own saves. A save that changes nothing returns a null revision. A snapshot older
+  than the position save retains the saved positions.
+- **Loading order.** The snapshot (with the teaching and practice session counts the summary
+  needs), the Graph settings and the render settings are requested together; costs and extraction
+  status are requested only after the graph has arrived. Costs title their sources from sessions
+  and notes sources without reading the whole ledger.
 - **Picks.** One selection is shared by the new-session screen and the graph page. Sending adds the
   `graph-context` marker, projected to the model before the learner's first message.
 - **Deletion modes.** Deleting a session uses `preserve-graph` or `delete-nodes` (remove what only
@@ -65,6 +72,9 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
 - Tables: `graph_nodes`, `graph_node_links`, `graph_chains`, `graph_coverage`,
   `graph_checkpoints`, `graph_sources`, `graph_source_folders`, `graph_source_placements`,
   `graph_positions`, `graph_revision`; extractor and auditor rows in `usage` ([store](store.md)).
+- Reads for the page: `GET /api/graph` (snapshot, with `teach_sessions` and `practice_sessions`),
+  `GET /api/graph/titles` (every session's title, for retitling), `GET /api/graph/costs`,
+  `GET /api/graph/status`; `PUT /api/graph/positions` answers with its revision.
 - Notifications: `graph-changed` (with the new revision, after a commit that changed the
   ledgers; a no-op transaction sends nothing) and `extractions-changed`.
 - Settings: `graph.enabled`, `graph.rendering`, `graph.extraction_chunk_tokens`,
@@ -85,4 +95,14 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   PDF Markdown can differ slightly from LH's pdfjs output, including column order.
 - **The `usage` table has no session foreign key** (notes sources use `src_…` ids); a trigger
   removes a deleted session's rows.
+- **A click right after a drag is ignored while the simulation settles**, and a camera move closes
+  the detail card, including the tail of a wheel zoom. Both are LH's behavior
+  (`onPointerUp` treats a press while the simulation is active as a drag; `onCameraMove` clears the
+  card). On a 3,000-node graph the settle lasts well over ten seconds, so clicks seem erratic.
+  Changing either needs a decision.
+- **A drag commit is expensive on the server**: every node's position is rewritten and synced
+  (3,000 nodes take about three seconds), then the layout is saved once the settle ends.
+- **Trackpad pinch inside the desktop app (WebKitGTK) bypasses the page**: GTK delivers it to
+  WebKit's native magnification, which scales the whole page and never reaches `wheel` handlers.
+  Only Chromium behavior is covered by the flows.
 - **Not ported yet:** the activity dock (M11), plugin knowledge picker.

@@ -3,6 +3,7 @@ import {
 	getGraph,
 	getGraphCosts,
 	getGraphRenderSettings,
+	getGraphTitles,
 	getSettings,
 	putGraphPositions,
 	putGraphRenderSettings,
@@ -21,6 +22,10 @@ import {
 
 const STATUS_DEBOUNCE_MS = 250;
 const SETTINGS_SAVE_MS = 400;
+
+const sameTitles = (a: Record<string, string>, b: Record<string, string>): boolean =>
+	Object.keys(a).length === Object.keys(b).length &&
+	Object.entries(a).every(([id, t]) => b[id] === t);
 
 /** A snapshot with every node placed: the saved positions, or the settle of the unplaced ones. */
 export interface LaidOutGraph {
@@ -41,7 +46,11 @@ export class GraphController {
 	loadError = $state<string>();
 
 	private lifetime = new AbortController();
+	private renderingKnown: Promise<void> = Promise.resolve();
 	private graphRequest = 0;
+	private requestClock = 0;
+	private snapshotStarted = 0;
+	private freshTitles: { sessions: Record<string, string>; started: number } | undefined;
 	private settingsTouched = false;
 	private settingsLoaded = false;
 	private settingsSavePending = false;
@@ -49,14 +58,19 @@ export class GraphController {
 	private statusTimer: ReturnType<typeof setTimeout> | undefined;
 	private titlesTimer: ReturnType<typeof setTimeout> | undefined;
 	private runIds: string[] = [];
+	private savesInFlight: Promise<void>[] = [];
+	private lastSave = { revision: -1, positions: {} as Record<string, Position> };
+	private ownRevisions: number[] = [];
+	private revisionsDuringSave: number[] = [];
 
 	constructor() {
 		const refresh = (event: Event) => {
-			const revision = (event as CustomEvent<number | undefined>).detail;
-			if (typeof revision === 'number' && revision <= (this.graph?.snapshot.revision ?? -1)) return;
-			if (this.rendering === undefined && this.loadError) void this.start();
-			else void this.refreshGraph();
-			void this.refreshCosts();
+			if (this.rendering === undefined && this.loadError) {
+				void this.start();
+				return;
+			}
+			const { detail } = event as CustomEvent<number | null>;
+			this.graphChanged(typeof detail === 'number' ? detail : undefined);
 		};
 		const status = () => this.scheduleStatus();
 		const renamed = () => this.scheduleTitles();
@@ -71,42 +85,95 @@ export class GraphController {
 		void this.start();
 	}
 
-	/** Loads the page's data; run again by a graph event while the first attempt has failed. */
+	/** The graph and the render settings load together; costs and status follow the first paint.
+	 * A graph event runs it again while that first load has failed. */
 	private async start(): Promise<void> {
-		try {
-			const settings = await getSettings();
+		this.renderingKnown = getSettings().then((settings) => {
 			this.rendering = settings.graph?.rendering ?? true;
-			await Promise.all([
-				this.refreshGraph(),
-				this.refreshCosts(),
-				this.refreshStatus(),
-				this.loadSettings()
-			]);
-		} catch (cause) {
-			if (!this.lifetime.signal.aborted && this.rendering === undefined)
-				this.loadError = (cause as Error).message;
+		});
+		this.renderingKnown.catch(() => {});
+		void this.loadSettings();
+		await this.refreshGraph();
+		void this.refreshCosts();
+		void this.refreshStatus();
+	}
+
+	private needsSnapshot(revision: number): boolean {
+		return (
+			revision > (this.graph?.snapshot.revision ?? -1) && !this.ownRevisions.includes(revision)
+		);
+	}
+
+	/** A change already shown (including the page's own position saves) is not refetched. */
+	private graphChanged(revision: number | undefined): void {
+		if (revision !== undefined) {
+			if (!this.needsSnapshot(revision)) return;
+			if (this.savesInFlight.length > 0) {
+				this.revisionsDuringSave.push(revision);
+				return;
+			}
 		}
+		void this.refreshGraph();
+		void this.refreshCosts();
+	}
+
+	/** Saves the layout the page shows; the change it causes is not refetched. */
+	async savePositions(positions: Record<string, Position>): Promise<void> {
+		const save = putGraphPositions(positions).then(
+			(revision) => {
+				if (revision === null) return;
+				this.ownRevisions.push(revision);
+				if (revision <= this.lastSave.revision) return;
+				this.lastSave = { revision, positions };
+				if (this.graph && revision > this.graph.snapshot.revision) {
+					Object.assign(this.graph.positions, positions);
+				}
+			},
+			() => {
+				/* The layout is rebuildable. */
+			}
+		);
+		this.savesInFlight.push(save);
+		await save;
+		this.savesInFlight = this.savesInFlight.filter((pending) => pending !== save);
+		if (this.savesInFlight.length > 0) return;
+		const requested = this.revisionsDuringSave.some((revision) => this.needsSnapshot(revision));
+		this.revisionsDuringSave = [];
+		if (requested) this.graphChanged(undefined);
 	}
 
 	async refreshGraph(): Promise<void> {
 		const request = ++this.graphRequest;
+		const started = ++this.requestClock;
 		try {
-			const snapshot = await getGraph(this.lifetime.signal);
+			const [fetched] = await Promise.all([getGraph(this.lifetime.signal), this.renderingKnown]);
+			await Promise.all(this.savesInFlight);
 			if (request !== this.graphRequest) return;
+			const snapshot = this.withOwnPositions(fetched);
+			this.ownRevisions = this.ownRevisions.filter((revision) => revision > snapshot.revision);
 			this.loadError = undefined;
+			this.snapshotStarted = started;
 			this.titles = snapshot.sessions;
+			this.clusterLabels = {};
 			picks.prune(snapshot.propositions);
-			if (this.rendering === false || !hasUnplacedNodes(snapshot)) {
-				this.graph = { snapshot, positions: snapshot.positions };
-				return;
-			}
-			const positions = settleSnapshotLayout(snapshot);
+			const positions =
+				this.rendering === false || !hasUnplacedNodes(snapshot)
+					? snapshot.positions
+					: settleSnapshotLayout(snapshot);
 			this.graph = { snapshot, positions };
-			void putGraphPositions(positions).catch(() => {});
+			if (this.freshTitles && this.freshTitles.started > started)
+				this.applyTitles(this.freshTitles.sessions);
+			if (positions !== snapshot.positions) void this.savePositions(positions);
 		} catch (cause) {
 			if (request === this.graphRequest && !this.lifetime.signal.aborted)
 				this.loadError = (cause as Error).message;
 		}
+	}
+
+	/** A snapshot older than the page's own layout save keeps the saved positions. */
+	private withOwnPositions(snapshot: GraphSnapshot): GraphSnapshot {
+		if (snapshot.revision >= this.lastSave.revision) return snapshot;
+		return { ...snapshot, positions: { ...snapshot.positions, ...this.lastSave.positions } };
 	}
 
 	async refreshCosts(): Promise<void> {
@@ -117,19 +184,36 @@ export class GraphController {
 		}
 	}
 
-	/** A renamed session retitles its cluster without rebuilding the drawn graph. */
+	/** A renamed session retitles its cluster without refetching or rebuilding the drawn graph. */
 	private scheduleTitles(): void {
 		clearTimeout(this.titlesTimer);
-		this.titlesTimer = setTimeout(async () => {
-			try {
-				const snapshot = await getGraph(this.lifetime.signal);
-				if (snapshot.revision !== this.graph?.snapshot.revision) return;
-				this.titles = snapshot.sessions;
-				this.clusterLabels = Object.fromEntries(snapshot.clusters.map((c) => [c.id, c.label]));
-			} catch {
-				/* The next graph refetch carries the titles. */
-			}
-		}, STATUS_DEBOUNCE_MS);
+		this.titlesTimer = setTimeout(() => void this.refreshTitles(), STATUS_DEBOUNCE_MS);
+	}
+
+	private async refreshTitles(): Promise<void> {
+		const started = ++this.requestClock;
+		try {
+			const { sessions } = await getGraphTitles(this.lifetime.signal);
+			if (started < this.snapshotStarted) return;
+			if (this.freshTitles && this.freshTitles.started > started) return;
+			this.freshTitles = { sessions, started };
+			this.applyTitles(sessions);
+		} catch {
+			/* The next graph refetch carries the titles. */
+		}
+	}
+
+	/** Titles for the sessions the drawn graph has; without a graph they wait in `freshTitles`. */
+	private applyTitles(sessions: Record<string, string>): void {
+		const graph = this.graph;
+		if (!graph) return;
+		const current = Object.keys(this.titles).filter((id) => id in sessions);
+		const titles = Object.fromEntries(current.map((id) => [id, sessions[id]]));
+		if (sameTitles(this.titles, titles)) return;
+		this.titles = titles;
+		this.clusterLabels = Object.fromEntries(
+			graph.snapshot.clusters.map((cluster) => [cluster.id, titles[cluster.id] ?? cluster.label])
+		);
 	}
 
 	private scheduleStatus(): void {

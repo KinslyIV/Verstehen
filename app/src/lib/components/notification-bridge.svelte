@@ -20,14 +20,13 @@
 			event.type === 'turn-settled' ||
 			event.type === 'compaction-changed'
 		) {
-			announce('verstehen:session-list-changed');
+			announce('verstehen:session-list-changed', event.session_id);
 			if (!isLeaving(event.session_id)) announce('verstehen:sessions-changed', event.session_id);
 		}
 	}
 
 	/** After an outage or a return to the foreground, everything on screen may be stale. */
 	function refetchAll() {
-		announce('verstehen:session-list-changed');
 		announce('verstehen:sessions-changed', '');
 		announce('verstehen:jobs-changed', '');
 		announce('verstehen:side-chats-changed', '');
@@ -35,10 +34,15 @@
 		announce('verstehen:extractions-changed');
 	}
 
+	/** Each opened stream rereads the sidebar, covering changes made before it subscribed. */
 	onMount(() => {
 		const lifetime = new AbortController();
 		void live.follow(
-			(signal, opened) => streamNotifications(relay, signal, opened),
+			(signal, opened) =>
+				streamNotifications(relay, signal, () => {
+					opened();
+					announce('verstehen:session-list-changed', '');
+				}),
 			refetchAll,
 			lifetime.signal
 		);

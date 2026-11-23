@@ -794,7 +794,7 @@ def test_concurrent_model_cache_misses_share_one_fetch(tmp_path: Path):
     asyncio.run(scenario())
 
 
-def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
+def test_forced_refresh_drops_the_cache_before_fetching_models(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     fetches: list[object] = []
@@ -808,8 +808,8 @@ def test_models_route_refresh_drops_the_cache_before_building_the_catalog(
     with TestClient(
         create_app(Settings(tmp_path)), base_url="http://localhost"
     ) as client:
-        for query, expected in (("", 1), ("", 1), ("?refresh=true", 2)):
-            client.get("/api/models" + query)
+        for query, expected in (("", 1), ("", 1), ("?force=true", 2)):
+            client.post("/api/models/refresh" + query)
             assert len(fetches) == expected
 
 
@@ -1065,11 +1065,12 @@ def chatgpt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
     server = FakeChatGPT()
     adapters: list[ChatGPTAccountAdapter] = []
 
-    def make_adapter(store: CredentialsStore) -> ChatGPTAccountAdapter:
+    def make_adapter(store: CredentialsStore, on_invalidated) -> ChatGPTAccountAdapter:
         adapters.append(
             ChatGPTAccountAdapter(
                 store,
                 lambda: httpx2.AsyncClient(transport=httpx2.MockTransport(server)),
+                on_invalidated,
             )
         )
         return adapters[0]
@@ -1094,6 +1095,7 @@ def sign_in_again(adapter: ChatGPTAccountAdapter, account: str, tmp_path: Path) 
 
 
 def account_state(client: TestClient) -> str:
+    client.post("/api/models/refresh")
     return client.get("/api/models").json()["accounts"][0]["account"]["state"]
 
 

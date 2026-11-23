@@ -234,6 +234,7 @@ async def stack(
             side_threads,
             extraction_service,
             graph_store,
+            asyncio.Lock(),
         )
         sessions = SessionService(
             sessions_store,

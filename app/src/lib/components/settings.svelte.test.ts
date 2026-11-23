@@ -28,6 +28,7 @@ vi.mock('./settings-sync.svelte', () => ({ default: () => {} }));
 vi.mock('./settings-models.svelte', () => ({ default: () => {} }));
 vi.mock('./settings-accounts.svelte', () => ({ default: () => {} }));
 vi.mock('./settings-lesson.svelte', () => ({ default: () => {} }));
+vi.mock('./settings-prompts.svelte', () => ({ default: () => {} }));
 vi.mock('./settings-graph.svelte', () => ({ default: () => {} }));
 vi.mock('./settings-tools.svelte', () => ({ default: () => {} }));
 

@@ -14,6 +14,51 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Desktop responsiveness:**
+
+- **A missing sidebar row returns null.** Treat deletion as an ordinary row update. Returning
+  404 would also let the sidebar remove the row but produces a browser error for an expected event.
+- **The sidebar refreshes on stream reconnection.** One summary request recovers missed events.
+  Waiting for future events could leave a deleted or renamed row stale.
+- **Compute practice badges from the entries that decide them.** LearnHarness runs
+  `activeProblemOf` over each full transcript. A SQL read returns only problem calls and results
+  and dismissal markers, and `scan_problem` runs on those rows, so the badge is identical without a
+  schema change. A stored badge projection would be cheaper still but a second source of truth.
+- **Keep model catalog metadata in a local JSON file.** A SQLite table would require a schema
+  change for data that each installation refreshes independently. An offline installation
+  shows the last usable results until account state actually changes.
+- **Refresh models through one request with lightweight reads while it runs.** An SSE event
+  could replace the polling. This route supports progress as providers finish independently,
+  including on first load, and Settings can force refresh. A refresh superseded by a newer
+  one reports the newer one's outcome, because the backend skips the older one's writes. The
+  backend still answers 204, so a refresh superseded by a different client reports success.
+  Only two remote clients of one server can hit this (each desktop sidecar has its own catalog);
+  Setup may then show "Connect a provider" until the next refresh. Accepted as is.
+- **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** At `cb25c8e`
+  LearnHarness exports only `GET /api/models`, which refreshes the subscription connection catalogs
+  on every read over static bundled metadata. v0.7.0 (commit `1cfb7ea2d`) adds persisted pi.dev
+  metadata with an explicit `POST /api/models` refresh; its `GET` still refreshes the connections.
+  Verstehen refreshes every account at launch, when Settings → Models opens, when
+  Setup opens and while it waits for a connection, and after a successful sign-in; opening the
+  picker only rereads the saved catalog.
+- **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
+  would exit the app before the learner sees the shell. The in-app panel keeps the log path
+  visible and the timing marks distinguish desktop, sidecar, and composer readiness.
+- **Return graph summary counts with the snapshot and serve titles separately.** Counting
+  through the sidebar endpoint and rebuilding the snapshot after rename duplicate work.
+  Graph cost reads also use only source metadata and usage, so they can tolerate broken
+  folder organization.
+- **Identify a graph position save by the exact revision it created.** Refetching after every
+  drag reapplies work that the page already did. Other revisions still trigger a read, even
+  when their notifications arrive during a position save.
+- **Expose prompt editing in its own Settings section.** LearnHarness 0.7.0 groups the
+  editor under Agent. Verstehen's separate section follows its Settings navigation.
+  Saving text and enabling it remain separate operations so activation can be retried
+  without rewriting the saved draft. The editor uses a textarea and Markdown preview.
+- **Only regular prompt override files are composed and edited.** Symlinks were previously
+  readable by the composer, while sync skipped them. Using the shipped default for such a path
+  keeps runtime, the editor, and sync in agreement.
+
 **LearnHarness import:**
 
 - **Replacement requires an unpaired local data directory.** Dry runs still work. Replacing a

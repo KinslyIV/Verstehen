@@ -2,7 +2,6 @@
 	import { onMount } from 'svelte';
 	import { Dumbbell, ListTree, Waypoints } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
-	import { listSessions } from '#lib/api/client.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import type { Pt } from './canvas.js';
 	import ChainTable from './chain-table.svelte';
@@ -30,8 +29,6 @@
 	let query = $state('');
 	let selected = $state<{ nodeId: string; anchor: Pt }>();
 	let table = $state<'manage' | 'pick'>();
-	let teachSessions = $state(0);
-	let practiceSessions = $state(0);
 	let menu = $state<{ nodeId: string; anchor: Pt }>();
 	let deleting = $state<{ id: string; name: string }[]>();
 
@@ -55,12 +52,6 @@
 	}
 
 	onMount(() => {
-		void listSessions()
-			.then((sessions) => {
-				teachSessions = sessions.filter((session) => session.kind === 'teach').length;
-				practiceSessions = sessions.filter((session) => session.kind === 'practice').length;
-			})
-			.catch(() => {});
 		return () => {
 			controller.dispose();
 			notesImport.dispose();
@@ -69,15 +60,23 @@
 </script>
 
 <section aria-label="Knowledge graph" data-testid="graph-page" class="relative h-full w-full">
-	{#if controller.loadError}
+	{#if controller.loadError && graph}
+		<p
+			role="status"
+			class="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-md bg-background/90 px-3 py-1 text-xs text-destructive"
+		>
+			Could not refresh the graph: {controller.loadError}
+		</p>
+	{/if}
+	{#if controller.loadError && !graph}
 		<p role="alert" class="p-6 text-sm text-destructive">{controller.loadError}</p>
 	{:else if graph && controller.rendering === false}
 		<div class="pointer-events-none flex h-full items-center justify-center pb-40">
 			<KnowledgeSummary
 				propositions={graph.snapshot.propositions.length}
 				chains={graph.snapshot.chains?.length ?? 0}
-				{teachSessions}
-				{practiceSessions}
+				teachSessions={graph.snapshot.teach_sessions}
+				practiceSessions={graph.snapshot.practice_sessions}
 				importedNotes={Object.keys(graph.snapshot.file_sources).length}
 			/>
 		</div>
@@ -111,6 +110,7 @@
 					selected = undefined;
 					menu = undefined;
 				}}
+				oncommit={(positions) => void controller.savePositions(positions)}
 			/>
 			{#if card && selected}
 				<NodeCard

@@ -8,8 +8,15 @@ import './layout.css';
 import type { Notification } from '#lib/api/client.js';
 import appHtml from '../app.html?raw';
 
-const { sessionRequests, subscribers, navigated } = vi.hoisted(() => ({
+const { sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
 	sessionRequests: vi.fn(async () => []),
+	itemRequests: vi.fn(async (id: string) => ({
+		id,
+		title: 'Algebra',
+		kind: 'teach',
+		updated_at: '2026-01-01T00:00:00Z',
+		busy: false
+	})),
 	subscribers: new Set<(event: Notification) => void>(),
 	navigated: new Set<(navigation: unknown) => void>()
 }));
@@ -42,6 +49,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getExtractionStatus: async () => [],
 	getSideChats: async () => ({ threads: [], answering: {} }),
 	getModels: async () => ({ accounts: [], slots: {} }),
+	refreshModels: async () => {},
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
@@ -71,9 +79,15 @@ vi.mock('#lib/api/client.js', async (original) => ({
 		error_code: null
 	}),
 	listSessions: sessionRequests,
-	streamNotifications: (receive: (event: Notification) => void, signal: AbortSignal) =>
+	getSessionItem: itemRequests,
+	streamNotifications: (
+		receive: (event: Notification) => void,
+		signal: AbortSignal,
+		opened?: () => void
+	) =>
 		new Promise<void>((resolve) => {
 			subscribers.add(receive);
+			opened?.();
 			signal.addEventListener('abort', () => {
 				subscribers.delete(receive);
 				resolve();
@@ -93,6 +107,7 @@ afterEach(async () => {
 
 beforeEach(() => {
 	sessionRequests.mockClear();
+	itemRequests.mockClear();
 	navigated.clear();
 	localStorage.clear();
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
@@ -130,15 +145,20 @@ test('navigating_to_another_lesson_leaves_the_phone_panel_screen', async () => {
 	await expect.element(screen.getByTestId('phone-tab-screen')).not.toBeInTheDocument();
 });
 
-test('sync_status_does_not_refresh_the_sidebar_session_list', async () => {
+test('a_session_event_reads_one_sidebar_row_and_other_events_read_none', async () => {
 	await render(Lesson);
-	await expect.poll(() => sessionRequests.mock.calls.length).toBe(1);
+	await expect.poll(() => sessionRequests.mock.calls.length).toBeGreaterThan(0);
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	const fullReads = sessionRequests.mock.calls.length;
 
 	for (const receive of subscribers) receive({ type: 'sync-status-changed', session_id: '' });
-	expect(sessionRequests).toHaveBeenCalledTimes(1);
+	expect(sessionRequests).toHaveBeenCalledTimes(fullReads);
+	expect(itemRequests).not.toHaveBeenCalled();
 
 	for (const receive of subscribers) receive({ type: 'chats-changed', session_id: 'one' });
-	expect(sessionRequests).toHaveBeenCalledTimes(2);
+	await expect.poll(() => itemRequests.mock.calls.length).toBe(1);
+	expect(itemRequests).toHaveBeenCalledWith('one', expect.any(AbortSignal));
+	expect(sessionRequests).toHaveBeenCalledTimes(fullReads);
 });
 
 test('root_shows_new_session_screen', async () => {

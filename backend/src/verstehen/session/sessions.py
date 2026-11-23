@@ -23,7 +23,11 @@ from verstehen.store.graph import GraphLedger, GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
-from verstehen.teaching.practice.state import active_problem_of
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
+from verstehen.teaching.practice.state import scan_problem
 from verstehen.teaching.questions.pending import dangling_question_of
 
 
@@ -80,20 +84,38 @@ class SessionService:
         self.graph_store = graph_store
 
     async def list(self) -> List[ListedSession]:
-        listed = []
-        for session in await self.sessions_store.list():
-            runtime = self.runtimes.get(session.id)
-            entries = await self.entries_store.list(session.id)
-            listed.append(
-                ListedSession(
-                    session,
-                    runtime.run is not None,
-                    runtime.compaction is not None,
-                    pending_question=dangling_question_of(entries) is not None,
-                    pending_problem=active_problem_of(entries) is not None,
-                )
-            )
-        return listed
+        sessions = await self.sessions_store.list()
+        windows = await self.entries_store.since_last_assistant(
+            [session.id for session in sessions]
+        )
+        return [await self.listed(session, windows[session.id]) for session in sessions]
+
+    async def item(self, session_id: str) -> ListedSession | None:
+        """One sidebar row, built exactly as `list` builds it; None once the session is gone."""
+        session = await self.sessions_store.get(session_id)
+        if session is None:
+            return None
+        windows = await self.entries_store.since_last_assistant([session_id])
+        return await self.listed(session, windows[session_id])
+
+    async def listed(self, session: Session, window: List[Entry]) -> ListedSession:
+        """`window` runs from the newest assistant entry, which decides the pending question."""
+        runtime = self.runtimes.get(session.id)
+        return ListedSession(
+            session,
+            runtime.run is not None,
+            runtime.compaction is not None,
+            pending_question=dangling_question_of(window) is not None,
+            pending_problem=session.kind == "practice"
+            and await self.has_active_problem(session.id),
+        )
+
+    async def has_active_problem(self, session_id: str) -> bool:
+        """Scan only the entries that can decide the problem state, not the transcript."""
+        entries = await self.entries_store.problem_entries(
+            session_id, (PRACTICE_PROBLEM_TOOL, PRACTICE_CONCLUDE_TOOL)
+        )
+        return scan_problem(entries).problem is not None
 
     async def create(
         self,
@@ -140,8 +162,17 @@ class SessionService:
                 side_segments(entries),
                 None
                 if session.kind == "practice"
-                else await self.extraction_service.coverage(session_id),
+                else await self.extraction_service.coverage(session_id, entries),
             )
+
+    async def coverage(self, session_id: str) -> SessionCoverage | None | Refused:
+        """Coverage alone, for refreshes that need no transcript; practice sessions have none."""
+        session = await self.sessions_store.get(session_id)
+        if session is None:
+            return Refused(404, {"error": "Not found"})
+        if session.kind == "practice":
+            return None
+        return await self.extraction_service.coverage(session_id)
 
     async def set_artifact_view(
         self, session_id: str, entry_id: str, inverted: bool

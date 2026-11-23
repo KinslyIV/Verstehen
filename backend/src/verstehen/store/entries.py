@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Annotated, List, Literal
 from uuid import uuid4
@@ -212,3 +213,68 @@ class EntriesStore:
                 (session_id,),
             ) as cursor:
                 return [ENTRY.validate_json(row[0]) for row in await cursor.fetchall()]
+
+    async def since_last_assistant(
+        self, session_ids: Sequence[str]
+    ) -> dict[str, List[Entry]]:
+        """Read the latest assistant entry and any following tool results."""
+        starts = (
+            "SELECT ids.value AS session_id, (SELECT a.seq FROM entries a "
+            "WHERE a.session_id = ids.value AND a.kind = 'assistant' "
+            "ORDER BY a.seq DESC LIMIT 1) AS start FROM json_each(?) ids"
+        )
+        async with self.database.read() as connection:
+            async with connection.execute(
+                f"WITH starts AS ({starts}) SELECT e.session_id, e.payload "
+                "FROM starts JOIN entries e ON e.session_id = starts.session_id "
+                "AND e.seq >= starts.start "
+                "WHERE e.seq = starts.start OR e.kind = 'tool_result' "
+                "ORDER BY e.session_id, e.seq",
+                (json.dumps(session_ids),),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        windows: dict[str, List[Entry]] = {session_id: [] for session_id in session_ids}
+        for session_id, payload in rows:
+            windows[session_id].append(ENTRY.validate_json(payload))
+        return windows
+
+    async def coverage_entries(self, session_id: str) -> tuple[int, List[Entry]]:
+        """The entry count, and the entries that carry teacher prose (assistant replies and send_to_user results)."""
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT COUNT(*) FROM entries WHERE session_id = ?", (session_id,)
+            ) as cursor:
+                row = await cursor.fetchone()
+            async with connection.execute(
+                "SELECT payload FROM entries WHERE session_id = ? AND (kind = 'assistant' "
+                "OR (kind = 'tool_result' AND json_extract(payload, '$.tool_name') = 'send_to_user')) "
+                "ORDER BY seq",
+                (session_id,),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        assert row is not None
+        return row[0], [ENTRY.validate_json(item[0]) for item in rows]
+
+    async def problem_entries(
+        self, session_id: str, tool_names: Sequence[str]
+    ) -> List[Entry]:
+        """Only the entries that decide a practice problem: dismissals, calls to `tool_names`, their results."""
+        calls = (
+            "SELECT a.seq, json_extract(p.value, '$.tool_call_id') AS call_id "
+            "FROM entries a, json_each(a.payload, '$.parts') p "
+            "WHERE a.session_id = ? AND a.kind = 'assistant' "
+            "AND json_extract(p.value, '$.tool_name') IN (SELECT value FROM json_each(?))"
+        )
+        async with self.database.read() as connection:
+            async with connection.execute(
+                f"WITH calls AS ({calls}) SELECT payload FROM entries e "
+                "WHERE e.session_id = ? AND ("
+                "(e.kind = 'marker' AND json_extract(e.payload, '$.marker_type') = 'problem-dismissed') "
+                "OR e.seq IN (SELECT seq FROM calls) "
+                "OR (e.kind = 'tool_result' "
+                "AND json_extract(e.payload, '$.tool_call_id') IN (SELECT call_id FROM calls))"
+                ") ORDER BY e.seq",
+                (session_id, json.dumps(list(tool_names)), session_id),
+            ) as cursor:
+                rows = await cursor.fetchall()
+        return [ENTRY.validate_json(row[0]) for row in rows]

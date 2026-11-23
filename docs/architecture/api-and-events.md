@@ -23,12 +23,13 @@ types stay behind the client.
 
 | Area | Routes |
 |---|---|
-| Sessions | `GET POST /api/sessions` (`POST` takes `kind`: `teach` or `practice`; list items carry `kind`, `pending_question`, `pending_problem`); `GET PATCH DELETE /api/sessions/{id}`; `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
+| Sessions | `GET POST /api/sessions` (`POST` takes `kind`: `teach` or `practice`; list items carry `kind`, `pending_question`, `pending_problem`); `GET PATCH DELETE /api/sessions/{id}`; `GET …/item` (one list row, built as the list builds it; `null` once the session is gone) and `GET …/coverage` (the snapshot's coverage alone); `POST …/input`, `…/steer`, `…/dismiss`, `…/abort`; `GET …/stream` (SSE); `PUT …/artifact-views/{entry_id}` |
 | Events | `GET /api/events` (SSE) |
 | Jobs | `GET /api/jobs?session=…` (also runs the recovery sweep); `POST /api/jobs/{id}/abort` |
 | Side chat | `GET POST /api/sessions/{id}/side-chats`; `GET …/side-chats/{thread}/stream` (SSE); `POST …/side-chats/{thread}/stop` |
-| Graph | `GET /api/graph`; `DELETE /api/graph/nodes/{id}`; `GET POST DELETE /api/graph/sources`; `PUT /api/graph/positions`; `GET PUT /api/graph/render-settings`; `GET /api/graph/costs`; `GET /api/graph/status`; `POST /api/graph/coverage/extract`; `POST /api/graph/extractions/{source}/abort`; `POST /api/graph/import` |
-| Settings and models | `GET PUT /api/settings`; `GET /api/models`; `POST /api/settings/default-model` |
+| Graph | `GET /api/graph`; `GET /api/graph/titles`; `DELETE /api/graph/nodes/{id}`; `GET POST DELETE /api/graph/sources`; `PUT /api/graph/positions`; `GET PUT /api/graph/render-settings`; `GET /api/graph/costs`; `GET /api/graph/status`; `POST /api/graph/coverage/extract`; `POST /api/graph/extractions/{source}/abort`; `POST /api/graph/import` |
+| Settings and models | `GET PUT PATCH /api/settings` (PATCH writes supplied fields); `GET /api/models` (saved catalog); `POST /api/models/refresh` (`?force=true` drops cached lists; 204); `POST /api/settings/default-model`; `PUT /api/settings/models/{slot}` changes one slot |
+| Prompt overrides | `GET /api/prompts`; `PUT DELETE /api/prompts/{path}/override`; `PUT /api/prompts/{path}/enabled` |
 | Accounts | `GET /api/accounts/claude-code`; `GET POST /api/accounts/chatgpt`; `GET /api/accounts/chatgpt/sign-in/{id}`; `POST /api/accounts/chatgpt/{account}/sign-in`; `DELETE /api/accounts/chatgpt/{account}` |
 | Auth | `POST /api/auth/pairing-code`; `POST /api/auth/pair`; `GET /api/auth/devices`; `DELETE /api/auth/devices/{id}` (server mode only; `404` otherwise) |
 | Sync | `POST /api/sync/push`; `GET /api/sync/pull`; `POST /api/sync/images/{sha256}.{ext}` (server mode only; `404` otherwise); `GET /api/sync/status`; `POST /api/sync/now` (laptop mode; `404` in server mode) |

@@ -15,6 +15,7 @@ from verstehen.graph.organization import (
     SourceDirectory,
     apply_organization_action,
     folder_is_empty,
+    notes_label,
     parse_organization_action,
     source_directory,
     validate_organization,
@@ -24,7 +25,12 @@ from verstehen.graph.render_settings import (
     GraphRenderSettings,
     sanitize_render_settings,
 )
-from verstehen.graph.snapshot import GraphSnapshot, graph_snapshot
+from verstehen.graph.snapshot import (
+    GraphSnapshot,
+    GraphTitles,
+    graph_snapshot,
+    graph_titles,
+)
 from verstehen.store.graph import GraphStore, Position, SourcePlacement
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -38,6 +44,7 @@ class NodeDeleted(BaseModel):
 
 class PositionsSaved(BaseModel):
     positions: dict[str, Position]
+    revision: int | None
 
 
 class GraphService:
@@ -68,6 +75,9 @@ class GraphService:
             await self.graph_store.read(), await self.sessions_store.list()
         )
 
+    async def titles(self) -> GraphTitles:
+        return graph_titles(await self.sessions_store.list())
+
     async def directory(self) -> SourceDirectory:
         ledger = await self.graph_store.read()
         validate_organization(ledger.organization)
@@ -85,8 +95,10 @@ class GraphService:
 
     async def positions(self, raw: object) -> PositionsSaved:
         async with self.graph_store.transaction() as ledger:
+            previous_revision = ledger.revision
             positions = commit_positions(ledger, raw)
-        return PositionsSaved(positions=positions)
+        revision = ledger.revision if ledger.revision != previous_revision else None
+        return PositionsSaved(positions=positions, revision=revision)
 
     async def render_settings(self) -> GraphRenderSettings | None:
         raw = await self.settings_store.get("graph_render_settings")
@@ -204,10 +216,16 @@ class GraphService:
         return await self.directory()
 
     async def costs(self) -> GraphCostSummary:
-        directory = await self.directory()
+        sessions = await self.sessions_store.list()
+        sources, placements = await self.graph_store.read_notes_sources()
+        titles = {session.id: session.title for session in sessions}
+        titles |= {
+            source.id: notes_label(source, placements.get(source.id))
+            for source in sources
+        }
         return graph_cost_summary(
             await self.usage_store.list_graph(),
-            {s.id: s.label or s.id for s in directory.sources},
+            {id: title for id, title in titles.items() if title},
         )
 
 

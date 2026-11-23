@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (Milestone D PR 2 built).
+> PRs. Last update: 2026-11-23 (desktop responsiveness, merged with `dev` after Milestone D PR 2).
 
 ## Where we are
 
@@ -19,7 +19,8 @@ The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `l
 and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
 confirm that converted reasoning is accepted.
 
-Mobile & sync Milestones A and B are merged into `dev`. The combined integration branch adds:
+Mobile & sync Milestones A and B are merged into `dev`. The combined integration PR (#14)
+added:
 
 - **Mobile & sync Milestone C** ([plan](plans/mobile-sync-c.md)): Settings → Sync and the sidebar
   badge, SSH install and update with host trust and health-gated rollback, server ChatGPT account
@@ -38,19 +39,18 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
   organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
   49. Milestone C and M10 bring the total to 52; Milestone D adds `mobile-pair` and six phone flows for 59.
 
+The desktop responsiveness branch adds early shell paint, saved model catalogs and stable
+pickers with a Thinking slider, lighter sidebar and graph reads, and a prompt editor. It adds four
+scripted flows, bringing the total to 63. Native trackpad zoom on Arch and long-transcript
+rendering remain open.
+
 ## Next
 
-1. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), approved 2026-11-23): PR 1 (the
-   Capacitor Android app, remote mode, `/pair`, and the Android build tooling) is merged into
-   `dev`. PR 2 (the phone and tablet layouts, `/graph` touch, phone Settings, and stream
-   recovery) is built on `mobile-sync-d-ui` and waits for review; it was tested on the
-   `Galaxy_S24` and `Galaxy_Tab_S9` emulators. Review round 1 added side-chat reattach, drawer
-   navigation that clears a phone tab, a 5 s Disconnect deadline, a scrollable graph card, a
-   stronger `mobile-reconnect`, and Android Back as Escape. Round 3 made Android Back close the
-   drawer, dialogs, and menus on every page (the graph's node menu too), let a failed first graph
-   load recover and clear its error, and let the remote Settings sections load a failed read after
-   an outage. Then M11.
-2. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
+1. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
+2. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
+   remote mode, `/pair`, and Android build tooling) and PR #16 (the phone and tablet layouts,
+   `/graph` touch, phone Settings, and stream recovery) are merged into `dev`. Next is M11.
+3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
 

@@ -1,17 +1,21 @@
 import { beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
-import { page } from 'vitest/browser';
+import { page, userEvent } from 'vitest/browser';
 import * as api from '#lib/api/client.js';
+import { models } from '#lib/models/catalog.svelte.js';
 import { testCatalog } from '#lib/models/test-fixtures.js';
 import SettingsModels from './settings-models.svelte';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
-	getModels: vi.fn()
+	getModels: vi.fn(),
+	refreshModels: vi.fn()
 }));
 beforeEach(() => {
 	vi.clearAllMocks();
+	models.reset();
+	vi.mocked(api.refreshModels).mockResolvedValue(undefined);
 });
-test('pending_refresh_shows_loading_and_mounts_no_controls', async () => {
+test('pending_read_shows_loading_and_mounts_no_controls', async () => {
 	vi.mocked(api.getModels).mockReturnValue(new Promise(() => {}));
 	await render(SettingsModels);
 	await expect.element(page.getByText('Loading models…')).toBeVisible();
@@ -19,22 +23,91 @@ test('pending_refresh_shows_loading_and_mounts_no_controls', async () => {
 		.element(page.getByRole('button', { name: 'Choose Main model', exact: true }))
 		.not.toBeInTheDocument();
 });
-test('rejected_refresh_shows_the_error_and_controls_do_not_refetch', async () => {
-	vi.mocked(api.getModels).mockRejectedValue(new Error('ChatGPT could not be reached'));
+test('rejected_read_shows_the_error_and_mounts_no_controls', async () => {
+	vi.mocked(api.getModels).mockRejectedValue(new Error('The sidecar is unreachable'));
 	await render(SettingsModels);
-	await expect.element(page.getByRole('alert')).toHaveTextContent('ChatGPT could not be reached');
+	await expect.element(page.getByRole('alert')).toHaveTextContent('The sidecar is unreachable');
 	await expect
 		.element(page.getByRole('button', { name: 'Choose Main model', exact: true }))
 		.not.toBeInTheDocument();
-	expect(api.getModels).toHaveBeenCalledTimes(1);
 });
-test('opening_models_settings_refreshes_once_and_the_controls_reuse_that_catalog', async () => {
+test('saved_slots_show_while_the_accounts_are_still_refreshing', async () => {
 	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	vi.mocked(api.refreshModels).mockReturnValue(new Promise(() => {}));
 	await render(SettingsModels);
 	for (const name of ['Main', 'Cheap', 'Vision'])
 		await expect
 			.element(page.getByRole('button', { name: `Choose ${name} model`, exact: true }))
 			.toBeVisible();
-	expect(api.getModels).toHaveBeenCalledTimes(1);
-	expect(api.getModels).toHaveBeenCalledWith({ refresh: true });
+	await expect
+		.element(page.getByRole('button', { name: 'Choose Cheap model' }))
+		.toHaveTextContent('Scripted title · Low');
+	expect(api.refreshModels).toHaveBeenCalledWith(false);
+});
+test('the_refresh_button_forces_one_refresh_and_reports_the_result', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Models are up to date.')).toBeVisible();
+	expect(api.refreshModels).toHaveBeenLastCalledWith(true);
+	expect(vi.mocked(api.refreshModels).mock.calls.filter(([force]) => force)).toHaveLength(1);
+});
+test('an_unreachable_account_is_named_and_its_saved_models_remain', async () => {
+	const stale = structuredClone(testCatalog);
+	stale.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue(stale);
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect
+		.element(page.getByText('Could not reach Scripted model. Saved models are still available.'))
+		.toBeVisible();
+	await page.getByRole('button', { name: 'Choose Cheap model' }).click();
+	await expect.element(page.getByRole('button', { name: 'Scripted teacher' })).toBeVisible();
+});
+test('a_failed_refresh_request_is_reported_and_the_button_works_again', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	await render(SettingsModels);
+	vi.mocked(api.refreshModels).mockRejectedValueOnce(new Error('HTTP 500'));
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Could not refresh: HTTP 500')).toBeVisible();
+	await expect.element(page.getByRole('button', { name: 'Refresh model lists' })).toBeEnabled();
+});
+test('the_settings_pickers_have_no_slot_tabs', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Choose Vision model' }).click();
+	await expect.element(page.getByRole('tab')).not.toBeInTheDocument();
+});
+test('only_the_main_picker_offers_set_as_default', async () => {
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(testCatalog));
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Choose Cheap model' }).click();
+	await expect
+		.element(page.getByRole('button', { name: 'Set as default', exact: true }))
+		.not.toBeInTheDocument();
+	await userEvent.keyboard('{Escape}');
+	await page.getByRole('button', { name: 'Choose Main model' }).click();
+	await expect
+		.element(page.getByRole('button', { name: 'Set as default', exact: true }))
+		.toBeVisible();
+});
+test('an_account_unreachable_on_first_discovery_does_not_claim_saved_models', async () => {
+	const offline = structuredClone(testCatalog);
+	offline.accounts[0].models = [];
+	offline.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue(offline);
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Could not reach Scripted model.')).toBeVisible();
+	await expect.element(page.getByText('Saved models are still available.')).not.toBeInTheDocument();
+});
+test('a_refresh_that_leaves_an_account_needing_sign_in_says_so_instead_of_up_to_date', async () => {
+	const signedOut = structuredClone(testCatalog);
+	signedOut.accounts[0].models = [];
+	signedOut.accounts[0].account.state = 'needs_sign_in';
+	vi.mocked(api.getModels).mockResolvedValue(signedOut);
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Scripted model needs sign-in.')).toBeVisible();
+	await expect.element(page.getByText('Models are up to date.')).not.toBeInTheDocument();
 });
