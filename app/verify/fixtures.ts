@@ -2,8 +2,6 @@ import { test as base, expect, type Frame, type Request } from '@playwright/test
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { get } from 'node:http';
-import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -13,18 +11,6 @@ import { fileURLToPath } from 'node:url';
 
 const runFile = promisify(execFile);
 const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-async function freePort(): Promise<number> {
-	const server = createServer();
-	server.listen(0, '127.0.0.1');
-	await once(server, 'listening');
-	const address = server.address();
-	if (!address || typeof address === 'string') throw new Error('No free preview port');
-	await new Promise<void>((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve()))
-	);
-	return address.port;
-}
 
 async function start(
 	command: string,
@@ -67,22 +53,37 @@ async function handshake(child: ChildProcess): Promise<number> {
 	}
 }
 
-async function ready(url: string, child: ChildProcess): Promise<void> {
-	const deadline = Date.now() + 15000;
-	while (Date.now() < deadline) {
-		if (child.exitCode !== null) throw new Error(`Vite preview exited with ${child.exitCode}`);
-		const ok = await new Promise<boolean>((resolve) => {
-			const request = get(url, (response) => {
-				response.resume();
-				resolve(response.statusCode === 200);
-			});
-			request.on('error', () => resolve(false));
-			request.setTimeout(1000, () => request.destroy());
-		});
-		if (ok) return;
-		await new Promise((resolve) => setTimeout(resolve, 100));
+class PreviewExitError extends Error {}
+
+async function previewHandshake(child: ChildProcess, expectedPort?: number): Promise<number> {
+	if (!child.stdout) throw new Error('Vite preview stdout is missing');
+	const lines = createInterface({ input: child.stdout });
+	let timedOut = false;
+	const timer = setTimeout(() => {
+		timedOut = true;
+		lines.close();
+	}, 15000);
+	try {
+		for await (const line of lines) {
+			const match = /Local:\s+http:\/\/127\.0\.0\.1:(\d+)\/?/.exec(line);
+			if (!match) continue;
+			const port = Number(match[1]);
+			if (!Number.isInteger(port) || port < 1 || port > 65535)
+				throw new Error(`Invalid preview URL line: ${line}`);
+			if (expectedPort !== undefined && port !== expectedPort)
+				throw new Error(`Vite preview bound port ${port} instead of ${expectedPort}`);
+			return port;
+		}
+		if (timedOut) throw new Error('Vite preview did not print its local URL within 15 seconds');
+		if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+		throw new PreviewExitError(
+			`Vite preview exited with ${child.exitCode ?? child.signalCode} before listening`
+		);
+	} finally {
+		clearTimeout(timer);
+		lines.close();
+		child.stdout.resume();
 	}
-	throw new Error(`Vite preview was not ready at ${url}`);
 }
 
 const appendEntries = `
@@ -260,33 +261,50 @@ export const test = base.extend<{
 			);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
-			const previewPort = await freePort();
-			const startPreview = (sidecarPort: number) =>
-				start(
-					process.execPath,
-					[
-						'node_modules/vite/bin/vite.js',
-						'preview',
-						'--host',
-						'127.0.0.1',
-						'--port',
-						String(previewPort),
-						'--strictPort'
-					],
-					{
-						...env,
-						VERSTEHEN_PORT: String(sidecarPort),
-						...(remote
-							? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
-							: {})
+			const launchPreview = async (
+				sidecarPort: number,
+				fixedPort?: number
+			): Promise<{ child: ChildProcess; port: number }> => {
+				const previewEnv: NodeJS.ProcessEnv = {
+					...env,
+					VERSTEHEN_PORT: String(sidecarPort),
+					NO_COLOR: '1',
+					...(remote
+						? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
+						: {})
+				};
+				delete previewEnv.FORCE_COLOR;
+				const args = [
+					'node_modules/vite/bin/vite.js',
+					'preview',
+					'--host',
+					'127.0.0.1',
+					'--port',
+					String(fixedPort ?? 0),
+					...(fixedPort === undefined ? [] : ['--strictPort'])
+				];
+				if (fixedPort !== undefined) {
+					const child = await start(process.execPath, args, previewEnv);
+					children.push(child);
+					await previewHandshake(child, fixedPort);
+					return { child, port: fixedPort };
+				}
+				for (let attempt = 1; ; attempt++) {
+					const child = await start(process.execPath, args, previewEnv);
+					try {
+						const boundPort = await previewHandshake(child);
+						children.push(child);
+						return { child, port: boundPort };
+					} catch (error) {
+						await stop(child);
+						if (!(error instanceof PreviewExitError) || attempt >= 5) throw error;
 					}
-				);
-			let preview = await startPreview(port);
-			children.push(preview);
+				}
+			};
+			const { child: initialPreview, port: previewPort } = await launchPreview(port);
+			let preview = initialPreview;
 			const url = `http://127.0.0.1:${previewPort}`;
-			await ready(url, preview);
 			sidecarControl.restart = async () => {
-				await stop(preview);
 				await stop(sidecar);
 				sidecar = await start(
 					resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -294,9 +312,9 @@ export const test = base.extend<{
 					env
 				);
 				children.push(sidecar);
-				preview = await startPreview(await handshake(sidecar));
-				children.push(preview);
-				await ready(url, preview);
+				const nextSidecarPort = await handshake(sidecar);
+				await stop(preview);
+				({ child: preview } = await launchPreview(nextSidecarPort, previewPort));
 			};
 			if (script !== 'none') {
 				const api = await playwright.request.newContext({ baseURL: url });

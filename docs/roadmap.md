@@ -121,10 +121,12 @@ merges.
   `t3/python315-lazy-imports`, the `composer-steer` race (steering before the opening `POST /input`
   created the live turn), the `settings-prompts` race (reloading before the `PUT .../enabled`
   response settled), the `graph-extraction` race (navigating to `/graph` before the post-turn
-  `/coverage` fetch settled), and the `job-recovery-reload` `/item` teardown race (switching to
+  `/coverage` fetch settled), the `job-recovery-reload` `/item` teardown race (switching to
   the second session via client-side sidebar navigation so `SessionList` stays mounted, waiting
   for UI settlement, and scoping any trailing old-document `/item` abort via `allowTeardownAborts`
-  before `framenavigated` on `page.reload()`) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
+  before `framenavigated` on `page.reload()`), and the `fixtures.ts` Vite preview port collision
+  race (`freePort` TOCTOU + `ready()` polling another worker's server, replaced by `--port 0` +
+  per-child stdout handshake) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
