@@ -106,6 +106,21 @@ alternative, and the consequence, until the user reviews them at the end of the 
   receiving notifications and streamed lesson or side-chat content until that stream closes or
   reconnects, and a separate refetch returning 401 does not close the open stream).
 
+**Mobile & sync (Milestone D, PR 1):**
+
+- **A native WebView guard enforces the Tailscale-only cleartext rule.** Android's
+  `network_security_config.xml` cannot express `100.64.0.0/10` (only hostnames and exact IPs), so it
+  allows cleartext and `GuardedWebViewClient` (about 30 lines of Java in `app/android`) blocks every
+  `http://` request except `localhost` (the page), `100.64.0.0/10`, and `10.0.2.2` in debug builds
+  only (`BuildConfig.DEBUG`). It only blocks: allowed requests go through Capacitor's own client, so
+  POST bodies and SSE stream as before; `https` is untouched. `/pair` also refuses addresses outside
+  that range, with a clear message (`10.0.2.2` only in the debug build's SPA, which `make
+  android-debug` builds with `PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2`); the guard stays the real
+  enforcement. Alternatives: a JS-only guard (leaves other WebView requests, such as http images,
+  unguarded) or MagicDNS names under a `ts.net` rule (contradicts the `/pair` address decision).
+  Consequence: a debug-only `10.0.2.2` and the range live in Java, checked by a JVM unit test, a
+  Python config test, and a blocked-request check on the emulator.
+
 ## Constraints
 
 - **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
@@ -120,7 +135,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   to the server.
 - **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
   connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
-  `tailscale serve`), with Android cleartext HTTP allowlisted only for `100.64.0.0/10`.
+  `tailscale serve`), with cleartext HTTP limited to `100.64.0.0/10` by a native WebView guard.
 - **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
   SHA-256 hashed on the server and individually revocable.
 - **Server SSH install & ChatGPT OAuth from laptop UI only (v1).** SSH password is used once in
@@ -134,13 +149,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 **Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), 2026-11-23):**
 
-- **D and E merged:** PR 1 the Android app and pairing, PR 2 the phone UI and recovery. Agents test
-  on an Android emulator (T3 Code Device panel) before the user.
-- **Capacitor for Android, Tauri stays desktop-only:** no Rust split, no NDK; WebView `fetch` for
-  SSE (not Capacitor's native HTTP); server CORS adds `http://localhost`.
-- **Phone connection in a private app file** (Capacitor Preferences, excluded from backup), not the
-  Android Keystore. Debug builds also allow cleartext to `10.0.2.2`; release stays
-  `100.64.0.0/10` only. One release signing key, created by the user with `make android-key`.
+- **D and E merged:** PR 1 (the Android app and pairing) is implemented and documented in
+  [frontend-shell](architecture/frontend-shell.md) and [tooling](architecture/tooling.md); PR 2 is
+  the phone UI and recovery.
 - **Layouts by width:** phone below 768 px (sidebar drawer, right-panel tabs full screen), tablet
   768–1279 px (drawer, lesson and closable panel side by side), desktop from 1280 px; touch sizing
   and `/graph` gestures under `pointer: coarse`. Sized to a Galaxy S24 and Tab S9.

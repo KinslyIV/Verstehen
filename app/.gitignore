@@ -27,3 +27,5 @@ vite.config.ts.timestamp-*
 
 /markdown-output
 /.vitest
+/.svelte-kit-remote
+/build-remote

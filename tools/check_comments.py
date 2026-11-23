@@ -5,8 +5,18 @@ import sys
 import tokenize
 from pathlib import Path
 
-EXCLUDED_PARTS = {"node_modules", ".svelte-kit", "build", "dist", ".venv", ".git"}
+EXCLUDED_PARTS = {
+    "node_modules",
+    ".svelte-kit",
+    ".svelte-kit-remote",
+    "build",
+    "build-remote",
+    "dist",
+    ".venv",
+    ".git",
+}
 EXCLUDED_PATHS = (
+    "app/android/",
     "app/src/lib/components/ui/",
     "backend/src/verstehen/providers/claude_code/",
     "backend/src/verstehen/teaching/prompts/",

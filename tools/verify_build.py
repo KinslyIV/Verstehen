@@ -21,6 +21,11 @@ CONFIGS = (
     "postcss.config.*",
     "tailwind.config.*",
 )
+OUTPUTS = ("build", "build-remote")
+REMOTE_BUILD_ENV = {
+    "PUBLIC_VERSTEHEN_CLIENT": "remote",
+    "PUBLIC_VERSTEHEN_EXTRA_HOSTS": "127.0.0.1",
+}
 REBUILD = "run make verify to rebuild the frontend before rerunning flows"
 
 
@@ -70,17 +75,21 @@ def inputs(app: Path) -> str:
 
 
 def output(app: Path) -> str:
-    if not (app / "build/index.html").is_file():
+    if not all((app / name / "index.html").is_file() for name in OUTPUTS):
         raise BuildError(f"Frontend build output is missing; {REBUILD}.")
-    return digest_files(app, list((app / "build").rglob("*")))
+    return digest_files(
+        app, [path for name in OUTPUTS for path in (app / name).rglob("*")]
+    )
 
 
 def reuse_blocker(app: Path) -> str | None:
     if any((app / name).exists() or (app / name).is_symlink() for name in DOTENV):
         return "Production dotenv files cannot be checked without reading them"
-    paths = input_paths(app) + [app / "build"]
-    if not (app / "build").is_symlink():
-        paths.extend((app / "build").rglob("*"))
+    paths = input_paths(app)
+    for name in OUTPUTS:
+        paths.append(app / name)
+        if not (app / name).is_symlink():
+            paths.extend((app / name).rglob("*"))
     if any(path.is_symlink() for path in paths):
         return "Symlinked frontend inputs or output cannot be checked for reuse"
     return None
@@ -92,7 +101,8 @@ def build(app: Path, command: Sequence[str] = ("npm", "run", "build")) -> None:
     blocked = reuse_blocker(app)
     before = None if blocked else inputs(app)
     subprocess.run(command, cwd=app, check=True)
-    if not (app / "build/index.html").is_file():
+    subprocess.run(command, cwd=app, check=True, env={**os.environ, **REMOTE_BUILD_ENV})
+    if not all((app / name / "index.html").is_file() for name in OUTPUTS):
         raise BuildError(f"Frontend build output is missing; {REBUILD}.")
     blocked = blocked or reuse_blocker(app)
     if blocked:

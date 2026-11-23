@@ -150,6 +150,15 @@ async function importLearnHarness(folder: string, dataDirectory: string): Promis
 	if (code !== 0) throw new Error(`import-learnharness failed (${code}):\n${output}`);
 }
 
+async function mintAdminToken(dataDirectory: string): Promise<string> {
+	const { stdout } = await runFile(
+		resolve(appDirectory, '../backend/.venv/bin/verstehen'),
+		['mint-token', 'verify-admin'],
+		{ env: { ...process.env, VERSTEHEN_DATA_DIR: dataDirectory } }
+	);
+	return JSON.parse(stdout).token;
+}
+
 export interface GraphSeed {
 	nodes: { id: string; name: string; statement: string; session: string }[];
 	chains: { id: string; premises: string[]; conclusion: string; session: string }[];
@@ -163,6 +172,8 @@ export const test = base.extend<{
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
 	expectedStatuses: number[];
+	client: 'sidecar' | 'remote';
+	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
 	browserErrors: void;
@@ -170,6 +181,10 @@ export const test = base.extend<{
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
+	client: ['sidecar', { option: true }],
+	serverAdmin: async ({ client, dataDirectory }, use) => {
+		await use({ token: client === 'remote' ? await mintAdminToken(dataDirectory) : '' });
+	},
 	sidecarControl: async ({ dataDirectory }, use) => {
 		await use({
 			restart: async () => {
@@ -213,7 +228,10 @@ export const test = base.extend<{
 			);
 		});
 	},
-	baseURL: async ({ script, playwright, dataDirectory, sidecarControl }, use) => {
+	baseURL: async (
+		{ script, client, playwright, dataDirectory, sidecarControl, serverAdmin },
+		use
+	) => {
 		const env = Object.fromEntries(
 			Object.entries(process.env).filter(([key]) => !key.startsWith('VERSTEHEN_'))
 		);
@@ -222,9 +240,15 @@ export const test = base.extend<{
 			VERSTEHEN_PORT: '0',
 			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
+		const remote = client === 'remote';
+		const sidecarArguments = remote ? ['--server', '--port', '0'] : [];
 		const children: ChildProcess[] = [];
 		try {
-			let sidecar = await start(resolve(appDirectory, '../backend/.venv/bin/verstehen'), [], env);
+			let sidecar = await start(
+				resolve(appDirectory, '../backend/.venv/bin/verstehen'),
+				sidecarArguments,
+				env
+			);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
 			const previewPort = await freePort();
@@ -240,7 +264,13 @@ export const test = base.extend<{
 						String(previewPort),
 						'--strictPort'
 					],
-					{ ...env, VERSTEHEN_PORT: String(sidecarPort) }
+					{
+						...env,
+						VERSTEHEN_PORT: String(sidecarPort),
+						...(remote
+							? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
+							: {})
+					}
 				);
 			let preview = await startPreview(port);
 			children.push(preview);
@@ -249,7 +279,11 @@ export const test = base.extend<{
 			sidecarControl.restart = async () => {
 				await stop(preview);
 				await stop(sidecar);
-				sidecar = await start(resolve(appDirectory, '../backend/.venv/bin/verstehen'), [], env);
+				sidecar = await start(
+					resolve(appDirectory, '../backend/.venv/bin/verstehen'),
+					sidecarArguments,
+					env
+				);
 				children.push(sidecar);
 				preview = await startPreview(await handshake(sidecar));
 				children.push(preview);
@@ -259,6 +293,7 @@ export const test = base.extend<{
 				const api = await playwright.request.newContext({ baseURL: url });
 				try {
 					const response = await api.put('/api/settings', {
+						headers: remote ? { authorization: `Bearer ${serverAdmin.token}` } : {},
 						data: {
 							models: {
 								strong: { account: 'fake', model: 'fake' },

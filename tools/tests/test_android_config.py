@@ -1,0 +1,65 @@
+import re
+import xml.etree.ElementTree as ElementTree
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[2]
+ANDROID = ROOT / "app/android/app/src/main"
+NAMESPACE = "{http://schemas.android.com/apk/res/android}"
+APP_JAVA = ANDROID / "java/local/verstehen/app"
+
+
+def test_manifest_wires_network_and_backup_rules():
+    application = ElementTree.parse(ANDROID / "AndroidManifest.xml").find("application")
+    assert application is not None
+    assert (
+        application.get(f"{NAMESPACE}networkSecurityConfig")
+        == "@xml/network_security_config"
+    )
+    assert (
+        application.get(f"{NAMESPACE}dataExtractionRules")
+        == "@xml/data_extraction_rules"
+    )
+    assert application.get(f"{NAMESPACE}fullBackupContent") == "@xml/backup_rules"
+
+
+def test_connection_file_is_excluded_from_backups():
+    for name in ("backup_rules", "data_extraction_rules"):
+        text = (ANDROID / f"res/xml/{name}.xml").read_text()
+        assert 'domain="sharedpref" path="CapacitorStorage.xml"' in text
+
+
+def test_cleartext_is_allowed_for_the_guard_to_restrict():
+    config = ElementTree.parse(
+        ANDROID / "res/xml/network_security_config.xml"
+    ).getroot()
+    base = config.find("base-config")
+    assert base is not None and base.get("cleartextTrafficPermitted") == "true"
+    assert config.find("domain-config") is None
+
+
+def test_guard_allows_only_the_page_tailscale_and_the_debug_emulator_host():
+    source = (APP_JAVA / "CleartextGuard.java").read_text()
+    address_literals = set(re.findall(r'"(\d+\.\d+\.\d+\.\d+)"', source))
+    assert address_literals == {"10.0.2.2"}
+    assert 'host.equals("localhost")' in source
+    assert "octets[0] == 100 && octets[1] >= 64 && octets[1] <= 127" in source
+    assert "(debug && host.equals(EMULATOR_HOST))" in source
+
+
+def test_webview_uses_the_guard_with_the_build_type():
+    assert (
+        "GuardedWebViewClient(bridge)" in (APP_JAVA / "MainActivity.java").read_text()
+    )
+    client = (APP_JAVA / "GuardedWebViewClient.java").read_text()
+    assert (
+        "CleartextGuard.allows(url.getScheme(), url.getHost(), BuildConfig.DEBUG)"
+        in client
+    )
+    assert "return super.shouldInterceptRequest(view, request);" in client
+
+
+def test_capacitor_loads_the_page_from_http_localhost_without_native_http():
+    config = (ROOT / "app/capacitor.config.ts").read_text()
+    assert "appId: 'local.verstehen.app'" in config
+    assert "androidScheme: 'http'" in config
+    assert "CapacitorHttp" not in config

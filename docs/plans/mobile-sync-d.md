@@ -63,7 +63,11 @@ server mode.
    Android Studio is optional and nothing depends on it.
 10. **Debug builds also allow cleartext to `10.0.2.2`** (2026-11-23), the emulator's address for the
     host, so agents test against a local fake-model `--server` backend. The release `.apk` keeps
-    only `100.64.0.0/10`, and a test checks that.
+    only `100.64.0.0/10`, and a test checks that. Android's network security config cannot express
+    a CIDR range, so a native WebView guard enforces it (decided during PR 1, see
+    [decisions](../decisions.md#waiting-for-your-review)): the config allows cleartext, the guard
+    blocks every `http://` request except `localhost`, `100.64.0.0/10`, and, in debug builds only,
+    `10.0.2.2`; `/pair` also refuses other addresses.
 11. **Phone and tablet layouts, sized to the user's devices** (2026-11-23): a Samsung Galaxy S24
     (360×780 CSS px) and a Galaxy Tab S9 (800×1280 portrait, 1280×800 landscape). Below 768 px the
     phone layout; 768–1279 the tablet layout (sidebar as a drawer, lesson and right panel side by
@@ -186,8 +190,8 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 
 ### PR 1
 - **Vitest:** connection storage and mode selection; `401` → `/pair`; `/pair` errors.
-- **Tests:** the release network config allows only `100.64.0.0/10`; the debug config adds only
-  `10.0.2.2`; desktop builds still bundle the sidecar; server CORS allows `http://localhost`.
+- **Tests:** the guard allows only `localhost` and `100.64.0.0/10`, and adds only `10.0.2.2` in
+  debug builds (JVM unit test and a Python config test), and blocks a real request on the emulator; desktop builds still bundle the sidecar; server CORS allows `http://localhost`.
 - **Playwright** (`app/verify/shell/mobile-pair.flow.ts` at `360×780`): pair against a `--server`
   backend, bad code, `401` back to `/pair`.
 - **Emulator (agent):** debug `.apk` on the S24 and Tab S9 virtual devices: pair, one fake-model

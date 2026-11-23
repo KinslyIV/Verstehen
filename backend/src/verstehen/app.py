@@ -383,6 +383,7 @@ def create_app(settings: Settings) -> FastAPI:
                 "tauri://localhost",
                 "http://tauri.localhost",
                 "https://tauri.localhost",
+                "http://localhost",
             ],
             allow_methods=["*"],
             allow_headers=["authorization", "x-verstehen-token", "content-type"],

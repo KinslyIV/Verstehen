@@ -1,4 +1,15 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { goto } from '$app/navigation';
+import { resolve } from '$app/paths';
+import {
+	clientMode,
+	dropToken,
+	isPaired,
+	loadConnection,
+	parseServerAddress,
+	saveConnection,
+	type ServerConnection
+} from './connection';
 import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
@@ -87,8 +98,25 @@ export class ApiError extends Error {
 	}
 }
 
+async function returnToPairing(): Promise<void> {
+	await dropToken();
+	await goto(resolve('/pair'));
+}
+
+/** Where requests go and how they authenticate: the sidecar, or the paired server. */
+async function endpoint(): Promise<{ base: string; auth: Record<string, string> }> {
+	if (clientMode() === 'sidecar')
+		return { base: await baseUrl(), auth: token ? { 'x-verstehen-token': token } : {} };
+	const connection = await loadConnection();
+	if (!isPaired(connection)) {
+		await returnToPairing();
+		throw new ApiError(401, undefined, 'This device is not paired with a server.');
+	}
+	return { base: connection.server_url, auth: { authorization: `Bearer ${connection.token}` } };
+}
+
 async function request(path: string, init: RequestInit = {}): Promise<Response> {
-	const base = await baseUrl();
+	const { base, auth } = await endpoint();
 	const response = await fetch(`${base}${path}`, {
 		...init,
 		headers: {
@@ -96,9 +124,10 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 				? { 'content-type': 'application/json' }
 				: {}),
 			...init.headers,
-			...(token ? { 'x-verstehen-token': token } : {})
+			...auth
 		}
 	});
+	if (response.status === 401 && clientMode() === 'remote') await returnToPairing();
 	if (!response.ok) {
 		const body = await response.json().catch(() => ({}));
 		throw new ApiError(
@@ -110,6 +139,36 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 		);
 	}
 	return response;
+}
+
+/** Redeems a pairing code with the server at `address` and returns the new connection. */
+export async function pairDevice(
+	address: string,
+	code: string,
+	deviceName: string
+): Promise<ServerConnection> {
+	const server_url = parseServerAddress(address);
+	let response: Response;
+	try {
+		response = await fetch(`${server_url}/api/auth/pair`, {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ code: code.trim().toUpperCase(), device_name: deviceName.trim() })
+		});
+	} catch {
+		throw new Error(
+			`Can't reach ${server_url}. Check the address and that Tailscale is connected.`
+		);
+	}
+	if (response.status === 429)
+		throw new Error('Too many wrong codes. Wait a few minutes, then try again.');
+	if (response.status === 400)
+		throw new Error('That code is invalid or has expired. Create a new one on the laptop.');
+	if (!response.ok) throw new Error(`The server refused pairing (HTTP ${response.status}).`);
+	const paired: { device_id: string; token: string } = await response.json();
+	const connection = { server_url, device_id: paired.device_id, token: paired.token };
+	await saveConnection(connection);
+	return connection;
 }
 
 export async function health(): Promise<{ status: string }> {

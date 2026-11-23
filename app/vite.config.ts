@@ -4,7 +4,14 @@ import { defineConfig } from 'vitest/config';
 import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 
+const client = process.env.PUBLIC_VERSTEHEN_CLIENT ?? 'sidecar';
+const remoteVerify = client === 'remote';
+
 export default defineConfig({
+	define: {
+		__VERSTEHEN_CLIENT__: JSON.stringify(client),
+		__VERSTEHEN_EXTRA_HOSTS__: JSON.stringify(process.env.PUBLIC_VERSTEHEN_EXTRA_HOSTS ?? '')
+	},
 	plugins: [
 		tailwindcss(),
 		sveltekit({
@@ -14,7 +21,8 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			adapter: adapter({ fallback: 'index.html' })
+			outDir: remoteVerify ? '.svelte-kit-remote' : '.svelte-kit',
+			adapter: adapter({ fallback: 'index.html', pages: remoteVerify ? 'build-remote' : 'build' })
 		})
 	],
 	server: {

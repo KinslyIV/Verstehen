@@ -1,4 +1,4 @@
-.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image
+.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image android-setup android-debug android android-key
 
 setup:
 	uv sync --project backend --locked
@@ -67,3 +67,15 @@ app-image:
 
 api-types:
 	uv run --project backend python tools/api_types.py
+
+android-setup:
+	bash packaging/android.sh setup
+
+android-debug:
+	bash packaging/android.sh debug
+
+android:
+	bash packaging/android.sh release
+
+android-key:
+	bash packaging/android.sh key

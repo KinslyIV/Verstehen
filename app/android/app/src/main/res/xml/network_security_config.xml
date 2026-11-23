@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Cleartext is allowed here and restricted to Tailscale by CleartextGuard, because this file cannot express 100.64.0.0/10. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

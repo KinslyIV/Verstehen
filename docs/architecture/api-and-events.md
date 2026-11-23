@@ -72,7 +72,8 @@ In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation
   `Authorization: Bearer <token>` or `x-verstehen-token`, verified against SHA-256 hashes in
   `DevicesStore` and refused with `401` (`WWW-Authenticate: Bearer`) when missing, invalid, or
   revoked. CORS allows the Tauri origins (`tauri://localhost`, `http://tauri.localhost`,
-  `https://tauri.localhost`). The first device is bootstrapped with `verstehen mint-token <name>`,
+  `https://tauri.localhost`) and the Android app's page origin `http://localhost`
+  (Capacitor with `androidScheme: 'http'`). The first device is bootstrapped with `verstehen mint-token <name>`,
   and additional devices pair with short-lived single-use codes via `/api/auth/pair`. The listener
   does not exit on stdin EOF and serves cleartext HTTP assuming a trusted Tailscale (WireGuard)
   network.
@@ -81,6 +82,9 @@ In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation
 - **Startup handshake:** the sidecar prints exactly one stdout line, `{"port": N}`, once it listens.
   In desktop mode it exits when stdin closes or on SIGTERM.
 - SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header.
+- **Remote clients** (the Android app, or a build with `PUBLIC_VERSTEHEN_CLIENT=remote`) send
+  `Authorization: Bearer <token>` to the stored server URL. A `401` or a missing connection drops
+  the token, keeps the server address, and routes to `/pair` ([frontend shell](frontend-shell.md)).
 
 ## Rules
 
