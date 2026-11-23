@@ -16,23 +16,30 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 **M11a sidebar folders:**
 
-- **Folder Delete removes the folder with its empty subfolders.** It is enabled when no session or
-  notes source sits anywhere below the folder, and sends the whole subtree to
-  `DELETE /api/graph/sources` (empty folders only, as in Chains). The alternative, the
-  `delete-folder` action behind `folderIsEmpty`, refuses any folder that still has a subfolder, so
-  the learner would delete bottom-up. LH also removes a session-free folder with its subfolders.
+- **Folder Delete is one server-checked operation on the folder's tree.** The menu item is enabled
+  when no session or notes source sits anywhere below the folder, and sends `delete-folder-tree`
+  with only the folder's id. Inside the graph transaction the server recomputes the current
+  subtree, and either removes all of it or answers 409 (`folder_not_empty`) and removes nothing,
+  so a child moved out, or a source moved in, after the sidebar last read cannot be lost or
+  orphaned. The earlier design sent the descendant ids and let the server delete each one still
+  empty, which could remove part of a changed tree. The `delete-folder` action refuses any folder
+  with a subfolder, and Chains keeps its own `DELETE /api/graph/sources` path. LH also removes a
+  session-free folder with its subfolders.
 - **Touch input, not the width tier, turns sidebar drags off.** The check is `pointer: coarse`
   (`layout.coarse`), so a narrow desktop window with a mouse can still drag, and a touch laptop's
   touchscreen cannot start one. The alternative, `tier !== 'desktop'`, would block mouse drags in
   a narrow window.
 - **The search shortcut opens the sidebar and answers to Cmd too.** Ctrl or Cmd+Shift+F opens a
-  collapsed sidebar or the phone drawer, then focuses the field, and does nothing while a dialog,
-  popover, or menu is open (LH: `lh:kbd-sessions-search`, same guards). The query is not
-  remembered across reloads (LH does not either).
+  collapsed sidebar or the closed phone drawer, then focuses the field once it exists. The
+  listener lives in the always-mounted lesson layout (`search-shortcut.svelte`), because the
+  drawer's contents are unmounted while it is closed. It does nothing while a dialog, popover, or
+  menu is open; only the drawer itself does not block it (LH: `lh:kbd-sessions-search`, same
+  guards). The query is not remembered across reloads (LH does not either).
 - **The graph funnel sits at the top left of the graph page, not in the app header.** LH portals it
   into the header after the sidebar toggle; here the header belongs to the lesson layout, so the
-  button is the page's first control below it. The right-hand toolbar leaves room for it on narrow
-  screens. The alternative, a header slot filled by the graph page, would couple the layout to it.
+  button is the page's first control below it. The funnel and right-hand toolbar share one wrapping
+  flex row, so a selected folder name never overlaps the toolbar on narrow screens. The alternative,
+  a header slot filled by the graph page, would couple the layout to it.
 - **Touch rows are 44 px; the checkbox itself is 20 px.** Each folder row is one label, so a tap
   anywhere on it toggles the folder; a literal 44 px checkbox would look out of place.
 - **Session stats turns follow LH's three `appendTurnUsage` sites.** Lesson runs, each compaction
@@ -46,10 +53,16 @@ alternative, and the consequence, until the user reviews them at the end of the 
   list is longer than LH would show. A migration adding a turn id column would regroup them but
   pauses sync until both backends update.
 - **The Claude Code window comes from the adapter's runtime-limit cache** (`claude_code_limits`,
-  read only, no probe). It is per server process, not the session's latest Claude Code report as
-  in LH, and is empty until a Claude Code turn has run; the stats row then shows the numerator only.
-- **Calls that billed no tokens are ignored** when counting turns and steps, as LH logs only steps
-  with usage; a turn whose only call billed nothing is not listed.
+  read only, no probe, scoped to the adapter's already-inspected binary path and version). It is
+  per server process, not the session's latest Claude Code report as in LH, and is empty until a
+  Claude Code turn has run; the stats row then shows the numerator only.
+- **A call cancelled while streaming keeps its usage row but is not a step in the stats.** LH does
+  not count an aborted message as a billed step (`teacher-agent.ts`: "a cancelled call is not a
+  billed step"). The row is still saved, for accounting and sync, with `:aborted` appended to its
+  request id (`<run id>#<n>:aborted`); `session_stats` skips such rows in turns, steps, totals, and
+  the cache hit rate. The simplest reliable link: entries carry no run id or step number, so
+  matching an aborted entry to its row would mean guessing by time and tokens. Calls with no
+  tokens are kept as recorded, as LH keeps them, and imported LH steps are preserved.
 - **`PUT /api/prompts/{path}/enabled` replies `{enabled}`, the switch as stored, not `{ok}`.**
   LH counts a prompt switch as saved only when the write's acknowledgement shows the new state; the
   per-prompt endpoint needed a state in its reply to do the same. The alternative was treating any

@@ -29,3 +29,12 @@ export function visibleNodeIds(
 	}
 	return visible;
 }
+
+/** Whether a node is on the canvas: it exists and survives the search, the folder filter, and implication completeness. */
+export function isNodeShown(
+	nodes: readonly { id: string }[],
+	visible: ReadonlySet<string> | null,
+	id: string
+): boolean {
+	return nodes.some((node) => node.id === id) && (visible === null || visible.has(id));
+}

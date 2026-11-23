@@ -128,4 +128,19 @@ test('sidebar-folders', async ({ page, request }) => {
 		path: test.info().outputPath('after-delete.png'),
 		animations: 'disabled'
 	});
+
+	// A parent and its empty child go together in one delete.
+	await dragRow(algebra).dragTo(page.getByTestId('sidebar-root-drop'));
+	await expect.poll(async () => (await organization()).placements[algebra]?.folder_id).toBeNull();
+	await folderMenu('Mathematics');
+	await page.getByRole('menuitem', { name: 'New subfolder' }).click();
+	await nameInput.fill('Pair');
+	await nameInput.press('Enter');
+	await expect(folderRow((await folderNamed('Pair')).id)).toBeVisible();
+	await folderMenu('Mathematics');
+	await page.getByRole('menuitem', { name: 'Delete' }).click();
+	await expect(page.getByRole('button', { name: 'Mathematics', exact: true })).toHaveCount(0);
+	await expect(page.getByRole('button', { name: 'Pair', exact: true })).toHaveCount(0);
+	await expect.poll(async () => (await organization()).folders).toEqual([]);
+	await expect(geometryLink).toBeVisible();
 });

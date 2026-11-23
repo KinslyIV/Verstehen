@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
@@ -13,6 +14,13 @@ from verstehen.providers.events import log_provider_event
 from verstehen.providers.resolve import ModelRole, ResolvedModel
 from verstehen.store.entries import EntryUsage
 from verstehen.store.usage import UsageRecord, UsageStore
+
+ABORTED_CALL = ":aborted"
+
+
+def is_aborted_call(request_id: str) -> bool:
+    """A call cancelled while streaming: saved for accounting, but not a billed step in stats."""
+    return request_id.endswith(ABORTED_CALL)
 
 
 def response_usage(response: ModelResponse) -> EntryUsage:
@@ -106,5 +114,8 @@ class UsageModel(WrapperModel):
         ) as stream:
             try:
                 yield stream
+            except asyncio.CancelledError:
+                request_id += ABORTED_CALL
+                raise
             finally:
                 await self.record(request_id, stream.get())

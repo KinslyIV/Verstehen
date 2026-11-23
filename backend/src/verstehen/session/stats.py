@@ -9,6 +9,7 @@ from verstehen.graph.costs import (
     add_usage,
     subscription_provider,
 )
+from verstehen.providers.usage import is_aborted_call
 from verstehen.store.entries import AssistantEntry, EntriesStore, Entry
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.usage import UsageRecord, UsageStore
@@ -57,12 +58,11 @@ def measured_context_tokens(entries: Sequence[Entry]) -> int | None:
 
 
 def turns_of(records: list[UsageRecord]) -> list[list[UsageRecord]]:
-    """Calls grouped into turns in order; all-zero calls bill nothing and are left out."""
+    """Calls grouped into turns in order; a call cancelled mid-stream was not a billed step."""
     counted = [
         record
         for record in records
-        if record.role in TURN_ROLES
-        and any(getattr(record, key) for key in TOKEN_FIELDS)
+        if record.role in TURN_ROLES and not is_aborted_call(record.request_id)
     ]
     turns: dict[str, list[UsageRecord]] = {}
     for record in sorted(counted, key=lambda call: (call.created_at, call.request_id)):

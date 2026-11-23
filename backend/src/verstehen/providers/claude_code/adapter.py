@@ -141,8 +141,20 @@ class ClaudeCodeAccountAdapter:
         pass
 
     def seen_limits(self) -> dict[str, int]:
-        """The runtime context limits this process has read, by model; never probes."""
-        return {model: limit for (_, _, model), limit in self.runtime_limits.items()}
+        """The limits read for the binary already inspected, by model; never inspects or probes."""
+        status = self.binary_status
+        if (
+            status is None
+            or status.state not in ("tested", "untested")
+            or status.path is None
+            or status.version is None
+        ):
+            return {}
+        return {
+            model: limit
+            for (path, version, model), limit in self.runtime_limits.items()
+            if path == str(status.path) and version == status.version
+        }
 
     async def context_limit(self, account: Account, model: str) -> int | None:
         status = await self.status()

@@ -10,6 +10,7 @@ import {
 	saveOpenFolders,
 	sessionMeta,
 	toggleSearchFold,
+	unfoldSearchFold,
 	walkIndex
 } from './session-list-model.js';
 
@@ -78,4 +79,12 @@ test('arrow_keys_start_at_the_first_or_last_row_and_wrap_around', () => {
 	expect(walkIndex(0, -1, 3)).toBe(2);
 	expect(walkIndex(1, 1, 3)).toBe(2);
 	expect(walkIndex(5, 1, 3)).toBe(0);
+});
+
+test('a_new_subfolder_unfolds_its_parent_in_the_search_state_and_leaves_open_parents_alone', () => {
+	const folded = toggleSearchFold(noSearchFolds, 'calc', 'f1');
+	expect(isSearchFolded(unfoldSearchFold(folded, 'calc', 'f1'), 'calc', 'f1')).toBe(false);
+	const open = noSearchFolds;
+	expect(unfoldSearchFold(open, 'calc', 'f1')).toBe(open);
+	expect(readOpenFolders().size).toBe(0);
 });

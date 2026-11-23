@@ -531,7 +531,8 @@ export type OrganizationAction =
 	| { action: 'rename-folder'; id: string; name: string }
 	| { action: 'rename-source'; id: string; name: string }
 	| { action: 'move'; kind: 'source' | 'folder'; id: string; parent_id: string | null }
-	| { action: 'delete-folder'; id: string };
+	| { action: 'delete-folder'; id: string }
+	| { action: 'delete-folder-tree'; id: string };
 export async function getSourceDirectory(signal?: AbortSignal): Promise<SourceDirectory> {
 	return (await request('/api/graph/sources', { signal })).json();
 }

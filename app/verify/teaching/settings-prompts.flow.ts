@@ -34,7 +34,10 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 	await editor.getByLabel('Override Markdown').fill('# Verify override\n\nTeach with care.');
 	await editor.getByRole('button', { name: 'Preview' }).click();
 	await expect(editor.getByRole('heading', { name: 'Verify override' })).toBeVisible();
-	await page.screenshot({ path: test.info().outputPath('prompt-edit-preview.png'), animations: 'disabled' });
+	await page.screenshot({
+		path: test.info().outputPath('prompt-edit-preview.png'),
+		animations: 'disabled'
+	});
 	const activated = page.waitForResponse((response) =>
 		response.url().endsWith(`/api/prompts/${TEACHING}/enabled`)
 	);

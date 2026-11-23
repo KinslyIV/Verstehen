@@ -20,7 +20,15 @@ test('mobile-sidebar-folders', async ({ page, request }) => {
 	});
 
 	await page.goto('/');
-	await page.getByRole('button', { name: 'Toggle Sidebar' }).tap();
+	await expect(page.getByTestId('phone-heading')).toBeVisible();
+	await expect(page.getByRole('link', { name: 'Teaching', exact: true })).toBeHidden();
+	const search = page.getByTestId('session-search');
+	await expect(search).toHaveCount(0);
+
+	// With a keyboard, Ctrl+Shift+F opens the closed drawer and focuses the search field.
+	await page.keyboard.press('Control+Shift+F');
+	await expect(search).toBeFocused();
+	await expect(page.getByRole('link', { name: 'Teaching', exact: true })).toBeVisible();
 	const toggle = page.getByTestId(`sidebar-folder-${folderId}`);
 	const link = page.getByRole('link', { name: /Algebra basics/ });
 	await expect(toggle).toHaveAttribute('aria-expanded', 'false');
@@ -31,7 +39,6 @@ test('mobile-sidebar-folders', async ({ page, request }) => {
 	).toBeGreaterThanOrEqual(44);
 
 	// Searching opens the folder holding a match, and clearing the search closes it again.
-	const search = page.getByTestId('session-search');
 	expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);
 	await search.fill('algebra');
 	await expect(link).toBeVisible();

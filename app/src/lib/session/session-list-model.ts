@@ -75,6 +75,11 @@ export function toggleSearchFold(folds: SearchFolds, query: string, id: string):
 	return { query, ids };
 }
 
+/** Shows a folder that this search closed; a folder already shown is left alone. */
+export function unfoldSearchFold(folds: SearchFolds, query: string, id: string): SearchFolds {
+	return isSearchFolded(folds, query, id) ? toggleSearchFold(folds, query, id) : folds;
+}
+
 /** The row the arrow keys land on: the first or last from nowhere, else one step with wrap-around. */
 export function walkIndex(current: number | null, direction: 1 | -1, count: number): number {
 	if (current === null || current >= count) return direction === 1 ? 0 : count - 1;

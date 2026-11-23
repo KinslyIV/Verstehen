@@ -2,7 +2,7 @@ import { expect, test } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
 import QuestionDock from './question-dock.svelte';
-import { escAbortTarget } from './keyboard.js';
+import { escAbortTarget, hasOpenOverlay } from './keyboard.js';
 import { parseQuestionInput } from './question-input.js';
 import { probeArguments } from './question-fixtures.js';
 import type { QuestionAnswer } from '#lib/api/client.js';
@@ -115,4 +115,21 @@ test('escape_prioritizes_an_open_overlay_then_the_pending_question_then_the_turn
 	expect(
 		escAbortTarget({ overlay: false, pending: false, problem: false, busy: false })
 	).toBeNull();
+});
+
+test('the_phone_drawer_alone_does_not_block_the_search_shortcut_but_an_open_menu_does', () => {
+	const drawer = document.createElement('div');
+	drawer.dataset.slot = 'sidebar';
+	drawer.dataset.mobile = 'true';
+	drawer.dataset.state = 'open';
+	document.body.append(drawer);
+	expect(hasOpenOverlay()).toBe(true);
+	expect(hasOpenOverlay({ ignoreDrawer: true })).toBe(false);
+	const menu = document.createElement('div');
+	menu.setAttribute('data-context-menu-content', '');
+	menu.dataset.state = 'open';
+	document.body.append(menu);
+	expect(hasOpenOverlay({ ignoreDrawer: true })).toBe(true);
+	drawer.remove();
+	menu.remove();
 });

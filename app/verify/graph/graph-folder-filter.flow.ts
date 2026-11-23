@@ -37,6 +37,10 @@ test('graph-folder-filter', async ({ page, request, seedGraph }) => {
 	await expect(page.getByTestId('graph-canvas')).toBeVisible();
 	await waitForLayout(request, 22);
 	await expect(filter).toHaveAttribute('data-active', 'false');
+	// An open card closes when the filter hides its node.
+	const a1 = await nodePoint(page, request, 'n_a1');
+	await page.mouse.click(a1.x, a1.y);
+	await expect(card).toBeVisible();
 	await filter.click();
 	await expect(panel).toBeVisible();
 	await expect(tick('Maths')).toBeVisible();
@@ -47,6 +51,7 @@ test('graph-folder-filter', async ({ page, request, seedGraph }) => {
 
 	// One folder narrows the canvas to the nodes its sources contributed.
 	await tick('Notes').check();
+	await expect(card).toHaveCount(0);
 	await expect(filter).toHaveAttribute('data-active', 'true');
 	await expect(page.getByTestId('graph-folder-filter-name')).toHaveText('Notes');
 	await page.keyboard.press('Escape');
@@ -78,6 +83,24 @@ test('graph-folder-filter', async ({ page, request, seedGraph }) => {
 	await expect(filter).toHaveAttribute('data-active', 'false');
 	await page.keyboard.press('Escape');
 	await expect.poll(() => shows('n_c1')).toBe(true);
+
+	// An open node menu closes when a directory change hides its node.
+	await filter.click();
+	await tick('Maths').check();
+	await page.keyboard.press('Escape');
+	await page.mouse.click(a1.x, a1.y, { button: 'right' });
+	const menu = page.getByTestId('node-context-menu');
+	await expect(menu).toBeVisible();
+	await organize({
+		action: 'move',
+		kind: 'source',
+		id: ids['Slope and rates'],
+		parent_id: null
+	});
+	await expect(menu).toHaveCount(0);
+	await filter.click();
+	await page.getByTestId('graph-folder-filter-clear').click();
+	await page.keyboard.press('Escape');
 
 	// A deleted folder drops out of the remembered choice without a message.
 	await filter.click();

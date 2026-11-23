@@ -1,5 +1,4 @@
 import {
-	deleteSources,
 	getSourceDirectory,
 	organizeSources,
 	type OrganizationAction,
@@ -29,18 +28,17 @@ export class SourceDirectoryReader {
 	/** Resolves with the id of a created folder. */
 	change(action: OrganizationAction): Promise<string | undefined> {
 		return this.queue(async () => {
-			const acknowledged = await organizeSources(action);
-			await this.read();
-			return acknowledged.created_folder_id ?? undefined;
+			try {
+				return (await organizeSources(action)).created_folder_id ?? undefined;
+			} finally {
+				await this.read();
+			}
 		});
 	}
 
-	/** Removes folders that hold no source; the server refuses any that still do. */
-	removeFolders(ids: string[]): Promise<void> {
-		return this.queue(async () => {
-			await deleteSources({ source_ids: [], folder_ids: ids, delete_sessions: false });
-			await this.read();
-		});
+	/** Removes a folder with everything below it, or none of it if a source sits anywhere inside. */
+	removeFolderTree(id: string): Promise<void> {
+		return this.change({ action: 'delete-folder-tree', id }).then(() => {});
 	}
 
 	clearFailure(): void {

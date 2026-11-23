@@ -50,6 +50,16 @@ test('session-search', async ({ page, request }) => {
 	await expect(links.nth(2)).toContainText('Notes on limits');
 	await page.screenshot({ path: test.info().outputPath('search.png'), animations: 'disabled' });
 
+	// An open folder menu blocks the shortcut.
+	await search.blur();
+	await page.getByTestId(`sidebar-folder-${maths}`).click({ button: 'right' });
+	await expect(page.getByRole('menuitem', { name: 'New subfolder' })).toBeVisible();
+	await page.keyboard.press('Control+Shift+F');
+	await expect(search).not.toBeFocused();
+	await page.keyboard.press('Escape');
+	await expect(page.getByRole('menuitem', { name: 'New subfolder' })).toHaveCount(0);
+	await search.focus();
+
 	// The arrow keys walk the visible rows and wrap; Enter opens the walked one and leaves the field.
 	await page.keyboard.press('ArrowDown');
 	await expect(walked).toHaveCount(1);
@@ -83,6 +93,27 @@ test('session-search', async ({ page, request }) => {
 	await expect(folder(maths)).toHaveAttribute('aria-expanded', 'false');
 	await expect(folder(humanities)).toHaveAttribute('aria-expanded', 'true');
 	await expect(page.getByRole('link', { name: /History of Rome/ })).toBeVisible();
+
+	// A new subfolder made during a search never changes the remembered open folders.
+	const rememberedOpen = () =>
+		page.evaluate(() => localStorage.getItem('verstehen-sidebar-open-folders'));
+	const openBefore = await rememberedOpen();
+	await search.fill('calculus');
+	await expect(folder(maths)).toHaveAttribute('aria-expanded', 'true');
+	await page.getByTestId(`sidebar-folder-${maths}`).click({ button: 'right' });
+	await page.getByRole('menuitem', { name: 'New subfolder' }).click();
+	await page.getByTestId('source-name-input').fill('Draft');
+	await page.getByTestId('source-name-input').press('Enter');
+	await expect
+		.poll(async () =>
+			(await (await request.get('/api/graph/sources')).json()).organization.folders.some(
+				(entry: { name: string }) => entry.name === 'Draft'
+			)
+		)
+		.toBe(true);
+	await search.fill('');
+	await expect(folder(maths)).toHaveAttribute('aria-expanded', 'false');
+	expect(await rememberedOpen()).toBe(openBefore);
 
 	// The kind filter narrows first; Esc leaves the field and keeps the query.
 	await search.fill('calc');

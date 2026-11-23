@@ -315,6 +315,11 @@ async def write_ledger(
     )
 
 
+async def read_session_ids(connection: Connection) -> set[str]:
+    async with connection.execute("SELECT id FROM sessions") as cursor:
+        return {str(row[0]) for row in await cursor.fetchall()}
+
+
 class GraphStore:
     """Own graph ledgers and serialize each mutation with its coverage and revision.
     Callers mutate a private ledger inside transaction; failures persist nothing.
@@ -365,13 +370,15 @@ class GraphStore:
         return sources, placements
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncGenerator[GraphLedger]:
+    async def _ledger_transaction(
+        self,
+    ) -> AsyncGenerator[tuple[Connection, GraphLedger]]:
         changed = False
         async with self.database.transaction() as connection:
             ledger = await read_ledger(connection)
             revision = ledger.revision
             previous = ledger.model_copy(deep=True)
-            yield ledger
+            yield connection, ledger
             if ledger != previous:
                 ledger.revision = revision + 1
                 await write_ledger(connection, ledger, previous, log_sync=True)
@@ -379,3 +386,16 @@ class GraphStore:
                 changed = True
         if changed and self.changed is not None:
             self.changed(ledger.revision)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[GraphLedger]:
+        async with self._ledger_transaction() as (_, ledger):
+            yield ledger
+
+    @asynccontextmanager
+    async def transaction_with_session_ids(
+        self,
+    ) -> AsyncGenerator[tuple[GraphLedger, set[str]]]:
+        """Run a graph transaction alongside the current session IDs in the same lock."""
+        async with self._ledger_transaction() as (connection, ledger):
+            yield ledger, await read_session_ids(connection)

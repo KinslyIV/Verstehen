@@ -96,7 +96,8 @@ Frontend, `app/src/`:
   `sideQuestion` (the answer); titles, workers, and extraction are left out. `TurnRun.id` is
   passed to `UsageModel`, which names each call `<run id>#<n>`, so a run's calls group by the
   prefix (the LearnHarness import already writes `<turn id>#<n>`). A row without `#`, as saved
-  before this, is a one-step turn of its own; a call that billed no token is ignored. Turns order by
+  before this, is a one-step turn of its own; a call cancelled while streaming is saved with `:aborted` on its request id and skipped by the
+  stats (LH does not count it as a billed step), and a call with no tokens stays a step. Turns order by
   their first call. A retry, a wake, and a handoff are each their own run.
 - **Labels and totals.** `graph/costs.py`'s `subscription_provider` maps `claude_code` to `CLI`
   and `chatgpt:…` to `ChatGPT`; anything else is unpriced and has no label (the UI shows `—`,

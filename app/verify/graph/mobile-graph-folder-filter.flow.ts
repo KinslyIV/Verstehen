@@ -1,3 +1,4 @@
+import type { Locator } from '@playwright/test';
 import { test, expect } from '../fixtures';
 import { demoGraph, nodePoint, sessionIds, waitForLayout } from '../graph';
 
@@ -14,7 +15,11 @@ test('mobile-graph-folder-filter', async ({ page, request, seedGraph }) => {
 	const organize = async (data: object) =>
 		(await (await request.post('/api/graph/sources', { data })).json()).created_folder_id;
 	const maths = await organize({ action: 'create-folder', name: 'Maths', parent_id: null });
-	const notes = await organize({ action: 'create-folder', name: 'Notes', parent_id: null });
+	const notes = await organize({
+		action: 'create-folder',
+		name: 'Advanced calculus and mathematical analysis course notes',
+		parent_id: null
+	});
 	for (const [id, parent_id] of [
 		[ids.Derivatives, maths],
 		['src_limits', notes]
@@ -63,6 +68,24 @@ test('mobile-graph-folder-filter', async ({ page, request, seedGraph }) => {
 		await expect(filter).toHaveAttribute('data-active', 'true');
 		await page.keyboard.press('Escape');
 		await expect(panel).toBeHidden();
+		const touches = async (a: Locator, b: Locator) => {
+			const first = (await a.boundingBox())!;
+			const second = (await b.boundingBox())!;
+			return (
+				first.x < second.x + second.width &&
+				second.x < first.x + first.width &&
+				first.y < second.y + second.height &&
+				second.y < first.y + first.height
+			);
+		};
+		for (const neighbour of [
+			page.getByRole('textbox', { name: 'Search nodes' }),
+			page.getByTestId('open-chain-table'),
+			page.getByRole('button', { name: 'Graph display settings' })
+		])
+			expect(await touches(filter, neighbour), 'the toolbar leaves the funnel its space').toBe(
+				false
+			);
 		await expect.poll(() => tapShows('n_d1')).toBe(true);
 		expect(await tapShows('n_a1')).toBe(false);
 		await page.screenshot({

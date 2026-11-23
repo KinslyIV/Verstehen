@@ -1,13 +1,21 @@
+import asyncio
 import json
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from fastapi.testclient import TestClient
+from pydantic_ai.messages import ModelMessage, ModelRequest
+from pydantic_ai.models import ModelRequestParameters
+from pydantic_ai.models.function import AgentInfo, FunctionModel
 
 from verstehen.app import create_app
 from verstehen.config import Settings
+from verstehen.providers.accounts import Account
+from verstehen.providers.resolve import ResolvedModel
+from verstehen.providers.usage import UsageModel
 from verstehen.session.stats import measured_context_tokens, session_stats
+from verstehen.store.database import open_database
 from verstehen.store.entries import (
     AssistantEntry,
     EntryUsage,
@@ -15,7 +23,10 @@ from verstehen.store.entries import (
     TextPart,
     UserEntry,
 )
-from verstehen.store.usage import UsageRecord
+from verstehen.store.migrate import migrate
+from verstehen.store.sessions import SessionsStore
+from verstehen.store.settings import ModelPick
+from verstehen.store.usage import UsageRecord, UsageStore
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -99,11 +110,10 @@ def test_compaction_and_side_answers_are_turns_but_titles_and_workers_are_not():
     ]
 
 
-def test_calls_that_billed_nothing_are_ignored():
+def test_calls_that_billed_no_tokens_are_kept_as_recorded():
     zero = call("a#1", 0, input=0, output=0)
-    assert stats([zero]).turns == []
-    result = stats([zero, call("a#2", 1)])
-    assert result.turns[0].steps == 1
+    assert [turn.steps for turn in stats([zero]).turns] == [1]
+    assert [turn.steps for turn in stats([zero, call("a#2", 1)]).turns] == [2]
 
 
 def test_turns_are_labelled_by_plan_and_never_priced_as_zero():
@@ -203,3 +213,53 @@ def test_two_runs_never_share_a_request_id_and_make_two_turns(tmp_path: Path):
         assert body["context_tokens"] == 19
         assert body["totals"]["dollars"] == 0
         assert body["claude_code_limits"] == {}
+
+
+def test_a_stream_stopped_mid_call_keeps_its_row_but_stats_skip_it(tmp_path: Path):
+    async def scenario():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            session = await SessionsStore(database).create("S")
+            usage_store = UsageStore(database)
+            gate = asyncio.Event()
+
+            async def stream(messages: list[ModelMessage], info: AgentInfo):
+                yield "A partial reply"
+                await gate.wait()
+                yield " that never ends"
+
+            resolved = ResolvedModel(
+                FunctionModel(stream_function=stream),
+                Account(id="fake", kind="fake", label="Fake"),
+                ModelPick(account="fake", model="fake"),
+                False,
+                None,
+            )
+            model = UsageModel(
+                resolved, usage_store, session.id, "teacher", turn_id="run"
+            )
+
+            async def call():
+                request: list[ModelMessage] = [
+                    ModelRequest.user_text_prompt("hello there")
+                ]
+                async with model.request_stream(
+                    request, None, ModelRequestParameters()
+                ) as response:
+                    async for _ in response:
+                        pass
+
+            task = asyncio.create_task(call())
+            await asyncio.sleep(0.1)
+            task.cancel()
+            with suppress(asyncio.CancelledError):
+                await task
+            return await usage_store.list(session.id)
+
+    rows = asyncio.run(scenario())
+    assert [row.request_id for row in rows] == ["run#1:aborted"]
+    assert rows[0].output_tokens > 0 and rows[0].input_tokens > 0
+    result = stats(rows)
+    assert result.turns == []
+    assert result.totals.runs == 0 and result.totals.tokens["output_tokens"] == 0
+    assert result.cache_hit_rate is None

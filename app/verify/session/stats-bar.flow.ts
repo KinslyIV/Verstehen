@@ -78,6 +78,8 @@ test.describe('on a phone', () => {
 		const popover = (await detail.boundingBox())!;
 		expect(popover.x).toBeGreaterThanOrEqual(0);
 		expect(popover.x + popover.width).toBeLessThanOrEqual(360);
+		expect(popover.y).toBeGreaterThanOrEqual(0);
+		expect(popover.y + popover.height).toBeLessThanOrEqual(780);
 		await page.screenshot({ path: test.info().outputPath('popover.png'), animations: 'disabled' });
 	});
 });

@@ -110,7 +110,7 @@ LH refs: `components/stats-bar.tsx`, `src/core/prices.ts` (`sessionCacheHitRate`
     (prober, teacher, practitioner), each compaction summary, and each side answer (the last two are
     one-step turns, as in LH's `compaction.ts` and `side-chat.ts`); not titles, workers, or
     extraction. A run's calls share the request id prefix `<run id>#<n>`; rows without a `#` and
-    rows that billed nothing are handled as described in decisions. Each turn has its time, model,
+    aborted calls are handled as described in decisions. Each turn has its time, model,
     step (call) count, and cost label.
   - Totals with `graph/costs.py`'s `CostTotals`/`add_usage` fold: Claude Code → `CLI`, ChatGPT →
     `ChatGPT`, anything else unpriced. Verstehen has no priced (API-key) provider yet, so dollars

@@ -8,7 +8,6 @@
 	import type { SessionItem } from '#lib/api/client.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
-	import { useSidebar } from '#lib/components/ui/sidebar/context.svelte.js';
 	import { layout } from '#lib/layout/tiers.svelte.js';
 	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
 	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
@@ -18,14 +17,13 @@
 	import {
 		buildSessionTree,
 		flattenSessionTree,
-		folderEntries,
 		folderHoldsNoSources
 	} from '#lib/graph/source-organization.js';
 	import NewFolderRow from './new-folder-row.svelte';
 	import RenameSession from './rename-session.svelte';
 	import SidebarFolderRow from './sidebar-folder-row.svelte';
 	import { sessionIndent } from './sidebar-indent.js';
-	import { hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { sidebarSearch } from '#lib/session/sidebar-search.svelte.js';
 	import { SessionRows } from '#lib/session/session-rows.svelte.js';
 	import {
 		isSearchFolded,
@@ -38,6 +36,7 @@
 		saveOpenFolders,
 		sessionMeta,
 		toggleSearchFold,
+		unfoldSearchFold,
 		walkIndex,
 		type KindFilter
 	} from '#lib/session/session-list-model.js';
@@ -53,7 +52,6 @@
 		(action) => folders.change(action)
 	);
 	const draggable = $derived(organization !== undefined && !layout.coarse);
-	const sidebar = useSidebar();
 	let query = $state('');
 	let searchFolds = $state(noSearchFolds);
 	let walked = $state<number | null>(null);
@@ -105,31 +103,13 @@
 		else setFolderOpen(id, !openFolders.has(id));
 	}
 	function startSubfolder(parentId: string) {
-		if (searching && !isOpen(parentId))
-			searchFolds = toggleSearchFold(searchFolds, query, parentId);
+		if (searching) searchFolds = unfoldSearchFold(searchFolds, query, parentId);
 		else setFolderOpen(parentId, true);
 		creatingIn = { parentId };
 	}
 	function setQuery(value: string) {
 		query = value;
 		walked = null;
-	}
-	function focusSearch(event: KeyboardEvent) {
-		const mobileDrawerOpen = sidebar.isMobile && sidebar.openMobile;
-		if (
-			!(event.ctrlKey || event.metaKey) ||
-			!event.shiftKey ||
-			event.altKey ||
-			event.key.toLowerCase() !== 'f' ||
-			event.defaultPrevented ||
-			event.isComposing ||
-			(hasOpenOverlay() && !mobileDrawerOpen)
-		)
-			return;
-		event.preventDefault();
-		if (sidebar.isMobile) sidebar.setOpenMobile(true);
-		else sidebar.setOpen(true);
-		requestAnimationFrame(() => search?.focus());
 	}
 	function searchKeydown(event: KeyboardEvent) {
 		if (event.key === 'Escape') {
@@ -153,6 +133,12 @@
 		}
 	}
 	$effect(() => {
+		if (!sidebarSearch.wanted || !search) return;
+		const field = search;
+		sidebarSearch.wanted = false;
+		requestAnimationFrame(() => field.focus());
+	});
+	$effect(() => {
 		if (walkedId === null) return;
 		list
 			?.querySelector(`[data-source-drag-row="${CSS.escape(walkedId)}"]`)
@@ -164,11 +150,9 @@
 	function deleteFolder(id: string) {
 		const directory = folders.directory;
 		if (!directory || !folderHoldsNoSources(directory, id)) return;
-		folders.removeFolders(folderEntries(directory, id).folders).catch(() => {});
+		folders.removeFolderTree(id).catch(() => {});
 	}
 </script>
-
-<svelte:window onkeydown={focusSearch} />
 
 {#snippet sessionRow(session: SessionItem, depth: number, parentId: string | null)}
 	<SourceDragRow

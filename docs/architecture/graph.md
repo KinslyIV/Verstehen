@@ -62,8 +62,9 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   in `localStorage` (`verstehen-graph-folder-filter`) and folders that no longer exist drop out
   silently. A proposition shows when any of its sources sits directly in a ticked folder (a source
   in a parent folder does not count); an implication node shows only when its conclusion and every
-  premise show, also under a node search (`visibleNodeIds`). Nothing in the graph or the
-  organization changes.
+  premise show, also under a node search (`visibleNodeIds`). Open node detail cards and node context
+  menus share the same visibility predicate (`isNodeShown`) as the canvas and close when their node
+  is hidden or deleted. Nothing in the graph or the organization changes.
 - **Picks.** One selection is shared by the new-session screen and the graph page. Sending adds the
   `graph-context` marker, projected to the model before the learner's first message.
 - **Deletion modes.** Deleting a session uses `preserve-graph` or `delete-nodes` (remove what only
