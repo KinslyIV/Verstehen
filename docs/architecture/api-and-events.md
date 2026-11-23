@@ -50,8 +50,9 @@ LearnHarness's two-stream model is kept:
 - **Notifications** (`GET /api/events`): "something changed, refetch". Types: `turn-started`,
   `turn-settled`, `chats-changed`, `compaction-changed`, `jobs-changed`, `side-chats-changed`,
   `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`, `sync-status-changed`.
-  The stream starts with a `: open` comment, so a client sees it accepted before the first event
-  (a server sends response headers with the first chunk), and a ping comment every 25 s.
+  The stream starts with a `: ping` comment sent once the subscription is registered, so a client
+  sees it accepted before the first event (a server sends response headers with the first chunk)
+  and misses nothing published after that; then a ping comment every 25 s without events.
 
 Server setup notes: `POST /api/server/accounts/chatgpt` returns a `state`-discriminated union
 (`started`, `host_key_required`, `ssh_password_required`); it and the local ChatGPT sign-in share
