@@ -651,6 +651,14 @@ NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
 )
+UV_SELF_UPDATE_PROBE_COMMAND = (
+    "if command -v pgrep >/dev/null 2>&1; then "
+    "pgrep -f '[/]uv self update' >/dev/null 2>&1; status=$?; "
+    'if [ "$status" -eq 0 ]; then echo running; '
+    'elif [ "$status" -eq 1 ]; then echo stopped; '
+    "else echo unknown; fi; "
+    "else echo unknown; fi"
+)
 INVOCATION_HEADER = "X-Verstehen-Invocation"
 SCHEMA_HEADER = "X-Verstehen-Schema"
 DEPLOYMENT_HEADER = "X-Verstehen-Deployment"
@@ -1188,9 +1196,7 @@ class ServerInstallService:
             except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:
                 try:
                     probe = await session.run(
-                        "if command -v pgrep >/dev/null 2>&1; then "
-                        "pgrep -f '[/]uv self update' >/dev/null 2>&1 && echo running || echo stopped; "
-                        "else echo unknown; fi",
+                        UV_SELF_UPDATE_PROBE_COMMAND,
                         timeout=15.0,
                     )
                 except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:

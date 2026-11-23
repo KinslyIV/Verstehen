@@ -36,6 +36,7 @@ from verstehen.sync.provision import (
     SYSTEMD_INVOCATION_COMMAND,
     TIME_WAIT_ALLOWANCE,
     TOKEN_CHECK_ATTEMPTS,
+    UV_SELF_UPDATE_PROBE_COMMAND,
     AsyncSshBackend,
     HostKeyChallenge,
     HostKeyMismatchError,
@@ -2808,6 +2809,7 @@ def test_stalled_uv_self_update_continues_when_stopped_and_releases_lock(
     ("updater_error", "probe_state", "probe_error"),
     [
         (TimeoutError("stalled"), "running", None),
+        (TimeoutError("stalled"), "unknown", None),
         (SshUnreachableError("channel interrupted"), "running", None),
         (
             TimeoutError("stalled"),
@@ -2844,6 +2846,36 @@ def test_stalled_uv_self_update_retains_lock_when_updater_may_still_run(
             )
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    ("exit_code", "expected"),
+    [
+        (0, "running"),
+        (1, "stopped"),
+        (2, "unknown"),
+        (3, "unknown"),
+        (None, "unknown"),
+    ],
+)
+def test_uv_self_update_probe_command_maps_pgrep_exit_statuses(
+    tmp_path: Path, exit_code: int | None, expected: str
+):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    if exit_code is not None:
+        pgrep = bin_dir / "pgrep"
+        pgrep.write_text(f"#!/bin/sh\nexit {exit_code}\n", encoding="utf-8")
+        pgrep.chmod(0o755)
+    result = subprocess.run(
+        ["/bin/sh", "-c", UV_SELF_UPDATE_PROBE_COMMAND],
+        env={"PATH": str(bin_dir)},
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=10,
+    )
+    assert result.stdout.strip() == expected
 
 
 def test_outdated_symlinked_system_uv_skips_self_update_fails_before_upload_and_releases_lock(

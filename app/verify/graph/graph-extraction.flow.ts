@@ -20,16 +20,15 @@ test('graph-extraction', async ({ page, request, appendEntries }) => {
 		}
 	]);
 	await page.goto(`/session/${id}`);
-	const coverage = page.waitForResponse(
-		(response) =>
-			response.request().method() === 'GET' &&
-			response.url().endsWith(`/api/sessions/${id}/coverage`) &&
-			response.status() === 200
+	const coverage = page.waitForEvent(
+		'requestfinished',
+		(req) =>
+			req.method() === 'GET' && new URL(req.url()).pathname === `/api/sessions/${id}/coverage`
 	);
 	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Keep going');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByText('Let’s keep going with the slope of a curve.')).toBeVisible();
-	await coverage;
+	expect((await (await coverage).response())?.status()).toBe(200);
 
 	await page.getByRole('link', { name: 'Knowledge graph' }).click();
 	await expect(page.getByTestId('pipeline-pill').first()).toContainText('Slope of a curve');
