@@ -15,6 +15,22 @@ first health check after 8.1 s against a new database and 3.5 s on a second laun
 configuration. The sidebar payload stayed around 14 KB. The packaged Arch first paint and
 canvas frame times need their own measurements.
 
+## Measurements (offline, fake model, temporary data, one run each)
+
+Method: in-process `TestClient` (no network), Pixal, source tree at the end of the review rounds.
+Sessions are user, assistant, and tool-result entries of a few hundred characters each.
+
+| Measurement | Before | After |
+|---|---|---|
+| `GET /api/sessions`, 80 sessions with 0 / 100 / 500 entries (median of 5) | 14 / 78 / 366 ms (recorded baseline, `e7329c6`, over HTTP) | 4.2 / 6.8 / 7.0 ms (16 KB each) |
+| Coverage refresh, one 9,000-entry session, 3,000 graph nodes, 5,000 coverage rows in other sessions | 228 ms (whole ledger and transcript) | 72 ms (`GET …/coverage`) |
+| Opening a 9,000-entry session (`GET /api/sessions/{id}`, 6.3 MB, median of 5) | 5,400 ms, of which `side_segments` took 5,580 ms (it rescanned the transcript for every entry) | 214 ms after scanning failed outputs once; `side_segments` 17 ms, entries read 57 ms |
+| Graph canvas, 300 nodes, wheel zoom (115 frames) and pan (50 frames) in headless Chromium (`graph-canvas-large`) | not measured (no baseline revision has this flow) | zoom frame p50 16.7 ms, p95 33.3 ms, max 33.4 ms, 0 frames over 50 ms, 0 long tasks; pan p50 16.7, p95 16.8, max 33.3 ms |
+| Reported graph click issue | not reproduced | the flow's click on the node nearest the centre at zoom 3 opens its card (headless Chromium, mouse); trackpad zoom on Arch stays open |
+
+Open: packaged Arch first paint, window and sidecar timings, native trackpad zoom, and streaming
+profiles need the laptop. Streaming was not profiled here.
+
 ## Startup and models
 
 - Tauri shell and frontend API connection: show the window before the sidecar is ready;

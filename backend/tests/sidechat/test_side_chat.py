@@ -973,3 +973,28 @@ def test_side_chat_lesson_document_redacts_open_problem_and_reveals_on_conclude(
     dismissed_doc = side_chat_lesson_document(dismissed)
     assert "### Concluded\n\nThe learner skipped this problem." in dismissed_doc
     assert "SECRET_SOLUTION_2X_PLUS_5" not in dismissed_doc
+
+
+def test_side_entry_points_scan_failed_outputs_once_however_long_the_session(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from verstehen.sidechat import segments
+
+    calls = []
+    real = segments.failed_output_call_ids
+    monkeypatch.setattr(
+        segments,
+        "failed_output_call_ids",
+        lambda entries: calls.append(1) or real(entries),
+    )
+    entries = [
+        item
+        for number in range(50)
+        for item in (
+            UserEntry(text=f"question {number}"),
+            AssistantEntry(parts=[TextPart(text=f"answer {number}")]),
+        )
+    ]
+    points = segments.side_entry_points(entries)
+    assert len(points) == 50
+    assert len(calls) == 1
