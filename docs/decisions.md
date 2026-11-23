@@ -29,6 +29,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
   collapsed sidebar or the phone drawer, then focuses the field, and does nothing while a dialog,
   popover, or menu is open (LH: `lh:kbd-sessions-search`, same guards). The query is not
   remembered across reloads (LH does not either).
+- **The graph funnel sits at the top left of the graph page, not in the app header.** LH portals it
+  into the header after the sidebar toggle; here the header belongs to the lesson layout, so the
+  button is the page's first control below it. The right-hand toolbar leaves room for it on narrow
+  screens. The alternative, a header slot filled by the graph page, would couple the layout to it.
+- **Touch rows are 44 px; the checkbox itself is 20 px.** Each folder row is one label, so a tap
+  anywhere on it toggles the folder; a literal 44 px checkbox would look out of place.
 - **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
   organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
   follows LH and omits it instead of filing it at the top level.

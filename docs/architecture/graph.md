@@ -31,6 +31,7 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
 | `canvas.ts`, `graph-canvas.svelte` | the TypeScript port of LH's Canvas 2D renderer with a d3-zoom camera; the live d3-force simulation is built on the first node press or physics change, and `pickNode` hit-tests without allocating |
 | `layout.ts`, `layout-settle.ts` | the d3-force layout and the page-side settle |
 | `chain-table*.ts/.svelte`, `source-*.svelte`, `source-*.ts`, `tree-*.ts` | the chains table, folders, drag moves (`source-drop.svelte.ts`, shared with the sidebar), the sidebar tree builder in `source-organization.ts`, keyboard navigation |
+| `graph-folder-filter.svelte`, `graph-folder-selection.svelte.ts`, `search.ts` | the folder filter: the funnel popover, its remembered choice, and the visibility ids that combine it with the node search |
 | `picks*.ts`, `node-picker.svelte` | the shared pick selection for starting a session |
 | `delete-*-dialog.svelte` | node, source, and session-trace deletion |
 | `coverage-ring.svelte`, `coverage-menu-block.svelte`, `extract-now-button.svelte` | coverage in the lesson header and session menu |
@@ -55,6 +56,14 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   needs), the Graph settings and the render settings are requested together; costs and extraction
   status are requested only after the graph has arrived. Costs title their sources from sessions
   and notes sources without reading the whole ledger.
+- **Folder filter (view only).** The graph page reads the shared source organization with
+  `SourceDirectoryReader` and lists the folders whose subtree holds a source with propositions
+  (`graphFolderIds`). Ticking a folder includes its listed subfolders; the ticked set is remembered
+  in `localStorage` (`verstehen-graph-folder-filter`) and folders that no longer exist drop out
+  silently. A proposition shows when any of its sources sits directly in a ticked folder (a source
+  in a parent folder does not count); an implication node shows only when its conclusion and every
+  premise show, also under a node search (`visibleNodeIds`). Nothing in the graph or the
+  organization changes.
 - **Picks.** One selection is shared by the new-session screen and the graph page. Sending adds the
   `graph-context` marker, projected to the model before the learner's first message.
 - **Deletion modes.** Deleting a session uses `preserve-graph` or `delete-nodes` (remove what only

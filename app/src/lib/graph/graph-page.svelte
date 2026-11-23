@@ -9,6 +9,8 @@
 	import { GraphController } from './controller.svelte.js';
 	import CostControl from './cost-control.svelte';
 	import GraphCanvas from './graph-canvas.svelte';
+	import GraphFolderFilter from './graph-folder-filter.svelte';
+	import { GraphFolderSelection } from './graph-folder-selection.svelte.js';
 	import GraphSearch from './graph-search.svelte';
 	import ImportNotes from './import-notes.svelte';
 	import KnowledgeSummary from './knowledge-summary.svelte';
@@ -20,8 +22,12 @@
 	import PipelinePills from './pipeline-pills.svelte';
 	import RenderSettingsPanel from './render-settings-panel.svelte';
 	import { isNodeVisible, visibleNodeIds } from './search.js';
+	import { SourceDirectoryReader } from './source-directory.svelte.js';
+	import { graphFolderIds, graphFolderVisibleIds } from './source-organization.js';
 
 	const controller = new GraphController();
+	const folders = new SourceDirectoryReader();
+	const folderSelection = new GraphFolderSelection();
 	const notesImport = new NotesImport(() => {
 		void controller.refreshGraph();
 		void controller.refreshCosts();
@@ -35,7 +41,34 @@
 	const graph = $derived(controller.graph);
 	const nodes = $derived(graph?.snapshot.nodes ?? []);
 	const isEmpty = $derived(nodes.length === 0);
-	const visible = $derived(visibleNodeIds(nodes, query));
+	const organization = $derived(folders.directory?.organization);
+	const listedFolders = $derived(
+		organization && graph
+			? graphFolderIds(
+					organization,
+					new Set(
+						graph.snapshot.propositions.flatMap(
+							(node) => graph.snapshot.node_sessions[node.id] ?? []
+						)
+					)
+				)
+			: new Set<string>()
+	);
+	const folderVisible = $derived(
+		organization && graph
+			? graphFolderVisibleIds({
+					organization,
+					selected: folderSelection.selected,
+					listed: listedFolders,
+					propositionIds: graph.snapshot.propositions.map((node) => node.id),
+					nodeSources: graph.snapshot.node_sessions,
+					impLinks: graph.snapshot.imp_links ?? []
+				})
+			: null
+	);
+	const visible = $derived(
+		visibleNodeIds(nodes, query, folderVisible, graph?.snapshot.imp_links ?? [])
+	);
 	const card = $derived(selected && nodes.find((node) => node.id === selected?.nodeId));
 
 	function deleted(ids: string[]) {
@@ -51,8 +84,19 @@
 		if (selected && !stillVisible(selected.nodeId)) selected = undefined;
 	}
 
+	function filterFolders(next: ReadonlySet<string>) {
+		folderSelection.set(next);
+		if (selected && visible && !visible.has(selected.nodeId)) selected = undefined;
+		menu = undefined;
+	}
+
+	$effect(() => {
+		if (organization) folderSelection.prune(organization);
+	});
+
 	onMount(() => {
 		return () => {
+			folders.dispose();
 			controller.dispose();
 			notesImport.dispose();
 		};
@@ -140,12 +184,26 @@
 		</div>
 	{/if}
 
+	{#if graph && controller.rendering && !isEmpty && organization}
+		<div class="absolute top-3 left-3 z-10">
+			<GraphFolderFilter
+				{organization}
+				listed={listedFolders}
+				selected={folderSelection.selected}
+				onchange={filterFolders}
+			/>
+		</div>
+	{/if}
 	<div
-		class="pointer-events-none absolute top-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2 *:pointer-events-auto"
+		class="pointer-events-none absolute top-3 right-3 z-10 flex max-w-[calc(100%-4.75rem)] flex-col items-end gap-2 *:pointer-events-auto"
 	>
 		<div class="flex min-w-0 flex-wrap items-start justify-end gap-2">
 			{#if graph && controller.rendering && !isEmpty}
-				<GraphSearch {query} onquery={search} noMatch={visible !== null && visible.size === 0} />
+				<GraphSearch
+					{query}
+					onquery={search}
+					noMatch={visible !== null && visible.size === 0 && query.trim() !== ''}
+				/>
 			{/if}
 			<div class="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
 				<button

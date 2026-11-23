@@ -311,3 +311,94 @@ export function flattenSessionTree<T extends SidebarSession>(
 	walk(nodes, 0, null);
 	return rows;
 }
+
+/** A folder plus every folder below it (cycle-safe). */
+export function folderAndDescendants(organization: SourceOrganization, id: string): string[] {
+	const found = [id];
+	const seen = new Set(found);
+	for (let index = 0; index < found.length; index++) {
+		for (const folder of foldersOf(organization)) {
+			if (folder.parent_id === found[index] && !seen.has(folder.id)) {
+				seen.add(folder.id);
+				found.push(folder.id);
+			}
+		}
+	}
+	return found;
+}
+
+/** The folders the graph filter lists: those whose subtree holds a source with propositions. */
+export function graphFolderIds(
+	organization: SourceOrganization,
+	graphSourceIds: ReadonlySet<string>
+): Set<string> {
+	const listed = new Set<string>();
+	const folders = foldersOf(organization);
+	const folderIds = new Set(folders.map((folder) => folder.id));
+	for (const sourceId of graphSourceIds) {
+		let folder = placementOf(organization, sourceId)?.folder_id ?? null;
+		const seen = new Set<string>();
+		while (folder !== null && folderIds.has(folder) && !seen.has(folder)) {
+			seen.add(folder);
+			listed.add(folder);
+			const current: string = folder;
+			folder = folders.find((candidate) => candidate.id === current)?.parent_id ?? null;
+		}
+	}
+	return listed;
+}
+
+/** Ticking a folder includes its listed subfolders; unticking removes them. */
+export function toggleGraphFolder(
+	organization: SourceOrganization,
+	selected: ReadonlySet<string>,
+	id: string,
+	checked: boolean,
+	listed: ReadonlySet<string>
+): Set<string> {
+	const next = new Set(selected);
+	for (const folder of folderAndDescendants(organization, id)) {
+		if (!listed.has(folder)) continue;
+		if (checked) next.add(folder);
+		else next.delete(folder);
+	}
+	return next;
+}
+
+/** Checkbox state: indeterminate when the folder's listed subtree is mixed. */
+export function graphFolderCheck(
+	organization: SourceOrganization,
+	selected: ReadonlySet<string>,
+	id: string,
+	listed: ReadonlySet<string>
+): { checked: boolean; indeterminate: boolean } {
+	const subtree = folderAndDescendants(organization, id).filter((folder) => listed.has(folder));
+	const count = subtree.filter((folder) => selected.has(folder)).length;
+	return { checked: selected.has(id), indeterminate: count > 0 && count < subtree.length };
+}
+
+/** The node ids the folder filter shows, or null when nothing is ticked. */
+export function graphFolderVisibleIds(input: {
+	organization: SourceOrganization;
+	selected: ReadonlySet<string>;
+	listed: ReadonlySet<string>;
+	propositionIds: readonly string[];
+	nodeSources: Readonly<Record<string, readonly string[]>>;
+	impLinks: readonly { id: string; premises: readonly string[]; conclusion: string }[];
+}): Set<string> | null {
+	const active = new Set([...input.selected].filter((id) => input.listed.has(id)));
+	if (active.size === 0) return null;
+	const visible = new Set<string>();
+	for (const id of input.propositionIds) {
+		const shown = (input.nodeSources[id] ?? []).some((source) => {
+			const folder = placementOf(input.organization, source)?.folder_id ?? null;
+			return folder !== null && active.has(folder);
+		});
+		if (shown) visible.add(id);
+	}
+	for (const link of input.impLinks) {
+		if (visible.has(link.conclusion) && link.premises.every((premise) => visible.has(premise)))
+			visible.add(link.id);
+	}
+	return visible;
+}
