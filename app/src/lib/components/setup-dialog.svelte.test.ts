@@ -184,3 +184,53 @@ test('a_failed_read_over_a_settled_empty_catalog_replaces_the_connect_stage_with
 		.element(page.getByRole('heading', { name: 'Connect a provider' }))
 		.not.toBeInTheDocument();
 });
+test('an_untouched_setup_saves_the_fresher_slots_read_after_it_opened', async () => {
+	const cached = { ...structuredClone(testCatalog), slots: { strong: testCatalog.slots.strong } };
+	vi.mocked(api.getModels).mockResolvedValue(cached);
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByText('Main: Selected')).toBeVisible();
+	const fresher = {
+		...structuredClone(testCatalog),
+		slots: {
+			strong: testCatalog.slots.strong,
+			cheap: testCatalog.slots.cheap,
+			vision: testCatalog.slots.vision
+		}
+	};
+	vi.mocked(api.getModels).mockResolvedValue(fresher);
+	await models.load();
+	await expect.element(page.getByText('Vision: Selected')).toBeVisible();
+	await page.getByRole('button', { name: 'Save models', exact: true }).click();
+	await expect.poll(() => vi.mocked(api.saveSettings).mock.calls.length).toBe(1);
+	expect(vi.mocked(api.saveSettings).mock.calls[0][0]).toEqual({ models: fresher.slots });
+});
+test('a_learners_edit_is_kept_when_a_fresher_read_arrives_later', async () => {
+	vi.mocked(api.getModels).mockResolvedValue({ ...structuredClone(testCatalog), slots: {} });
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
+	await expect.element(page.getByText('Main: Selected')).toBeVisible();
+	vi.mocked(api.getModels).mockResolvedValue({
+		...structuredClone(testCatalog),
+		slots: { cheap: testCatalog.slots.cheap }
+	});
+	await models.load();
+	await expect.element(page.getByText('Main: Selected')).toBeVisible();
+	await expect.element(page.getByText('Cheap: Required')).toBeVisible();
+	await expect
+		.element(page.getByRole('tab', { name: 'Main', exact: true }))
+		.toHaveAttribute('aria-selected', 'true');
+});
+test('a_failed_save_then_retry_saves_the_same_slots_again', async () => {
+	vi.mocked(api.getModels).mockResolvedValue({ ...structuredClone(testCatalog) });
+	vi.mocked(api.saveSettings)
+		.mockRejectedValueOnce(new Error('Could not save'))
+		.mockResolvedValue(testSettings);
+	const done = vi.fn();
+	await render(SetupDialog, { onclose: vi.fn(), ondone: done });
+	await page.getByRole('button', { name: 'Save models', exact: true }).click();
+	await expect.element(page.getByText('Could not save')).toBeVisible();
+	await page.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect.poll(() => done.mock.calls.length).toBe(1);
+	expect(vi.mocked(api.saveSettings).mock.calls).toHaveLength(2);
+	expect(vi.mocked(api.saveSettings).mock.calls[1][0]).toEqual({ models: testCatalog.slots });
+});

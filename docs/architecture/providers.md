@@ -58,7 +58,10 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   overwrite results or prune discovered accounts after a newer one starts; the UI reports the
   newer refresh's outcome for the older request. A refresh reports a failed final read of the saved
   catalog instead of success. Setup shows model selection as soon as any account lists a model and
-  asks to connect a provider only after a refresh finished with none.
+  asks to connect a provider only after a refresh finished with none and no account failed. With
+  no models, a failed read or refresh, or an account with a `refresh_error`, shows the failure with
+  Retry and Open Settings instead. Setup's slot draft starts as the saved slots (derived, so a
+  fresher read applies) and becomes the learner's own copy at the first edit.
 - **The saved catalog is display only.** Each account entry holds its safe `Account` metadata and
   model list, `refreshed_at`, and `refresh_error`; credentials never enter it. A transient failure
   (`state: unavailable`) keeps the last list and sets `refresh_error`, also on first discovery when

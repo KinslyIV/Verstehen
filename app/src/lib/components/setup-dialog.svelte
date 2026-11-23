@@ -9,8 +9,8 @@
 	import { modelTabs, setupStage, slotsComplete, type ModelTab } from '#lib/models/picks.js';
 	let { onclose, ondone }: { onclose: () => void; ondone: () => void } = $props();
 	let catalog = $derived(models.catalog);
-	let slots = $state<ModelSlots>({});
-	let tab = $state<ModelTab>('strong');
+	let draft = $state<ModelSlots>();
+	let selectedTab = $state<ModelTab>();
 	let error = $state<string | null>(null);
 	let busy = $state(false);
 	let connecting = $state(false);
@@ -26,14 +26,8 @@
 	);
 	let failed = $derived(stage !== 'models' && (stage === 'failed' || !!loadFailure));
 	let accountsOpen = $derived(connecting && stage !== 'models');
-	let adopted = false;
-	$effect(() => {
-		const saved = models.catalog;
-		if (!saved || adopted) return;
-		adopted = true;
-		slots = $state.snapshot(saved.slots);
-		tab = modelTabs.find((item) => !slots[item.key])?.key ?? 'strong';
-	});
+	let slots = $derived(draft ?? catalog?.slots ?? {});
+	let tab = $derived(selectedTab ?? modelTabs.find((item) => !slots[item.key])?.key ?? 'strong');
 	onMount(() => {
 		void models.load();
 		void models.refresh();
@@ -52,7 +46,7 @@
 		if (!slotsComplete(slots) || busy) return;
 		busy = true;
 		try {
-			await saveSettings({ models: slots }, true);
+			await saveSettings({ models: $state.snapshot(slots) }, true);
 			await models.load();
 			ondone();
 		} catch (cause) {
@@ -104,10 +98,11 @@
 					{catalog}
 					pick={slots[tab]}
 					{tab}
-					ontab={(value) => (tab = value)}
+					ontab={(value) => (selectedTab = value)}
 					{busy}
 					onpick={(pick) => {
-						slots = { ...slots, [tab]: pick };
+						selectedTab = tab;
+						draft = { ...$state.snapshot(slots), [tab]: pick };
 					}}
 				/>
 			</div>
@@ -118,7 +113,7 @@
 			</div>
 		{/if}
 		{#if error}<div role="alert" class="text-sm text-destructive">
-				{error}<Button
+				<span>{error}</span><Button
 					variant="ghost"
 					size="sm"
 					onclick={() => {
