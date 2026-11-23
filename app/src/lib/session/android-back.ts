@@ -21,7 +21,9 @@ export function onAndroidBack(handle: () => boolean = () => false): () => void {
 }
 
 function pressBack({ canGoBack }: BackButtonListenerEvent): void {
-	if (hasOpenOverlay()) pressEscape();
+	const modal = [...document.querySelectorAll<HTMLDialogElement>('dialog:modal')].at(-1);
+	if (modal) modal.close();
+	else if (hasOpenOverlay()) pressEscape();
 	else if (![...handlers].some((handle) => handle())) leave(canGoBack);
 }
 

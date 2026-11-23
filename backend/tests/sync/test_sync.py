@@ -1220,3 +1220,95 @@ def test_concurrent_folder_delete_and_move_reconcile_on_both_replicas(tmp_path: 
                 assert dir_view.organization.placements[s2.id].folder_id is None
 
     asyncio.run(run())
+
+
+def test_folder_rename_split_across_sync_pages_preserves_links(tmp_path: Path):
+    """Splitting a folder rename across 500-item pull or push pages never clears valid links."""
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            s_sessions = SessionsStore(server_app.state.database)
+            s_entries = EntriesStore(server_app.state.database)
+            l_entries = EntriesStore(laptop_app.state.database)
+            s_graph = server_app.state.graph_service
+            l_graph = laptop_app.state.graph_service
+
+            session = await s_sessions.create("Split session")
+            folder = (
+                await s_graph.organize(
+                    {"action": "create-folder", "name": "Maths", "parent_id": None}
+                )
+            ).created_folder_id
+            assert folder is not None
+            child = (
+                await s_graph.organize(
+                    {"action": "create-folder", "name": "Algebra", "parent_id": folder}
+                )
+            ).created_folder_id
+            assert child is not None
+            await s_graph.organize(
+                {
+                    "action": "move",
+                    "kind": "source",
+                    "id": session.id,
+                    "parent_id": folder,
+                }
+            )
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+
+            # Pull split: put the replacement upsert at index 499 of page 1 and the delete on page 2.
+            l_state = await laptop_app.state.sync_store.read_state()
+            existing, _, _ = await server_app.state.sync_store.list_changes_since(
+                l_state.last_pulled_seq, exclude_device_id=l_state.device_id
+            )
+            await s_entries.append(
+                session.id,
+                [UserEntry(text=f"pull-pad-{i}") for i in range(499 - len(existing))],
+            )
+            await s_graph.organize(
+                {"action": "rename-folder", "id": folder, "name": "Renamed on server"}
+            )
+            page1, _, has_more = await server_app.state.sync_store.list_changes_since(
+                l_state.last_pulled_seq, exclude_device_id=l_state.device_id
+            )
+            assert has_more is True and len(page1) == 500
+            assert (page1[-1].entity, page1[-1].op) == (
+                "graph_source_folders",
+                "upsert",
+            )
+
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            for dir_view in (await s_graph.directory(), await l_graph.directory()):
+                folders = {entry.id: entry for entry in dir_view.organization.folders}
+                assert folders[folder].name == "Renamed on server"
+                assert folders[child].parent_id == folder
+                assert dir_view.organization.placements[session.id].folder_id == folder
+
+            # Push split: put the replacement upsert at index 499 of batch 1 and the delete in batch 2.
+            pending_count = len(await laptop_app.state.sync_store.list_pending_push())
+            await l_entries.append(
+                session.id,
+                [UserEntry(text=f"push-pad-{i}") for i in range(499 - pending_count)],
+            )
+            await l_graph.organize(
+                {"action": "rename-folder", "id": folder, "name": "Renamed on laptop"}
+            )
+            batch1 = await laptop_app.state.sync_store.list_pending_push(limit=500)
+            assert len(batch1) == 500
+            assert (batch1[-1].entity, batch1[-1].op) == (
+                "graph_source_folders",
+                "upsert",
+            )
+
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            for dir_view in (await s_graph.directory(), await l_graph.directory()):
+                folders = {entry.id: entry for entry in dir_view.organization.folders}
+                assert folders[folder].name == "Renamed on laptop"
+                assert folders[child].parent_id == folder
+                assert dir_view.organization.placements[session.id].folder_id == folder
+
+    asyncio.run(run())

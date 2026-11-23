@@ -169,6 +169,15 @@ async def _replace_ledger_table(
             (sync_id, payload),
         )
     if log_sync:
+        # Emit replacements before deletes so folder renames stay live across paged syncs.
+        for sync_id, payload in added:
+            await append_sync_log(
+                connection,
+                entity=table,
+                op="upsert",
+                entity_id=sync_id,
+                payload={"sync_id": sync_id, "payload": json.loads(payload)},
+            )
         for sync_id, payload in removed:
             await record_tombstone(connection, entity=table, entity_id=sync_id)
             delete_payload: dict[str, object] = {"sync_id": sync_id}
@@ -186,14 +195,6 @@ async def _replace_ledger_table(
                 op="delete",
                 entity_id=sync_id,
                 payload=delete_payload,
-            )
-        for sync_id, payload in added:
-            await append_sync_log(
-                connection,
-                entity=table,
-                op="upsert",
-                entity_id=sync_id,
-                payload={"sync_id": sync_id, "payload": json.loads(payload)},
             )
 
 

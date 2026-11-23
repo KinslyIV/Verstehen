@@ -61,6 +61,24 @@ test('back_closes_an_open_overlay_as_escape_before_any_handler_or_navigation', (
 	expect(history.back).not.toHaveBeenCalled();
 });
 
+test('back_closes_a_native_modal_dialog_directly', async () => {
+	const handle = vi.fn(() => true);
+	register();
+	register(handle);
+	const dialog = document.createElement('dialog');
+	const closed = vi.fn();
+	dialog.addEventListener('close', closed);
+	document.body.append(dialog);
+	dialog.showModal();
+	expect(dialog.open).toBe(true);
+	pressBack();
+	expect(dialog.open).toBe(false);
+	await vi.waitFor(() => expect(closed).toHaveBeenCalledOnce());
+	expect(handle).not.toHaveBeenCalled();
+	expect(history.back).not.toHaveBeenCalled();
+	dialog.remove();
+});
+
 test('back_goes_to_the_first_handler_that_takes_it_else_navigates', () => {
 	const taker = vi.fn(() => true);
 	register();
