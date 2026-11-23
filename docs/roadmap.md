@@ -111,7 +111,7 @@ merges.
 
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,
-  `teaching-handoff`, `job-recovery-reload`,
+  `teaching-handoff`,
   `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
   and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
   are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
@@ -120,8 +120,11 @@ merges.
   button before Send confirms settlement; the full 49-flow verification suite passes. On
   `t3/python315-lazy-imports`, the `composer-steer` race (steering before the opening `POST /input`
   created the live turn), the `settings-prompts` race (reloading before the `PUT .../enabled`
-  response settled), and the `graph-extraction` race (navigating to `/graph` before the post-turn
-  `/coverage` fetch settled) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
+  response settled), the `graph-extraction` race (navigating to `/graph` before the post-turn
+  `/coverage` fetch settled), and the `job-recovery-reload` `/item` teardown race (switching to
+  the second session via client-side sidebar navigation so `SessionList` stays mounted, waiting
+  for UI settlement, and scoping any trailing old-document `/item` abort via `allowTeardownAborts`
+  before `framenavigated` on `page.reload()`) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows

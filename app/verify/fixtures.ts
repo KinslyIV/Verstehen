@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Frame, type Request } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -178,6 +178,12 @@ export const test = base.extend<{
 	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
+	teardownControl: {
+		run: <T>(paths: readonly string[], action: () => Promise<T>) => Promise<T>;
+		isExpected: (request: Request) => boolean;
+	};
+	/** Allow expected `ERR_ABORTED` GETs for pre-navigation requests during a teardown action. */
+	allowTeardownAborts: <T>(paths: readonly string[], action: () => Promise<T>) => Promise<T>;
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
@@ -315,8 +321,58 @@ export const test = base.extend<{
 			await Promise.all(children.map(stop));
 		}
 	},
+	teardownControl: async ({ page }, use) => {
+		const inFlight = new Set<Request>();
+		let active: {
+			paths: readonly string[];
+			requests: Set<Request>;
+			accepting: boolean;
+		} | null = null;
+		const onRequest = (request: Request) => {
+			inFlight.add(request);
+			if (active?.accepting) active.requests.add(request);
+		};
+		const onSettled = (request: Request) => inFlight.delete(request);
+		const onNavigated = (frame: Frame) => {
+			if (frame === page.mainFrame() && active) active.accepting = false;
+		};
+		page.on('request', onRequest);
+		page.on('requestfinished', onSettled);
+		page.on('requestfailed', onSettled);
+		page.on('framenavigated', onNavigated);
+		try {
+			await use({
+				run: async (paths, action) => {
+					if (active !== null)
+						throw new Error('Nested allowTeardownAborts calls are not supported');
+					active = { paths, requests: new Set(inFlight), accepting: true };
+					try {
+						return await action();
+					} finally {
+						active = null;
+					}
+				},
+				isExpected: (request) =>
+					active !== null &&
+					active.requests.has(request) &&
+					request.failure()?.errorText.includes('ERR_ABORTED') === true &&
+					request.method() === 'GET' &&
+					active.paths.includes(new URL(request.url()).pathname)
+			});
+		} finally {
+			page.off('request', onRequest);
+			page.off('requestfinished', onSettled);
+			page.off('requestfailed', onSettled);
+			page.off('framenavigated', onNavigated);
+			inFlight.clear();
+			active = null;
+		}
+	},
+	allowTeardownAborts: async ({ teardownControl }, use) => {
+		await use((paths, action) => teardownControl.run(paths, action));
+	},
 	browserErrors: [
-		async ({ page, expectedStatuses, goesOffline }, use, testInfo) => {
+		async ({ page, expectedStatuses, goesOffline, teardownControl }, use, testInfo) => {
 			const errors: string[] = [];
 			page.on('console', (message) => {
 				if (
@@ -337,6 +393,7 @@ export const test = base.extend<{
 				'requestfailed',
 				(request) =>
 					!(goesOffline && request.failure()?.errorText.includes('ERR_INTERNET_DISCONNECTED')) &&
+					!teardownControl.isExpected(request) &&
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&
