@@ -1,11 +1,32 @@
 import { test, expect } from '../fixtures';
-test.use({ script: 'verify/scripts/health.json' });
+test.use({ script: 'verify/scripts/health.json', expectedStatuses: [500] });
 test('setup-dialog', async ({ page }) => {
 	await page.goto('/');
 	await page.request.put('/api/settings', { data: { models: {} } });
 	let connected = false;
+	let failure: 'none' | 'read' | 'offline' = 'none';
 	await page.route('**/api/models', async (route) => {
-		if (connected) await route.continue();
+		if (route.request().method() !== 'GET') return route.fallback();
+		if (failure === 'read') await route.fulfill({ status: 500, json: { error: 'Models failed' } });
+		else if (failure === 'offline')
+			await route.fulfill({
+				json: {
+					accounts: [
+						{
+							account: {
+								id: 'chatgpt:one',
+								kind: 'chatgpt',
+								label: 'one@example.test',
+								state: 'ready'
+							},
+							models: [],
+							refresh_error: 'ChatGPT could not be reached. Try again.'
+						}
+					],
+					slots: {}
+				}
+			});
+		else if (connected) await route.continue();
 		else await route.fulfill({ json: { accounts: [], slots: {} } });
 	});
 	await page.getByRole('textbox').fill('Understanding derivatives');
@@ -56,5 +77,28 @@ test('setup-dialog', async ({ page }) => {
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(
 		page.getByText('Add a ChatGPT account or set up Claude Code in Settings.')
+	).toBeVisible();
+
+	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+	failure = 'read';
+	await page.getByRole('button', { name: 'Send', exact: true }).click();
+	const alert = page.getByRole('dialog').getByRole('alert');
+	await expect(alert).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Connect a provider' })).toHaveCount(0);
+	await page.screenshot({ path: test.info().outputPath('setup-read-failed.png') });
+	failure = 'none';
+	connected = true;
+	await page.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect(page.getByRole('tab', { name: 'Main', exact: true })).toBeVisible();
+	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+
+	failure = 'offline';
+	await page.getByRole('button', { name: 'Send', exact: true }).click();
+	await expect(page.getByText('ChatGPT could not be reached.', { exact: false })).toBeVisible();
+	await expect(page.getByRole('heading', { name: 'Connect a provider' })).toHaveCount(0);
+	await page.screenshot({ path: test.info().outputPath('setup-offline-first-discovery.png') });
+	await page.getByRole('button', { name: 'Open Settings', exact: true }).click();
+	await expect(
+		page.getByRole('heading', { name: 'Settings · Accounts', exact: true })
 	).toBeVisible();
 });

@@ -32,10 +32,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
   including on first load, and Settings can force refresh. A refresh superseded by a newer
   one reports the newer one's outcome, because the backend skips the older one's writes. The
   backend still answers 204, so a refresh superseded by a different client reports success.
-- **Refresh providers more often than LearnHarness 0.7.0, which refreshes only on an explicit
-  action.** Provider refresh also runs when Settings → Models opens, when Setup opens and while it
-  waits for a connection, and after a successful account sign-in. Opening the model picker only
-  rereads the saved catalog.
+- **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** LearnHarness
+  restores its saved model metadata at startup, refreshes it only on an explicit `POST
+  /api/models`, and `GET /api/models` refreshes the subscription connections on every read (v0.7.0
+  and `cb25c8e`). Verstehen refreshes every account at launch, when Settings → Models opens, when
+  Setup opens and while it waits for a connection, and after a successful sign-in; opening the
+  picker only rereads the saved catalog.
 - **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
   would exit the app before the learner sees the shell. The in-app panel keeps the log path
   visible and the timing marks distinguish desktop, sidecar, and composer readiness.

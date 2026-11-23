@@ -42,9 +42,10 @@ export function modelLabel(catalog: ModelCatalog | undefined, pick?: ModelPick |
 export function setupStage(
 	catalog: ModelCatalog | undefined,
 	settled = true
-): 'loading' | 'connect' | 'models' {
+): 'loading' | 'failed' | 'connect' | 'models' {
 	if (!catalog) return 'loading';
 	if (catalog.accounts.some((item) => item.models.length > 0)) return 'models';
+	if (catalog.accounts.some((item) => item.refresh_error)) return 'failed';
 	return settled ? 'connect' : 'loading';
 }
 export function slotsComplete(slots: ModelSlots): boolean {

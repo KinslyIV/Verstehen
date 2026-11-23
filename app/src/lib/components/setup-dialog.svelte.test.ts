@@ -137,3 +137,40 @@ test('a_failed_refresh_of_an_empty_catalog_asks_to_retry_not_to_connect', async 
 		.not.toBeInTheDocument();
 	await expect.element(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
 });
+test('an_account_offline_on_first_discovery_shows_the_failure_with_retry_and_a_way_to_settings', async () => {
+	const offline = structuredClone(testCatalog);
+	offline.accounts[0].models = [];
+	offline.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue({ ...offline, slots: {} });
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect
+		.element(page.getByText('ChatGPT could not be reached.', { exact: false }))
+		.toBeVisible();
+	await expect.element(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole('button', { name: 'Open Settings', exact: true }))
+		.toBeVisible();
+	await expect
+		.element(page.getByRole('heading', { name: 'Connect a provider' }))
+		.not.toBeInTheDocument();
+});
+test('recovery_after_a_failed_first_read_keeps_the_saved_slots_and_never_overwrites_edits', async () => {
+	const partial = {
+		...structuredClone(testCatalog),
+		slots: { strong: testCatalog.slots.strong }
+	};
+	vi.mocked(api.getModels).mockRejectedValue(new Error('The sidecar is unreachable'));
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByText('The sidecar is unreachable')).toBeVisible();
+	vi.mocked(api.getModels).mockResolvedValue(partial);
+	await page.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect.element(page.getByRole('tab', { name: 'Cheap', exact: true })).toBeVisible();
+	await expect
+		.element(page.getByRole('tab', { name: 'Cheap', exact: true }))
+		.toHaveAttribute('aria-selected', 'true');
+	await expect.element(page.getByText('Main: Selected')).toBeVisible();
+	await page.getByRole('button', { name: 'Scripted title', exact: true }).click();
+	vi.mocked(api.getModels).mockResolvedValue(structuredClone(partial));
+	await page.getByRole('tab', { name: 'Main', exact: true }).click();
+	await expect.element(page.getByText('Cheap: Selected')).toBeVisible();
+});

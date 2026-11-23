@@ -42,7 +42,10 @@ export class ModelCatalogState {
 			return null;
 		} catch (cause) {
 			const message = (cause as Error).message;
-			if (generation === this.generation && sequence > this.applied) this.error = message;
+			if (generation === this.generation && sequence > this.applied) {
+				this.applied = sequence;
+				this.error = message;
+			}
 			return message;
 		}
 	}

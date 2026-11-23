@@ -174,3 +174,17 @@ test('a_refresh_outcome_ignores_the_error_another_read_left_in_the_shared_field'
 	expect(await refreshing).toBeNull();
 	expect(state.refreshedOnce).toBe(true);
 });
+
+test('a_newer_failed_read_is_not_cleared_or_replaced_by_an_older_success', async () => {
+	let finishOlder!: (catalog: api.ModelCatalog) => void;
+	vi.mocked(api.getModels)
+		.mockImplementationOnce(() => new Promise((resolve) => (finishOlder = resolve)))
+		.mockRejectedValueOnce(new Error('offline'));
+	const state = new ModelCatalogState();
+	const older = state.load();
+	await state.load();
+	finishOlder(saved('older'));
+	await older;
+	expect(state.error).toBe('offline');
+	expect(state.catalog).toBeUndefined();
+});

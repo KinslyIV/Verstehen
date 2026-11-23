@@ -57,7 +57,9 @@ Frontend, `app/src/lib/`:
   override. Deleting removes the file, then clears the switch and records the prompt snapshot in one
   transaction, so a failure restores the file and leaves the sync outbox unchanged. An edit holds an
   edit lock that prompt composition (turns, compaction) also takes, so a turn never reads an
-  uncommitted edit.
+  uncommitted edit. Sync applies that write prompt files take the same lock. The order is prompt lock,
+  session locks, then edit lock, so compaction (session, then edit) and the editor (prompt, then edit)
+  cannot deadlock with them.
   Only the fragments of the three agents are listed; `side-chat/` fragments stay overridable by
   files and switches but have no editor. Prompt paths with symlinks and paths outside the listed
   fragments are unavailable in the editor. Each file change is recorded with sync before returning.

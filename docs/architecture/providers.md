@@ -51,8 +51,9 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   catalog and slots at once and never contacts an account. `POST /api/models/refresh` (`?force=true`
   drops cached lists first) discovers every adapter concurrently and each account saves its own result
   the moment it finishes, so a slow account never holds back another or the display. The UI starts a
-  plain refresh after the first read (app launch), as LearnHarness 0.7.0 does, and re-reads the saved
-  catalog while one runs. Opening a model menu only re-reads the saved catalog. Settings → Models
+  plain refresh after the first read (app launch) and re-reads the saved catalog while one runs.
+  Opening a model menu only re-reads the saved catalog; LearnHarness instead refreshes its
+  subscription connections on every `GET /api/models` and its metadata only on `POST`. Settings → Models
   (on open and by its button) and successful sign-in start refreshes. An older refresh cannot
   overwrite results or prune discovered accounts after a newer one starts; the UI reports the
   newer refresh's outcome for the older request. A refresh reports a failed final read of the saved
