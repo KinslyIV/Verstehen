@@ -535,6 +535,7 @@ def test_notification_sse_detach_keeps_other_window_subscribed(tmp_path: Path):
         async with turn_service_context(tmp_path) as (turn_service, session_id):
             first = notification_frames(session_service_for(turn_service).subscribe())
             second = notification_frames(session_service_for(turn_service).subscribe())
+            assert await anext(first) == await anext(second) == ": ping\n\n"
             a = asyncio.create_task(anext(first))
             b = asyncio.create_task(anext(second))
             await asyncio.sleep(0)
@@ -694,5 +695,20 @@ def test_unexpected_error_before_claim_is_500_and_not_remembered(tmp_path: Path)
             runtime = turn_service.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure is None
             assert await turn_service.entries_store.list(session_id) == []
+
+    asyncio.run(scenario())
+
+
+def test_notification_stream_subscribes_before_its_first_frame(tmp_path: Path):
+    async def scenario():
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
+            stream = notification_frames(session_service_for(turn_service).subscribe())
+            assert await anext(stream) == ": ping\n\n"
+            turn_service.notifications.publish(
+                Notification(type="turn-started", session_id=session_id)
+            )
+            assert (await anext(stream)).startswith("event: turn-started\n")
+            await stream.aclose()
+            assert not turn_service.notifications.subscribers
 
     asyncio.run(scenario())

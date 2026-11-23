@@ -7,7 +7,8 @@ import {
 	type SideStreamEvent,
 	type SideThread
 } from '#lib/api/client.js';
-import { canRetry, DISCONNECTED, hasHistory } from './thread.js';
+import { isNetworkFailure, live } from '#lib/api/live.svelte.js';
+import { canRetry, hasHistory } from './thread.js';
 
 interface Connection {
 	threadId: string;
@@ -197,25 +198,48 @@ export class SideChatFeed {
 		void this.consume(connection);
 	}
 
+	/** Follows one answer's stream; after a dropped connection it waits, then reattaches. */
 	private async consume(connection: Connection): Promise<void> {
+		const { threadId, controller } = connection;
+		let outages = 0;
 		let terminal = false;
 		try {
-			await streamSideChat(
-				this.sessionId,
-				connection.threadId,
-				(event) => {
-					if (this.connection !== connection) return;
-					terminal ||= event.type === 'done' || event.type === 'error';
-					this.apply(connection.threadId, event);
-				},
-				connection.controller.signal
-			);
-			if (!terminal && this.connection === connection) throw new Error(DISCONNECTED);
+			while (!terminal && !controller.signal.aborted) {
+				const run = new AbortController();
+				const stopRun = () => run.abort();
+				const stopOnResume = live.onResume(stopRun);
+				controller.signal.addEventListener('abort', stopRun);
+				try {
+					await streamSideChat(
+						this.sessionId,
+						threadId,
+						(event) => {
+							if (this.connection !== connection) return;
+							outages = 0;
+							live.markDown(connection, false);
+							terminal ||= event.type === 'done' || event.type === 'error';
+							this.apply(threadId, event);
+						},
+						run.signal
+					);
+				} catch (error) {
+					if (controller.signal.aborted || this.connection !== connection) return;
+					if (!run.signal.aborted && !isNetworkFailure(error)) throw error;
+				} finally {
+					stopOnResume();
+					controller.signal.removeEventListener('abort', stopRun);
+				}
+				if (terminal || run.signal.aborted) continue;
+				live.markDown(connection, true);
+				await live.wait(outages++, controller.signal);
+			}
 		} catch (error) {
-			if (this.connection !== connection || connection.controller.signal.aborted) return;
-			this.live = withoutKey(this.live, connection.threadId);
-			this.fail(connection.threadId, error);
+			if (this.connection !== connection || controller.signal.aborted) return;
+			this.live = withoutKey(this.live, threadId);
+			this.fail(threadId, error);
 			void this.refresh();
+		} finally {
+			live.markDown(connection, false);
 		}
 		if (this.connection === connection) this.connection = undefined;
 	}

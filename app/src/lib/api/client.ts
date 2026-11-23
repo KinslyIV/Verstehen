@@ -274,22 +274,25 @@ export async function readEvents(
 	}
 }
 
+/** `opened` runs once the server has accepted the stream, before its first event. */
 export async function streamTurn(
 	id: string,
 	receive: (event: TurnEvent) => void,
-	signal: AbortSignal
+	signal: AbortSignal,
+	opened?: () => void
 ): Promise<boolean> {
-	return readEvents(await request(`${sessionPath(id)}/stream`, { signal }), (_, data) =>
-		receive(JSON.parse(data))
-	);
+	const response = await request(`${sessionPath(id)}/stream`, { signal });
+	opened?.();
+	return readEvents(response, (_, data) => receive(JSON.parse(data)));
 }
 export async function streamNotifications(
 	receive: (event: Notification) => void,
-	signal: AbortSignal
+	signal: AbortSignal,
+	opened?: () => void
 ): Promise<void> {
-	await readEvents(await request('/api/events', { signal }), (type, data) =>
-		receive({ ...JSON.parse(data), type })
-	);
+	const response = await request('/api/events', { signal });
+	opened?.();
+	await readEvents(response, (type, data) => receive({ ...JSON.parse(data), type }));
 }
 
 export async function getModels(options: { refresh?: boolean } = {}): Promise<ModelCatalog> {
@@ -554,6 +557,14 @@ export async function getServerChatGPTSignIn(id: string): Promise<SignInStatus> 
 }
 export async function removeServerChatGPTAccount(id: string): Promise<void> {
 	await request(`/api/server/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+export async function getOwnDeviceName(id: string): Promise<string | undefined> {
+	const { devices } = await (await request('/api/auth/devices')).json();
+	return devices.find((device: Device) => device.id === id)?.name;
+}
+/** Ends this device's pairing on the server it is paired with. */
+export async function revokeOwnDevice(id: string): Promise<void> {
+	await request(`/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 export async function listServerDevices(): Promise<Device[]> {
 	return (await (await request('/api/server/devices')).json()).devices;

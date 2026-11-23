@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent, server } from 'vitest/browser';
 import Root from './(lesson)/+page.svelte';
@@ -8,12 +8,18 @@ import './layout.css';
 import type { Notification } from '#lib/api/client.js';
 import appHtml from '../app.html?raw';
 
-const { sessionRequests, subscribers } = vi.hoisted(() => ({
+const { sessionRequests, subscribers, navigated } = vi.hoisted(() => ({
 	sessionRequests: vi.fn(async () => []),
-	subscribers: new Set<(event: Notification) => void>()
+	subscribers: new Set<(event: Notification) => void>(),
+	navigated: new Set<(navigation: unknown) => void>()
 }));
 
-vi.mock('$app/navigation', () => ({ goto: async () => {} }));
+vi.mock('$app/navigation', () => ({
+	goto: async () => {},
+	afterNavigate: (callback: (navigation: unknown) => void) => {
+		navigated.add(callback);
+	}
+}));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
 	getSession: async () => ({
@@ -81,8 +87,13 @@ declare module 'vitest/browser' {
 	}
 }
 
+afterEach(async () => {
+	await page.viewport(1280, 800);
+});
+
 beforeEach(() => {
 	sessionRequests.mockClear();
+	navigated.clear();
 	localStorage.clear();
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
 });
@@ -96,6 +107,27 @@ test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
 		.toHaveAttribute('href', '/session/new?mode=practice');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('navigating_to_another_lesson_leaves_the_phone_panel_screen', async () => {
+	await page.viewport(360, 780);
+	const screen = await render(Lesson, { page: SessionThreadPage });
+	await screen.getByRole('button', { name: 'Plan', exact: true }).click();
+	await expect.element(screen.getByTestId('phone-tab-screen')).toBeVisible();
+	const go = (from: string, to: string) =>
+		navigated.forEach((callback) =>
+			callback({
+				from: { url: new URL(from, location.href) },
+				to: { url: new URL(to, location.href) }
+			})
+		);
+	go('/session/one', '/session/one');
+	await expect.element(screen.getByTestId('phone-tab-screen')).toBeVisible();
+	go('/session/one', '/session/two');
+	await expect.element(screen.getByTestId('phone-tab-screen')).not.toBeInTheDocument();
+	await screen.getByRole('button', { name: 'Jobs', exact: true }).click();
+	go('/session/two', '/session/new');
+	await expect.element(screen.getByTestId('phone-tab-screen')).not.toBeInTheDocument();
 });
 
 test('sync_status_does_not_refresh_the_sidebar_session_list', async () => {
@@ -125,6 +157,16 @@ test('right_panel_starts_closed', async () => {
 	await expect.element(screen.getByRole('complementary')).not.toBeInTheDocument();
 });
 
+/** Paneforge saves the layout 100 ms after the last drag or key; true once the save caught up. */
+function savedLayoutMatchesPanel(panel: HTMLElement): boolean {
+	const saved = JSON.parse(localStorage.getItem('paneforge:verstehen-lesson') ?? '{}');
+	const layout = Object.values<{ layout: number[] }>(saved).find(
+		(value) => value.layout.length === 2
+	);
+	const live = (panel.getBoundingClientRect().width / panel.parentElement!.clientWidth) * 100;
+	return !!layout && layout.layout[1]! > 25 && Math.abs(layout.layout[1]! - live) < 1.5;
+}
+
 test('right_panel_open_state_and_width_are_remembered', async () => {
 	let screen = await render(Lesson);
 	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
@@ -136,12 +178,7 @@ test('right_panel_open_state_and_width_are_remembered', async () => {
 	await userEvent.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
 	await expect.poll(() => panel().getBoundingClientRect().width).toBeGreaterThan(initialWidth);
 	const resizedWidth = panel().getBoundingClientRect().width;
-	await expect
-		.poll(() => {
-			const saved = JSON.parse(localStorage.getItem('paneforge:verstehen-lesson') ?? '{}');
-			return Object.values(saved).some((value) => (value as { layout: number[] }).layout[1] > 25);
-		})
-		.toBe(true);
+	await expect.poll(() => savedLayoutMatchesPanel(panel())).toBe(true);
 	await screen.unmount();
 	screen = await render(Lesson);
 	await expect

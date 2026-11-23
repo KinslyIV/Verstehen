@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SessionController } from './controller.svelte';
 import * as api from '#lib/api/client.js';
+import { live } from '#lib/api/live.svelte.js';
 import { questionBatch, questionResult } from '#lib/questions/question-fixtures.js';
 import {
 	ack,
@@ -92,6 +93,49 @@ test('early_stream_end_recovers_once_without_resending_input', async () => {
 	expect(api.streamTurn).toHaveBeenCalledTimes(2);
 	expect(api.postInput).not.toHaveBeenCalled();
 	expect(controller.error).toBe('The connection dropped before the turn completed.');
+});
+test('a_dropped_network_waits_and_reattaches_without_failing_the_turn', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockResolvedValue();
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn)
+		.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+		.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+		.mockImplementationOnce(async () => {
+			vi.mocked(api.getSession).mockResolvedValue(record([], false));
+			return true;
+		});
+	await controller.attach();
+	expect(api.streamTurn).toHaveBeenCalledTimes(3);
+	expect(wait.mock.calls.map(([attempt]) => attempt)).toEqual([0, 1]);
+	expect(controller.error).toBeNull();
+	expect(controller.busy).toBe(false);
+	wait.mockRestore();
+});
+test('leaving_the_lesson_while_reconnecting_opens_no_new_stream', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockImplementation(async () => controller.dispose());
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.attach();
+	expect(api.streamTurn).toHaveBeenCalledOnce();
+	wait.mockRestore();
+});
+test('a_refetch_that_hits_a_dropped_network_shows_no_error', async () => {
+	await controller.load();
+	vi.mocked(api.getSession).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.synchronize();
+	expect(controller.error).toBeNull();
+});
+test('a_server_error_still_fails_the_turn_instead_of_waiting', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockResolvedValue();
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockRejectedValue(new api.ApiError(500, undefined, 'boom'));
+	await controller.attach();
+	expect(wait).not.toHaveBeenCalled();
+	expect(controller.error).toBe('boom');
+	wait.mockRestore();
 });
 test('conflict_polls_and_retries_the_same_input', async () => {
 	controller.dispose();

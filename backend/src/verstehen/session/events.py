@@ -59,9 +59,11 @@ class Notifications:
             queue.put_nowait(event)
 
     async def subscribe(self) -> AsyncGenerator[Notification | None]:
+        """Yields None once subscribed and every 25 s without a notification."""
         queue: asyncio.Queue[Notification] = asyncio.Queue()
         self.subscribers.add(queue)
         try:
+            yield None
             while True:
                 try:
                     yield await asyncio.wait_for(queue.get(), timeout=25)

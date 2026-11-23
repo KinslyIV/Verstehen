@@ -54,7 +54,8 @@ export class GraphController {
 		const refresh = (event: Event) => {
 			const revision = (event as CustomEvent<number | undefined>).detail;
 			if (typeof revision === 'number' && revision <= (this.graph?.snapshot.revision ?? -1)) return;
-			void this.refreshGraph();
+			if (this.rendering === undefined && this.loadError) void this.start();
+			else void this.refreshGraph();
 			void this.refreshCosts();
 		};
 		const status = () => this.scheduleStatus();
@@ -70,6 +71,7 @@ export class GraphController {
 		void this.start();
 	}
 
+	/** Loads the page's data; run again by a graph event while the first attempt has failed. */
 	private async start(): Promise<void> {
 		try {
 			const settings = await getSettings();
@@ -81,7 +83,8 @@ export class GraphController {
 				this.loadSettings()
 			]);
 		} catch (cause) {
-			if (!this.lifetime.signal.aborted) this.loadError = (cause as Error).message;
+			if (!this.lifetime.signal.aborted && this.rendering === undefined)
+				this.loadError = (cause as Error).message;
 		}
 	}
 
@@ -90,6 +93,7 @@ export class GraphController {
 		try {
 			const snapshot = await getGraph(this.lifetime.signal);
 			if (request !== this.graphRequest) return;
+			this.loadError = undefined;
 			this.titles = snapshot.sessions;
 			picks.prune(snapshot.propositions);
 			if (this.rendering === false || !hasUnplacedNodes(snapshot)) {
@@ -100,7 +104,8 @@ export class GraphController {
 			this.graph = { snapshot, positions };
 			void putGraphPositions(positions).catch(() => {});
 		} catch (cause) {
-			if (!this.lifetime.signal.aborted) this.loadError = (cause as Error).message;
+			if (request === this.graphRequest && !this.lifetime.signal.aborted)
+				this.loadError = (cause as Error).message;
 		}
 	}
 

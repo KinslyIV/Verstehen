@@ -54,7 +54,7 @@
 			{notice}
 		</p>{/if}
 	<div
-		class="grid max-h-[min(24rem,60vh)] min-h-48 grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.3fr)_7rem]"
+		class="grid max-h-[min(24rem,60vh)] min-h-48 grid-cols-[minmax(0,1fr)_minmax(0,1.3fr)_6rem] sm:grid-cols-[minmax(8rem,1fr)_minmax(9rem,1.3fr)_7rem]"
 	>
 		<div class="space-y-1 overflow-y-auto border-r bg-muted/20 p-2" aria-label="Accounts">
 			{#each catalog.accounts as item (item.account.id)}
@@ -83,7 +83,7 @@
 					variant={pick?.account === account?.account.id && pick?.model === item.id
 						? 'secondary'
 						: 'ghost'}
-					class="w-full justify-between"
+					class="h-auto min-h-8 w-full justify-between py-1.5 text-left whitespace-normal"
 					size="sm"
 					disabled={busy}
 					onclick={() => account && onpick(pickModel(account.account.id, item, pick))}

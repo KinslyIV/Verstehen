@@ -14,7 +14,12 @@ vi.mock('$app/navigation', () => ({ goto }));
 vi.mock('#lib/api/connection.js', () => ({ loadConnection }));
 vi.mock('#lib/api/client.js', () => ({ pairDevice }));
 
+function useScreen(width: number, height: number) {
+	vi.stubGlobal('screen', { width, height });
+}
+
 beforeEach(() => {
+	useScreen(360, 780);
 	goto.mockClear();
 	loadConnection.mockResolvedValue({});
 	pairDevice.mockReset();
@@ -30,6 +35,12 @@ test('pair_waits_for_an_address_an_eight_character_code_and_a_name', async () =>
 	await expect.element(pair).toBeDisabled();
 	await userEvent.fill(screen.getByLabelText('Pairing code'), 'ABCD2345');
 	await expect.element(pair).toBeEnabled();
+});
+
+test('pair_names_a_tablet_sized_screen_Tablet_whichever_way_it_is_held', async () => {
+	useScreen(1280, 800);
+	const screen = await render(Pair);
+	await expect.element(screen.getByLabelText('Device name')).toHaveValue('Tablet');
 });
 
 test('pair_sends_the_form_and_opens_the_lesson_screen', async () => {

@@ -114,7 +114,7 @@ async def main():
     async with open_database(Path(sys.argv[1]) / "verstehen.db") as database:
         async with GraphStore(database).transaction() as ledger:
             for node in spec["nodes"]:
-                ledger.nodes.append(GraphNode(id=node["id"], name=node["name"], statement=node["statement"], provenance=[ProvenancePoint(session_id=node["session"])]))
+                ledger.nodes.append(GraphNode(id=node["id"], name=node["name"], statement=node["statement"], provenance=[ProvenancePoint(session_id=session) for session in [node["session"], *node.get("also", [])]]))
             for chain in spec["chains"]:
                 ledger.chains.append(GraphChain(id=chain["id"], premises=chain["premises"], conclusion=chain["conclusion"], provenance=[ProvenancePoint(session_id=chain["session"])]))
             for source in spec.get("sources", []):
@@ -160,7 +160,7 @@ async function mintAdminToken(dataDirectory: string): Promise<string> {
 }
 
 export interface GraphSeed {
-	nodes: { id: string; name: string; statement: string; session: string }[];
+	nodes: { id: string; name: string; statement: string; session: string; also?: string[] }[];
 	chains: { id: string; premises: string[]; conclusion: string; session: string }[];
 	sources?: { id: string; file_path: string }[];
 }
@@ -172,6 +172,8 @@ export const test = base.extend<{
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
 	expectedStatuses: number[];
+	/** The flow goes offline on purpose, so refused requests are not browser errors. */
+	goesOffline: boolean;
 	client: 'sidecar' | 'remote';
 	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
@@ -181,6 +183,7 @@ export const test = base.extend<{
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
 	expectedStatuses: [[], { option: true }],
+	goesOffline: [false, { option: true }],
 	client: ['sidecar', { option: true }],
 	serverAdmin: async ({ client, dataDirectory }, use) => {
 		await use({ token: client === 'remote' ? await mintAdminToken(dataDirectory) : '' });
@@ -313,11 +316,12 @@ export const test = base.extend<{
 		}
 	},
 	browserErrors: [
-		async ({ page, expectedStatuses }, use, testInfo) => {
+		async ({ page, expectedStatuses, goesOffline }, use, testInfo) => {
 			const errors: string[] = [];
 			page.on('console', (message) => {
 				if (
 					message.type() === 'error' &&
+					!(goesOffline && message.text().includes('ERR_INTERNET_DISCONNECTED')) &&
 					!expectedStatuses.some((status) =>
 						message
 							.text()
@@ -332,6 +336,7 @@ export const test = base.extend<{
 			page.on(
 				'requestfailed',
 				(request) =>
+					!(goesOffline && request.failure()?.errorText.includes('ERR_INTERNET_DISCONNECTED')) &&
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&

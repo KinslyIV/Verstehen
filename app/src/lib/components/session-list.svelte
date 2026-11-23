@@ -4,7 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import { Dumbbell, LoaderCircle } from '@lucide/svelte';
-	import { listSessions, streamNotifications, type SessionItem } from '#lib/api/client.js';
+	import { listSessions, type SessionItem } from '#lib/api/client.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
 	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
 	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
@@ -17,6 +17,7 @@
 		visibleSessions,
 		type KindFilter
 	} from '#lib/session/session-list-model.js';
+	import { markLeaving, unmarkLeaving } from '#lib/session/leaving-sessions.js';
 	import { cn } from '#lib/utils.js';
 	let sessions = $state<SessionItem[]>([]);
 	let filter = $state<KindFilter>(readKindFilter());
@@ -26,7 +27,6 @@
 	let renaming = $state<string | null>(null);
 	let now = $state(new Date());
 	let requestNumber = 0;
-	const deletedIds: string[] = [];
 	async function refresh(signal?: AbortSignal) {
 		const ticket = ++requestNumber;
 		try {
@@ -42,66 +42,19 @@
 	onMount(() => {
 		const lifetime = new AbortController();
 		void refresh(lifetime.signal);
-		void (async () => {
-			while (!lifetime.signal.aborted) {
-				try {
-					await streamNotifications((event) => {
-						if (event.type === 'jobs-changed') {
-							window.dispatchEvent(
-								new CustomEvent('verstehen:jobs-changed', { detail: event.session_id })
-							);
-							return;
-						}
-						if (event.type === 'graph-changed') {
-							window.dispatchEvent(
-								new CustomEvent('verstehen:graph-changed', { detail: event.revision })
-							);
-							return;
-						}
-						if (event.type === 'extractions-changed') {
-							window.dispatchEvent(new CustomEvent('verstehen:extractions-changed'));
-							return;
-						}
-						if (event.type === 'side-chats-changed') {
-							window.dispatchEvent(
-								new CustomEvent('verstehen:side-chats-changed', { detail: event.session_id })
-							);
-							return;
-						}
-						if (
-							event.type !== 'chats-changed' &&
-							event.type !== 'turn-started' &&
-							event.type !== 'turn-settled' &&
-							event.type !== 'compaction-changed'
-						)
-							return;
-						void refresh(lifetime.signal);
-						if (!deletedIds.includes(event.session_id) && deleting?.id !== event.session_id)
-							window.dispatchEvent(
-								new CustomEvent('verstehen:sessions-changed', { detail: event.session_id })
-							);
-					}, lifetime.signal);
-				} catch (cause) {
-					if (!lifetime.signal.aborted) error = (cause as Error).message;
-				}
-				if (lifetime.signal.aborted) break;
-				await new Promise((resolve) => setTimeout(resolve, 1000));
-				window.dispatchEvent(new CustomEvent('verstehen:jobs-changed', { detail: '' }));
-				window.dispatchEvent(new CustomEvent('verstehen:side-chats-changed', { detail: '' }));
-				window.dispatchEvent(new CustomEvent('verstehen:graph-changed'));
-				window.dispatchEvent(new CustomEvent('verstehen:extractions-changed'));
-			}
-		})();
+		const refreshList = () => void refresh(lifetime.signal);
+		window.addEventListener('verstehen:session-list-changed', refreshList);
 		const timer = setInterval(() => {
 			now = new Date();
 		}, 30_000);
 		return () => {
 			lifetime.abort();
+			window.removeEventListener('verstehen:session-list-changed', refreshList);
 			clearInterval(timer);
 		};
 	});
 	async function removed(id: string) {
-		deletedIds.push(id);
+		markLeaving(id);
 		sessions = sessions.filter((session) => session.id !== id);
 		deleting = null;
 		if (page.params.id === id) await goto(resolve('/(lesson)/session/new'));
@@ -189,6 +142,7 @@
 				variant="destructive"
 				onclick={() => {
 					deleting = session;
+					markLeaving(session.id);
 				}}
 			>
 				Delete
@@ -203,7 +157,10 @@
 {#if deleting}
 	<DeleteSessionDialog
 		session={deleting}
-		onclose={() => (deleting = null)}
+		onclose={() => {
+			if (deleting) unmarkLeaving(deleting.id);
+			deleting = null;
+		}}
 		ondeleted={(id) => void removed(id)}
 	/>
 {/if}

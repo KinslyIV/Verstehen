@@ -50,6 +50,9 @@ LearnHarness's two-stream model is kept:
 - **Notifications** (`GET /api/events`): "something changed, refetch". Types: `turn-started`,
   `turn-settled`, `chats-changed`, `compaction-changed`, `jobs-changed`, `side-chats-changed`,
   `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`, `sync-status-changed`.
+  The stream starts with a `: ping` comment sent once the subscription is registered, so a client
+  sees it accepted before the first event (a server sends response headers with the first chunk)
+  and misses nothing published after that; then a ping comment every 25 s without events.
 
 Server setup notes: `POST /api/server/accounts/chatgpt` returns a `state`-discriminated union
 (`started`, `host_key_required`, `ssh_password_required`); it and the local ChatGPT sign-in share
@@ -81,7 +84,8 @@ In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation
   and cross-site write check; `VERSTEHEN_ALLOWED_HOSTS` adds names.
 - **Startup handshake:** the sidecar prints exactly one stdout line, `{"port": N}`, once it listens.
   In desktop mode it exits when stdin closes or on SIGTERM.
-- SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header.
+- SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header. A stream
+  cut by the network is reopened with backoff; see [frontend-shell](frontend-shell.md).
 - **Remote clients** (the Android app, or a build with `PUBLIC_VERSTEHEN_CLIENT=remote`) send
   `Authorization: Bearer <token>` to the stored server URL. A `401` or a missing connection drops
   the token, keeps the server address, and routes to `/pair` ([frontend shell](frontend-shell.md)).

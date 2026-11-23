@@ -3,15 +3,23 @@
 	import { modelTabs } from '#lib/models/picks.js';
 	import { getModels, type ModelCatalog, type ModelPick } from '#lib/api/client.js';
 	import ModelControls from './model-controls.svelte';
+	import { onReconnect } from './settings-reconnect.js';
 	let main = $state<ModelPick | null>(null);
 	let catalog = $state<ModelCatalog>();
 	let error = $state<string | null>(null);
-	onMount(async () => {
+	async function load() {
 		try {
 			catalog = await getModels({ refresh: true });
+			error = null;
 		} catch (cause) {
 			error = (cause as Error).message;
 		}
+	}
+	onMount(() => {
+		void load();
+		return onReconnect(() => {
+			if (!catalog) void load();
+		});
 	});
 	function changed() {
 		window.dispatchEvent(new Event('verstehen:models-changed'));

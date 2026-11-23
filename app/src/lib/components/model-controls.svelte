@@ -144,6 +144,7 @@
 				side="top"
 				align="start"
 				sideOffset={12}
+				collisionPadding={12}
 				class="z-50 overflow-hidden rounded-xl border bg-popover text-popover-foreground shadow-xl outline-none"
 			>
 				{#if catalog}<ModelMenu

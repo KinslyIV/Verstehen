@@ -63,7 +63,9 @@
 	});
 </script>
 
-<div class="mx-auto w-full max-w-3xl shrink-0 px-6 pt-2 pb-6">
+<div
+	class="mx-auto w-full max-w-3xl shrink-0 px-6 pt-2 pb-6 max-md:px-3 max-md:pb-[calc(0.75rem+var(--safe-bottom))]"
+>
 	{#if !expanded}
 		<Button
 			variant="outline"

@@ -61,6 +61,9 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
         "src/lib/api/*.test.ts",
         "src/lib/markdown/*.test.ts",
         "src/lib/components/settings.svelte.test.ts",
+        "src/lib/components/settings-remote.svelte.test.ts",
+        "src/lib/components/settings-reconnect.svelte.test.ts",
+        "src/lib/layout/*.test.ts",
         "src/routes/*.test.ts",
     ),
 }

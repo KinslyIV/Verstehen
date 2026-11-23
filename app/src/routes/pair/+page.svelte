@@ -9,7 +9,7 @@
 
 	let address = $state('');
 	let code = $state('');
-	let deviceName = $state('Phone');
+	let deviceName = $state(Math.min(screen.width, screen.height) >= 600 ? 'Tablet' : 'Phone');
 	let error = $state('');
 	let pending = $state(false);
 	const ready = $derived(address.trim() && code.trim().length === 8 && deviceName.trim());
@@ -48,7 +48,8 @@
 				bind:value={address}
 				placeholder="100.x.y.z:8420"
 				inputmode="url"
-				autocapitalize="none"
+				autocapitalize="off"
+				autocorrect="off"
 				autocomplete="off"
 				spellcheck="false"
 				disabled={pending}
@@ -61,7 +62,8 @@
 				bind:value={code}
 				placeholder="ABCD2345"
 				maxlength={8}
-				autocapitalize="characters"
+				autocapitalize="off"
+				autocorrect="off"
 				autocomplete="off"
 				spellcheck="false"
 				class="font-mono uppercase"
