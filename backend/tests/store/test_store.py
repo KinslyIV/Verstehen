@@ -184,6 +184,45 @@ def test_double_cancellation_during_commit_reports_committed_truthfully(tmp_path
     asyncio.run(run())
 
 
+def test_a_cancelled_but_durable_commit_still_notifies_sync_exactly_once(
+    tmp_path: Path,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            notified: list[bool] = []
+            database.on_sync_write = lambda: notified.append(database._lock.locked())
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            real_commit = database._connection.commit
+
+            async def slow_commit():
+                entered.set()
+                await release.wait()
+                return await real_commit()
+
+            database._connection.commit = slow_commit  # type: ignore[method-assign]
+
+            async def write_row():
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO settings (key, value) VALUES ('k', '1')"
+                    )
+                    database.mark_sync_dirty()
+
+            task = asyncio.create_task(write_row())
+            await entered.wait()
+            task.cancel()
+            await asyncio.sleep(0)
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+            assert database.last_tx_committed is True
+            assert notified == [False]
+
+    asyncio.run(run())
+
+
 def test_cancellation_followed_by_commit_failure_raises_cancelled_error(tmp_path: Path):
     async def run():
         async with open_database(tmp_path / "test.db") as database:
