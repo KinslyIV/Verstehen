@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (M11a planned; specification moved to LearnHarness `069a6a11`).
+> PRs. Last update: 2026-11-23 (M11a built and verified; PR into `dev` ready for review).
 
 ## Where we are
 
@@ -47,8 +47,11 @@ rendering remain open.
 ## Next
 
 1. **M11a** ([plan](plans/m11-folders-search-stats.md)) on `m11-folders-search-stats`: sidebar
-   folders, title search, graph folder filter, stats bar, and the prompt editor follow-ups (all built; review and PR next). The specification is now LH `069a6a11`;
-   the other changes since `cb25c8e` are the [LH catch-up list](roadmap.md#lh-catch-up).
+   folders, title search, graph folder filter, stats bar, 90% quiz confidence, and the prompt
+   editor follow-ups (built and verified across four review rounds; adds six flows for 69 total;
+   PR into `dev` ready alongside [implementation decisions](decisions.md#waiting-for-your-review)).
+   The specification is now LH `069a6a11`; the other changes since `cb25c8e` are the
+   [LH catch-up list](roadmap.md#lh-catch-up).
 2. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
 3. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
    remote mode, `/pair`, and Android build tooling) and PR #16 (the phone and tablet layouts,

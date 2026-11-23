@@ -22,8 +22,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   subtree, and either removes all of it or answers 409 (`folder_not_empty`) and removes nothing,
   so a child moved out, or a source moved in, after the sidebar last read cannot be lost or
   orphaned on the same database. When a folder deletion syncs concurrently with a remote move into
-  that folder, sync reconciliation clears dangling folder and parent links on the merged state so
-  moved sessions become unfiled rather than breaking the directory. The `delete-folder` action
+  that folder, sync reconciliation clears dangling folder and parent links targeting deleted folders
+  (tracked by folder-id tombstones) on the merged state while preserving links whose targets arrive
+  on later sync pages, so moved sessions become unfiled rather than breaking the directory. The `delete-folder` action
   refuses any folder with a subfolder, and Chains keeps its own `DELETE /api/graph/sources` path.
   LH also removes a session-free folder with its subfolders.
 - **Touch input gates sidebar drags both by primary pointer and per gesture.** `pointer: coarse`
