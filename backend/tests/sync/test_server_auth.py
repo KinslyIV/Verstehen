@@ -478,7 +478,8 @@ def test_concurrent_pairing_code_issuance_and_revocation(tmp_path: Path):
     asyncio.run(run())
 
 
-def test_listener_binds_while_a_closed_connection_is_in_time_wait():
+def test_restart_rebinds_at_once_when_the_previous_listener_also_reused_the_address():
+    """Covers restarts between versions that both set SO_REUSEADDR, not the first upgrade."""
     previous = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     previous.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     previous.bind(("127.0.0.1", 0))

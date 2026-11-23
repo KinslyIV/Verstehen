@@ -34,6 +34,8 @@ from verstehen.sync.provision import (
     SERVER_RESTART_DELAY,
     SERVER_STOP_TIMEOUT,
     SYSTEMD_INVOCATION_COMMAND,
+    TIME_WAIT_ALLOWANCE,
+    TOKEN_CHECK_ATTEMPTS,
     AsyncSshBackend,
     HostKeyChallenge,
     HostKeyMismatchError,
@@ -1860,17 +1862,19 @@ def test_rollback_that_fails_or_stays_unhealthy_is_a_clear_error(tmp_path: Path)
         assert "Rolling back to the previous version also failed" in error
 
 
-def test_health_wait_outlasts_a_stop_that_takes_the_full_stop_limit(
+def default_install_service(laptop_app) -> ServerInstallService:
+    configured = laptop_app.state.server_install_service
+    return ServerInstallService(
+        configured.sync_store, configured.credentials_store, configured.sync_service
+    )
+
+
+def test_health_wait_outlasts_a_slow_stop_and_the_old_servers_time_wait(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
     async def run() -> None:
         async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
-            configured = laptop_app.state.server_install_service
-            service = ServerInstallService(
-                configured.sync_store,
-                configured.credentials_store,
-                configured.sync_service,
-            )
+            service = default_install_service(laptop_app)
             waited = 0.0
 
             async def fake_sleep(seconds: float) -> None:
@@ -1878,11 +1882,11 @@ def test_health_wait_outlasts_a_stop_that_takes_the_full_stop_limit(
                 waited += seconds
 
             def handler(request: httpx2.Request) -> httpx2.Response:
-                new_server_listening = (
-                    waited > SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY
+                bindable_after = (
+                    SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY + TIME_WAIT_ALLOWANCE
                 )
                 return httpx2.Response(
-                    200 if new_server_listening else 503, json={"status": "ok"}
+                    200 if waited > bindable_after else 503, json={"status": "ok"}
                 )
 
             async def accept(response: httpx2.Response) -> bool:
@@ -1895,7 +1899,38 @@ def test_health_wait_outlasts_a_stop_that_takes_the_full_stop_limit(
             assert await service._wait_healthy("http://100.64.0.10:8420", accept) == (
                 "healthy"
             )
-            assert ROLLBACK_TIMEOUT > SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY
+            assert ROLLBACK_TIMEOUT > (
+                SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY + TIME_WAIT_ALLOWANCE
+            )
+
+    asyncio.run(run())
+
+
+def test_token_check_gives_up_within_a_bounded_number_of_attempts_and_sleep(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    async def run() -> None:
+        async with laptop_and_servers(tmp_path, "server") as (laptop_app, apps, _):
+            service = default_install_service(laptop_app)
+            sleeps: list[float] = []
+            requests = 0
+
+            async def fake_sleep(seconds: float) -> None:
+                sleeps.append(seconds)
+
+            def handler(request: httpx2.Request) -> httpx2.Response:
+                nonlocal requests
+                requests += 1
+                return httpx2.Response(503)
+
+            monkeypatch.setattr(asyncio, "sleep", fake_sleep)
+            service._client_factory = lambda: httpx2.AsyncClient(
+                transport=httpx2.MockTransport(handler)
+            )
+            check = await service._verify_token("http://100.64.0.10:8420", "token")
+            assert check.outcome == "unavailable"
+            assert requests == TOKEN_CHECK_ATTEMPTS
+            assert sum(sleeps) < 30
 
     asyncio.run(run())
 

@@ -634,13 +634,18 @@ ROLLBACK_RECONNECTS = 2
 ISSUED_SIGN_INS_KEPT = 8
 SERVER_STOP_TIMEOUT = 15
 SERVER_RESTART_DELAY = 5
-SERVER_START_ALLOWANCE = 20
+TIME_WAIT_ALLOWANCE = 60
+SERVER_START_ALLOWANCE = 10
 SERVER_SETTLE_SECONDS = (
-    SERVER_STOP_TIMEOUT + SERVER_RESTART_DELAY + SERVER_START_ALLOWANCE
+    SERVER_STOP_TIMEOUT
+    + SERVER_RESTART_DELAY
+    + TIME_WAIT_ALLOWANCE
+    + SERVER_START_ALLOWANCE
 )
 HEALTH_INTERVAL = 0.5
 HEALTH_ATTEMPTS = round(SERVER_SETTLE_SECONDS / HEALTH_INTERVAL)
 ROLLBACK_TIMEOUT = float(SERVER_SETTLE_SECONDS)
+TOKEN_CHECK_ATTEMPTS = 5
 NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
@@ -1630,6 +1635,16 @@ class ServerInstallService:
         self._secrets.append(token)
         return device_id, token
 
+    async def _verify_token(self, server_url: str, token: str) -> TokenCheck:
+        """Check a device token with its own short retry budget, apart from the health wait."""
+        return await verify_bearer_token(
+            self._client_factory,
+            server_url,
+            token,
+            attempts=max(min(self._health_attempts, TOKEN_CHECK_ATTEMPTS), 1),
+            interval=self._health_interval,
+        )
+
     async def _pair_device(
         self,
         session: SshSession,
@@ -1646,13 +1661,7 @@ class ServerInstallService:
         existing_token = snapshot.token if snapshot.server_url == server_url else None
         reused: TokenCheck | None = None
         if mode == "update" and existing_token:
-            check = await verify_bearer_token(
-                self._client_factory,
-                server_url,
-                existing_token,
-                attempts=max(self._health_attempts, 1),
-                interval=self._health_interval,
-            )
+            check = await self._verify_token(server_url, existing_token)
             if check.outcome == "unavailable":
                 self._fail(
                     "pair_device",
@@ -1672,13 +1681,7 @@ class ServerInstallService:
             if minted is None:
                 return False
             server_device_id, token = minted
-            verified = await verify_bearer_token(
-                self._client_factory,
-                server_url,
-                token,
-                attempts=max(self._health_attempts, 1),
-                interval=self._health_interval,
-            )
+            verified = await self._verify_token(server_url, token)
             if verified.outcome != "accepted":
                 self._fail(
                     "pair_device",
