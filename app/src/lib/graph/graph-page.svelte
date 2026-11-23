@@ -60,7 +60,15 @@
 </script>
 
 <section aria-label="Knowledge graph" data-testid="graph-page" class="relative h-full w-full">
-	{#if controller.loadError}
+	{#if controller.loadError && graph}
+		<p
+			role="status"
+			class="absolute top-2 left-1/2 z-10 -translate-x-1/2 rounded-md bg-background/90 px-3 py-1 text-xs text-destructive"
+		>
+			Could not refresh the graph: {controller.loadError}
+		</p>
+	{/if}
+	{#if controller.loadError && !graph}
 		<p role="alert" class="p-6 text-sm text-destructive">{controller.loadError}</p>
 	{:else if graph && controller.rendering === false}
 		<div class="pointer-events-none flex h-full items-center justify-center pb-40">

@@ -10,8 +10,21 @@
 	let manual = $state<'idle' | 'refreshing' | 'done'>('idle');
 	let manualFailure = $state<string | null>(null);
 	let catalog = $derived(models.catalog);
-	let unreachable = $derived(
-		catalog?.accounts.filter((item) => item.refresh_error).map((item) => item.account.label) ?? []
+	const names = (items: { account: { label: string } }[]) =>
+		items.map((item) => item.account.label).join(', ');
+	let unreachable = $derived(catalog?.accounts.filter((item) => item.refresh_error) ?? []);
+	let signedOut = $derived(
+		catalog?.accounts.filter((item) => item.account.state === 'needs_sign_in') ?? []
+	);
+	let problems = $derived(
+		[
+			unreachable.length
+				? `Could not reach ${names(unreachable)}.${unreachable.some((item) => item.models.length) ? ' Saved models are still available.' : ''}`
+				: '',
+			signedOut.length ? `${names(signedOut)} needs sign-in.` : ''
+		]
+			.filter(Boolean)
+			.join(' ')
 	);
 	onMount(() => {
 		void models.load();
@@ -27,8 +40,8 @@
 			? 'Refreshing…'
 			: manualFailure
 				? `Could not refresh: ${manualFailure}`
-				: manual === 'done' && unreachable.length
-					? `Could not reach ${unreachable.join(', ')}. Saved models are still available.`
+				: manual === 'done' && problems
+					? problems
 					: manual === 'done'
 						? 'Models are up to date.'
 						: 'Check each account for new models.'

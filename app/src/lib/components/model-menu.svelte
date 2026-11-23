@@ -45,7 +45,7 @@
 			(refreshing
 				? 'Refreshing models…'
 				: account?.refresh_error
-					? `Showing saved models. ${account.refresh_error}`
+					? `${account.models.length ? 'Showing saved models. ' : ''}${account.refresh_error}`
 					: null)
 	);
 </script>

@@ -116,3 +116,24 @@ test('an_account_saved_without_models_asks_to_connect_once_discovery_finished', 
 	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
 	await expect.element(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
 });
+test('a_failed_read_or_refresh_shows_the_error_with_retry_instead_of_the_connect_stage', async () => {
+	vi.mocked(api.getModels).mockRejectedValue(new Error('The sidecar is unreachable'));
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByText('The sidecar is unreachable')).toBeVisible();
+	await expect
+		.element(page.getByRole('heading', { name: 'Connect a provider' }))
+		.not.toBeInTheDocument();
+	vi.mocked(api.getModels).mockResolvedValue({ ...structuredClone(testCatalog), slots: {} });
+	await page.getByRole('button', { name: 'Retry', exact: true }).click();
+	await expect.element(page.getByRole('tab', { name: 'Main', exact: true })).toBeVisible();
+});
+test('a_failed_refresh_of_an_empty_catalog_asks_to_retry_not_to_connect', async () => {
+	vi.mocked(api.getModels).mockResolvedValue({ accounts: [], slots: {} });
+	vi.mocked(api.refreshModels).mockRejectedValue(new Error('HTTP 500'));
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByText('HTTP 500')).toBeVisible();
+	await expect
+		.element(page.getByRole('heading', { name: 'Connect a provider' }))
+		.not.toBeInTheDocument();
+	await expect.element(page.getByRole('button', { name: 'Retry', exact: true })).toBeVisible();
+});

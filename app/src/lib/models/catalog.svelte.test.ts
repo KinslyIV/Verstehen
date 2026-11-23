@@ -139,3 +139,38 @@ test('a_superseded_refresh_reports_the_outcome_of_the_newest_one', async () => {
 	expect(await first).toBe('HTTP 500');
 	expect(await second).toBe('HTTP 500');
 });
+
+test('a_refresh_superseded_during_its_final_read_follows_the_newer_refresh_and_does_not_settle', async () => {
+	vi.mocked(api.refreshModels).mockResolvedValueOnce(undefined);
+	let finishRead!: (catalog: api.ModelCatalog) => void;
+	vi.mocked(api.getModels).mockImplementationOnce(
+		() => new Promise((resolve) => (finishRead = resolve))
+	);
+	const state = new ModelCatalogState();
+	const first = state.refresh();
+	await vi.waitFor(() => expect(api.getModels).toHaveBeenCalledOnce());
+	vi.mocked(api.refreshModels).mockRejectedValueOnce(new Error('HTTP 500'));
+	vi.mocked(api.getModels).mockResolvedValue(saved('after'));
+	const second = state.refresh(true);
+	finishRead(saved('during'));
+	expect(await first).toBe('HTTP 500');
+	expect(await second).toBe('HTTP 500');
+	expect(state.refreshedOnce).toBe(false);
+	expect(state.refreshFailure).toBe('HTTP 500');
+});
+
+test('a_refresh_outcome_ignores_the_error_another_read_left_in_the_shared_field', async () => {
+	vi.mocked(api.refreshModels).mockResolvedValue(undefined);
+	let finishFinal!: (catalog: api.ModelCatalog) => void;
+	vi.mocked(api.getModels).mockImplementationOnce(
+		() => new Promise((resolve) => (finishFinal = resolve))
+	);
+	const state = new ModelCatalogState();
+	const refreshing = state.refresh();
+	await vi.waitFor(() => expect(api.getModels).toHaveBeenCalledOnce());
+	vi.mocked(api.getModels).mockRejectedValueOnce(new Error('other read failed'));
+	await state.load();
+	finishFinal(saved('final'));
+	expect(await refreshing).toBeNull();
+	expect(state.refreshedOnce).toBe(true);
+});

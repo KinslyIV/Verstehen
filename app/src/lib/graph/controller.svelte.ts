@@ -49,6 +49,7 @@ export class GraphController {
 	private renderingKnown: Promise<void>;
 	private graphRequest = 0;
 	private requestClock = 0;
+	private snapshotStarted = 0;
 	private freshTitles: { sessions: Record<string, string>; started: number } | undefined;
 	private settingsTouched = false;
 	private settingsLoaded = false;
@@ -145,6 +146,8 @@ export class GraphController {
 			if (request !== this.graphRequest) return;
 			const snapshot = this.withOwnPositions(fetched);
 			this.ownRevisions = this.ownRevisions.filter((revision) => revision > snapshot.revision);
+			this.loadError = undefined;
+			this.snapshotStarted = started;
 			this.titles = snapshot.sessions;
 			this.clusterLabels = {};
 			picks.prune(snapshot.propositions);
@@ -157,7 +160,8 @@ export class GraphController {
 				this.applyTitles(this.freshTitles.sessions);
 			if (positions !== snapshot.positions) void this.savePositions(positions);
 		} catch (cause) {
-			if (!this.lifetime.signal.aborted) this.loadError = (cause as Error).message;
+			if (request === this.graphRequest && !this.lifetime.signal.aborted)
+				this.loadError = (cause as Error).message;
 		}
 	}
 
@@ -185,6 +189,7 @@ export class GraphController {
 		const started = ++this.requestClock;
 		try {
 			const { sessions } = await getGraphTitles(this.lifetime.signal);
+			if (started < this.snapshotStarted) return;
 			if (this.freshTitles && this.freshTitles.started > started) return;
 			this.freshTitles = { sessions, started };
 			this.applyTitles(sessions);

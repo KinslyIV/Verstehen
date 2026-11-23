@@ -7,6 +7,7 @@ export const REFRESH_POLL_MS = 1000;
 export class ModelCatalogState {
 	catalog = $state<ModelCatalog>();
 	error = $state<string | null>(null);
+	refreshFailure = $state<string | null>(null);
 	refreshedOnce = $state(false);
 	private pending = $state(0);
 	private started = 0;
@@ -22,21 +23,28 @@ export class ModelCatalogState {
 
 	async load(): Promise<ModelCatalog | undefined> {
 		const generation = this.generation;
+		await this.read();
+		return generation === this.generation ? this.catalog : undefined;
+	}
+
+	/** One saved-catalog read; resolves to its own failure message or null. */
+	private async read(): Promise<string | null> {
+		const generation = this.generation;
 		const sequence = ++this.started;
 		try {
 			const result = await getModels();
-			if (generation !== this.generation) return undefined;
-			if (sequence > this.applied) {
+			if (generation === this.generation && sequence > this.applied) {
 				this.applied = sequence;
 				this.catalog = result;
 				this.error = null;
 				markStartup('models_displayed');
 			}
+			return null;
 		} catch (cause) {
-			if (generation === this.generation && sequence > this.applied)
-				this.error = (cause as Error).message;
+			const message = (cause as Error).message;
+			if (generation === this.generation && sequence > this.applied) this.error = message;
+			return message;
 		}
-		return this.catalog;
 	}
 
 	/** Display the saved catalog now, then refresh in the background. */
@@ -61,6 +69,7 @@ export class ModelCatalogState {
 		this.generation++;
 		this.catalog = undefined;
 		this.error = null;
+		this.refreshFailure = null;
 		this.refreshedOnce = false;
 		this.pending = 0;
 		this.started = this.applied = 0;
@@ -84,11 +93,13 @@ export class ModelCatalogState {
 			if (generation === this.generation) this.pending--;
 		}
 		if (generation !== this.generation) return failure;
-		if (sequence !== this.runs && this.latest) return this.latest;
-		await this.load();
+		const readFailure = await this.read();
 		if (generation !== this.generation) return failure;
-		this.refreshedOnce = true;
-		return failure ?? this.error;
+		if (sequence !== this.runs && this.latest) return this.latest;
+		const outcome = failure ?? readFailure;
+		this.refreshFailure = outcome;
+		if (!outcome) this.refreshedOnce = true;
+		return outcome;
 	}
 }
 

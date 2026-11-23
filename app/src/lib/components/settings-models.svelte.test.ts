@@ -91,3 +91,23 @@ test('only_the_main_picker_offers_set_as_default', async () => {
 		.element(page.getByRole('button', { name: 'Set as default', exact: true }))
 		.toBeVisible();
 });
+test('an_account_unreachable_on_first_discovery_does_not_claim_saved_models', async () => {
+	const offline = structuredClone(testCatalog);
+	offline.accounts[0].models = [];
+	offline.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue(offline);
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Could not reach Scripted model.')).toBeVisible();
+	await expect.element(page.getByText('Saved models are still available.')).not.toBeInTheDocument();
+});
+test('a_refresh_that_leaves_an_account_needing_sign_in_says_so_instead_of_up_to_date', async () => {
+	const signedOut = structuredClone(testCatalog);
+	signedOut.accounts[0].models = [];
+	signedOut.accounts[0].account.state = 'needs_sign_in';
+	vi.mocked(api.getModels).mockResolvedValue(signedOut);
+	await render(SettingsModels);
+	await page.getByRole('button', { name: 'Refresh model lists' }).click();
+	await expect.element(page.getByText('Scripted model needs sign-in.')).toBeVisible();
+	await expect.element(page.getByText('Models are up to date.')).not.toBeInTheDocument();
+});

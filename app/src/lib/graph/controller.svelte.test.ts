@@ -148,6 +148,53 @@ test('a_snapshot_fetched_before_a_rename_does_not_undo_the_fresher_title', async
 	expect(controller.clusterLabels).toEqual({ s1: 'Renamed' });
 });
 
+test('a_late_titles_response_does_not_undo_a_snapshot_that_started_after_its_request', async () => {
+	const titles = deferred<{ sessions: Record<string, string> }>();
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	vi.mocked(api.getGraphTitles).mockReturnValue(titles.promise);
+	window.dispatchEvent(new CustomEvent('verstehen:sessions-changed'));
+	await vi.waitFor(() => expect(api.getGraphTitles).toHaveBeenCalledOnce());
+	vi.mocked(api.getGraph).mockResolvedValue(
+		snapshot(6, {
+			sessions: { s1: 'Newest' },
+			clusters: [{ id: 's1', label: 'Newest', members: ['a'] }]
+		})
+	);
+	graphChanged(6);
+	await vi.waitFor(() => expect(controller.graph?.snapshot.revision).toBe(6));
+	titles.resolve({ sessions: { s1: 'Older rename' } });
+	await settle();
+	expect(controller.titles).toEqual({ s1: 'Newest' });
+	expect(controller.clusterLabels).toEqual({});
+});
+
+test('a_failed_older_graph_request_does_not_report_an_error_over_a_newer_success', async () => {
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	const older = deferred<api.GraphSnapshot>();
+	vi.mocked(api.getGraph).mockReturnValueOnce(older.promise).mockResolvedValueOnce(snapshot(7));
+	graphChanged(6);
+	graphChanged(7);
+	await vi.waitFor(() => expect(controller.graph?.snapshot.revision).toBe(7));
+	older.reject(new Error('older failed'));
+	await settle();
+	expect(controller.loadError).toBeUndefined();
+});
+
+test('a_successful_refresh_clears_an_earlier_load_error_and_keeps_the_loaded_graph_through_a_failure', async () => {
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	vi.mocked(api.getGraph).mockRejectedValueOnce(new Error('offline'));
+	graphChanged(6);
+	await vi.waitFor(() => expect(controller.loadError).toBe('offline'));
+	expect(controller.graph?.snapshot.revision).toBe(5);
+	vi.mocked(api.getGraph).mockResolvedValueOnce(snapshot(6));
+	graphChanged(6);
+	await vi.waitFor(() => expect(controller.graph?.snapshot.revision).toBe(6));
+	expect(controller.loadError).toBeUndefined();
+});
+
 test('unchanged_titles_leave_the_drawn_labels_untouched', async () => {
 	controller = new GraphController();
 	await vi.waitFor(() => expect(controller.graph).toBeDefined());

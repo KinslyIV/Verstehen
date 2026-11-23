@@ -15,6 +15,7 @@
 	let busy = $state(false);
 	let connecting = $state(false);
 	let stage = $derived(setupStage(catalog, models.settled));
+	let loadFailure = $derived(models.error ?? models.refreshFailure);
 	let accountsOpen = $derived(connecting && stage !== 'models');
 	let disposed = false;
 	async function initialize() {
@@ -34,6 +35,10 @@
 			clearInterval(timer);
 		};
 	});
+	function retryLoading() {
+		void models.load();
+		void models.refresh();
+	}
 	async function save() {
 		if (!slotsComplete(slots) || busy) return;
 		busy = true;
@@ -61,9 +66,13 @@
 				Connect an account, then choose Main, Cheap, and Vision. Your message will wait.
 			</Dialog.Description>
 		</Dialog.Header>
-		{#if stage === 'loading'}<p class="text-muted-foreground">
-				{models.error ?? 'Loading models…'}
-			</p>
+		{#if stage === 'loading'}
+			{#if loadFailure}<div role="alert" class="flex items-center gap-3 text-sm text-destructive">
+					<span>{loadFailure}</span><Button variant="outline" size="sm" onclick={retryLoading}>
+						Retry
+					</Button>
+				</div>
+			{:else}<p class="text-muted-foreground">Loading models…</p>{/if}
 		{:else if stage === 'connect'}
 			<div class="space-y-4 rounded-lg border p-5">
 				<h3 class="font-medium">Connect a provider</h3>

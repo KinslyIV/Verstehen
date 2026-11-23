@@ -159,3 +159,16 @@ test('a_model_without_thinking_levels_keeps_the_strip_and_says_so', async () => 
 	await expect.element(page.getByText('No thinking levels')).toBeVisible();
 	await expect.element(page.getByRole('slider')).not.toBeInTheDocument();
 });
+
+test('a_failed_account_without_a_saved_list_says_it_could_not_be_reached_not_that_models_are_saved', async () => {
+	const catalog = structuredClone(testCatalog);
+	catalog.accounts[0].models = [];
+	catalog.accounts[0].refresh_error = 'ChatGPT could not be reached. Try again.';
+	vi.mocked(api.getModels).mockResolvedValue(catalog);
+	const screen = await render(ModelControls, { pick: mainPick, onpick: vi.fn() });
+	await screen.getByRole('button', { name: 'Choose model', exact: true }).click();
+	await expect
+		.element(page.getByRole('status'))
+		.toHaveTextContent('ChatGPT could not be reached. Try again.');
+	await expect.element(page.getByText('Showing saved models.')).not.toBeInTheDocument();
+});
