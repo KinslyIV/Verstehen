@@ -9,7 +9,7 @@ from uuid import uuid4
 from aiosqlite import Connection, IntegrityError
 from pydantic import BaseModel, Field, JsonValue, ValidationError
 
-from verstehen.store.database import Database
+from verstehen.store.database import Database, wait_for_completion
 from verstehen.store.entries import ENTRY, MarkerEntry, delivered_job_id
 from verstehen.store.graph import SourcePlacement
 from verstehen.store.jobs import JobKind, JobUsage, mark_delivered
@@ -361,6 +361,15 @@ def validate_inbound_change(change: SyncChange) -> str | None:
             f"Invalid payload for {entity}: {error.errors()[0]['msg']}"
         ) from error
     return None
+
+
+async def _rollback_prompts(rollback: PromptRollbackHook) -> None:
+    """Run the prompt rollback to completion, then re-raise a cancellation that arrived meanwhile."""
+    restoring = asyncio.ensure_future(rollback())
+    cancelled = await wait_for_completion(restoring)
+    restoring.result()
+    if cancelled:
+        raise asyncio.CancelledError
 
 
 async def get_schema_version(connection: Connection) -> int:
@@ -1504,7 +1513,7 @@ class SyncStore:
                 and not self.database.last_tx_committed
                 and on_prompt_rollback is not None
             ):
-                await asyncio.shield(on_prompt_rollback())
+                await _rollback_prompts(on_prompt_rollback)
             raise
         return summary
 
@@ -1627,7 +1636,7 @@ class SyncStore:
                     latest_seq = int(row[0])
         except IntegrityError as error:
             if prompts_written and on_prompt_rollback is not None:
-                await asyncio.shield(on_prompt_rollback())
+                await _rollback_prompts(on_prompt_rollback)
             raise InvalidSyncPayloadError(
                 f"Sync batch violated database constraints: {error}"
             ) from error
@@ -1637,7 +1646,7 @@ class SyncStore:
                 and not self.database.last_tx_committed
                 and on_prompt_rollback is not None
             ):
-                await asyncio.shield(on_prompt_rollback())
+                await _rollback_prompts(on_prompt_rollback)
             raise
         summary.deferred_session_ids = sorted(deferred_seen)
         return summary.applied, summary.skipped, latest_seq, summary
@@ -2039,7 +2048,7 @@ class SyncStore:
                 and not self.database.last_tx_committed
                 and on_prompt_rollback is not None
             ):
-                await asyncio.shield(on_prompt_rollback())
+                await _rollback_prompts(on_prompt_rollback)
             raise
         return summary
 

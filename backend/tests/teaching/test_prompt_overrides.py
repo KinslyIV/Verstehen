@@ -520,3 +520,69 @@ def test_a_turn_composing_during_a_sync_rollback_reads_the_restored_prompt(
             assert "COMMITTED" in composed and "REMOTE" not in composed
 
     asyncio.run(run())
+
+
+def test_a_cancelled_sync_apply_keeps_the_edit_lock_until_the_prompt_is_restored(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database)
+            settings_store = SettingsStore(database)
+            sync_store = SyncStore(database)
+            edit_lock = asyncio.Lock()
+            overrides = PromptOverridesService(
+                settings_store, tmp_path, asyncio.Lock(), sync_store, edit_lock
+            )
+            await overrides.save(SEGMENT, "COMMITTED")
+            await overrides.set_enabled(SEGMENT, True)
+            local = (await sync_store.list_pending_push())[0]
+            remote = local.model_copy(
+                update={
+                    "change_seq": 3,
+                    "origin_device_id": "remote",
+                    "payload": {**local.payload, "content": "REMOTE"},
+                }
+            )
+            service = SyncService(
+                sync_store,
+                CredentialsStore(tmp_path),
+                RuntimeRegistry(),
+                Notifications(),
+                tmp_path,
+                prompt_edit_lock=edit_lock,
+            )
+            service._deferred["s"] = [remote]
+            write, rollback = make_prompt_tx_hooks(tmp_path)
+            rolling_back, release = asyncio.Event(), asyncio.Event()
+
+            async def paused_rollback():
+                rolling_back.set()
+                await release.wait()
+                await rollback()
+
+            monkeypatch.setattr(
+                service, "_make_prompt_hooks", lambda: (write, paused_rollback)
+            )
+            monkeypatch.setattr(
+                "verstehen.store.sync._write_prompt_hashes",
+                Mock(side_effect=RuntimeError("apply failed")),
+            )
+            flushing = asyncio.create_task(service._flush_deferred_unlocked("s"))
+            await rolling_back.wait()
+            flushing.cancel()
+            composing = asyncio.create_task(
+                compose_instructions(settings_store, tmp_path, "teacher", edit_lock)
+            )
+            await asyncio.sleep(0.05)
+            assert not composing.done()
+            release.set()
+            with pytest.raises(asyncio.CancelledError):
+                await flushing
+            override_text = (tmp_path / "prompts" / SEGMENT).read_text()
+            assert override_text == "COMMITTED"
+            composed = await composing
+            assert "COMMITTED" in composed and "REMOTE" not in composed
+
+    asyncio.run(run())
