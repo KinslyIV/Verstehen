@@ -6,7 +6,6 @@ import {
 	contextLimit,
 	costLabel,
 	formatTokens,
-	hasStats,
 	turnCostLabel
 } from './stats-format.js';
 
@@ -69,12 +68,5 @@ describe('stats formatting', () => {
 
 	it('writes the cache hit rate as a one-decimal percentage', () => {
 		expect(cacheHitText(0.8123)).toBe('81.2%');
-	});
-
-	it('shows the row only once there are turns or a context measurement', () => {
-		expect(hasStats(undefined)).toBe(false);
-		expect(hasStats(stats())).toBe(false);
-		expect(hasStats(stats({ context_tokens: 5 }))).toBe(true);
-		expect(hasStats(stats({ turns: [{} as SessionStats['turns'][number]] }))).toBe(true);
 	});
 });

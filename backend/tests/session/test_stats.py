@@ -82,7 +82,14 @@ def test_a_side_answer_in_the_middle_of_a_run_does_not_split_it():
             call("a#2", 2),
         ]
     )
-    assert [(turn.id, turn.steps) for turn in result.turns] == [("a", 2), ("answer", 1)]
+    assert [(turn.id, turn.steps) for turn in result.turns] == [
+        ("answer", 1),
+        ("a", 2),
+    ]
+    assert [turn.at for turn in result.turns] == [
+        START + timedelta(minutes=1),
+        START + timedelta(minutes=2),
+    ]
 
 
 def test_rows_from_before_run_ids_are_one_step_turns_each():
@@ -263,3 +270,14 @@ def test_a_stream_stopped_mid_call_keeps_its_row_but_stats_skip_it(tmp_path: Pat
     assert result.turns == []
     assert result.totals.runs == 0 and result.totals.tokens["output_tokens"] == 0
     assert result.cache_hit_rate is None
+
+
+def test_negative_token_buckets_yield_unknown_cache_rate_without_breaking_stats():
+    for bad in (
+        call("a#1", 0, input=-10, read=10),
+        call("a#1", 0, input=10, read=-1),
+        call("a#1", 0, input=10, read=5, write=-2),
+    ):
+        result = stats([bad])
+        assert result.cache_hit_rate is None
+        assert len(result.turns) == 1

@@ -54,11 +54,11 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   Rename, New subfolder, and Delete, which is enabled only when `folderHoldsNoSources` and then
   sends `delete-folder-tree` for that folder; the server recomputes the subtree in its transaction
   and removes all of it or answers 409. Drag payload and drop
-  rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` (touch input)
-  turns every sidebar drag off.
-- **Stats bar:** `stats-bar.svelte` sits under the composer or dock in the lesson (not on `/` or
-  `/session/new`): `41k / 200k · CLI`, `?` before a measurement, `—` for an unpriced model, never
-  a dollar zero. Its popover is Session stats (see [session](session.md#session-stats)); outside
+  rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` turns `draggable`
+  off on touch-primary layouts and `SourceDragRow` cancels touch-origin drags on hybrid devices.
+- **Stats bar:** `stats-bar.svelte` sits under the composer or dock on `/session/{id}` once stats
+  load (`41k / 200k · CLI`, `? · —` before a completed reply, absent on `/` or `/session/new`):
+  `—` for an unpriced model, never a dollar zero. Its popover is Session stats (see [session](session.md#session-stats)); outside
   press or Esc closes it. On touch the button is 44 px tall and the popover stays inside the screen.
 - **Sidebar search:** the field above the kind filter (also on the phone drawer) scores titles with
   `fuzzyScore` through `buildSessionTree`: the kind filter narrows first, folders lead, each level

@@ -1153,3 +1153,70 @@ def test_sync_practice_session_round_trip_and_fork(tmp_path: Path):
             assert all(s.kind == "practice" for s in l_all)
 
     asyncio.run(run())
+
+
+def test_concurrent_folder_delete_and_move_reconcile_on_both_replicas(tmp_path: Path):
+    """A synced folder deletion clears concurrent remote child/placement links instead of failing."""
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            s_sessions = SessionsStore(server_app.state.database)
+            l_sessions = SessionsStore(laptop_app.state.database)
+            s_graph = server_app.state.graph_service
+            l_graph = laptop_app.state.graph_service
+
+            # Case 1: laptop deletes F1 while server moves S1 into F1 and creates subfolder C1 under F1.
+            s1 = await s_sessions.create("Server session")
+            f1 = (
+                await s_graph.organize(
+                    {"action": "create-folder", "name": "F1", "parent_id": None}
+                )
+            ).created_folder_id
+            assert f1 is not None
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+
+            await l_graph.organize({"action": "delete-folder-tree", "id": f1})
+            c1 = (
+                await s_graph.organize(
+                    {"action": "create-folder", "name": "C1", "parent_id": f1}
+                )
+            ).created_folder_id
+            assert c1 is not None
+            await s_graph.organize(
+                {"action": "move", "kind": "source", "id": s1.id, "parent_id": f1}
+            )
+
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            for dir_view in (await s_graph.directory(), await l_graph.directory()):
+                folders = {f.id: f for f in dir_view.organization.folders}
+                assert f1 not in folders
+                assert c1 in folders and folders[c1].parent_id is None
+                assert dir_view.organization.placements[s1.id].folder_id is None
+
+            # Case 2: server deletes F2 while laptop moves S2 into F2 (exercises mark_pushed_and_reconcile).
+            s2 = await l_sessions.create("Laptop session")
+            f2 = (
+                await l_graph.organize(
+                    {"action": "create-folder", "name": "F2", "parent_id": None}
+                )
+            ).created_folder_id
+            assert f2 is not None
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+
+            await s_graph.organize({"action": "delete-folder-tree", "id": f2})
+            await l_graph.organize(
+                {"action": "move", "kind": "source", "id": s2.id, "parent_id": f2}
+            )
+
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            for dir_view in (await s_graph.directory(), await l_graph.directory()):
+                folders = {f.id: f for f in dir_view.organization.folders}
+                assert f2 not in folders
+                assert dir_view.organization.placements[s2.id].folder_id is None
+
+    asyncio.run(run())

@@ -21,20 +21,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
   with only the folder's id. Inside the graph transaction the server recomputes the current
   subtree, and either removes all of it or answers 409 (`folder_not_empty`) and removes nothing,
   so a child moved out, or a source moved in, after the sidebar last read cannot be lost or
-  orphaned. The earlier design sent the descendant ids and let the server delete each one still
-  empty, which could remove part of a changed tree. The `delete-folder` action refuses any folder
-  with a subfolder, and Chains keeps its own `DELETE /api/graph/sources` path. LH also removes a
-  session-free folder with its subfolders.
-- **Touch input, not the width tier, turns sidebar drags off.** The check is `pointer: coarse`
-  (`layout.coarse`), so a narrow desktop window with a mouse can still drag, and a touch laptop's
-  touchscreen cannot start one. The alternative, `tier !== 'desktop'`, would block mouse drags in
-  a narrow window.
+  orphaned on the same database. When a folder deletion syncs concurrently with a remote move into
+  that folder, sync reconciliation clears dangling folder and parent links on the merged state so
+  moved sessions become unfiled rather than breaking the directory. The `delete-folder` action
+  refuses any folder with a subfolder, and Chains keeps its own `DELETE /api/graph/sources` path.
+  LH also removes a session-free folder with its subfolders.
+- **Touch input gates sidebar drags both by primary pointer and per gesture.** `pointer: coarse`
+  (`layout.coarse`) disables `draggable` on touch-primary devices, and `SourceDragRow` cancels
+  touch-origin drag gestures (`pointerType === 'touch'` / `touchstart`), so a narrow desktop window
+  and mouse drags on a hybrid touchscreen laptop still work while finger drags are blocked. The
+  alternative, checking `tier !== 'desktop'` or primary pointer alone, would either block mouse
+  drags or allow touch drags on hybrid devices.
 - **The search shortcut opens the sidebar and answers to Cmd too.** Ctrl or Cmd+Shift+F opens a
   collapsed sidebar or the closed phone drawer, then focuses the field once it exists. The
   listener lives in the always-mounted lesson layout (`search-shortcut.svelte`), because the
-  drawer's contents are unmounted while it is closed. It does nothing while a dialog, popover, or
-  menu is open; only the drawer itself does not block it (LH: `lh:kbd-sessions-search`, same
-  guards). The query is not remembered across reloads (LH does not either).
+  drawer's contents are unmounted while it is closed. It does nothing while a dialog (including
+  native modal dialogs via `dialog:modal`, e.g., the external-link prompt), popover, or menu is
+  open; only the drawer itself does not block it (LH: `lh:kbd-sessions-search`, same guards). The
+  query is not remembered across reloads (LH does not either).
 - **The graph funnel sits at the top left of the graph page, not in the app header.** LH portals it
   into the header after the sidebar toggle; here the header belongs to the lesson layout, so the
   button is the page's first control below it. The funnel and right-hand toolbar share one wrapping
@@ -49,6 +53,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **A lesson call's usage `request_id` is `<TurnRun.id>#<n>`.** No migration and no new column:
   the id stays unique and opaque to sync, and it is the form the LearnHarness import already writes
   (`<turn id>#<n>`). `UsageModel` takes the run id optionally, so worker calls keep random ids.
+  Turns order by their last completed call's timestamp to match LH's settlement order without a new
+  column; pre-change rows fall back to their call time, and a turn aborted after an earlier step
+  falls back to its last completed step's time.
 - **Usage rows saved before this change count as one-step turns each,** so an older session's turn
   list is longer than LH would show. A migration adding a turn id column would regroup them but
   pauses sync until both backends update.

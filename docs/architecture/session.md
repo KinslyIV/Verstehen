@@ -98,7 +98,8 @@ Frontend, `app/src/`:
   prefix (the LearnHarness import already writes `<turn id>#<n>`). A row without `#`, as saved
   before this, is a one-step turn of its own; a call cancelled while streaming is saved with `:aborted` on its request id and skipped by the
   stats (LH does not count it as a billed step), and a call with no tokens stays a step. Turns order by
-  their first call. A retry, a wake, and a handoff are each their own run.
+  their last completed call (matching LH's settlement order for interleaved side answers; pre-change
+  single-step rows use their call time). A retry, a wake, and a handoff are each their own run.
 - **Labels and totals.** `graph/costs.py`'s `subscription_provider` maps `claude_code` to `CLI`
   and `chatgpt:…` to `ChatGPT`; anything else is unpriced and has no label (the UI shows `—`,
   never `$0`; Verstehen has no priced provider yet). `CostTotals` is folded once per turn, so
@@ -106,12 +107,13 @@ Frontend, `app/src/`:
 - **Context** is LH's `measuredContextTokens`: the newest assistant entry with positive
   `EntryUsage.context_tokens`, skipping aborted, failed, and unmeasured replies, and `null` at or
   after a compaction marker. **Cache hit rate** is LH's `sessionCacheHitRate`
-  (reads over input, reads, and writes; `null` until reads are positive).
+  (reads over input, reads, and writes; `null` until reads are positive or if any input or cache
+  bucket is negative).
 - **`claude_code_limits`** is the Claude Code adapter's runtime-limit cache (`seen_limits()`, never
   a probe). It belongs to the server process, not to the session, and is empty until a Claude Code
   turn has run; without a limit the UI shows the numerator only.
-- **The row** (`stats-bar.svelte`) appears under the composer or dock on `/session/{id}` once the
-  session has a turn or a context number. It reads at mount, when the lesson stops being busy or
+- **The row** (`stats-bar.svelte`) appears under the composer or dock on `/session/{id}` once its
+  stats load (showing `? · —` before a completed reply; absent on `/` and `/session/new`). It reads at mount, when the lesson stops being busy or
   compacting, on `sessions-changed` for this session (or after a reconnect) while idle, and on
   `side-chats-changed`. The window comes from the catalog for the session's model (or the default
   slot), or from `claude_code_limits` for Claude Code.

@@ -18,19 +18,32 @@
 		ondragitem: (item: { kind: 'source' | 'folder'; id: string } | undefined) => void;
 		children: Snippet;
 	} = $props();
+
+	let touchGesture = false;
 </script>
 
 <div
 	{...rest}
 	data-source-drag-row={id}
 	draggable={enabled}
+	onpointerdown={(event) => {
+		touchGesture = event.pointerType === 'touch';
+	}}
+	onpointerup={(event) => {
+		if (event.pointerType === 'touch') touchGesture = false;
+	}}
+	ontouchstart={() => {
+		touchGesture = true;
+	}}
 	ondragstart={(event) => {
 		if (
 			!enabled ||
+			touchGesture ||
 			(event.target as Element).closest(
 				'input:not([type="checkbox"]),textarea,[contenteditable="true"]'
 			)
 		) {
+			touchGesture = false;
 			event.preventDefault();
 			return;
 		}
@@ -38,7 +51,10 @@
 		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
 		ondragitem({ kind, id });
 	}}
-	ondragend={() => ondragitem(undefined)}
+	ondragend={() => {
+		touchGesture = false;
+		ondragitem(undefined);
+	}}
 >
 	{@render children()}
 </div>

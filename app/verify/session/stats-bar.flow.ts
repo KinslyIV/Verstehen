@@ -2,10 +2,23 @@ import { test, expect } from '../fixtures';
 
 test.use({ script: 'verify/scripts/stats-bar.json' });
 
-test('stats-bar', async ({ page }) => {
+test('stats-bar', async ({ page, request }) => {
 	const bar = page.getByTestId('stats-bar');
 	const detail = page.getByTestId('stats-detail');
 	const composer = page.getByRole('textbox', { name: /What do you want to learn|Ask, answer/ });
+
+	// An existing session with no completed usage still shows the control with "? · —".
+	const emptyId = (
+		await (await request.post('/api/sessions', { data: { title: 'Empty session' } })).json()
+	).id;
+	await page.goto(`/session/${emptyId}`);
+	await expect(page.getByTestId('stats-summary')).toHaveText('? · —');
+	await page.getByTestId('stats-summary').click();
+	await expect(detail).toContainText(/Context \(last call\)\s*\?/);
+	await expect(detail).toContainText(/Total cost\s*—/);
+	await expect(page.getByTestId('stats-turns')).toHaveCount(0);
+	await page.keyboard.press('Escape');
+	await expect(detail).toHaveCount(0);
 
 	await page.goto('/');
 	await expect(bar).toHaveCount(0);

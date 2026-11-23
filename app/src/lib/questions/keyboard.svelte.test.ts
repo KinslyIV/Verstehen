@@ -133,3 +133,15 @@ test('the_phone_drawer_alone_does_not_block_the_search_shortcut_but_an_open_menu
 	drawer.remove();
 	menu.remove();
 });
+
+test('a_native_modal_dialog_blocks_escape_and_the_search_shortcut', () => {
+	const dialog = document.createElement('dialog');
+	document.body.append(dialog);
+	dialog.showModal();
+	expect(hasOpenOverlay()).toBe(true);
+	expect(hasOpenOverlay({ ignoreDrawer: true })).toBe(true);
+	dialog.close();
+	dialog.remove();
+	expect(hasOpenOverlay()).toBe(false);
+	expect(hasOpenOverlay({ ignoreDrawer: true })).toBe(false);
+});

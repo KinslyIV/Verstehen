@@ -58,7 +58,7 @@ def measured_context_tokens(entries: Sequence[Entry]) -> int | None:
 
 
 def turns_of(records: list[UsageRecord]) -> list[list[UsageRecord]]:
-    """Calls grouped into turns in order; a call cancelled mid-stream was not a billed step."""
+    """Calls grouped into turns in settlement order; a call cancelled mid-stream was not a billed step."""
     counted = [
         record
         for record in records
@@ -67,15 +67,26 @@ def turns_of(records: list[UsageRecord]) -> list[list[UsageRecord]]:
     turns: dict[str, list[UsageRecord]] = {}
     for record in sorted(counted, key=lambda call: (call.created_at, call.request_id)):
         turns.setdefault(turn_key(record), []).append(record)
-    return list(turns.values())
+    return sorted(
+        turns.values(), key=lambda calls: (calls[-1].created_at, turn_key(calls[0]))
+    )
 
 
 def cache_hit_rate(records: list[UsageRecord]) -> float | None:
-    prompt = sum(
-        r.input_tokens + r.cache_read_tokens + r.cache_write_tokens for r in records
-    )
-    reads = sum(r.cache_read_tokens for r in records)
-    return reads / prompt if reads > 0 else None
+    prompt = 0
+    reads = 0
+    for record in records:
+        if (
+            record.input_tokens < 0
+            or record.cache_read_tokens < 0
+            or record.cache_write_tokens < 0
+        ):
+            return None
+        prompt += (
+            record.input_tokens + record.cache_read_tokens + record.cache_write_tokens
+        )
+        reads += record.cache_read_tokens
+    return reads / prompt if reads > 0 and prompt > 0 else None
 
 
 def session_stats(
@@ -98,7 +109,7 @@ def session_stats(
         turns=[
             TurnStats(
                 id=turn_key(calls[0]),
-                at=calls[0].created_at,
+                at=calls[-1].created_at,
                 role=calls[0].role,
                 account=calls[0].account,
                 model=calls[0].model,

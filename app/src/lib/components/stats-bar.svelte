@@ -10,7 +10,6 @@
 		contextLabel,
 		contextLimit,
 		costLabel,
-		hasStats,
 		isClaudeCodePick,
 		stepsLabel,
 		turnCostLabel
@@ -59,7 +58,7 @@
 	});
 </script>
 
-{#if hasStats(stats)}
+{#if stats}
 	<div
 		data-testid="stats-bar"
 		class="mx-auto -mt-3 flex w-full max-w-3xl shrink-0 items-center px-7 pb-2 text-xs text-muted-foreground max-md:-mt-1 max-md:px-4 max-md:pb-[calc(0.5rem+var(--safe-bottom))]"

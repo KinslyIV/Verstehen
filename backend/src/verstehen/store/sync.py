@@ -829,6 +829,53 @@ async def _bump_graph_revision(connection: Connection) -> int:
         return int(row[0])
 
 
+async def _reconcile_synced_organization(connection: Connection) -> bool:
+    """Clear dangling parent or placement links left when delete and move sync concurrently."""
+    async with connection.execute(
+        "SELECT sync_id, payload FROM graph_source_folders ORDER BY seq"
+    ) as cursor:
+        folder_rows = [
+            (str(r[0]), json.loads(str(r[1]))) for r in await cursor.fetchall()
+        ]
+    live_ids = {
+        str(data["id"])
+        for _, data in folder_rows
+        if isinstance(data, dict) and isinstance(data.get("id"), str)
+    }
+    repaired = False
+    for sync_id, data in folder_rows:
+        if (
+            isinstance(data, dict)
+            and data.get("parent_id") is not None
+            and data["parent_id"] not in live_ids
+        ):
+            data["parent_id"] = None
+            await connection.execute(
+                "UPDATE graph_source_folders SET payload = ? WHERE sync_id = ?",
+                (json.dumps(data, separators=(",", ":")), sync_id),
+            )
+            repaired = True
+    async with connection.execute(
+        "SELECT id, payload FROM graph_source_placements"
+    ) as cursor:
+        placement_rows = [
+            (str(r[0]), json.loads(str(r[1]))) for r in await cursor.fetchall()
+        ]
+    for pid, data in placement_rows:
+        if (
+            isinstance(data, dict)
+            and data.get("folder_id") is not None
+            and data["folder_id"] not in live_ids
+        ):
+            data["folder_id"] = None
+            await connection.execute(
+                "UPDATE graph_source_placements SET payload = ? WHERE id = ?",
+                (json.dumps(data, separators=(",", ":")), pid),
+            )
+            repaired = True
+    return repaired
+
+
 async def _write_prompt_hashes(
     connection: Connection, prompt_hashes: dict[str, str | None] | None
 ) -> None:
@@ -1490,6 +1537,10 @@ class SyncStore:
                     hashes = await on_prompt_winners(summary.prompt_changes)
                     prompts_written = True
                     await _write_prompt_hashes(connection, hashes)
+                if summary.graph_revision is not None and (
+                    await _reconcile_synced_organization(connection)
+                ):
+                    summary.graph_revision = await _bump_graph_revision(connection)
                 async with connection.execute(
                     "SELECT MIN(change_seq) FROM sync_log WHERE pushed = 0"
                 ) as cursor:
@@ -1627,6 +1678,7 @@ class SyncStore:
                     prompts_written = True
                     await _write_prompt_hashes(connection, hashes)
                 if summary.graph_revision is not None:
+                    await _reconcile_synced_organization(connection)
                     summary.graph_revision = await _bump_graph_revision(connection)
                 async with connection.execute(
                     "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log"
@@ -2034,6 +2086,7 @@ class SyncStore:
                     await _write_prompt_hashes(connection, hashes)
 
                 if summary.graph_revision is not None:
+                    await _reconcile_synced_organization(connection)
                     summary.graph_revision = await _bump_graph_revision(connection)
 
                 if advance_pulled_seq is not None:

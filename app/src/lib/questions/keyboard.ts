@@ -87,6 +87,7 @@ export function escAbortTarget({
 
 const OVERLAYS = [
 	'[data-slot="dialog-content"]:not([data-state="closed"])',
+	'dialog:modal',
 	'[data-popover-content][data-state="open"]',
 	'[data-context-menu-content][data-state="open"]',
 	'[data-mermaid-focus]'

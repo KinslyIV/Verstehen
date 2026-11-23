@@ -49,11 +49,38 @@ beforeEach(() => vi.clearAllMocks());
 
 const normalized = (element: Element) => (element.textContent ?? '').replace(/\s+/g, ' ');
 
-test('the_row_stays_hidden_until_the_session_has_turns_or_a_context_number', async () => {
-	vi.mocked(api.getSessionStats).mockResolvedValue(stats({ context_tokens: null, turns: [] }));
+test('the_row_stays_hidden_until_a_stats_read_succeeds', async () => {
+	vi.mocked(api.getSessionStats).mockRejectedValue(new Error('offline'));
 	const screen = await render(StatsBar, { sessionId: 's', busy: false, pick: null });
 	await vi.waitFor(() => expect(api.getSessionStats).toHaveBeenCalled());
 	await expect.element(screen.getByTestId('stats-bar')).not.toBeInTheDocument();
+});
+
+test('a_saved_session_with_no_completed_usage_shows_question_mark_and_dash', async () => {
+	vi.mocked(api.getSessionStats).mockResolvedValue(
+		stats({
+			context_tokens: null,
+			cache_hit_rate: null,
+			turns: [],
+			totals: {
+				dollars: 0,
+				unpriced_runs: 0,
+				subscription_runs: 0,
+				subscription_providers: [],
+				plan_cost_label: null,
+				runs: 0,
+				tokens: {}
+			}
+		})
+	);
+	const screen = await render(StatsBar, { sessionId: 's', busy: false, pick: null });
+	await expect.element(screen.getByTestId('stats-summary')).toHaveTextContent('? · —');
+	await screen.getByTestId('stats-summary').click();
+	const detail = page.getByTestId('stats-detail');
+	await expect.element(detail).toBeVisible();
+	expect(normalized(detail.element())).toMatch(/Context \(last call\) \?/);
+	expect(normalized(detail.element())).toMatch(/Total cost —/);
+	await expect.element(page.getByTestId('stats-turns')).not.toBeInTheDocument();
 });
 
 test('the_row_shows_context_and_plan_and_the_popover_lists_the_turns', async () => {

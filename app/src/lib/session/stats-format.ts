@@ -40,7 +40,3 @@ export const turnCostLabel = (turn: Pick<SessionStats['turns'][number], 'cost_la
 export const stepsLabel = (steps: number): string => `${steps} ${steps === 1 ? 'step' : 'steps'}`;
 
 export const cacheHitText = (rate: number): string => `${(rate * 100).toFixed(1)}%`;
-
-/** The stats row appears once the session has billed turns or a measured context. */
-export const hasStats = (stats: SessionStats | undefined): stats is SessionStats =>
-	stats !== undefined && (stats.turns.length > 0 || stats.context_tokens !== null);
