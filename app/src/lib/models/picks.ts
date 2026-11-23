@@ -32,11 +32,12 @@ export function cycleLevel(pick: ModelPick, model: CatalogModel): ModelPick {
 	const index = pick.thinking_level ? levels.indexOf(pick.thinking_level) : -1;
 	return { ...pick, thinking_level: levels[(index + 1) % levels.length] };
 }
+export const levelName = (level: string): string => `${level[0].toUpperCase()}${level.slice(1)}`;
 export function modelLabel(catalog: ModelCatalog | undefined, pick?: ModelPick | null): string {
 	if (!pick) return 'Choose model';
 	const name = modelFor(catalog, pick)?.name ?? pick.model;
 	const level = pick.thinking_level;
-	return level ? `${name} · ${level[0].toUpperCase()}${level.slice(1)}` : name;
+	return level ? `${name} · ${levelName(level)}` : name;
 }
 export function setupStage(
 	catalog: ModelCatalog | undefined,

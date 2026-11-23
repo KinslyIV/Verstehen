@@ -90,8 +90,10 @@ test('model-catalog', async ({ page, request }) => {
 	await menu.getByRole('button', { name: 'Scripted model' }).click();
 	const level = menu.getByRole('slider', { name: 'Thinking level' });
 	await expect(level).toHaveAttribute('aria-valuetext', 'medium');
-	for (const name of ['low', 'medium', 'high'])
-		await expect(menu.getByLabel('Thinking levels').getByText(name, { exact: true })).toBeVisible();
+	for (const name of ['Low', 'Medium', 'High'])
+		await expect(
+			menu.getByLabel('Thinking levels').getByText(name, { exact: true }).last()
+		).toBeVisible();
 	const narrow = (await menu.boundingBox())!;
 	expect(narrow.x).toBeGreaterThanOrEqual(0);
 	expect(narrow.x + narrow.width).toBeLessThanOrEqual(360);

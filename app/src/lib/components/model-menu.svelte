@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { Check, Sparkles, Bot } from '@lucide/svelte';
 	import type { ModelCatalog, ModelPick } from '#lib/api/client.js';
-	import { modelTabs, modelFor, pickModel, type ModelTab } from '#lib/models/picks.js';
+	import { modelTabs, modelFor, pickModel, levelName, type ModelTab } from '#lib/models/picks.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { Slider } from '#lib/components/ui/slider/index.js';
 	let {
@@ -71,7 +71,7 @@
 				</Button>
 			{/each}
 		</div>{/if}
-	<div class="grid h-[min(20rem,50vh)] grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.3fr)] grid-rows-1">
+	<div class="grid h-[min(15rem,40vh)] grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.3fr)] grid-rows-1">
 		<div class="space-y-1 overflow-y-auto border-r bg-muted/20 p-2" aria-label="Accounts">
 			{#each catalog.accounts as item (item.account.id)}
 				<Button
@@ -117,13 +117,13 @@
 				</p>{/if}
 		</div>
 	</div>
-	<div class="h-24 border-t px-6 py-3" aria-label="Thinking levels">
+	<div class="h-20 border-t px-6 py-2" aria-label="Thinking levels">
 		<div class="flex items-center justify-between text-xs">
 			<span class="text-muted-foreground">Thinking</span>
-			<span class="font-medium capitalize">{pick?.thinking_level ?? ''}</span>
+			<span class="font-medium">{pick?.thinking_level ? levelName(pick.thinking_level) : ''}</span>
 		</div>
 		{#if levels.length}
-			<div class="pt-3">
+			<div class="pt-2">
 				<Slider
 					type="single"
 					min={0}
@@ -134,19 +134,19 @@
 					onValueChange={(index) => pick && onpick({ ...pick, thinking_level: levels[index] })}
 					thumbProps={{ 'aria-label': 'Thinking level', 'aria-valuetext': levels[levelIndex] }}
 				/>
-				<div class="relative mt-2 h-4 text-xs text-muted-foreground">
+				<div class="relative mt-1.5 h-4 text-xs text-muted-foreground">
 					{#each levels as level, index (level)}
 						<span
-							class="absolute -translate-x-1/2 capitalize"
+							class="absolute -translate-x-1/2"
 							style:left={`${levels.length > 1 ? (index / (levels.length - 1)) * 100 : 0}%`}
 						>
-							{level}
+							{levelName(level)}
 						</span>
 					{/each}
 				</div>
 			</div>
 		{:else}
-			<p class="pt-4 text-center text-xs text-muted-foreground">No thinking levels</p>
+			<p class="pt-3 text-center text-xs text-muted-foreground">No thinking levels</p>
 		{/if}
 	</div>
 	<div class="flex h-14 items-center justify-between gap-3 border-t px-4">
