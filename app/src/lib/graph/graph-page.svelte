@@ -140,7 +140,9 @@
 		</div>
 	{/if}
 
-	<div class="absolute top-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2">
+	<div
+		class="pointer-events-none absolute top-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2 *:pointer-events-auto"
+	>
 		<div class="flex min-w-0 flex-wrap items-start justify-end gap-2">
 			{#if graph && controller.rendering && !isEmpty}
 				<GraphSearch {query} onquery={search} noMatch={visible !== null && visible.size === 0} />

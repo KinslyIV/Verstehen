@@ -78,4 +78,18 @@ test('mobile-right-panel', async ({ page }) => {
 		path: test.info().outputPath('tablet-landscape.png'),
 		animations: 'disabled'
 	});
+
+	await page.setViewportSize({ width: 360, height: 780 });
+	await expect(screen).toHaveCount(0);
+	await tabs.getByRole('button', { name: 'Plan', exact: true }).tap();
+	await expect(screen).toBeVisible();
+	await page.getByRole('button', { name: 'Toggle Sidebar' }).tap();
+	await page.getByRole('link', { name: 'Teaching', exact: true }).tap();
+	await expect(page.getByTestId('phone-heading')).toHaveText('New session');
+	await expect(screen).toHaveCount(0);
+	await expect(page.getByRole('textbox', { name: 'What do you want to learn?' })).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath('phone-drawer-navigation.png'),
+		animations: 'disabled'
+	});
 });

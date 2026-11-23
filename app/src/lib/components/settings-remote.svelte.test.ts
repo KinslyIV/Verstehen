@@ -125,3 +125,21 @@ test('disconnect_still_forgets_the_token_when_the_server_is_unreachable', async 
 	await expect.poll(() => gotoCalls.at(-1)?.[0]).toBe('/pair');
 	expect(dropToken).toHaveBeenCalledOnce();
 });
+
+test('disconnect_finishes_locally_when_the_revoke_never_answers', async () => {
+	vi.mocked(api.revokeOwnDevice).mockReturnValueOnce(new Promise(() => {}));
+	(url.current as SvelteURL).search = '?section=connection';
+	const { default: Settings } = await import('./settings.svelte');
+	const screen = await render(Settings);
+	await expect.element(screen.getByTestId('connection-device')).toHaveTextContent('Pixel');
+	vi.useFakeTimers({ toFake: ['setTimeout'] });
+	try {
+		await screen.getByRole('button', { name: 'Disconnect' }).click();
+		expect(dropToken).not.toHaveBeenCalled();
+		await vi.advanceTimersByTimeAsync(5000);
+	} finally {
+		vi.useRealTimers();
+	}
+	await expect.poll(() => gotoCalls.at(-1)?.[0]).toBe('/pair');
+	expect(dropToken).toHaveBeenCalledOnce();
+});

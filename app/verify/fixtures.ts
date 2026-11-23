@@ -114,7 +114,7 @@ async def main():
     async with open_database(Path(sys.argv[1]) / "verstehen.db") as database:
         async with GraphStore(database).transaction() as ledger:
             for node in spec["nodes"]:
-                ledger.nodes.append(GraphNode(id=node["id"], name=node["name"], statement=node["statement"], provenance=[ProvenancePoint(session_id=node["session"])]))
+                ledger.nodes.append(GraphNode(id=node["id"], name=node["name"], statement=node["statement"], provenance=[ProvenancePoint(session_id=session) for session in [node["session"], *node.get("also", [])]]))
             for chain in spec["chains"]:
                 ledger.chains.append(GraphChain(id=chain["id"], premises=chain["premises"], conclusion=chain["conclusion"], provenance=[ProvenancePoint(session_id=chain["session"])]))
             for source in spec.get("sources", []):
@@ -160,7 +160,7 @@ async function mintAdminToken(dataDirectory: string): Promise<string> {
 }
 
 export interface GraphSeed {
-	nodes: { id: string; name: string; statement: string; session: string }[];
+	nodes: { id: string; name: string; statement: string; session: string; also?: string[] }[];
 	chains: { id: string; premises: string[]; conclusion: string; session: string }[];
 	sources?: { id: string; file_path: string }[];
 }

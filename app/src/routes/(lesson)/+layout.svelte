@@ -2,6 +2,7 @@
 	import SessionList from '#lib/components/session-list.svelte';
 	import SyncBadge from '#lib/components/sync-badge.svelte';
 	import type { Snippet } from 'svelte';
+	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
 	import {
@@ -78,6 +79,11 @@
 		panelOpen = !panelOpen;
 		localStorage.setItem('verstehen-right-panel-open', String(panelOpen));
 	}
+
+	const place = (url?: URL) => (url ? url.pathname + url.search : '');
+	afterNavigate(({ from, to }) => {
+		if (place(from?.url) !== place(to?.url)) phoneTab = null;
+	});
 
 	function showPhoneTab(value: string | null) {
 		phoneTab = value;

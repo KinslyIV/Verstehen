@@ -92,15 +92,21 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   tablet and desktop split is the sidebar (a drawer below 1280 px, inline above) and the panel.
 - **Phone:** a top bar (drawer button, session heading, then the four right-panel buttons). A panel
   button opens that tab full screen over the inert lesson and the bar shows a "Lesson" back
-  button; a new plan does not switch screens. The drawer closes on navigation (`DrawerCloser`).
+  button; a new plan does not switch screens. The drawer closes on navigation (`DrawerCloser`), and
+  navigating to another lesson or the new-session screen returns to the lesson screen.
 - **Tablet:** the drawer plus the right panel beside the lesson, closable; the width is
   remembered. **Desktop** is unchanged.
 - **Touch** (`pointer: coarse`, a custom Tailwind `coarse:` variant): buttons and icon buttons get
   44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
   8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.
+  The node card is capped to the canvas height and scrolls inside.
+- **Android Back:** `session/android-back.ts` hands Back to the lesson's `requestAbort` first, the
+  same function as Escape, so a pending question, an active problem, or a running turn opens its
+  confirmation; otherwise Back goes back in history or leaves the app.
 - **Phone Settings:** a section list; a section opens full screen and the back button returns to
   the list. Models edits the server's slots, Accounts is read-only, File access is hidden, and
-  Connection (server address, device name, Disconnect) replaces Sync.
+  Connection (server address, device name, Disconnect) replaces Sync. Disconnect waits at most 5 s
+  for the server to revoke the device, then forgets the token anyway.
 - **Safe areas and the keyboard:** `viewport-fit=cover` and `interactive-widget=resizes-content`;
   `--safe-top` and `--safe-bottom` pad the bars and docks. The composer, docks, and the empty
   new-session screen shrink with the keyboard instead of overflowing.
@@ -113,7 +119,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 network error waits 1, 2, 5, then 10 s (paused while the app is hidden, restarted at once on
 `visibilitychange`, `pageshow`, or `online`) and reopens. `live.follow` keeps notification and
 side-chat streams open, refetching after each reconnect. A lesson turn reattaches to its run and
-replays the log; server errors still fail the turn. While a stream is down and the app is in front,
+replays the log; server errors still fail the turn. A side-chat answer does the same: its feed
+waits and reattaches to `GET …/side-chats/{thread}/stream`, which replays the text so far, and stops on
+`done`, `error`, or dispose. While a stream is down and the app is in front,
 `ReconnectingLine` shows "Reconnecting…" at the top of the main column. The notification stream
 lives in `NotificationBridge` in the lesson layout, because the phone drawer unmounts the sidebar.
 

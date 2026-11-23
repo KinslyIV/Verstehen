@@ -51,7 +51,8 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   `make verify-run` reuses an unchanged SPA build behind the build guard.
 - **Touch and phone flows.** The `mobile-*` flows set `isMobile`, `hasTouch`, and a phone `screen`;
   `verify/touch.ts` sends taps, long presses, drags, and pinches through CDP. The `goesOffline`
-  fixture option makes stream requests fail so `mobile-reconnect` can show "Reconnecting…".
+  fixture option lets `mobile-reconnect` take the browser offline mid-stream without that failing
+  the flow.
 - **Remote flows.** A flow that declares `test.use({ client: 'remote' })` gets the backend in
   `--server` mode (an admin device minted with `verstehen mint-token`, exposed as `serverAdmin`) and
   a preview of the second SPA build, made with `PUBLIC_VERSTEHEN_CLIENT=remote` and

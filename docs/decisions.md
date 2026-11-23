@@ -147,19 +147,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
   `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
   query; consequence: a large foldable's inner screen reads as a tablet.
 - **Disconnect keeps the server address** (`dropToken`), revokes this device on the server when
-  reachable, and opens `/pair`. Alternative: forget the address too; consequence: re-pairing
+  it answers within 5 s, and opens `/pair`. Alternative: forget the address too; consequence: re-pairing
   needs only a new code.
 - **Android system bars** follow the theme through `SystemBars.setStyle`; a dark native window
   background and Capacitor's `backgroundColor` stop a white flash. On WebView below 140 the bars
   stay dark in light mode (the old WebView pads its own area). Alternative: edge-to-edge only.
 - **Phone Settings uses push navigation:** choosing a section pushes it, back replaces it with the
   list. Alternative: a stack of history entries.
-- **`mobile-reconnect` refuses stream requests** instead of emulating an offline browser, because
-  Chromium's offline mode does not cut a stream that is already open; the `goesOffline` fixture
-  option does this. Alternative: whole-context offline, which the flow could not observe.
-- **Question dismissal has no touch control.** LearnHarness dismisses with Escape only; the phone
-  has no equivalent and none was added without a decision. Alternative: a dismiss button on the
-  card on coarse pointers.
+- **`mobile-reconnect` goes offline mid-stream:** it waits for the first chunk of the reply, takes
+  the whole browser context offline, and checks that the open stream failed, that "Reconnecting…"
+  shows while the server finishes the turn, and that going online shows the reply once from one
+  input request. Alternative: refuse the stream request before it opens, which never delivers a
+  chunk before the cut.
+- **Android Back acts as Escape** (user decision, 2026-11-23). LearnHarness dismisses a question,
+  discards a problem, or aborts a turn with Escape only. In the Android app, Back opens the same
+  confirmation when a question is pending, a problem is active, or a turn is running; with none of
+  these, or with a dialog, menu, or overlay open, Back goes back in history or leaves the app as
+  before. It shares `requestAbort` with the Escape handler. Alternative: a dismiss button on the
+  card on coarse pointers (not built); other phones and the browser have no Back button.
 
 ## Constraints
 

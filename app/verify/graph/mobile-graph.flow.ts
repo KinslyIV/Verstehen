@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
 import { camera, demoGraph, nodePoint, waitForLayout } from '../graph';
+import { createSession } from '../compaction';
 import { dragTouch, holdTouch } from '../touch';
 
 test.use({
@@ -10,7 +11,14 @@ test.use({
 });
 
 test('mobile-graph', async ({ page, request, seedGraph }) => {
-	await seedGraph(await demoGraph(request));
+	const seed = await demoGraph(request);
+	const others = await Promise.all(
+		['Limits', 'Continuity', 'Series', 'Vectors', 'Matrices', 'Probability'].map((title) =>
+			createSession(request, title)
+		)
+	);
+	seed.nodes.find((node) => node.id === 'n_a1')!.also = others;
+	await seedGraph(seed);
 	await page.goto('/graph');
 	await expect(page.getByTestId('graph-canvas')).toBeVisible();
 	await expect(page.getByTestId('phone-heading')).toHaveText('Knowledge graph');
@@ -27,6 +35,8 @@ test('mobile-graph', async ({ page, request, seedGraph }) => {
 	const cardBox = (await card.boundingBox())!;
 	expect(cardBox.x).toBeGreaterThanOrEqual(0);
 	expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(360);
+	const portraitCanvas = (await card.locator('..').boundingBox())!;
+	expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(portraitCanvas.y + portraitCanvas.height);
 	await page.screenshot({ path: test.info().outputPath('card.png'), animations: 'disabled' });
 
 	await holdTouch(page, node, 700);
@@ -43,4 +53,23 @@ test('mobile-graph', async ({ page, request, seedGraph }) => {
 	await expect.poll(async () => (await camera(page)).x).not.toBe(start.x);
 	expect(await positions()).toEqual(before);
 	await page.screenshot({ path: test.info().outputPath('panned.png'), animations: 'disabled' });
+
+	await page.setViewportSize({ width: 780, height: 360 });
+	await page.addInitScript(() => localStorage.removeItem('verstehen-graph-camera'));
+	await page.goto('/graph');
+	await expect(page.getByTestId('graph-canvas')).toBeVisible();
+	const landscape = await nodePoint(page, request, 'n_a1');
+	await page.touchscreen.tap(landscape.x, landscape.y);
+	await expect(card).toBeVisible();
+	const canvas = (await card.locator('..').boundingBox())!;
+	const tall = (await card.boundingBox())!;
+	expect(tall.y).toBeGreaterThanOrEqual(canvas.y);
+	expect(tall.y + tall.height).toBeLessThanOrEqual(canvas.y + canvas.height);
+	expect(await card.evaluate((element) => element.scrollHeight > element.clientHeight)).toBe(true);
+	await card.getByTestId('card-delete').scrollIntoViewIfNeeded();
+	await expect(card.getByTestId('card-delete')).toBeInViewport();
+	await page.screenshot({
+		path: test.info().outputPath('card-landscape.png'),
+		animations: 'disabled'
+	});
 });

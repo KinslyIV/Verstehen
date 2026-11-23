@@ -112,6 +112,12 @@ test('a_dropped_network_waits_and_reattaches_without_failing_the_turn', async ()
 	expect(controller.busy).toBe(false);
 	wait.mockRestore();
 });
+test('a_refetch_that_hits_a_dropped_network_shows_no_error', async () => {
+	await controller.load();
+	vi.mocked(api.getSession).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.synchronize();
+	expect(controller.error).toBeNull();
+});
 test('a_server_error_still_fails_the_turn_instead_of_waiting', async () => {
 	await controller.load();
 	const wait = vi.spyOn(live, 'wait').mockResolvedValue();

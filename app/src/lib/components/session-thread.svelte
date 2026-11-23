@@ -18,6 +18,7 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { onAndroidBack } from '#lib/session/android-back.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
@@ -100,6 +101,11 @@
 	function escape(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat)
 			return;
+		if (requestAbort()) event.preventDefault();
+	}
+
+	/** Escape and Android Back: ask to abort the pending question, problem, or turn; false if none. */
+	function requestAbort(): boolean {
 		const target = escAbortTarget({
 			overlay:
 				!!abortTarget || controller.setupOpen || controller.modelMenuOpen || hasOpenOverlay(),
@@ -107,10 +113,10 @@
 			problem: !!controller.activeProblem,
 			busy: controller.busy
 		});
-		if (!target) return;
-		event.preventDefault();
+		if (!target) return false;
 		abortTarget =
 			target === 'question' ? pending : target === 'problem' ? controller.activeProblem : target;
+		return true;
 	}
 
 	function confirmAbort() {
@@ -163,7 +169,9 @@
 		void controller.jobs.refresh();
 		void controller.jobs.refreshExtractions();
 		void controller.side.refresh();
+		const stopAndroidBack = onAndroidBack(requestAbort);
 		return () => {
+			stopAndroidBack();
 			window.removeEventListener('verstehen:sessions-changed', sync);
 			window.removeEventListener('verstehen:jobs-changed', syncJobs);
 			window.removeEventListener('verstehen:side-chats-changed', syncSideChats);

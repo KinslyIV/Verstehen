@@ -174,7 +174,7 @@ export class SessionController {
 			if (record.turn_in_flight) void this.attach();
 			else await this.sendAutomaticInput();
 		} catch (error) {
-			this.fail(error);
+			if (!isNetworkFailure(error)) this.fail(error);
 		}
 	}
 

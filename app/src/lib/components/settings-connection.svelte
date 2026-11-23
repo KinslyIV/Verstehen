@@ -9,6 +9,7 @@
 	let connection = $state<StoredConnection>({});
 	let deviceName = $state<string>();
 	let disconnecting = $state(false);
+	const REVOKE_DEADLINE_MS = 5000;
 
 	onMount(async () => {
 		connection = await loadConnection();
@@ -18,7 +19,11 @@
 
 	async function disconnect() {
 		disconnecting = true;
-		if (connection.device_id) await revokeOwnDevice(connection.device_id).catch(() => {});
+		if (connection.device_id)
+			await Promise.race([
+				revokeOwnDevice(connection.device_id).catch(() => {}),
+				new Promise((done) => setTimeout(done, REVOKE_DEADLINE_MS))
+			]);
 		await dropToken(connection.token);
 		await goto(resolve('/pair'));
 	}
@@ -38,7 +43,8 @@
 		</div>
 	</dl>
 	<p class="text-sm text-muted-foreground">
-		Disconnecting ends this device's access on the server and forgets its token.
+		Disconnecting forgets this device's token. The server revokes the device only if it can be
+		reached.
 	</p>
 	<Button variant="outline" disabled={disconnecting} onclick={() => void disconnect()}>
 		Disconnect
