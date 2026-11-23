@@ -174,3 +174,13 @@ test('recovery_after_a_failed_first_read_keeps_the_saved_slots_and_never_overwri
 	await page.getByRole('tab', { name: 'Main', exact: true }).click();
 	await expect.element(page.getByText('Cheap: Selected')).toBeVisible();
 });
+test('a_failed_read_over_a_settled_empty_catalog_replaces_the_connect_stage_with_the_error', async () => {
+	vi.mocked(api.getModels).mockResolvedValue({ accounts: [], slots: {} });
+	await render(SetupDialog, { onclose: vi.fn(), ondone: vi.fn() });
+	await expect.element(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
+	vi.mocked(api.getModels).mockRejectedValue(new Error('The sidecar is unreachable'));
+	await expect.element(page.getByText('The sidecar is unreachable')).toBeVisible();
+	await expect
+		.element(page.getByRole('heading', { name: 'Connect a provider' }))
+		.not.toBeInTheDocument();
+});

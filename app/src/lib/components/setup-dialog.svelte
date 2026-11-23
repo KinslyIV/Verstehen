@@ -24,7 +24,7 @@
 				.join(' ') ??
 			null
 	);
-	let failed = $derived(stage === 'failed' || (stage === 'loading' && !!loadFailure));
+	let failed = $derived(stage !== 'models' && (stage === 'failed' || !!loadFailure));
 	let accountsOpen = $derived(connecting && stage !== 'models');
 	let adopted = false;
 	$effect(() => {
@@ -79,7 +79,14 @@
 			<div role="alert" class="flex flex-wrap items-center gap-3 text-sm text-destructive">
 				<span>{loadFailure}</span>
 				<Button variant="outline" size="sm" onclick={retryLoading}>Retry</Button>
-				<Button variant="ghost" size="sm" onclick={() => (connecting = true)}>Open Settings</Button>
+				<Button
+					variant="ghost"
+					size="sm"
+					class="text-foreground"
+					onclick={() => (connecting = true)}
+				>
+					Open Settings
+				</Button>
 			</div>
 		{:else if stage === 'loading'}<p class="text-muted-foreground">Loading models…</p>
 		{:else if stage === 'connect'}
