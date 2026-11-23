@@ -52,16 +52,26 @@ class SidecarServer(uvicorn.Server):
             print(json.dumps({"port": port}), flush=True)
 
 
+GRACEFUL_SHUTDOWN_SECONDS = 5
+
+
+def bind_listener(listener: socket.socket, host: str, port: int) -> None:
+    """Bind so a restart is not blocked by TIME_WAIT sockets left on the port."""
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((host, port))
+
+
 async def serve(settings: Settings) -> None:
     """Run the API server, shutting down on desktop stdin EOF."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.bind((settings.host, settings.port))
+        bind_listener(listener, settings.host, settings.port)
         config = uvicorn.Config(
             create_app(settings),
             host=settings.host,
             port=settings.port,
             log_config=None,
             proxy_headers=False,
+            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
         )
         server = SidecarServer(config)
         if settings.desktop and not settings.server:

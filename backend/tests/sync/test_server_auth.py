@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import selectors
+import socket
 import subprocess
 import sys
 from datetime import UTC, datetime, timedelta
@@ -475,3 +476,20 @@ def test_concurrent_pairing_code_issuance_and_revocation(tmp_path: Path):
             assert manager.redeem(issued_second.code, "100.64.0.10") == "invalid"
 
     asyncio.run(run())
+
+
+def test_restart_rebinds_at_once_when_the_previous_listener_also_reused_the_address():
+    """Covers restarts between versions that both set SO_REUSEADDR, not the first upgrade."""
+    previous = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    previous.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    previous.bind(("127.0.0.1", 0))
+    previous.listen()
+    port = previous.getsockname()[1]
+    client = socket.create_connection(("127.0.0.1", port))
+    accepted, _ = previous.accept()
+    accepted.close()
+    client.close()
+    previous.close()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
+        cli.bind_listener(listener, "127.0.0.1", port)
+        assert listener.getsockname()[1] == port
