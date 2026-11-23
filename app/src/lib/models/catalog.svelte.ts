@@ -11,6 +11,7 @@ export class ModelCatalogState {
 	private pending = $state(0);
 	private started = 0;
 	private applied = 0;
+	private generation = 0;
 	private inflight: Promise<string | null> | undefined;
 	refreshing = $derived(this.pending > 0);
 
@@ -18,9 +19,11 @@ export class ModelCatalogState {
 	settled = $derived(!!this.catalog && (this.catalog.accounts.length > 0 || this.refreshedOnce));
 
 	async load(): Promise<ModelCatalog | undefined> {
+		const generation = this.generation;
 		const sequence = ++this.started;
 		try {
 			const result = await getModels();
+			if (generation !== this.generation) return undefined;
 			if (sequence > this.applied) {
 				this.applied = sequence;
 				this.catalog = result;
@@ -28,15 +31,17 @@ export class ModelCatalogState {
 				markStartup('models_displayed');
 			}
 		} catch (cause) {
-			if (sequence > this.applied) this.error = (cause as Error).message;
+			if (generation === this.generation && sequence > this.applied)
+				this.error = (cause as Error).message;
 		}
 		return this.catalog;
 	}
 
 	/** Display the saved catalog now, then refresh in the background. */
 	async start(): Promise<void> {
+		const generation = this.generation;
 		await this.load();
-		void this.refresh();
+		if (generation === this.generation) void this.refresh();
 	}
 
 	/** Refresh accounts, re-reading the saved catalog meanwhile; resolves to a request failure message or null. */
@@ -51,6 +56,7 @@ export class ModelCatalogState {
 	}
 
 	reset(): void {
+		this.generation++;
 		this.catalog = undefined;
 		this.error = null;
 		this.refreshedOnce = false;
@@ -60,8 +66,11 @@ export class ModelCatalogState {
 	}
 
 	private async run(force: boolean): Promise<string | null> {
+		const generation = this.generation;
 		this.pending++;
-		const poll = setInterval(() => void this.load(), REFRESH_POLL_MS);
+		const poll = setInterval(() => {
+			if (generation === this.generation) void this.load();
+		}, REFRESH_POLL_MS);
 		let failure: string | null = null;
 		try {
 			await refreshModels(force);
@@ -69,10 +78,11 @@ export class ModelCatalogState {
 			failure = (cause as Error).message;
 		} finally {
 			clearInterval(poll);
-			this.pending--;
+			if (generation === this.generation) this.pending--;
 		}
+		if (generation !== this.generation) return failure;
 		await this.load();
-		this.refreshedOnce = true;
+		if (generation === this.generation) this.refreshedOnce = true;
 		return failure;
 	}
 }

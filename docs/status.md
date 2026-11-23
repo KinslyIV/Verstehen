@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (Milestone D PR 1 built).
+> PRs. Last update: 2026-11-23 (desktop responsiveness).
 
 ## Where we are
 
@@ -19,7 +19,8 @@ The LearnHarness import (`verstehen-sidecar import-learnharness`) is built on `l
 and waits for review; one real ChatGPT turn on the imported "Learning SIFT" session still has to
 confirm that converted reasoning is accepted.
 
-Mobile & sync Milestones A and B are merged into `dev`. The combined integration branch adds:
+Mobile & sync Milestones A and B are merged into `dev`. The combined integration PR (#14)
+added:
 
 - **Mobile & sync Milestone C** ([plan](plans/mobile-sync-c.md)): Settings → Sync and the sidebar
   badge, SSH install and update with host trust and health-gated rollback, server ChatGPT account
@@ -38,16 +39,16 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
 
 The desktop responsiveness branch adds early shell paint, saved model catalogs and stable
 pickers, lighter sidebar and graph reads, and a prompt editor. It adds four scripted flows,
-bringing the total to 56. Native trackpad zoom on Arch and long-transcript rendering remain
-open.
+bringing the total to 57 after Android pairing. Native trackpad zoom on Arch and
+long-transcript rendering remain open.
 
 ## Next
 
-1. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), approved 2026-11-23): PR 1 (the
-   Capacitor Android app, remote mode, `/pair`, and the Android build tooling) is built on
-   `mobile-sync-d-android` and waits for review; it was tested on the `Galaxy_S24` and
-   `Galaxy_Tab_S9` emulators. Next PR 2, the phone and tablet UI and SSE recovery. Then M11.
-2. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
+1. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
+2. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 added the Capacitor Android
+   app, remote mode, `/pair`, and Android build tooling to `dev` after emulator tests. Next is
+   the phone and tablet UI and SSE recovery, followed by M11.
+3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
 

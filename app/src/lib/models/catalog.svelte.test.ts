@@ -54,6 +54,20 @@ test('an_older_read_that_finishes_last_is_ignored', async () => {
 	expect(label(state)).toBe('newer');
 });
 
+test('a_read_from_the_previous_server_cannot_repopulate_a_reset_catalog', async () => {
+	let finish!: (catalog: api.ModelCatalog) => void;
+	vi.mocked(api.getModels).mockImplementationOnce(
+		() => new Promise((resolve) => (finish = resolve))
+	);
+	const state = new ModelCatalogState();
+	const reading = state.start();
+	state.reset();
+	finish(saved('old server'));
+	await reading;
+	expect(state.catalog).toBeUndefined();
+	expect(api.refreshModels).not.toHaveBeenCalled();
+});
+
 test('each_account_appears_as_it_finishes_while_the_refresh_is_still_running', async () => {
 	let finish!: () => void;
 	vi.mocked(api.refreshModels).mockImplementation(

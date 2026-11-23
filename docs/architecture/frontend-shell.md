@@ -13,7 +13,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 
 | Path | What it holds |
 |---|---|
-| `src/app.html`, `src/routes/+layout.svelte` | the page shell (declares the favicon); the root layout holds CSS and theme only |
+| `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, startup status, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
 | `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
 | `src/routes/pair/+page.svelte` | the pairing form (outside the lesson group): server address, code, device name |
