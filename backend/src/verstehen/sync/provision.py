@@ -37,6 +37,14 @@ logger = logging.getLogger(__name__)
 
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 USER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+PYTHON_315_PATTERN = re.compile(
+    r"(?:^|[\s/])(?:cpython-)?3\.15\.\d+(?:[-+\s]|$)", re.MULTILINE
+)
+
+
+def _supports_python_315(output: str) -> bool:
+    return bool(PYTHON_315_PATTERN.search(output))
+
 
 InstallStepId = Literal[
     "ssh_connect",
@@ -1153,31 +1161,72 @@ class ServerInstallService:
     async def _ensure_uv(self, session: SshSession) -> bool:
         self._current_step = "install_uv"
         self._set_step("install_uv", "running")
-        result = await session.run(
+        locate = await session.run(
             'if [ -x "$HOME/.local/bin/uv" ]; then '
-            'if [ ! -L "$HOME/.local/bin/uv" ]; then '
-            '"$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
-            "fi; "
-            '"$HOME/.local/bin/uv" --version; '
+            'if [ -L "$HOME/.local/bin/uv" ]; then echo symlink; else echo standalone; fi; '
             "elif command -v uv >/dev/null 2>&1; then "
-            'mkdir -p "$HOME/.local/bin" && ln -sf "$(command -v uv)" "$HOME/.local/bin/uv" && "$HOME/.local/bin/uv" --version; '
+            'mkdir -p "$HOME/.local/bin" && ln -sf "$(command -v uv)" "$HOME/.local/bin/uv" && echo symlink; '
             "else "
-            'curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh && "$HOME/.local/bin/uv" --version; '
+            'curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh && echo standalone; '
             "fi"
         )
-        self._append_log(result.stdout or result.stderr)
-        if result.exit_status != 0:
+        self._append_log(locate.stdout or locate.stderr)
+        if locate.exit_status != 0:
             self._fail(
                 "install_uv",
                 "install_failed",
-                result.stderr.strip() or "Failed to install uv on server.",
+                locate.stderr.strip() or "Failed to install uv on server.",
+            )
+            return False
+        uv_kind = (
+            locate.stdout.strip().splitlines()[-1]
+            if locate.stdout.strip()
+            else "standalone"
+        )
+        is_symlink = uv_kind == "symlink"
+        if not is_symlink:
+            try:
+                await session.run(
+                    "if command -v timeout >/dev/null 2>&1; then "
+                    'timeout 25 "$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
+                    "else "
+                    '"$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
+                    "fi",
+                    timeout=35.0,
+                )
+            except TimeoutError:
+                self._append_log(
+                    "uv self update timed out; checking installed uv version."
+                )
+        version_result = await session.run('"$HOME/.local/bin/uv" --version')
+        self._append_log(version_result.stdout or version_result.stderr)
+        if version_result.exit_status != 0:
+            self._fail(
+                "install_uv",
+                "install_failed",
+                version_result.stderr.strip() or "Failed to run uv on server.",
             )
             return False
         version = (
-            result.stdout.strip().splitlines()[-1]
-            if result.stdout.strip()
+            version_result.stdout.strip().splitlines()[-1]
+            if version_result.stdout.strip()
             else "uv ready"
         )
+        py_list = await session.run('"$HOME/.local/bin/uv" python list 3.15')
+        if py_list.exit_status != 0 or not _supports_python_315(py_list.stdout):
+            self._append_log(py_list.stdout or py_list.stderr)
+            if is_symlink:
+                message = (
+                    f"The server's system uv ({version}) cannot install Python 3.15. "
+                    "Upgrade the system uv package (or install uv >= 0.13.9) and retry."
+                )
+            else:
+                message = (
+                    f"The server's uv ({version}) cannot install Python 3.15 after self-update. "
+                    "Upgrade ~/.local/bin/uv (uv >= 0.13.9) and retry."
+                )
+            self._fail("install_uv", "install_failed", message)
+            return False
         self._set_step("install_uv", "done", detail=version)
         return True
 

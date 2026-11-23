@@ -49,9 +49,18 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 	expect(await segments()).toMatchObject({
 		override_text: '# Verify override\n\nTeach with care.'
 	});
+	const reenable = page.waitForResponse(
+		(response) =>
+			response.request().method() === 'PUT' &&
+			response.url().includes(`/api/prompts/${TEACHING}/enabled`) &&
+			response.status() === 200
+	);
 	await toggle.click();
+	await reenable;
+	await expect(row.getByText('Your version', { exact: true })).toBeVisible();
 	await expect(toggle).toBeChecked();
-	await expect.poll(async () => (await segments()).enabled).toBe(true);
+	await expect(toggle).toBeEnabled();
+	expect(await segments()).toMatchObject({ enabled: true });
 
 	await page.reload();
 	await expect(toggle).toBeChecked();
