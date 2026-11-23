@@ -120,7 +120,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   unguarded) or MagicDNS names under a `ts.net` rule (contradicts the `/pair` address decision).
   Consequence: a debug-only `10.0.2.2` and the range live in Java, checked by a JVM unit test, a
   Python config test, and a blocked-request check on the emulator.
-  **Flagged for you to re-confirm (review round 1).** `shouldInterceptRequest` sees only the first
+  **Redirects (review round 1; the user accepted this 2026-11-23).** `shouldInterceptRequest` sees only the first
   URL of a request, so an allowed host could redirect to an off-range `http` address. The fix does
   not change the guard: in remote mode every API `fetch` (and the pairing `fetch`) uses
   `redirect: 'error'`, and `plugins.CapacitorHttp.enabled = false` in `capacitor.config.ts` makes it
