@@ -36,6 +36,8 @@
 <div
 	bind:this={menu}
 	role="menu"
+	data-context-menu-content
+	data-state="open"
 	data-testid="node-context-menu"
 	style="left: {x}px; top: {y}px"
 	class="absolute z-20 flex w-fit flex-col gap-0.5 rounded-xl border bg-popover p-1.5 text-xs text-popover-foreground shadow-lg"

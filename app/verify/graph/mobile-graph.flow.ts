@@ -7,7 +7,8 @@ test.use({
 	script: 'none',
 	viewport: { width: 360, height: 780 },
 	hasTouch: true,
-	isMobile: true
+	isMobile: true,
+	goesOffline: true
 });
 
 test('mobile-graph', async ({ page, request, seedGraph }) => {
@@ -19,7 +20,20 @@ test('mobile-graph', async ({ page, request, seedGraph }) => {
 	);
 	seed.nodes.find((node) => node.id === 'n_a1')!.also = others;
 	await seedGraph(seed);
+	let dropped = false;
+	await page.route('**/api/settings', (route) => {
+		if (dropped) return route.fallback();
+		dropped = true;
+		return route.abort('internetdisconnected');
+	});
 	await page.goto('/graph');
+	await expect(page.getByRole('alert')).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath('load-failed.png'),
+		animations: 'disabled'
+	});
+	await page.evaluate(() => window.dispatchEvent(new Event('online')));
+	await expect(page.getByRole('alert')).toHaveCount(0);
 	await expect(page.getByTestId('graph-canvas')).toBeVisible();
 	await expect(page.getByTestId('phone-heading')).toHaveText('Knowledge graph');
 	await waitForLayout(request, 22);
@@ -42,6 +56,7 @@ test('mobile-graph', async ({ page, request, seedGraph }) => {
 	await holdTouch(page, node, 700);
 	const menu = page.getByTestId('node-context-menu');
 	await expect(menu).toBeVisible();
+	await expect(page.locator('[data-context-menu-content][data-state="open"]')).toHaveCount(1);
 	const menuBox = (await menu.boundingBox())!;
 	expect(menuBox.x).toBeGreaterThanOrEqual(0);
 	expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(360);

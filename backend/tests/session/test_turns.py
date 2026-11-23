@@ -8,7 +8,7 @@ import pytest
 from pydantic_ai.messages import ModelMessage, ModelResponse
 from pydantic_ai.models.function import AgentInfo, DeltaThinkingPart, FunctionModel
 
-from verstehen.api.sessions import notification_frames, turn_frames
+from verstehen.api.sessions import notification_frames, opened_stream, turn_frames
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
@@ -694,5 +694,25 @@ def test_unexpected_error_before_claim_is_500_and_not_remembered(tmp_path: Path)
             runtime = turn_service.runtimes.get(session_id)
             assert runtime.run is None and runtime.failure is None
             assert await turn_service.entries_store.list(session_id) == []
+
+    asyncio.run(scenario())
+
+
+def test_notification_stream_opens_with_a_comment_before_any_event(tmp_path: Path):
+    async def scenario():
+        async with turn_service_context(tmp_path) as (turn_service, session_id):
+            stream = opened_stream(
+                notification_frames(session_service_for(turn_service).subscribe())
+            )
+            assert await anext(stream) == ": open\n\n"
+            assert not turn_service.notifications.subscribers
+            following = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0)
+            turn_service.notifications.publish(
+                Notification(type="turn-started", session_id=session_id)
+            )
+            assert (await following).startswith("event: turn-started\n")
+            await stream.aclose()
+            assert not turn_service.notifications.subscribers
 
     asyncio.run(scenario())

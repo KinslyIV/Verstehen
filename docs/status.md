@@ -44,7 +44,10 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
    recovery) is built on `mobile-sync-d-ui` and waits for review; it was tested on the
    `Galaxy_S24` and `Galaxy_Tab_S9` emulators. Review round 1 added side-chat reattach, drawer
    navigation that clears a phone tab, a 5 s Disconnect deadline, a scrollable graph card, a
-   stronger `mobile-reconnect`, and Android Back as Escape. Then M11.
+   stronger `mobile-reconnect`, and Android Back as Escape. Round 3 made Android Back close the
+   drawer, dialogs, and menus on every page (the graph's node menu too), let a failed first graph
+   load recover and clear its error, and let the remote Settings sections load a failed read after
+   an outage. Then M11.
 2. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions

@@ -17,6 +17,7 @@
 		type BinaryStatus,
 		type Settings
 	} from '#lib/api/client.js';
+	import { onReconnect } from './settings-reconnect.js';
 	const readOnly = clientMode() === 'remote';
 	let accounts = $state<Account[]>([]);
 	let claude = $state<BinaryStatus>();
@@ -67,9 +68,15 @@
 	onMount(() => {
 		void refresh();
 		const timer = setInterval(() => void poll(), 1000);
+		const stopReconnect = onReconnect(() => {
+			if (settings) return;
+			error = null;
+			void refresh();
+		});
 		return () => {
 			disposed = true;
 			clearInterval(timer);
+			stopReconnect();
 		};
 	});
 	async function signIn(account?: string) {

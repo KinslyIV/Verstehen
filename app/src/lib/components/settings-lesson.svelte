@@ -12,6 +12,7 @@
 	import { compactionLimitDefault, parseCompactionLimit } from '#lib/session/compaction.js';
 	import { clientMode } from '#lib/api/connection.js';
 	import SettingsFileAccess from './settings-file-access.svelte';
+	import { onReconnect } from './settings-reconnect.js';
 	import { openFileAccess } from '#lib/teaching/file-access.js';
 
 	const options = [
@@ -24,10 +25,19 @@
 	let saving = $state(false);
 	let error = $state<string | null>(null);
 
-	onMount(() => {
+	function load() {
 		void getSettings()
-			.then((settings) => (current = settings))
+			.then((settings) => {
+				current = settings;
+				error = null;
+			})
 			.catch((cause: Error) => (error = cause.message));
+	}
+	onMount(() => {
+		load();
+		return onReconnect(() => {
+			if (!current) load();
+		});
 	});
 
 	async function save(update: (settings: Settings) => Settings): Promise<boolean> {

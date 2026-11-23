@@ -1,17 +1,28 @@
-import { App } from '@capacitor/app';
-import { Capacitor } from '@capacitor/core';
+import { App, type BackButtonListenerEvent } from '@capacitor/app';
+import { Capacitor, type PluginListenerHandle } from '@capacitor/core';
 import { hasOpenOverlay } from '#lib/questions/keyboard.js';
 
-/** Android's Back closes an open overlay (as Escape would), else offers itself to `handle`;
- * if that declines, it goes back or leaves the app. Returns the stop function.
+const handlers = new Set<() => boolean>();
+let listener: Promise<PluginListenerHandle> | undefined;
+
+/** Android's Back closes an open overlay as Escape would, else offers itself to each `handle`,
+ * else goes back or leaves the app. One native listener serves all callers; returns the stop.
  */
-export function onAndroidBack(handle: () => boolean): () => void {
+export function onAndroidBack(handle: () => boolean = () => false): () => void {
 	if (Capacitor.getPlatform() !== 'android') return () => {};
-	const listener = App.addListener('backButton', ({ canGoBack }) => {
-		if (hasOpenOverlay()) pressEscape();
-		else if (!handle()) leave(canGoBack);
-	});
-	return () => void listener.then((registered) => registered.remove());
+	handlers.add(handle);
+	listener ??= App.addListener('backButton', pressBack);
+	return () => {
+		handlers.delete(handle);
+		if (handlers.size > 0) return;
+		void listener?.then((registered) => registered.remove());
+		listener = undefined;
+	};
+}
+
+function pressBack({ canGoBack }: BackButtonListenerEvent): void {
+	if (hasOpenOverlay()) pressEscape();
+	else if (![...handlers].some((handle) => handle())) leave(canGoBack);
 }
 
 function pressEscape(): void {

@@ -5,16 +5,25 @@
 	import { getOwnDeviceName, revokeOwnDevice } from '#lib/api/client.js';
 	import { dropToken, loadConnection, type StoredConnection } from '#lib/api/connection.js';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import { onReconnect } from './settings-reconnect.js';
 
 	let connection = $state<StoredConnection>({});
 	let deviceName = $state<string>();
 	let disconnecting = $state(false);
 	const REVOKE_DEADLINE_MS = 5000;
 
-	onMount(async () => {
-		connection = await loadConnection();
+	async function loadDeviceName() {
 		if (connection.device_id)
 			deviceName = await getOwnDeviceName(connection.device_id).catch(() => undefined);
+	}
+	onMount(() => {
+		void loadConnection().then((stored) => {
+			connection = stored;
+			return loadDeviceName();
+		});
+		return onReconnect(() => {
+			if (!deviceName) void loadDeviceName();
+		});
 	});
 
 	async function disconnect() {

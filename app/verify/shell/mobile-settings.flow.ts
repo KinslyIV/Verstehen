@@ -7,7 +7,8 @@ test.use({
 	screen: { width: 360, height: 780 },
 	hasTouch: true,
 	isMobile: true,
-	expectedStatuses: [401]
+	expectedStatuses: [401],
+	goesOffline: true
 });
 
 test('mobile-settings', async ({ page, baseURL, serverAdmin }) => {
@@ -42,8 +43,23 @@ test('mobile-settings', async ({ page, baseURL, serverAdmin }) => {
 	await page.screenshot({ path: test.info().outputPath('accounts.png'), animations: 'disabled' });
 	await page.getByRole('button', { name: 'Settings', exact: true }).tap();
 
+	let dropped = false;
+	await page.route('**/api/settings', (route) => {
+		if (dropped || route.request().method() !== 'GET') return route.fallback();
+		dropped = true;
+		return route.abort('internetdisconnected');
+	});
 	await sections.getByRole('button', { name: 'Lesson', exact: true }).tap();
-	await expect(page.getByRole('spinbutton', { name: 'Compaction limit' })).toBeVisible();
+	await expect(page.getByRole('alert')).toBeVisible();
+	await expect(page.getByRole('spinbutton', { name: 'Compaction limit' })).toBeDisabled();
+	await page.screenshot({
+		path: test.info().outputPath('lesson-offline.png'),
+		animations: 'disabled'
+	});
+	await page.evaluate(() => window.dispatchEvent(new Event('online')));
+	await expect(page.getByRole('alert')).toHaveCount(0);
+	await expect(page.getByRole('spinbutton', { name: 'Compaction limit' })).toBeEnabled();
+	await page.screenshot({ path: test.info().outputPath('lesson.png'), animations: 'disabled' });
 	await expect(page.getByText('File access', { exact: true })).toHaveCount(0);
 	await page.getByRole('button', { name: 'Settings', exact: true }).tap();
 

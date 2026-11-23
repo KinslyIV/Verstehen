@@ -17,6 +17,7 @@
 		type SearchEngine
 	} from '#lib/api/client.js';
 	import { concurrencyError, parseConcurrency } from '#lib/settings/tools.js';
+	import { onReconnect } from './settings-reconnect.js';
 
 	const tools = ['research', 'demo', 'visual', 'pdf'] as const;
 	const engines = [
@@ -80,9 +81,15 @@
 	onMount(() => {
 		void refresh().catch(failure);
 		const timer = setInterval(() => void poll(), 1000);
+		const stopReconnect = onReconnect(() => {
+			if (settings) return;
+			error = null;
+			void refresh().catch(failure);
+		});
 		return () => {
 			disposed = true;
 			clearInterval(timer);
+			stopReconnect();
 		};
 	});
 	async function save(update: (current: Settings) => Settings): Promise<boolean> {

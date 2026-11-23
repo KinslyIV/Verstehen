@@ -333,10 +333,18 @@ async def stream_session(session_id: str, session_service: SessionServiceDepende
 )
 async def events(session_service: SessionServiceDependency):
     return StreamingResponse(
-        notification_frames(session_service.subscribe()),
+        opened_stream(notification_frames(session_service.subscribe())),
         media_type="text/event-stream",
         headers=HEADERS,
     )
+
+
+async def opened_stream(frames: AsyncGenerator[str]) -> AsyncGenerator[str]:
+    """Send a comment first so the client sees the stream open before any event."""
+    yield ": open\n\n"
+    async with aclosing(frames):
+        async for frame in frames:
+            yield frame
 
 
 async def notification_frames(

@@ -100,10 +100,11 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
   8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.
   The node card is capped to the canvas height and scrolls inside.
-- **Android Back:** `session/android-back.ts` closes an open overlay first (the phone drawer, a
-  dialog, or a menu) by pressing Escape; otherwise it hands Back to the lesson's `requestAbort`, the
-  same function as Escape, so a pending question, an active problem, or a running turn opens its
-  confirmation; otherwise Back goes back in history or leaves the app.
+- **Android Back:** `session/android-back.ts` keeps one native listener for every caller; the root
+  layout registers it so every page is covered. It closes an open overlay first (the phone drawer,
+  a dialog, a menu, or the graph's context menu) by pressing Escape; otherwise it offers Back to the
+  lesson's `requestAbort`, the same function as Escape, so a pending question, an active problem, or
+  a running turn opens its confirmation; otherwise Back goes back in history or leaves the app.
 - **Phone Settings:** a section list; a section opens full screen and the back button returns to
   the list. Models edits the server's slots, Accounts is read-only, File access is hidden, and
   Connection (server address, device name, Disconnect) replaces Sync. Disconnect waits at most 5 s
@@ -125,6 +126,10 @@ waits and reattaches to `GET …/side-chats/{thread}/stream`, which replays the 
 `done`, `error`, or dispose. While a stream is down and the app is in front,
 `ReconnectingLine` shows "Reconnecting…" at the top of the main column. The notification stream
 lives in `NotificationBridge` in the lesson layout, because the phone drawer unmounts the sidebar.
+The graph page reruns its first load on the next `graph-changed` event while it has failed, and a
+later successful refresh clears its error. On the remote client the Settings sections that read
+the server (`settings-reconnect.ts`) follow the same stream and load a failed read once the
+connection returns; a section that already has its data is left alone, so edits are kept.
 
 ## Traps found in M1–M9
 

@@ -9,6 +9,7 @@
 	} from '#lib/api/client.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import { DEFAULT_CHUNK_TOKENS, graphRead, parseChunkTokens } from '#lib/graph/coverage.js';
+	import { onReconnect } from './settings-reconnect.js';
 
 	let current = $state<SettingsStatus>();
 	let chunkText = $state<string>();
@@ -20,10 +21,19 @@
 	const graphTools = $derived(current?.agent?.graph_tools ?? true);
 	const chunkTokens = $derived(current ? graphRead(current).chunkTokens : DEFAULT_CHUNK_TOKENS);
 
-	onMount(() => {
+	function load() {
 		void getSettings()
-			.then((settings) => (current = settings))
+			.then((settings) => {
+				current = settings;
+				error = null;
+			})
 			.catch((cause: Error) => (error = cause.message));
+	}
+	onMount(() => {
+		load();
+		return onReconnect(() => {
+			if (!current) load();
+		});
 	});
 
 	async function save(update: (settings: Settings) => Settings): Promise<void> {
