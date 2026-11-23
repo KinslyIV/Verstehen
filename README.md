@@ -17,7 +17,7 @@ how the side chat works.
 
 ## Develop
 
-Prerequisites: uv, Node.js 24 with npm, make, and Docker (for packaging). Python 3.14 is pinned in
+Prerequisites: uv (>= 0.13.9), Node.js 24 with npm, make, and Docker (for packaging). Python 3.15 is pinned in
 `backend/.python-version`.
 
 ```sh

@@ -221,7 +221,7 @@ class FakeSshBackend:
             return SshCommandResult(exit_status=0, stdout="uv 0.6.0\n")
         if 'printf "%s" "$HOME"' in command:
             return SshCommandResult(exit_status=0, stdout="/home/ubuntu")
-        if "python install 3.14" in command:
+        if "python install 3.15" in command:
             return SshCommandResult(exit_status=0, stdout="Installed venv\n")
         if command == SYSTEMD_INVOCATION_COMMAND:
             return SshCommandResult(exit_status=0, stdout=DEPLOYMENT_INVOCATION)
@@ -1019,7 +1019,10 @@ def test_install_checks_user_manager_first_stages_venv_and_mints_in_server_data_
             assert index("show-environment") < index("venv.new")
             assert index("enable-linger") < index("systemctl --user restart")
             assert "XDG_RUNTIME_DIR" in commands[index("show-environment")]
-            build = commands[index("python install 3.14")]
+            uv_cmd = commands[index("uv")]
+            assert '[ ! -L "$HOME/.local/bin/uv" ]' in uv_cmd
+            assert '"$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true' in uv_cmd
+            build = commands[index("python install 3.15")]
             assert "import verstehen.cli" in build and "--clear" not in build
             swap_index = index("mv venv.new venv")
             assert index("venv.new") < swap_index
@@ -2219,7 +2222,7 @@ def test_install_lock_excludes_another_laptop_until_first_run_finishes(tmp_path:
                     capture_output=True,
                 )
                 return SshCommandResult(exit_status=result.returncode)
-            if "python install 3.14" in command:
+            if "python install 3.15" in command:
                 staging.set()
                 await finish.wait()
             return await super().handle_command(command)
