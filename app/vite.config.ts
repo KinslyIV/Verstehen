@@ -5,7 +5,7 @@ import adapter from '@sveltejs/adapter-static';
 import { sveltekit } from '@sveltejs/kit/vite';
 
 const client = process.env.PUBLIC_VERSTEHEN_CLIENT ?? 'sidecar';
-const remoteVerify = client === 'remote';
+const outputSuffix = client === 'sidecar' ? '' : `-${client}`;
 
 export default defineConfig({
 	define: {
@@ -21,8 +21,8 @@ export default defineConfig({
 					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
 			},
 
-			outDir: remoteVerify ? '.svelte-kit-remote' : '.svelte-kit',
-			adapter: adapter({ fallback: 'index.html', pages: remoteVerify ? 'build-remote' : 'build' })
+			outDir: `.svelte-kit${outputSuffix}`,
+			adapter: adapter({ fallback: 'index.html', pages: `build${outputSuffix}` })
 		})
 	],
 	server: {

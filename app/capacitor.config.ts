@@ -3,8 +3,9 @@ import type { CapacitorConfig } from '@capacitor/cli';
 const config: CapacitorConfig = {
 	appId: 'local.verstehen.app',
 	appName: 'Verstehen',
-	webDir: 'build',
-	server: { androidScheme: 'http' }
+	webDir: 'build-android',
+	server: { androidScheme: 'http' },
+	plugins: { CapacitorHttp: { enabled: false } }
 };
 
 export default config;

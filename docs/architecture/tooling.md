@@ -60,7 +60,9 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   command line with no sudo and no Android Studio, the SDK build tools, platform 36, the emulator,
   the system image, and the `Galaxy_S24` (360×780 CSS px) and `Galaxy_Tab_S9` (800×1280) virtual
   devices; it is idempotent. `make android-debug` builds the SPA with
-  `PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2`, syncs Capacitor, runs the JVM unit test, and writes
+  `PUBLIC_VERSTEHEN_CLIENT=android` and `PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2` (release: the same
+  client and no extra hosts, whatever the shell has set) into a freshly emptied `app/build-android`,
+  a third output besides the verify builds' `build` and `build-remote`, syncs Capacitor, runs the JVM unit test, and writes
   `dist/verstehen-<version>-debug.apk`. `make android` writes the release `.apk`, signed when
   `~/.config/verstehen/android-release.jks` and its password file exist (or `VERSTEHEN_ANDROID_KEYSTORE*`
   are set, as in CI), otherwise unsigned with a warning. `make android-key` creates that key once and
@@ -94,8 +96,9 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
 - **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,
   `app/src-tauri/Cargo.toml`, and `app/src-tauri/tauri.conf.json`, merge, then push `vX.Y.Z`; the
   workflow checks the versions, runs `make app`, and publishes a GitHub Release; a second job then
-  builds the release `.apk` with the key from the `ANDROID_KEYSTORE_*` secrets (failing loudly if
-  they are missing) and attaches it to that release.
+  builds the release `.apk` with the key from the `ANDROID_KEYSTORE_*` secrets and attaches it to
+  that release. It checks the secrets first and, when they are missing, skips the Android steps
+  with a `::notice::`, so the Arch release still succeeds.
 
 ## Traps found in M1–M9
 

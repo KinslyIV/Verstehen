@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Android app tooling: `setup`, `sdk`, `debug`, `release`, `key` (see docs/architecture/tooling.md).
+# Android app tooling: `setup`, `sdk`, `debug`, `release`, `key`, `web` (see docs/architecture/tooling.md).
 set -euo pipefail
 
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -66,12 +66,25 @@ create_avd() {
   set_avd_option "$name" hw.keyboard yes
 }
 
-build_apk() {
-  local task="$1" output="$2" destination="$3"
-  require_java
+# Builds the SPA for `debug` (also trusts the emulator host) or `release` into a fresh
+# app/build-android and copies it into the Android project.
+build_web() {
+  local extra_hosts
+  case "$1" in
+    debug) extra_hosts="10.0.2.2" ;;
+    release) extra_hosts="" ;;
+    *) echo "usage: android.sh web debug|release" >&2; exit 2 ;;
+  esac
   cd "$root/app"
-  npm run build
+  rm -rf build-android .svelte-kit-android android/app/src/main/assets/public
+  PUBLIC_VERSTEHEN_CLIENT=android PUBLIC_VERSTEHEN_EXTRA_HOSTS="$extra_hosts" npm run build
   npx cap sync android
+}
+
+build_apk() {
+  local task="$1" output="$2" destination="$3" mode="$4"
+  require_java
+  build_web "$mode"
   local release_version
   release_version="$(version)"
   cd android
@@ -106,15 +119,17 @@ case "${1:-}" in
     ;;
   debug)
     install_sdk_packages
-    export PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2
-    build_apk assembleDebug app/build/outputs/apk/debug/app-debug.apk "verstehen-$(version)-debug.apk"
+    build_apk assembleDebug app/build/outputs/apk/debug/app-debug.apk "verstehen-$(version)-debug.apk" debug
     ;;
   release)
     install_sdk_packages
     load_release_key
     suffix=""
     [ -n "${VERSTEHEN_ANDROID_KEYSTORE:-}" ] || suffix="-unsigned"
-    build_apk assembleRelease "app/build/outputs/apk/release/app-release${suffix}.apk" "verstehen-$(version)${suffix}.apk"
+    build_apk assembleRelease "app/build/outputs/apk/release/app-release${suffix}.apk" "verstehen-$(version)${suffix}.apk" release
+    ;;
+  web)
+    build_web "${2:-}"
     ;;
   key)
     if [ -e "$keystore" ]; then
@@ -135,7 +150,7 @@ case "${1:-}" in
     echo "  gh secret set ANDROID_KEY_ALIAS --body $key_alias"
     ;;
   *)
-    echo "usage: android.sh setup|sdk|debug|release|key" >&2
+    echo "usage: android.sh setup|sdk|debug|release|key|web" >&2
     exit 2
     ;;
 esac

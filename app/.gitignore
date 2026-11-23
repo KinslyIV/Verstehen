@@ -29,3 +29,5 @@ vite.config.ts.timestamp-*
 /.vitest
 /.svelte-kit-remote
 /build-remote
+/.svelte-kit-android
+/build-android

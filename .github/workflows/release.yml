@@ -37,33 +37,48 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-java@v5
+      - name: Check the Android signing secrets
+        id: signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping the Android .apk: add the ANDROID_KEYSTORE_BASE64 and ANDROID_KEYSTORE_PASSWORD secrets (and ANDROID_KEY_ALIAS) to attach one. make android-key prints how."
+          fi
+      - if: steps.signing.outputs.configured == 'true'
+        uses: actions/checkout@v7
+      - if: steps.signing.outputs.configured == 'true'
+        uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
-      - uses: actions/setup-node@v7
+      - if: steps.signing.outputs.configured == 'true'
+        uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm
           cache-dependency-path: app/package-lock.json
-      - uses: android-actions/setup-android@v3
-      - run: npm ci --prefix app
+      - if: steps.signing.outputs.configured == 'true'
+        uses: android-actions/setup-android@v3
+      - if: steps.signing.outputs.configured == 'true'
+        run: npm ci --prefix app
       - name: Build the signed .apk
+        if: steps.signing.outputs.configured == 'true'
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           VERSTEHEN_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           VERSTEHEN_ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
-          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
-            echo "::error::Add the ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, and ANDROID_KEY_ALIAS secrets (make android-key prints how)."
-            exit 1
-          fi
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
           export VERSTEHEN_ANDROID_KEYSTORE="$RUNNER_TEMP/release.jks"
           export ANDROID_JAVA_HOME="$JAVA_HOME"
           bash packaging/android.sh release
       - name: Attach the .apk to the release
+        if: steps.signing.outputs.configured == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release upload "$GITHUB_REF_NAME" dist/verstehen-*.apk

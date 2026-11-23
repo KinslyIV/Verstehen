@@ -58,8 +58,34 @@ def test_webview_uses_the_guard_with_the_build_type():
     assert "return super.shouldInterceptRequest(view, request);" in client
 
 
-def test_capacitor_loads_the_page_from_http_localhost_without_native_http():
+def test_capacitor_loads_the_page_from_http_localhost_with_native_http_disabled():
     config = (ROOT / "app/capacitor.config.ts").read_text()
     assert "appId: 'local.verstehen.app'" in config
     assert "androidScheme: 'http'" in config
-    assert "CapacitorHttp" not in config
+    assert "webDir: 'build-android'" in config
+    assert "plugins: { CapacitorHttp: { enabled: false } }" in config
+
+
+def android_release_steps() -> list[str]:
+    workflow = (ROOT / ".github/workflows/release.yml").read_text()
+    job = workflow.split("\n  android:\n")[1]
+    return ["      - " + step for step in job.split("\n      - ")[1:]]
+
+
+def test_unconfigured_android_release_is_skipped_with_a_notice_before_any_setup():
+    first, *rest = android_release_steps()
+    assert "id: signing" in first and "::notice::" in first and "::error::" not in first
+    assert "exit 1" not in first
+    assert all("steps.signing.outputs.configured == 'true'" in step for step in rest)
+
+
+def test_signing_secrets_reach_only_the_check_and_build_steps():
+    steps_with_secrets = [
+        step.splitlines()[0]
+        for step in android_release_steps()
+        if "secrets.ANDROID_" in step
+    ]
+    assert steps_with_secrets == [
+        "      - name: Check the Android signing secrets",
+        "      - name: Build the signed .apk",
+    ]
