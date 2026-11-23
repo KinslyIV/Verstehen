@@ -29,7 +29,7 @@ test('keyboard_walk_clamps_space_picks_tab_moves_focus_arrows_step_confidence_an
 	await expect.element(two).toHaveFocus();
 	await userEvent.keyboard('{Tab}');
 	await expect.element(screen.getByRole('textbox', { name: 'Your thinking' })).toHaveFocus();
-	await userEvent.keyboard('{Tab}{ArrowLeft}{ArrowRight}{ArrowRight}');
+	await userEvent.keyboard('{Tab}{ArrowRight}{ArrowLeft}{ArrowLeft}');
 	await expect.element(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '70 percent');
 	await userEvent.keyboard('{Enter}');
 	expect(answers).toHaveLength(1);

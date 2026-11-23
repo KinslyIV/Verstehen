@@ -18,8 +18,8 @@ test('question-probe-answer', async ({ page }) => {
 	await selectOption(page, 'Zero');
 	await expect(dock.getByRole('button', { name: 'Submit answer' })).toBeEnabled();
 	await page.screenshot({ path: test.info().outputPath('dock.png'), animations: 'disabled' });
-	await expect(dock.getByTestId('confidence-value')).toHaveText('50%');
-	await page.keyboard.press('ArrowRight');
+	await expect(dock.getByTestId('confidence-value')).toHaveText('90%');
+	await page.keyboard.press('ArrowLeft');
 	await expect(dock.getByTestId('confidence-value')).toHaveText('70%');
 	await dock.getByRole('textbox', { name: 'Your thinking' }).fill('The height does not change.');
 	await dock.getByRole('button', { name: 'Submit answer' }).click();

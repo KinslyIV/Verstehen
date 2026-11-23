@@ -276,6 +276,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Space on a focused button** outside the answer rows presses that button.
 - **The plan diagram lives only in the right panel's Plan tab**, opening on each new plan. LH's
   marginalia, Plan chip, and popup are not ported.
+- **Quiz confidence starts at 90%** (the fifth of LH's stops 0, 30, 50, 70, 90, 100); LH starts
+  at 50% (`DEFAULT_CONFIDENCE_INDEX = 2`).
 
 ### Background jobs
 
