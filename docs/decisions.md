@@ -118,9 +118,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
   offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
   to the server.
-- **Tauri 2 Mobile, Android only (v1).** Signed `.apk` connecting directly to the server's
-  Tailscale IP (`http://100.x.y.z:<port>`, no `tailscale serve`), with Android cleartext HTTP
-  allowlisted only for `100.64.0.0/10`.
+- **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
+  connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
+  `tailscale serve`), with Android cleartext HTTP allowlisted only for `100.64.0.0/10`.
 - **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
   SHA-256 hashed on the server and individually revocable.
 - **Server SSH install & ChatGPT OAuth from laptop UI only (v1).** SSH password is used once in
@@ -136,7 +136,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 - **D and E merged:** PR 1 the Android app and pairing, PR 2 the phone UI and recovery. Agents test
   on an Android emulator (T3 Code Device panel) before the user.
-- **Phone connection in a private app file** (Tauri `store` plugin, excluded from backup), not the
+- **Capacitor for Android, Tauri stays desktop-only:** no Rust split, no NDK; WebView `fetch` for
+  SSE (not Capacitor's native HTTP); server CORS adds `http://localhost`.
+- **Phone connection in a private app file** (Capacitor Preferences, excluded from backup), not the
   Android Keystore. Debug builds also allow cleartext to `10.0.2.2`; release stays
   `100.64.0.0/10` only. One release signing key, created by the user with `make android-key`.
 - **Layouts by width:** phone below 768 px (sidebar drawer, right-panel tabs full screen), tablet

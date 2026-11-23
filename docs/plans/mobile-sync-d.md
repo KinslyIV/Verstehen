@@ -9,7 +9,7 @@
 D builds the Android app and makes the existing `app/` SPA comfortable on a phone. It ships as
 two PRs into `dev`, in order (the former Milestone E is folded in; user decision, 2026-11-23):
 
-1. **Android app and pairing:** remote mode, `/pair`, the desktop/mobile Rust split, connection
+1. **Android app and pairing:** remote mode, `/pair`, the Capacitor Android project, connection
    storage, the Android project with the Tailscale-only cleartext rule, `make android`, and the
    release job. After it, the user installs the `.apk`, pairs, and uses the desktop layout on the
    phone.
@@ -74,11 +74,17 @@ server mode.
     outside the repository (e.g. `~/.config/verstehen/android-release.jks`) and prints the GitHub
     secrets to add; CI signs tagged releases with it and local `make android` uses it when
     present. Agents use only debug builds and never read the key or its password.
-13. **The phone keeps its connection in a private file, not the Keystore** (2026-11-23): Tauri's
-    official `store` plugin writes the server URL, device id, and token to the app's private
+13. **The phone keeps its connection in a private file, not the Keystore** (2026-11-23): Capacitor's
+    official Preferences plugin writes the server URL, device id, and token to the app's private
     storage, excluded from Android backup. This replaces the approved plan's Android Keystore
     storage; a rooted phone or backup tool could read the token, and revoking the device on the
     laptop is the remedy.
+14. **The Android app uses Capacitor, not Tauri 2 Mobile** (2026-11-23): the phone app is
+    client-only, so Tauri's Rust core brings nothing there. `app/src-tauri/` stays desktop-only and
+    unchanged; Android needs no Rust or NDK. Official plugins: Preferences (connection), App
+    (foreground and background), Keyboard. The WebView's own `fetch` keeps SSE streaming; Capacitor's
+    native HTTP plugin is not used because it cannot stream. The page loads from
+    `http://localhost`, which the server's CORS allowlist gains.
 
 ## Implementation details
 
@@ -89,7 +95,7 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
   `PUBLIC_VERSTEHEN_CLIENT=remote` flag that normal builds never set.
 - **Verify transport:** remote flows start the backend in `--server` mode and enter the preview's
   own `host:port` on `/pair`, which proxies `/api` to it, so no test-only CORS origin is added.
-  Cross-origin access from the Tauri webview is proven by PR 1's phone smoke test.
+  Cross-origin access from the Android WebView is proven on the emulator and by PR 1's phone smoke test.
 - **`/pair` fields:** server address (`100.x.y.z:port`, `http://` implied), the code (case-insensitive,
   8 characters), and a device name prefilled with "Phone", editable. A `401` later keeps the server
   address prefilled and drops only the token.
@@ -102,7 +108,7 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 
 #### 1. Connection and remote client (`app/src/lib/api/`)
 - `connection.ts`: `ServerConnection` (`server_url`, `device_id`, `token`), a `ConnectionStorage`
-  interface (`load`, `save`, `clear`) with the Tauri `store` implementation on Android and a
+  interface (`load`, `save`, `clear`) with the Capacitor Preferences implementation on Android and a
   browser-storage one for the headless flows, and the client mode (`sidecar` | `remote`).
 - `client.ts`: in remote mode, base URL from the stored connection and `Authorization: Bearer`;
   on `401` or missing config, drop the token and navigate to `/pair`. Desktop behavior unchanged.
@@ -114,16 +120,19 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
   the connection and go to `/`. Other routes redirect to `/pair` in remote mode without a
   connection.
 
-#### 3. Desktop/mobile split (`app/src-tauri/`)
-- Sidecar startup, `externalBin`, `sidecar_connection`, and `tauri-plugin-shell` behind
-  `#[cfg(desktop)]`; `tauri-plugin-store` registered for mobile.
-- Desktop builds and `make app` unchanged.
+#### 3. Capacitor project (`app/capacitor.config.ts`, `app/android/`)
+- `@capacitor/core`, `@capacitor/android`, `@capacitor/preferences`, `@capacitor/app`, and
+  `@capacitor/keyboard`; `webDir` is the static SPA build; `androidScheme: 'http'` so the page may
+  call the server's plain-`http` Tailscale address.
+- Client mode `remote` when `Capacitor.isNativePlatform()`; `app/src-tauri/`, desktop builds, and
+  `make app` unchanged.
+- Backend: server-mode CORS allows `http://localhost`, with a test.
 
 #### 4. Android project and builds
-- `tauri android init` with the identifier `local.verstehen.app`; `network_security_config.xml`
+- `npx cap add android` with the app id `local.verstehen.app`; `network_security_config.xml`
   for release (`100.64.0.0/10` only) and a debug variant adding `10.0.2.2`; Android auto-backup
   excludes the connection file.
-- `make android-setup` (command-line SDK, NDK, JDK 17, emulator, system image, and S24 and Tab S9
+- `make android-setup` (command-line SDK, build tools, JDK 17, emulator, system image, and S24 and Tab S9
   virtual devices), `make android-debug` (debug `.apk`), `make android` (release `.apk`, signed
   with the user's key when present), and `make android-key` (decision 12).
 - GitHub Actions: build and attach the signed `.apk` to tagged releases alongside the Arch package.
@@ -164,7 +173,8 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 - "Reconnecting…" indicator component.
 
 ### Docs (each PR, for what it changes)
-- `docs/decisions.md`: the phone connection file instead of the Keystore; the debug-only
+- `docs/decisions.md`: Capacitor instead of Tauri 2 Mobile; the phone connection file instead of
+  the Keystore; the debug-only
   `10.0.2.2` cleartext; touch graph mapping; turn-stream reattach replacing the two-attempt limit;
   the "Reconnecting…" line.
 - `docs/architecture/frontend-shell.md`, `api-and-events.md`, and `tooling.md`: remote mode,
@@ -176,7 +186,7 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 ### PR 1
 - **Vitest:** connection storage and mode selection; `401` → `/pair`; `/pair` errors.
 - **Tests:** the release network config allows only `100.64.0.0/10`; the debug config adds only
-  `10.0.2.2`; desktop builds still bundle the sidecar.
+  `10.0.2.2`; desktop builds still bundle the sidecar; server CORS allows `http://localhost`.
 - **Playwright** (`app/verify/shell/mobile-pair.flow.ts` at `360×780`): pair against a `--server`
   backend, bad code, `401` back to `/pair`.
 - **Emulator (agent):** debug `.apk` on the S24 and Tab S9 virtual devices: pair, one fake-model
