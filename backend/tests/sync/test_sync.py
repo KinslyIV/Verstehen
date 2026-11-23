@@ -1312,3 +1312,124 @@ def test_folder_rename_split_across_sync_pages_preserves_links(tmp_path: Path):
                 assert dir_view.organization.placements[session.id].folder_id == folder
 
     asyncio.run(run())
+
+
+def test_initial_snapshot_sync_preserves_nested_folders_across_pages(tmp_path: Path):
+    """First sync emits parent folders before children and survives page boundaries."""
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, laptop_app, token):
+            l_sessions = SessionsStore(laptop_app.state.database)
+            l_entries = EntriesStore(laptop_app.state.database)
+            s_graph = server_app.state.graph_service
+            l_graph = laptop_app.state.graph_service
+
+            session = await l_sessions.create("Initial snapshot session")
+            await l_entries.append(
+                session.id,
+                [UserEntry(text=f"seed-pad-{i}") for i in range(498)],
+            )
+            child = (
+                await l_graph.organize(
+                    {"action": "create-folder", "name": "Child", "parent_id": None}
+                )
+            ).created_folder_id
+            parent = (
+                await l_graph.organize(
+                    {"action": "create-folder", "name": "Parent", "parent_id": None}
+                )
+            ).created_folder_id
+            assert child is not None and parent is not None
+            await l_graph.organize(
+                {
+                    "action": "move",
+                    "kind": "folder",
+                    "id": child,
+                    "parent_id": parent,
+                }
+            )
+            await l_graph.organize(
+                {
+                    "action": "move",
+                    "kind": "source",
+                    "id": session.id,
+                    "parent_id": child,
+                }
+            )
+
+            await laptop_app.state.sync_service.configure("http://server.local", token)
+            batch1 = await laptop_app.state.sync_store.list_pending_push(limit=500)
+            assert len(batch1) == 500
+            assert batch1[-1].entity == "graph_source_folders"
+            assert batch1[-1].payload["payload"]["id"] == parent
+
+            state = await laptop_app.state.sync_service.sync_now()
+            assert state.status == "idle"
+            for dir_view in (await s_graph.directory(), await l_graph.directory()):
+                folders = {entry.id: entry for entry in dir_view.organization.folders}
+                assert folders[parent].parent_id is None
+                assert folders[child].parent_id == parent
+                assert dir_view.organization.placements[session.id].folder_id == child
+
+    asyncio.run(run())
+
+
+def test_paged_push_preserves_child_link_when_parent_arrives_on_later_page(
+    tmp_path: Path,
+):
+    """Paged receiver sync does not clear folder links whose parent arrives later."""
+
+    async def run() -> None:
+        async with two_backends(tmp_path) as (server_app, _laptop_app, _token):
+            now = "2026-11-23T00:00:00+00:00"
+            await server_app.state.sync_store.apply_server_push(
+                [
+                    SyncChange(
+                        change_seq=1,
+                        entity="graph_source_folders",
+                        op="upsert",
+                        entity_id="sync-child",
+                        payload={
+                            "sync_id": "sync-child",
+                            "payload": {
+                                "id": "folder_child",
+                                "name": "Child",
+                                "parent_id": "folder_parent",
+                                "created_at": now,
+                            },
+                        },
+                        origin_device_id="remote-device",
+                        origin_seq=1,
+                        created_at=now,
+                    )
+                ],
+                origin_device_id="remote-device",
+            )
+            await server_app.state.sync_store.apply_server_push(
+                [
+                    SyncChange(
+                        change_seq=2,
+                        entity="graph_source_folders",
+                        op="upsert",
+                        entity_id="sync-parent",
+                        payload={
+                            "sync_id": "sync-parent",
+                            "payload": {
+                                "id": "folder_parent",
+                                "name": "Parent",
+                                "parent_id": None,
+                                "created_at": now,
+                            },
+                        },
+                        origin_device_id="remote-device",
+                        origin_seq=2,
+                        created_at=now,
+                    )
+                ],
+                origin_device_id="remote-device",
+            )
+            dir_view = await server_app.state.graph_service.directory()
+            folders = {entry.id: entry for entry in dir_view.organization.folders}
+            assert folders["folder_child"].parent_id == "folder_parent"
+
+    asyncio.run(run())

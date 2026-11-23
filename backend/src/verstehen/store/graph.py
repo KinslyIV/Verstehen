@@ -139,6 +139,7 @@ async def _replace_ledger_table(
     *,
     log_sync: bool,
     removed_source_ids: set[str] | None = None,
+    removed_folder_ids: set[str] | None = None,
 ) -> None:
     async with connection.execute(
         f"SELECT sync_id, payload FROM {table} ORDER BY seq"
@@ -189,6 +190,19 @@ async def _replace_ledger_table(
                     and source_id in removed_source_ids
                 ):
                     delete_payload["source_id"] = source_id
+            if table == "graph_source_folders" and removed_folder_ids:
+                parsed = json.loads(payload)
+                if (
+                    isinstance(parsed, dict)
+                    and isinstance(folder_id := parsed.get("id"), str)
+                    and folder_id in removed_folder_ids
+                ):
+                    await record_tombstone(
+                        connection,
+                        entity="graph_source_folder_id",
+                        entity_id=folder_id,
+                    )
+                    delete_payload["folder_id"] = folder_id
             await append_sync_log(
                 connection,
                 entity=table,
@@ -240,9 +254,16 @@ async def write_ledger(
     for id in removed_sources:
         await connection.execute("DELETE FROM usage WHERE session_id = ?", (id,))
     if ledger.organization.folders != previous.organization.folders:
+        removed_folders = {folder.id for folder in previous.organization.folders} - {
+            folder.id for folder in ledger.organization.folders
+        }
         payloads = [folder.model_dump_json() for folder in ledger.organization.folders]
         await _replace_ledger_table(
-            connection, "graph_source_folders", payloads, log_sync=log_sync
+            connection,
+            "graph_source_folders",
+            payloads,
+            log_sync=log_sync,
+            removed_folder_ids=removed_folders,
         )
     if ledger.organization.placements != previous.organization.placements:
         await connection.execute("DELETE FROM graph_source_placements")

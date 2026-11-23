@@ -101,6 +101,7 @@ class ApplySummary(BaseModel):
     jobs_changed: set[str] = Field(default_factory=set)
     side_chats_changed: set[str] = Field(default_factory=set)
     graph_revision: int | None = None
+    folder_deleted: bool = False
     forked_sessions: list[str] = Field(default_factory=list)
     deferred_session_ids: list[str] = Field(default_factory=list)
     accepted_changes: list[AcceptedChange] = Field(default_factory=list)
@@ -728,6 +729,19 @@ async def _apply_one(
                 await connection.execute(
                     "DELETE FROM usage WHERE session_id = ?", (str(source_id),)
                 )
+            if (
+                entity == "graph_source_folders"
+                and isinstance(folder_id := payload.get("folder_id"), str)
+                and folder_id
+            ):
+                await record_tombstone(
+                    connection,
+                    entity="graph_source_folder_id",
+                    entity_id=folder_id,
+                    origin_device_id=change.origin_device_id,
+                    deleted_at=change.created_at,
+                )
+                summary.folder_deleted = True
             if deleted:
                 summary.graph_revision = 0
             return deleted
@@ -829,8 +843,49 @@ async def _bump_graph_revision(connection: Connection) -> int:
         return int(row[0])
 
 
+def _order_folders_parents_first(
+    rows: list[tuple[str, Any]],
+) -> list[tuple[str, Any]]:
+    """Order folders parents before children so initial snapshots never split parent after child."""
+    known_ids = {
+        str(data["id"])
+        for _, data in rows
+        if isinstance(data, dict) and isinstance(data.get("id"), str)
+    }
+    pending = list(rows)
+    ordered: list[tuple[str, Any]] = []
+    emitted: set[str] = set()
+    while pending:
+        next_pending: list[tuple[str, Any]] = []
+        progressed = False
+        for sync_id, data in pending:
+            parent_id = data.get("parent_id") if isinstance(data, dict) else None
+            if (
+                not isinstance(parent_id, str)
+                or parent_id not in known_ids
+                or parent_id in emitted
+            ):
+                ordered.append((sync_id, data))
+                if isinstance(data, dict) and isinstance(fid := data.get("id"), str):
+                    emitted.add(fid)
+                progressed = True
+            else:
+                next_pending.append((sync_id, data))
+        if not progressed:
+            ordered.extend(next_pending)
+            break
+        pending = next_pending
+    return ordered
+
+
 async def _reconcile_synced_organization(connection: Connection) -> bool:
-    """Clear dangling parent or placement links left when delete and move sync concurrently."""
+    """Clear parent or placement links targeting folders deleted by sync."""
+    async with connection.execute(
+        "SELECT entity_id FROM sync_tombstones WHERE entity = 'graph_source_folder_id'"
+    ) as cursor:
+        deleted_ids = {str(r[0]) for r in await cursor.fetchall()}
+    if not deleted_ids:
+        return False
     async with connection.execute(
         "SELECT sync_id, payload FROM graph_source_folders ORDER BY seq"
     ) as cursor:
@@ -842,13 +897,12 @@ async def _reconcile_synced_organization(connection: Connection) -> bool:
         for _, data in folder_rows
         if isinstance(data, dict) and isinstance(data.get("id"), str)
     }
+    dead_ids = deleted_ids - live_ids
+    if not dead_ids:
+        return False
     repaired = False
     for sync_id, data in folder_rows:
-        if (
-            isinstance(data, dict)
-            and data.get("parent_id") is not None
-            and data["parent_id"] not in live_ids
-        ):
+        if isinstance(data, dict) and data.get("parent_id") in dead_ids:
             data["parent_id"] = None
             await connection.execute(
                 "UPDATE graph_source_folders SET payload = ? WHERE sync_id = ?",
@@ -862,11 +916,7 @@ async def _reconcile_synced_organization(connection: Connection) -> bool:
             (str(r[0]), json.loads(str(r[1]))) for r in await cursor.fetchall()
         ]
     for pid, data in placement_rows:
-        if (
-            isinstance(data, dict)
-            and data.get("folder_id") is not None
-            and data["folder_id"] not in live_ids
-        ):
+        if isinstance(data, dict) and data.get("folder_id") in dead_ids:
             data["folder_id"] = None
             await connection.execute(
                 "UPDATE graph_source_placements SET payload = ? WHERE id = ?",
@@ -1677,9 +1727,10 @@ class SyncStore:
                     hashes = await on_prompt_winners(summary.prompt_changes)
                     prompts_written = True
                     await _write_prompt_hashes(connection, hashes)
-                if summary.graph_revision is not None:
-                    await _reconcile_synced_organization(connection)
-                    summary.graph_revision = await _bump_graph_revision(connection)
+                if summary.graph_revision is not None or summary.folder_deleted:
+                    repaired = await _reconcile_synced_organization(connection)
+                    if summary.graph_revision is not None or repaired:
+                        summary.graph_revision = await _bump_graph_revision(connection)
                 async with connection.execute(
                     "SELECT COALESCE(MAX(change_seq), 0) FROM sync_log"
                 ) as cursor:
@@ -1944,17 +1995,22 @@ class SyncStore:
                 async with connection.execute(
                     f"SELECT sync_id, payload FROM {table} ORDER BY seq"
                 ) as cursor:
-                    for sync_id, raw_payload in await cursor.fetchall():
-                        if not sync_id:
-                            continue
-                        await log_row(
-                            entity=table,
-                            entity_id=str(sync_id),
-                            payload={
-                                "sync_id": str(sync_id),
-                                "payload": json.loads(raw_payload),
-                            },
-                        )
+                    rows = [
+                        (str(sync_id), json.loads(raw_payload))
+                        for sync_id, raw_payload in await cursor.fetchall()
+                        if sync_id
+                    ]
+                if table == "graph_source_folders":
+                    rows = _order_folders_parents_first(rows)
+                for sync_id, parsed_payload in rows:
+                    await log_row(
+                        entity=table,
+                        entity_id=sync_id,
+                        payload={
+                            "sync_id": sync_id,
+                            "payload": parsed_payload,
+                        },
+                    )
 
             async with connection.execute(
                 "SELECT id, payload, updated_at FROM graph_source_placements"
@@ -2085,9 +2141,10 @@ class SyncStore:
                     prompts_written = True
                     await _write_prompt_hashes(connection, hashes)
 
-                if summary.graph_revision is not None:
-                    await _reconcile_synced_organization(connection)
-                    summary.graph_revision = await _bump_graph_revision(connection)
+                if summary.graph_revision is not None or summary.folder_deleted:
+                    repaired = await _reconcile_synced_organization(connection)
+                    if summary.graph_revision is not None or repaired:
+                        summary.graph_revision = await _bump_graph_revision(connection)
 
                 if advance_pulled_seq is not None:
                     await connection.execute(
