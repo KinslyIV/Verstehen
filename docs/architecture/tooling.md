@@ -70,7 +70,7 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   `ANDROID_KEY_ALIAS`; agents never run it or read the key. `debug`, `release`, and the `web`
   subcommand hold an exclusive `flock` on `app/android/build/android.lock` from the web sync to the
   `.apk` copy, because they share `app/android/app/src/main/assets/public`; a second build prints a
-  notice and waits for the first.
+  notice and waits for the first (`ANDROID_BUILD_LOCK` overrides the lock path, for tests).
 - **Emulator loop for agents** (the verify skill has the commands): a fake-model `--server` backend
   on a temporary data directory, a pairing code minted through the API, the debug `.apk` installed
   on a virtual device opened in the T3 Code Device panel, pairing at `10.0.2.2:<port>`, one lesson

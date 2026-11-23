@@ -68,7 +68,7 @@ create_avd() {
 
 # Holds the exclusive Android build lock until the script exits; concurrent builds wait their turn.
 lock_android_build() {
-  local lock="$root/app/android/build/android.lock"
+  local lock="${ANDROID_BUILD_LOCK:-$root/app/android/build/android.lock}"
   mkdir -p "$(dirname "$lock")"
   exec 9>"$lock"
   flock --nonblock 9 || {
