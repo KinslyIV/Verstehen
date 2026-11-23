@@ -108,7 +108,7 @@ milestone ports them or a decision records the difference.
 | Background agents: implicit turn caps removed (`c7dd027b`) | port later (workers use request limits) |
 | Claude Code: parked processes handed off between worker requests, late errors can't restore retired continuations, Fable in the model list (`62a2da58`, `4070d53d`, `39babf15`) | port later (check first) |
 | PDF figure annotation from learner PDFs (`00316ab1`, `6123decd`, `f20aff1c`, `3e6aafcc`) | port later |
-| Prompt editor per segment and its fixes (`53f92387`, `f3f7f74f`, `6b1d2d14`, `7b685346`) | already equivalent (Settings → Prompts; check the three fixes) |
+| Prompt editor per segment and its fixes (`53f92387`, `f3f7f74f`, `6b1d2d14`, `7b685346`) | M11a task 6 (Settings → Prompts follow-ups) |
 | Manual model catalog refresh; imported model metadata validated (`1cfb7ea2`, `1f77ebc9`) | already equivalent (`POST /api/models`); validation check first |
 | Startup announcements (`7f8ac6b3`, `93133de6`, `ecff87ca`, `710d10d8`, `dd773e4b`) | not ported (LH's own release channel) |
 | Activity task card stop button (`c0291f4b`) | with the activity dock |
