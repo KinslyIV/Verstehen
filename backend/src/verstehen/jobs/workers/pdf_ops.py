@@ -4,8 +4,8 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
-import pypdfium2 as pdfium
-import regex
+lazy import pypdfium2 as pdfium
+lazy import regex
 
 from verstehen.teaching.files.access import regular_file
 from verstehen.teaching.pdfium import PDFIUM_LOCK

@@ -20,9 +20,9 @@ from typing import Annotated, Any, Literal, Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-import asyncssh
 import httpx2
 from pydantic import BaseModel, Field
+lazy import asyncssh
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.callback_port import CallbackPort, CallbackPortBusy

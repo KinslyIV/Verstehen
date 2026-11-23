@@ -4,7 +4,7 @@ from uuid import uuid4
 
 import anyio
 from pydantic import BaseModel, Field
-from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
+lazy from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter

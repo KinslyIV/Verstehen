@@ -44,6 +44,11 @@ pickers with a Thinking slider, lighter sidebar and graph reads, and a prompt ed
 scripted flows, bringing the total to 63. Native trackpad zoom on Arch and long-transcript
 rendering remain open.
 
+The Python 3.15 + PEP 810 lazy imports branch upgrades the backend to Python 3.15 (`uv >= 0.13.9`)
+and defers heavy SDK/worker imports (`anthropic`, `claude_agent_sdk`, `openai`, `asyncssh`,
+`playwright`, `pypdfium2`, `PIL`, `regex`, `resvg_py`) with module-scope `lazy` imports, guarded
+by `backend/tests/shell/test_startup_imports.py`.
+
 ## Next
 
 1. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).

@@ -6,10 +6,10 @@ from tempfile import NamedTemporaryFile
 from time import monotonic
 from typing import BinaryIO
 
-from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai.messages import BinaryContent
 from pydantic_ai.tools import ToolReturn
+lazy from PIL import Image, ImageOps, UnidentifiedImageError
 
 from verstehen.teaching.files.access import regular_file
 from verstehen.teaching.files.search import MAX_OUTPUT, capped

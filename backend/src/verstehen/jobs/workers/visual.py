@@ -4,7 +4,6 @@ import xml.etree.ElementTree as ET
 from typing import Annotated
 from xml.dom import minidom
 
-import resvg_py
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, BinaryContent
 from pydantic_ai.exceptions import UsageLimitExceeded
@@ -12,6 +11,7 @@ from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models import Model
 from pydantic_ai.tools import ToolReturn
 from pydantic_ai.usage import RunUsage, UsageLimits
+lazy import resvg_py
 
 from verstehen.jobs.contracts import VisualImage, VisualInput, VisualResult
 from verstehen.jobs.workers.common import (

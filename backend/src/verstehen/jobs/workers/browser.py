@@ -7,8 +7,8 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal
 
-from playwright._impl._driver import compute_driver_executable, get_driver_env
 from pydantic import BaseModel
+lazy from playwright._impl._driver import compute_driver_executable, get_driver_env
 
 
 class DemoBrowser(BaseModel):

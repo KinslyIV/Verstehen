@@ -3,8 +3,8 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from claude_agent_sdk import ClaudeAgentOptions
 from pydantic_ai.settings import ThinkingEffort
+lazy from claude_agent_sdk import ClaudeAgentOptions
 
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
@@ -14,7 +14,7 @@ from verstehen.store.settings import ModelPick
 from . import binary
 from .binary import BinaryStatus
 from .context import context_window
-from .model import ClaudeCodeModel
+lazy from .model import ClaudeCodeModel
 
 THINKING_LEVELS: list[ThinkingEffort] = ["low", "medium", "high", "xhigh", "max"]
 MODEL_NAMES = {

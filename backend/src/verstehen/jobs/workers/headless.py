@@ -1,8 +1,8 @@
 import asyncio
 import json
 
-from playwright.async_api import async_playwright
 from pydantic import BaseModel, Field, JsonValue
+lazy from playwright.async_api import async_playwright
 
 NO_BROWSER = "No render engine available: no Chromium-family browser was found. Set one in Settings → Tools → Demo browser, install Chromium, or use “Download Chromium for demos” there. (Verification is mandatory — demos are never delivered untested.)"
 
