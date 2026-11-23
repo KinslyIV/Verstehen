@@ -25,6 +25,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
   (`layout.coarse`), so a narrow desktop window with a mouse can still drag, and a touch laptop's
   touchscreen cannot start one. The alternative, `tier !== 'desktop'`, would block mouse drags in
   a narrow window.
+- **The search shortcut opens the sidebar and answers to Cmd too.** Ctrl or Cmd+Shift+F opens a
+  collapsed sidebar or the phone drawer, then focuses the field, and does nothing while a dialog,
+  popover, or menu is open (LH: `lh:kbd-sessions-search`, same guards). The query is not
+  remembered across reloads (LH does not either).
 - **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
   organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
   follows LH and omits it instead of filing it at the top level.

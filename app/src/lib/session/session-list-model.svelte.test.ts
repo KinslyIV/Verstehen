@@ -1,12 +1,16 @@
 import { beforeEach, expect, test } from 'vitest';
 import type { SessionItem } from '#lib/api/client.js';
 import {
+	isSearchFolded,
 	kindIncludes,
+	noSearchFolds,
 	readKindFilter,
 	saveKindFilter,
 	readOpenFolders,
 	saveOpenFolders,
-	sessionMeta
+	sessionMeta,
+	toggleSearchFold,
+	walkIndex
 } from './session-list-model.js';
 
 const now = new Date('2026-01-01T01:00:00Z');
@@ -57,4 +61,21 @@ test('the_row_meta_names_what_the_session_waits_on', () => {
 		'Waiting for input · 1h ago'
 	);
 	expect(sessionMeta({ ...practice, compacting: true }, now)).toBe('Compacting context');
+});
+
+test('a_folder_closed_during_a_search_is_forgotten_when_the_query_changes', () => {
+	const folds = toggleSearchFold(noSearchFolds, 'calc', 'f1');
+	expect(isSearchFolded(folds, 'calc', 'f1')).toBe(true);
+	expect(isSearchFolded(folds, 'calc', 'f2')).toBe(false);
+	expect(isSearchFolded(folds, 'calcu', 'f1')).toBe(false);
+	expect(isSearchFolded(toggleSearchFold(folds, 'calc', 'f1'), 'calc', 'f1')).toBe(false);
+});
+
+test('arrow_keys_start_at_the_first_or_last_row_and_wrap_around', () => {
+	expect(walkIndex(null, 1, 3)).toBe(0);
+	expect(walkIndex(null, -1, 3)).toBe(2);
+	expect(walkIndex(2, 1, 3)).toBe(0);
+	expect(walkIndex(0, -1, 3)).toBe(2);
+	expect(walkIndex(1, 1, 3)).toBe(2);
+	expect(walkIndex(5, 1, 3)).toBe(0);
 });

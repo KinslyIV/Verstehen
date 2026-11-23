@@ -149,6 +149,43 @@ describe('the sidebar tree', () => {
 		);
 		expect(labels(tree)).toEqual(['strong', 'weak']);
 	});
+
+	it('keeps folders above sessions and ranks each level by match, newest first on a tie', () => {
+		const sessions = [
+			{ ...session('exact', '2026-01-01'), title: 'limits' },
+			{ ...session('prefix-new', '2026-01-04'), title: 'limits and continuity' },
+			{ ...session('prefix-old', '2026-01-02'), title: 'limits of sequences' },
+			{ ...session('inner-weak', '2026-01-09'), title: 'the limits' },
+			{ ...session('inner-strong', '2026-01-01'), title: 'limits' },
+			{ ...session('late', '2026-01-03'), title: 'unrelated' }
+		];
+		const tree = buildSessionTree(
+			sessions,
+			organization([folder('f', null), folder('empty', null)], {
+				'inner-weak': 'f',
+				'inner-strong': 'f'
+			}),
+			{ query: 'limits' }
+		);
+		expect(labels(tree)).toEqual([
+			'f[inner-strong,inner-weak]',
+			'exact',
+			'prefix-new',
+			'prefix-old'
+		]);
+	});
+
+	it('narrows by kind before searching', () => {
+		const sessions = [
+			{ ...session('t', '2026-01-02', 'teach'), title: 'limits' },
+			{ ...session('p', '2026-01-01', 'practice'), title: 'limits' }
+		];
+		const tree = buildSessionTree(sessions, undefined, {
+			query: 'limits',
+			include: (candidate) => candidate.kind === 'practice'
+		});
+		expect(labels(tree)).toEqual(['p']);
+	});
 });
 
 describe('the flattened sidebar rows', () => {

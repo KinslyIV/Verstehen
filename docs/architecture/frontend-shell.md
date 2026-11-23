@@ -55,6 +55,15 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   removes the folder with its empty subfolders (`DELETE /api/graph/sources`). Drag payload and drop
   rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` (touch input)
   turns every sidebar drag off.
+- **Sidebar search:** the field above the kind filter (also on the phone drawer) scores titles with
+  `fuzzyScore` through `buildSessionTree`: the kind filter narrows first, folders lead, each level
+  ranks by score with activity breaking ties, and folders without matches hide. While a query is
+  set every folder shows open; a folder closed then is remembered only for that exact query
+  (`SearchFolds` in `session-list-model.ts`), never in the saved open set. The field owns the
+  walk: Up and Down cycle the visible session rows (wrapping, highlighted, scrolled into view),
+  Enter opens the walked row or the first match, and Enter or Esc blurs the field and keeps the
+  query. A query change or a click on a row clears the walk. Ctrl or Cmd+Shift+F opens a
+  collapsed sidebar or the drawer and focuses the field, unless a dialog, popover, or menu is open.
 - **Layout state:** the sidebar collapses with Ctrl+B and remembers its state; the right panel
   starts closed; toggling it remembers its visibility, and it remembers its width (default 25%,
   20–40%). Opening it from code (a new plan, a plan block, Ctrl+J) changes only the live state.

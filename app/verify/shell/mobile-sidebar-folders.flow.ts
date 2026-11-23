@@ -30,6 +30,15 @@ test('mobile-sidebar-folders', async ({ page, request }) => {
 		(await page.getByTestId('sidebar-add-folder').boundingBox())!.height
 	).toBeGreaterThanOrEqual(44);
 
+	// Searching opens the folder holding a match, and clearing the search closes it again.
+	const search = page.getByTestId('session-search');
+	expect((await search.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+	await search.fill('algebra');
+	await expect(link).toBeVisible();
+	await page.screenshot({ path: test.info().outputPath('search.png'), animations: 'disabled' });
+	await search.fill('');
+	await expect(link).toHaveCount(0);
+
 	// Folders open and close by tap, and nothing in the list can be dragged.
 	await toggle.tap();
 	await expect(toggle).toHaveAttribute('aria-expanded', 'true');

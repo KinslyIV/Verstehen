@@ -57,3 +57,26 @@ export function sessionMeta(session: SessionItem, now: Date): string {
 	if (session.kind === 'practice' && session.pending_problem) return `Problem waiting · ${ago}`;
 	return session.busy ? 'Working…' : ago;
 }
+
+/** The folders the learner closed during one search; a different query forgets them. */
+export interface SearchFolds {
+	query: string;
+	ids: ReadonlySet<string>;
+}
+
+export const noSearchFolds: SearchFolds = { query: '', ids: new Set() };
+
+export const isSearchFolded = (folds: SearchFolds, query: string, id: string) =>
+	folds.query === query && folds.ids.has(id);
+
+export function toggleSearchFold(folds: SearchFolds, query: string, id: string): SearchFolds {
+	const ids = new Set(folds.query === query ? folds.ids : []);
+	if (!ids.delete(id)) ids.add(id);
+	return { query, ids };
+}
+
+/** The row the arrow keys land on: the first or last from nowhere, else one step with wrap-around. */
+export function walkIndex(current: number | null, direction: 1 | -1, count: number): number {
+	if (current === null || current >= count) return direction === 1 ? 0 : count - 1;
+	return (current + direction + count) % count;
+}

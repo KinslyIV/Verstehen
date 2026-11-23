@@ -4,9 +4,11 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Dumbbell, FolderPlus, LoaderCircle } from '@lucide/svelte';
+	import { Dumbbell, FolderPlus, LoaderCircle, Search } from '@lucide/svelte';
 	import type { SessionItem } from '#lib/api/client.js';
+	import { Input } from '#lib/components/ui/input/index.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
+	import { useSidebar } from '#lib/components/ui/sidebar/context.svelte.js';
 	import { layout } from '#lib/layout/tiers.svelte.js';
 	import CoverageMenuBlock from '#lib/graph/coverage-menu-block.svelte';
 	import DeleteSessionDialog from '#lib/graph/delete-session-dialog.svelte';
@@ -23,15 +25,20 @@
 	import RenameSession from './rename-session.svelte';
 	import SidebarFolderRow from './sidebar-folder-row.svelte';
 	import { sessionIndent } from './sidebar-indent.js';
+	import { hasOpenOverlay } from '#lib/questions/keyboard.js';
 	import { SessionRows } from '#lib/session/session-rows.svelte.js';
 	import {
+		isSearchFolded,
 		kindFilters,
 		kindIncludes,
+		noSearchFolds,
 		readKindFilter,
 		readOpenFolders,
 		saveKindFilter,
 		saveOpenFolders,
 		sessionMeta,
+		toggleSearchFold,
+		walkIndex,
 		type KindFilter
 	} from '#lib/session/session-list-model.js';
 	import { markLeaving, unmarkLeaving } from '#lib/session/leaving-sessions.js';
@@ -46,12 +53,23 @@
 		(action) => folders.change(action)
 	);
 	const draggable = $derived(organization !== undefined && !layout.coarse);
+	const sidebar = useSidebar();
+	let query = $state('');
+	let searchFolds = $state(noSearchFolds);
+	let walked = $state<number | null>(null);
+	let search = $state<HTMLInputElement | null>(null);
+	let list = $state<HTMLDivElement>();
+	const searching = $derived(query.trim() !== '');
+	const isOpen = (id: string) =>
+		searching ? !isSearchFolded(searchFolds, query, id) : openFolders.has(id);
 	const treeRows = $derived(
 		flattenSessionTree(
-			buildSessionTree(rows.rows, organization, { query: '', include: kindIncludes(filter) }),
-			(id) => openFolders.has(id)
+			buildSessionTree(rows.rows, organization, { query, include: kindIncludes(filter) }),
+			isOpen
 		)
 	);
+	const shown = $derived(treeRows.flatMap((row) => (row.type === 'session' ? [row.session] : [])));
+	const walkedId = $derived(walked === null ? null : (shown[walked]?.id ?? null));
 	let deleting = $state<SessionItem | null>(null);
 	let renaming = $state<string | null>(null);
 	let renamingFolder = $state<string | null>(null);
@@ -82,10 +100,64 @@
 		else openFolders.delete(id);
 		saveOpenFolders(openFolders);
 	}
+	function toggleFolder(id: string) {
+		if (searching) searchFolds = toggleSearchFold(searchFolds, query, id);
+		else setFolderOpen(id, !openFolders.has(id));
+	}
 	function startSubfolder(parentId: string) {
-		setFolderOpen(parentId, true);
+		if (searching && !isOpen(parentId))
+			searchFolds = toggleSearchFold(searchFolds, query, parentId);
+		else setFolderOpen(parentId, true);
 		creatingIn = { parentId };
 	}
+	function setQuery(value: string) {
+		query = value;
+		walked = null;
+	}
+	function focusSearch(event: KeyboardEvent) {
+		const mobileDrawerOpen = sidebar.isMobile && sidebar.openMobile;
+		if (
+			!(event.ctrlKey || event.metaKey) ||
+			!event.shiftKey ||
+			event.altKey ||
+			event.key.toLowerCase() !== 'f' ||
+			event.defaultPrevented ||
+			event.isComposing ||
+			(hasOpenOverlay() && !mobileDrawerOpen)
+		)
+			return;
+		event.preventDefault();
+		if (sidebar.isMobile) sidebar.setOpenMobile(true);
+		else sidebar.setOpen(true);
+		requestAnimationFrame(() => search?.focus());
+	}
+	function searchKeydown(event: KeyboardEvent) {
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			event.stopPropagation();
+			search?.blur();
+			return;
+		}
+		if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || event.isComposing)
+			return;
+		if (shown.length === 0) return;
+		if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+			event.preventDefault();
+			walked = walkIndex(walked, event.key === 'ArrowDown' ? 1 : -1, shown.length);
+		} else if (event.key === 'Enter') {
+			event.preventDefault();
+			const target = shown[walked !== null && walked < shown.length ? walked : 0];
+			walked = null;
+			search?.blur();
+			void goto(resolve('/(lesson)/session/[id]', { id: target.id }));
+		}
+	}
+	$effect(() => {
+		if (walkedId === null) return;
+		list
+			?.querySelector(`[data-source-drag-row="${CSS.escape(walkedId)}"]`)
+			?.scrollIntoView({ block: 'nearest' });
+	});
 	function createFolder(parentId: string | null, name: string) {
 		return folders.change({ action: 'create-folder', name, parent_id: parentId });
 	}
@@ -96,6 +168,8 @@
 	}
 </script>
 
+<svelte:window onkeydown={focusSearch} />
+
 {#snippet sessionRow(session: SessionItem, depth: number, parentId: string | null)}
 	<SourceDragRow
 		kind="source"
@@ -105,7 +179,13 @@
 		{...drop.props(parentId)}
 	>
 		<ContextMenu.Root>
-			<ContextMenu.Trigger class="block rounded-lg hover:bg-sidebar-accent">
+			<ContextMenu.Trigger
+				class={cn(
+					'block rounded-lg hover:bg-sidebar-accent',
+					walkedId === session.id && 'bg-sidebar-accent'
+				)}
+				data-walked={walkedId === session.id}
+			>
 				{#if renaming === session.id}
 					<div class="p-3" style:padding-left={sessionIndent(depth)}>
 						<RenameSession
@@ -125,6 +205,7 @@
 						class="flex min-w-0 items-center gap-2 rounded-lg p-3"
 						style:padding-left={sessionIndent(depth)}
 						aria-current={page.params.id === session.id ? 'page' : undefined}
+						onclick={() => (walked = null)}
 					>
 						<div class="min-w-0 flex-1">
 							<span class="block truncate text-sm">{session.title}</span><span
@@ -169,7 +250,7 @@
 	</SourceDragRow>
 {/snippet}
 
-<div class="flex flex-1 flex-col gap-1">
+<div bind:this={list} data-testid="session-list" class="flex flex-1 flex-col gap-1">
 	{#if rows.error}<p role="alert" class="px-3 text-xs text-destructive">{rows.error}</p>{/if}
 	{#if folders.failure}
 		<p
@@ -187,6 +268,37 @@
 			</button>
 		</p>
 	{/if}
+	<div class="mb-1 flex items-center gap-1">
+		<div class="relative min-w-0 flex-1">
+			<Search
+				aria-hidden="true"
+				class="pointer-events-none absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground/70"
+			/>
+			<Input
+				bind:ref={search}
+				value={query}
+				data-testid="session-search"
+				placeholder="Search…"
+				aria-label="Search sessions"
+				spellcheck={false}
+				autocomplete="off"
+				class="h-8 pl-8 text-xs coarse:h-11 coarse:text-base"
+				oninput={(event) => setQuery(event.currentTarget.value)}
+				onkeydown={searchKeydown}
+			/>
+		</div>
+		{#if organization}
+			<button
+				type="button"
+				aria-label="Add folder"
+				data-testid="sidebar-add-folder"
+				class="flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground coarse:size-11"
+				onclick={() => (creatingIn = { parentId: null })}
+			>
+				<FolderPlus class="size-4" />
+			</button>
+		{/if}
+	</div>
 	<div class="mb-1 flex items-center gap-1">
 		<div
 			role="group"
@@ -214,17 +326,6 @@
 				</button>
 			{/each}
 		</div>
-		{#if organization}
-			<button
-				type="button"
-				aria-label="Add folder"
-				data-testid="sidebar-add-folder"
-				class="flex shrink-0 items-center justify-center rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground coarse:size-11"
-				onclick={() => (creatingIn = { parentId: null })}
-			>
-				<FolderPlus class="size-4" />
-			</button>
-		{/if}
 	</div>
 	{#if creatingIn?.parentId === null}
 		<NewFolderRow
@@ -234,7 +335,11 @@
 		/>
 	{/if}
 	{#if !treeRows.length && !rows.error}<p class="px-3 text-xs text-muted-foreground">
-			{rows.rows.length ? 'No sessions of this kind' : 'No sessions yet'}
+			{searching
+				? 'No sessions match'
+				: rows.rows.length
+					? 'No sessions of this kind'
+					: 'No sessions yet'}
 		</p>{/if}
 	{#each treeRows as row (row.type === 'folder' ? `folder:${row.folder.id}` : row.session.id)}
 		{#if row.type === 'folder'}
@@ -248,7 +353,7 @@
 				{draggable}
 				canDelete={folders.directory !== undefined &&
 					folderHoldsNoSources(folders.directory, row.folder.id)}
-				ontoggle={() => setFolderOpen(row.folder.id, !row.open)}
+				ontoggle={() => toggleFolder(row.folder.id)}
 				onrename={(name) => folders.change({ action: 'rename-folder', id: row.folder.id, name })}
 				onrenamed={() => (renamingFolder = null)}
 				onstartrename={() => (renamingFolder = row.folder.id)}
