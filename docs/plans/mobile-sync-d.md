@@ -191,7 +191,8 @@ Mode selection, verify transport, and `/pair` fields approved by the user on 202
 ### PR 1
 - **Vitest:** connection storage and mode selection; `401` → `/pair`; `/pair` errors.
 - **Tests:** the guard allows only `localhost` and `100.64.0.0/10`, and adds only `10.0.2.2` in
-  debug builds (JVM unit test and a Python config test), and blocks a real request on the emulator; desktop builds still bundle the sidecar; server CORS allows `http://localhost`.
+  debug builds (JVM unit test and a Python config test), and blocks a real request on the
+  emulator; desktop builds still bundle the sidecar; server CORS allows `http://localhost`.
 - **Playwright** (`app/verify/shell/mobile-pair.flow.ts` at `360×780`): pair against a `--server`
   backend, bad code, `401` back to `/pair`.
 - **Emulator (agent):** debug `.apk` on the S24 and Tab S9 virtual devices: pair, one fake-model

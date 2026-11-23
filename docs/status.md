@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (Milestone D plan approved).
+> PRs. Last update: 2026-11-23 (Milestone D PR 1 built).
 
 ## Where we are
 
@@ -34,12 +34,14 @@ Mobile & sync Milestones A and B are merged into `dev`. The combined integration
   the same schema version. LearnHarness replacement requires an unpaired local data directory.
 - **Test organization:** backend pytest files, frontend Vitest globs, and browser flows are
   organized into nine areas with `AREA=` selection. The reorganization consolidated 72 flows into
-  49. Milestone C and M10 bring the total to 52.
+  49. Milestone C and M10 bring the total to 52; Milestone D PR 1 adds `mobile-pair` for 53.
 
 ## Next
 
-1. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), approved 2026-11-23): PR 1 the
-   Android app and pairing, then PR 2 the phone and tablet UI and SSE recovery. Then M11.
+1. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md), approved 2026-11-23): PR 1 (the
+   Capacitor Android app, remote mode, `/pair`, and the Android build tooling) is built on
+   `mobile-sync-d-android` and waits for review; it was tested on the `Galaxy_S24` and
+   `Galaxy_Tab_S9` emulators. Next PR 2, the phone and tablet UI and SSE recovery. Then M11.
 2. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
