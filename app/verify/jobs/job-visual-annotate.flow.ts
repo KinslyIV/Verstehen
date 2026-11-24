@@ -49,5 +49,22 @@ test('job-visual-annotate', async ({ page, request, appendEntries }, testInfo) =
 		.toBe(480);
 	await figure.scrollIntoViewIfNeeded();
 	await page.screenshot({ path: testInfo.outputPath('figure.png'), animations: 'disabled' });
+	await figure.getByTestId('visual-zoom').click();
+	const zoomed = page.getByRole('img', { name: 'Enlarged figure' });
+	await expect(zoomed).toBeVisible();
+	await expect
+		.poll(async () => (await zoomed.boundingBox())!.width)
+		.toBeGreaterThan((await figure.getByRole('img', { name: 'Figure' }).boundingBox())!.width);
+	await page.screenshot({ path: testInfo.outputPath('figure-zoomed.png'), animations: 'disabled' });
+	await page.keyboard.press('Escape');
+	await expect(zoomed).toHaveCount(0);
 	await photo.scrollIntoViewIfNeeded();
+	await photo.getByTestId('visual-zoom').click();
+	await expect(zoomed).toBeVisible();
+	await expect
+		.poll(() => zoomed.evaluate((image) => (image as HTMLImageElement).naturalWidth))
+		.toBe(480);
+	await page.screenshot({ path: testInfo.outputPath('photo-zoomed.png'), animations: 'disabled' });
+	await page.getByTestId('zoom-close').click();
+	await expect(zoomed).toHaveCount(0);
 });
