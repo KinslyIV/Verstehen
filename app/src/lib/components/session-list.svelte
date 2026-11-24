@@ -17,8 +17,10 @@
 	import {
 		buildSessionTree,
 		flattenSessionTree,
+		folderChoices,
 		folderHoldsNoSources
 	} from '#lib/graph/source-organization.js';
+	import { newSessionQuery } from './new-session-query.js';
 	import NewFolderRow from './new-folder-row.svelte';
 	import RenameSession from './rename-session.svelte';
 	import SidebarFolderRow from './sidebar-folder-row.svelte';
@@ -147,6 +149,13 @@
 	function createFolder(parentId: string | null, name: string) {
 		return folders.change({ action: 'create-folder', name, parent_id: parentId });
 	}
+	function moveSession(id: string, parentId: string | null) {
+		folders.change({ action: 'move', kind: 'source', id, parent_id: parentId }).catch(() => {});
+	}
+	function startSessionIn(folderId: string, mode: 'teach' | 'practice') {
+		// eslint-disable-next-line svelte/no-navigation-without-resolve
+		void goto(resolve('/(lesson)/session/new') + newSessionQuery(mode, folderId));
+	}
 	function deleteFolder(id: string) {
 		const directory = folders.directory;
 		if (!directory || !folderHoldsNoSources(directory, id)) return;
@@ -186,6 +195,7 @@
 				{:else}
 					<a
 						href={resolve('/(lesson)/session/[id]', { id: session.id })}
+						draggable={false}
 						class="flex min-w-0 items-center gap-2 rounded-lg p-3"
 						style:padding-left={sessionIndent(depth)}
 						aria-current={page.params.id === session.id ? 'page' : undefined}
@@ -225,6 +235,30 @@
 				>
 					Delete
 				</ContextMenu.Item>
+				{#if organization}
+					<ContextMenu.Sub>
+						<ContextMenu.SubTrigger data-testid="move-to-folder">
+							Move to folder
+						</ContextMenu.SubTrigger>
+						<ContextMenu.SubContent data-testid="move-to-folder-menu">
+							<ContextMenu.Item
+								disabled={parentId === null}
+								onclick={() => moveSession(session.id, null)}
+							>
+								No folder
+							</ContextMenu.Item>
+							{#each folderChoices(organization) as choice (choice.id)}
+								<ContextMenu.Item
+									disabled={parentId === choice.id}
+									style="padding-left: {0.5 + choice.depth * 0.75}rem"
+									onclick={() => moveSession(session.id, choice.id)}
+								>
+									{choice.name}
+								</ContextMenu.Item>
+							{/each}
+						</ContextMenu.SubContent>
+					</ContextMenu.Sub>
+				{/if}
 				{#if session.kind === 'teach'}
 					<ContextMenu.Separator />
 					<CoverageMenuBlock sessionId={session.id} />
@@ -342,6 +376,7 @@
 				onrenamed={() => (renamingFolder = null)}
 				onstartrename={() => (renamingFolder = row.folder.id)}
 				onnewsubfolder={() => startSubfolder(row.folder.id)}
+				onnewsession={(mode) => startSessionIn(row.folder.id, mode)}
 				ondelete={() => deleteFolder(row.folder.id)}
 				ondragitem={(item) => drop.drag(item)}
 			/>

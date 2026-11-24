@@ -19,7 +19,7 @@ from verstehen.sidechat.segments import SideSegments, side_segments
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
-from verstehen.store.graph import GraphLedger, GraphStore
+from verstehen.store.graph import GraphLedger, GraphStore, SourcePlacement
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
@@ -123,7 +123,13 @@ class SessionService:
         pick: ModelPick | None = None,
         graph_context: GraphContext | None = None,
         kind: SessionKind = "teach",
+        folder_id: str | None = None,
     ) -> Session | Refused:
+        if folder_id is not None and not any(
+            folder.id == folder_id
+            for folder in (await self.graph_store.read()).organization.folders
+        ):
+            return Refused(400, {"error": "Folder no longer exists."})
         if pick is not None:
             try:
                 pick = await self.resolver_service.normalize(pick)
@@ -134,6 +140,11 @@ class SessionService:
         session = await self.sessions_store.create(
             title_from_prompt(title or "Untitled session"), pick, kind=kind
         )
+        if folder_id is not None:
+            async with self.graph_store.transaction() as ledger:
+                ledger.organization.placements[session.id] = SourcePlacement(
+                    folder_id=folder_id
+                )
         if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
                 session.id,

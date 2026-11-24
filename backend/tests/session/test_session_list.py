@@ -362,3 +362,24 @@ def test_session_snapshot_loads_the_transcript_once(tmp_path: Path):
         store.list = counting
         assert client.get(f"/api/sessions/{session}").status_code == 200
         assert loads == [session]
+
+
+def test_a_session_created_with_a_folder_lands_in_it_and_an_unknown_folder_is_refused(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        folder = client.post(
+            "/api/graph/sources",
+            json={"action": "create-folder", "name": "Maths", "parent_id": None},
+        ).json()["created_folder_id"]
+        created = client.post(
+            "/api/sessions", json={"title": "Algebra", "folder_id": folder}
+        )
+        placements = client.get("/api/graph/sources").json()["organization"][
+            "placements"
+        ]
+        assert placements[created.json()["id"]]["folder_id"] == folder
+        refused = client.post("/api/sessions", json={"folder_id": "folder_missing"})
+        assert refused.status_code == 400
+        assert len(client.get("/api/sessions").json()["sessions"]) == 1
