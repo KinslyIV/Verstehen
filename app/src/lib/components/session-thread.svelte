@@ -44,7 +44,7 @@
 	import { planSnapshot } from '#lib/teaching/plan.js';
 	import { getPlanPanel } from '#lib/teaching/plan-panel.js';
 	import { responseResults } from '#lib/teaching/delivery.js';
-	import { responseProse } from '#lib/teaching/response-prose.js';
+	import { responseProse, type ResponseItem } from '#lib/teaching/response-prose.js';
 	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
@@ -278,45 +278,23 @@
 										(call) => call.messageId === entry.entry_id && !call.question
 									)}
 							{#if thinking || prose.length || malformed.length}
+								{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
+								{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
+								{#if split}<Scroller.Item>
+										{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
+										{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
+									</Scroller.Item>{/if}
 								<Scroller.Item
 									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
 								>
-									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
-									{#each prose as item, i (i)}
-										{#if item.kind === 'text'}
-											<div data-source-entry-id={entry.entry_id}>
-												<AssistantMessage
-													content={item.text}
-													streaming={streaming && i === prose.length - 1}
-												/>
-											</div>
-										{:else if item.kind === 'image'}
-											<ImageCard result={item.result} />
-										{:else if item.kind === 'job'}
-											<DispatchCard
-												kind={item.jobKind}
-												job={jobsByCall.get(item.toolCallId)}
-												now={controller.jobs.now}
-											/>
-										{:else if item.kind === 'problem'}
-											<ProblemCard statement={item.statement} />
-										{:else if item.kind === 'conclude'}
-											<ConcludeCard
-												args={item.args}
-												problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
-												reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
-											/>
-										{:else if item.kind === 'probe'}
-											<ProbeAssessment args={item.args} result={item.result} />
-										{:else}
-											<p
-												data-testid="tool-retry"
-												class="py-1 text-center text-xs text-muted-foreground"
-											>
-												Retrying…
-											</p>
-										{/if}
-									{/each}
+									{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
+									{@render responseItems(
+										entry.entry_id!,
+										prose,
+										split ? problemAt : 0,
+										prose.length,
+										streaming
+									)}
 									{#each malformed as call (call.key)}
 										<MalformedQuestion
 											blocked={controller.questionCalls.some(
@@ -428,6 +406,46 @@
 					Retry
 				</Button>{/if}
 		</div>{/if}
+	{#snippet responseItems(
+		entryId: string,
+		items: ResponseItem[],
+		from: number,
+		to: number,
+		streaming: boolean
+	)}
+		{#each items.slice(from, to) as item, i (from + i)}
+			{#if item.kind === 'text'}
+				<div data-source-entry-id={entryId}>
+					<AssistantMessage
+						content={item.text}
+						streaming={streaming && from + i === items.length - 1}
+					/>
+				</div>
+			{:else if item.kind === 'image'}
+				<ImageCard result={item.result} />
+			{:else if item.kind === 'job'}
+				<DispatchCard
+					kind={item.jobKind}
+					job={jobsByCall.get(item.toolCallId)}
+					now={controller.jobs.now}
+				/>
+			{:else if item.kind === 'problem'}
+				<ProblemCard statement={item.statement} />
+			{:else if item.kind === 'conclude'}
+				<ConcludeCard
+					args={item.args}
+					problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
+					reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
+				/>
+			{:else if item.kind === 'probe'}
+				<ProbeAssessment args={item.args} result={item.result} />
+			{:else}
+				<p data-testid="tool-retry" class="py-1 text-center text-xs text-muted-foreground">
+					Retrying…
+				</p>
+			{/if}
+		{/each}
+	{/snippet}
 	{#snippet models()}<ModelControls
 			sessionId={id}
 			pick={controller.record?.model_account && controller.record?.model_id

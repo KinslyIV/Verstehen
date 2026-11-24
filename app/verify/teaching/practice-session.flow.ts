@@ -24,7 +24,7 @@ test('practice-session', async ({ page, request }) => {
 	await expect(ticks).toHaveCount(2);
 	await ticks.first().click();
 	await ticks.last().click();
-	await expect(page.getByTestId('problem-card')).toBeInViewport();
+	await expect(page.getByTestId('problem-card')).toBeInViewport({ ratio: 1 });
 	await expect(ticks.last()).toHaveAttribute('data-active', 'true');
 
 	// Reloading an open problem keeps the dock and starts no continue turn.

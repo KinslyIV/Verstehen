@@ -98,7 +98,7 @@ Frontend, `app/src/`:
 skipped one), and practice problem, each anchored by `messageId` so a click scrolls that item to
 the top of the thread. `turn-minimap.svelte` draws the ticks evenly spaced at the left edge with a
 fisheye on hover and a preview card, and highlights the last item in view. It renders only on a
-fine pointer at 768 px and wider, and with at least two ticks.
+fine pointer at 768 px and wider, once there is at least one tick.
 
 ## Session stats
 
