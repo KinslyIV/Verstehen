@@ -9,7 +9,7 @@ from typing import Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError
-from pydantic_ai.providers.openai_chatgpt import (
+lazy from pydantic_ai.providers.openai_chatgpt import (
     OpenAIChatGPTCredentials,
 )
 

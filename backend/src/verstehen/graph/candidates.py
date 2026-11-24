@@ -3,8 +3,8 @@ import unicodedata
 from collections import Counter
 from collections.abc import Sequence
 
-import regex
 from pydantic import BaseModel, ConfigDict, Field
+lazy import regex
 
 from verstehen.graph.merge import Proposition
 from verstehen.store.graph import GraphNode

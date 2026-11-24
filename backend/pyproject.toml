@@ -2,7 +2,7 @@
 name = "verstehen"
 version = "0.1.0"
 license = "AGPL-3.0-only"
-requires-python = "==3.14.*"
+requires-python = "==3.15.*"
 dependencies = [
     "aiosqlite>=0.22.1",
     "asyncssh>=2.19.0",

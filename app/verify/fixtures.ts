@@ -1,9 +1,8 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect, type Frame, type Request } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { get } from 'node:http';
-import { createServer } from 'node:net';
+import { createConnection, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -13,18 +12,6 @@ import { fileURLToPath } from 'node:url';
 
 const runFile = promisify(execFile);
 const appDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-
-async function freePort(): Promise<number> {
-	const server = createServer();
-	server.listen(0, '127.0.0.1');
-	await once(server, 'listening');
-	const address = server.address();
-	if (!address || typeof address === 'string') throw new Error('No free preview port');
-	await new Promise<void>((resolve, reject) =>
-		server.close((error) => (error ? reject(error) : resolve()))
-	);
-	return address.port;
-}
 
 async function start(
 	command: string,
@@ -67,22 +54,108 @@ async function handshake(child: ChildProcess): Promise<number> {
 	}
 }
 
-async function ready(url: string, child: ChildProcess): Promise<void> {
-	const deadline = Date.now() + 15000;
-	while (Date.now() < deadline) {
-		if (child.exitCode !== null) throw new Error(`Vite preview exited with ${child.exitCode}`);
-		const ok = await new Promise<boolean>((resolve) => {
-			const request = get(url, (response) => {
-				response.resume();
-				resolve(response.statusCode === 200);
-			});
-			request.on('error', () => resolve(false));
-			request.setTimeout(1000, () => request.destroy());
-		});
-		if (ok) return;
-		await new Promise((resolve) => setTimeout(resolve, 100));
+class PreviewExitError extends Error {}
+
+async function previewHandshake(child: ChildProcess): Promise<number> {
+	if (!child.stdout) throw new Error('Vite preview stdout is missing');
+	const lines = createInterface({ input: child.stdout });
+	const timeout = new AbortController();
+	const timer = setTimeout(() => {
+		timeout.abort();
+		lines.close();
+	}, 15000);
+	try {
+		for await (const line of lines) {
+			const match = /Local:\s+http:\/\/127\.0\.0\.1:(\d+)\/?/.exec(line);
+			if (!match) continue;
+			const port = Number(match[1]);
+			if (!Number.isInteger(port) || port < 1 || port > 65535)
+				throw new Error(`Invalid preview URL line: ${line}`);
+			return port;
+		}
+		if (timeout.signal.aborted)
+			throw new Error('Vite preview did not print its local URL within 15 seconds');
+		if (child.exitCode === null && child.signalCode === null) {
+			try {
+				await once(child, 'exit', { signal: timeout.signal });
+			} catch (error) {
+				if (timeout.signal.aborted)
+					throw new Error('Vite preview did not print its local URL within 15 seconds', {
+						cause: error
+					});
+				throw error;
+			}
+		}
+		throw new PreviewExitError(
+			`Vite preview exited with ${child.exitCode ?? child.signalCode} before listening`
+		);
+	} finally {
+		clearTimeout(timer);
+		lines.close();
+		child.stdout.resume();
 	}
-	throw new Error(`Vite preview was not ready at ${url}`);
+}
+
+interface UpstreamForwarder {
+	readonly port: number;
+	pause(): void;
+	pointTo(port: number): void;
+	close(): Promise<void>;
+}
+
+/** Keep one stable upstream listener so `restartSidecar()` swaps backend ports without restarting Vite. */
+async function createUpstreamForwarder(initialPort: number): Promise<UpstreamForwarder> {
+	let targetPort: number | null = initialPort;
+	const sockets = new Set<Socket>();
+	const server = createServer((client) => {
+		if (targetPort === null) {
+			client.destroy();
+			return;
+		}
+		const upstream = createConnection({ host: '127.0.0.1', port: targetPort });
+		client.setNoDelay(true);
+		upstream.setNoDelay(true);
+		sockets.add(client);
+		sockets.add(upstream);
+		client.on('close', () => {
+			sockets.delete(client);
+			upstream.destroy();
+		});
+		upstream.on('close', (hadError) => {
+			sockets.delete(upstream);
+			if (hadError) client.destroy();
+		});
+		client.on('error', () => upstream.destroy());
+		upstream.on('error', () => client.destroy());
+		client.pipe(upstream);
+		upstream.pipe(client);
+	});
+	server.listen(0, '127.0.0.1');
+	await once(server, 'listening');
+	const address = server.address();
+	if (!address || typeof address === 'string') {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+		throw new Error('No free upstream forwarder port');
+	}
+	return {
+		port: address.port,
+		pause: () => {
+			targetPort = null;
+			for (const socket of sockets) socket.destroy();
+			sockets.clear();
+		},
+		pointTo: (port) => {
+			targetPort = port;
+		},
+		close: async () => {
+			targetPort = null;
+			for (const socket of sockets) socket.destroy();
+			sockets.clear();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve()))
+			);
+		}
+	};
 }
 
 const appendEntries = `
@@ -178,6 +251,12 @@ export const test = base.extend<{
 	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
+	teardownControl: {
+		run: <T>(paths: readonly string[], action: () => Promise<T>) => Promise<T>;
+		isExpected: (request: Request) => boolean;
+	};
+	/** Allow expected `ERR_ABORTED` GETs for pre-navigation requests during a teardown action. */
+	allowTeardownAborts: <T>(paths: readonly string[], action: () => Promise<T>) => Promise<T>;
 	browserErrors: void;
 }>({
 	script: ['', { option: true }],
@@ -246,6 +325,7 @@ export const test = base.extend<{
 		const remote = client === 'remote';
 		const sidecarArguments = remote ? ['--server', '--port', '0'] : [];
 		const children: ChildProcess[] = [];
+		let forwarder: UpstreamForwarder | undefined;
 		try {
 			let sidecar = await start(
 				resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -254,33 +334,43 @@ export const test = base.extend<{
 			);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
-			const previewPort = await freePort();
-			const startPreview = (sidecarPort: number) =>
-				start(
-					process.execPath,
-					[
-						'node_modules/vite/bin/vite.js',
-						'preview',
-						'--host',
-						'127.0.0.1',
-						'--port',
-						String(previewPort),
-						'--strictPort'
-					],
-					{
-						...env,
-						VERSTEHEN_PORT: String(sidecarPort),
-						...(remote
-							? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
-							: {})
+			forwarder = await createUpstreamForwarder(port);
+			const launchPreview = async (
+				upstreamPort: number
+			): Promise<{ child: ChildProcess; port: number }> => {
+				const previewEnv: NodeJS.ProcessEnv = {
+					...env,
+					VERSTEHEN_PORT: String(upstreamPort),
+					NO_COLOR: '1',
+					...(remote
+						? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
+						: {})
+				};
+				delete previewEnv.FORCE_COLOR;
+				const args = [
+					'node_modules/vite/bin/vite.js',
+					'preview',
+					'--host',
+					'127.0.0.1',
+					'--port',
+					'0'
+				];
+				for (let attempt = 1; ; attempt++) {
+					const child = await start(process.execPath, args, previewEnv);
+					try {
+						const boundPort = await previewHandshake(child);
+						children.push(child);
+						return { child, port: boundPort };
+					} catch (error) {
+						await stop(child);
+						if (!(error instanceof PreviewExitError) || attempt >= 5) throw error;
 					}
-				);
-			let preview = await startPreview(port);
-			children.push(preview);
+				}
+			};
+			const { port: previewPort } = await launchPreview(forwarder.port);
 			const url = `http://127.0.0.1:${previewPort}`;
-			await ready(url, preview);
 			sidecarControl.restart = async () => {
-				await stop(preview);
+				forwarder?.pause();
 				await stop(sidecar);
 				sidecar = await start(
 					resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -288,9 +378,7 @@ export const test = base.extend<{
 					env
 				);
 				children.push(sidecar);
-				preview = await startPreview(await handshake(sidecar));
-				children.push(preview);
-				await ready(url, preview);
+				forwarder?.pointTo(await handshake(sidecar));
 			};
 			if (script !== 'none') {
 				const api = await playwright.request.newContext({ baseURL: url });
@@ -312,11 +400,62 @@ export const test = base.extend<{
 			}
 			await use(url);
 		} finally {
+			await forwarder?.close();
 			await Promise.all(children.map(stop));
 		}
 	},
+	teardownControl: async ({ page }, use) => {
+		const inFlight = new Set<Request>();
+		let active: {
+			paths: readonly string[];
+			requests: Set<Request>;
+			accepting: boolean;
+		} | null = null;
+		const onRequest = (request: Request) => {
+			inFlight.add(request);
+			if (active?.accepting) active.requests.add(request);
+		};
+		const onSettled = (request: Request) => inFlight.delete(request);
+		const onNavigated = (frame: Frame) => {
+			if (frame === page.mainFrame() && active) active.accepting = false;
+		};
+		page.on('request', onRequest);
+		page.on('requestfinished', onSettled);
+		page.on('requestfailed', onSettled);
+		page.on('framenavigated', onNavigated);
+		try {
+			await use({
+				run: async (paths, action) => {
+					if (active !== null)
+						throw new Error('Nested allowTeardownAborts calls are not supported');
+					active = { paths, requests: new Set(inFlight), accepting: true };
+					try {
+						return await action();
+					} finally {
+						active = null;
+					}
+				},
+				isExpected: (request) =>
+					active !== null &&
+					active.requests.has(request) &&
+					request.failure()?.errorText.includes('ERR_ABORTED') === true &&
+					request.method() === 'GET' &&
+					active.paths.includes(new URL(request.url()).pathname)
+			});
+		} finally {
+			page.off('request', onRequest);
+			page.off('requestfinished', onSettled);
+			page.off('requestfailed', onSettled);
+			page.off('framenavigated', onNavigated);
+			inFlight.clear();
+			active = null;
+		}
+	},
+	allowTeardownAborts: async ({ teardownControl }, use) => {
+		await use((paths, action) => teardownControl.run(paths, action));
+	},
 	browserErrors: [
-		async ({ page, expectedStatuses, goesOffline }, use, testInfo) => {
+		async ({ page, expectedStatuses, goesOffline, teardownControl }, use, testInfo) => {
 			const errors: string[] = [];
 			page.on('console', (message) => {
 				if (
@@ -337,6 +476,7 @@ export const test = base.extend<{
 				'requestfailed',
 				(request) =>
 					!(goesOffline && request.failure()?.errorText.includes('ERR_INTERNET_DISCONNECTED')) &&
+					!teardownControl.isExpected(request) &&
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&
 						request.method() === 'GET' &&

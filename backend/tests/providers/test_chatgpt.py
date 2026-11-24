@@ -23,11 +23,8 @@ from pydantic_ai.providers.openai_chatgpt import (
 from verstehen.app import create_app
 from verstehen.config import Settings
 from verstehen.providers.accounts import AccountsService, AccountUnavailable
-from verstehen.providers.chatgpt.adapter import (
-    AccountProvider,
-    ChatGPTAccountAdapter,
-    catalog_model,
-)
+from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+from verstehen.providers.chatgpt.client import AccountProvider, catalog_model
 from verstehen.providers.chatgpt.credentials import (
     AccountCredentialSource,
 )

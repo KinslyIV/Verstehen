@@ -20,9 +20,9 @@ from typing import Annotated, Any, Literal, Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
 
-import asyncssh
 import httpx2
 from pydantic import BaseModel, Field
+lazy import asyncssh
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.callback_port import CallbackPort, CallbackPortBusy
@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 USER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
 
 InstallStepId = Literal[
     "ssh_connect",
@@ -650,6 +651,14 @@ NO_PENDING_RECOVERY_COMMAND = (
     f'[ ! -e "{SERVER_DIR}/venv.prev" ] && [ ! -e "{SERVER_DIR}/unit.prev" ] && '
     f'[ ! -e "{SERVER_DIR}/rollback.pending" ]'
 )
+UV_SELF_UPDATE_PROBE_COMMAND = (
+    "if command -v pgrep >/dev/null 2>&1; then "
+    "pgrep -f '[/]uv self update' >/dev/null 2>&1; status=$?; "
+    'if [ "$status" -eq 0 ]; then echo running; '
+    'elif [ "$status" -eq 1 ]; then echo stopped; '
+    "else echo unknown; fi; "
+    "else echo unknown; fi"
+)
 INVOCATION_HEADER = "X-Verstehen-Invocation"
 SCHEMA_HEADER = "X-Verstehen-Schema"
 DEPLOYMENT_HEADER = "X-Verstehen-Deployment"
@@ -739,7 +748,7 @@ def _initial_steps(mode: InstallMode) -> list[InstallStep]:
         ),
         InstallStep(id="install_uv", label="Ensure uv package manager is installed"),
         InstallStep(id="upload_bundle", label="Upload Verstehen server bundle"),
-        InstallStep(id="install_venv", label="Install Python 3.14 virtual environment"),
+        InstallStep(id="install_venv", label="Install Python 3.15 virtual environment"),
         InstallStep(
             id="configure_systemd", label="Configure and start systemd user service"
         ),
@@ -1153,28 +1162,96 @@ class ServerInstallService:
     async def _ensure_uv(self, session: SshSession) -> bool:
         self._current_step = "install_uv"
         self._set_step("install_uv", "running")
-        result = await session.run(
+        locate = await session.run(
             'if [ -x "$HOME/.local/bin/uv" ]; then '
-            '"$HOME/.local/bin/uv" --version; '
+            'if [ -L "$HOME/.local/bin/uv" ]; then echo symlink; else echo standalone; fi; '
             "elif command -v uv >/dev/null 2>&1; then "
-            'mkdir -p "$HOME/.local/bin" && ln -sf "$(command -v uv)" "$HOME/.local/bin/uv" && "$HOME/.local/bin/uv" --version; '
+            'mkdir -p "$HOME/.local/bin" && ln -sf "$(command -v uv)" "$HOME/.local/bin/uv" && echo symlink; '
             "else "
-            'curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh && "$HOME/.local/bin/uv" --version; '
+            'curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR="$HOME/.local/bin" sh && echo standalone; '
             "fi"
         )
-        self._append_log(result.stdout or result.stderr)
-        if result.exit_status != 0:
+        self._append_log(locate.stdout or locate.stderr)
+        if locate.exit_status != 0:
             self._fail(
                 "install_uv",
                 "install_failed",
-                result.stderr.strip() or "Failed to install uv on server.",
+                locate.stderr.strip() or "Failed to install uv on server.",
+            )
+            return False
+        uv_kind = (
+            locate.stdout.strip().splitlines()[-1]
+            if locate.stdout.strip()
+            else "standalone"
+        )
+        is_symlink = uv_kind == "symlink"
+        if not is_symlink:
+            try:
+                await session.run(
+                    "if command -v timeout >/dev/null 2>&1; then "
+                    'timeout -k 5 25 "$HOME/.local/bin/uv" self update >/dev/null 2>&1 || true; '
+                    "fi",
+                    timeout=40.0,
+                )
+            except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:
+                try:
+                    probe = await session.run(
+                        UV_SELF_UPDATE_PROBE_COMMAND,
+                        timeout=15.0,
+                    )
+                except TimeoutError, SshUnreachableError, OSError, asyncssh.Error:
+                    probe = None
+                probe_state = (
+                    probe.stdout.strip().splitlines()[-1]
+                    if probe is not None
+                    and probe.exit_status == 0
+                    and probe.stdout.strip()
+                    else "unknown"
+                )
+                if probe_state != "stopped":
+                    self._retain_install_lock = True
+                    self._fail(
+                        "install_uv",
+                        "install_failed",
+                        "uv self update did not stop cleanly and may still be running on the server. "
+                        "Confirm no remote 'uv self update' process is running before removing "
+                        "~/.local/share/verstehen-server/install.lock and retrying.",
+                    )
+                    return False
+                self._append_log(
+                    "uv self update did not finish but has stopped; checking installed uv version."
+                )
+        version_result = await session.run('"$HOME/.local/bin/uv" --version')
+        self._append_log(version_result.stdout or version_result.stderr)
+        if version_result.exit_status != 0:
+            self._fail(
+                "install_uv",
+                "install_failed",
+                version_result.stderr.strip() or "Failed to run uv on server.",
             )
             return False
         version = (
-            result.stdout.strip().splitlines()[-1]
-            if result.stdout.strip()
+            version_result.stdout.strip().splitlines()[-1]
+            if version_result.stdout.strip()
             else "uv ready"
         )
+        py_install = await session.run(
+            '"$HOME/.local/bin/uv" python install 3.15', timeout=300.0
+        )
+        self._append_log(py_install.stdout or py_install.stderr)
+        if py_install.exit_status != 0:
+            if is_symlink:
+                message = (
+                    f"The server's system uv ({version}) cannot install Python 3.15. "
+                    "Upgrade the system uv package (or install uv >= 0.13.9) and retry."
+                )
+            else:
+                message = (
+                    f"The server's uv ({version}) cannot install Python 3.15 after self-update. "
+                    "Upgrade ~/.local/bin/uv (uv >= 0.13.9) and retry."
+                )
+            self._fail("install_uv", "install_failed", message)
+            return False
         self._set_step("install_uv", "done", detail=version)
         return True
 
@@ -1219,8 +1296,7 @@ class ServerInstallService:
         python = f'"{SERVER_DIR}/venv.new/bin/python"'
         result = await session.run(
             f'rm -rf "{SERVER_DIR}/venv.new" && '
-            f"{uv} python install 3.14 && "
-            f'{uv} venv --python 3.14 "{SERVER_DIR}/venv.new" && '
+            f'{uv} venv --managed-python --no-python-downloads --python 3.15 "{SERVER_DIR}/venv.new" && '
             f'{uv} pip install --python {python} -r "{SERVER_DIR}/bundle/requirements.txt" && '
             f'{uv} pip install --python {python} --no-deps "{SERVER_DIR}/bundle/"{shlex.quote(wheel_name)} && '
             f'{python} -c "import verstehen.cli, verstehen.app"',
@@ -1233,10 +1309,10 @@ class ServerInstallService:
                 "install_venv",
                 "install_failed",
                 result.stderr.strip()
-                or "Failed to install Python 3.14 environment on server.",
+                or "Failed to install Python 3.15 environment on server.",
             )
             return False
-        self._set_step("install_venv", "done", detail="Python 3.14 venv ready")
+        self._set_step("install_venv", "done", detail="Python 3.15 venv ready")
         return True
 
     async def _reconnect(self) -> SshSession:

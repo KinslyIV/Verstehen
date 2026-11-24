@@ -146,20 +146,29 @@ merges.
 
 - **Flaky tests and flows.** Under the flake rule these are bugs, and with zero retries CI now
   fails on them: the thinking auto-close timer,
-  `teaching-handoff`, `job-recovery-reload`,
+  `teaching-handoff`,
   `side-chat-reload`, `question-ask`. On the laptop, `composer-steer`, `session-rename-delete`,
   and `question-ask` each failed with 6 local Playwright workers but passed alone; local workers
   are now capped at 3 (2026-11-21). The `session-rename-delete` fixture race is fixed on
   `reasoning-resend`: its initial Send assertion could match before the opening turn started,
   so deletion returned 409 during the turn. It now waits for the completed reply's thinking
-  button before Send confirms settlement; the full 49-flow verification suite passes. The other timing
-  bugs remain open. Under heavy host load (other worktrees running verify,
+  button before Send confirms settlement; the full 49-flow verification suite passes. On
+  `t3/python315-lazy-imports`, the `composer-steer` race (steering before the opening `POST /input`
+  created the live turn), the `settings-prompts` race (reloading before the `PUT .../enabled`
+  response settled), the `graph-extraction` race (navigating to `/graph` before the post-turn
+  `/coverage` fetch settled), the `job-recovery-reload` `/item` teardown race (switching to
+  the second session via client-side sidebar navigation so `SessionList` stays mounted, waiting
+  for UI settlement, and scoping any trailing old-document `/item` abort via `allowTeardownAborts`
+  before `framenavigated` on `page.reload()`), the `fixtures.ts` Vite preview port collision
+  race (`freePort` TOCTOU + `ready()` polling another worker's server, replaced by `--port 0`,
+  per-child stdout handshake, and a persistent local upstream forwarder across sidecar restarts),
+  and the duplicate probe handoff race (keeping `turn_in_flight` true via `runtime.handoff_starting`
+  and deferring `turn-settled` across settlement until `start("handoff")` claims the turn or fails)
+  are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
   and `make check` ran together on Pixal (2026-11-22).
-- **Duplicate probe handoff under load.** The frontend sometimes sends `handoff` twice (400 "No
-  probe handoff is owed", seen in `teach-predict-check`).
 - **Long single paragraphs stream slowly.** One huge paragraph re-parses as one block, as in LH;
   smooth sustained streaming is not established.
 - **Account sign-in doesn't wake a session** waiting on background consent; the next event does.

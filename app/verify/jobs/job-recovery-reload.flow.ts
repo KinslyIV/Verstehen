@@ -16,7 +16,8 @@ test('job-recovery-reload', async ({
 	request,
 	appendEntries,
 	dataDirectory,
-	restartSidecar
+	restartSidecar,
+	allowTeardownAborts
 }) => {
 	const resting = [
 		{
@@ -47,10 +48,16 @@ test('job-recovery-reload', async ({
 	await page.goto(`/session/${finished}`);
 	await expect(page.getByTestId('research-complete-badge')).toBeVisible({ timeout: 20_000 });
 	await expect(page.getByText('The earlier research arrived after the restart')).toBeVisible();
-	await page.goto(`/session/${interrupted}`);
+	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+	await page.getByRole('link', { name: /Interrupted by the restart/ }).click();
+	await expect(page).toHaveURL(`/session/${interrupted}`);
 	await expect(page.getByTestId('research-complete-badge')).toBeVisible({ timeout: 30_000 });
 	await expect(page.getByText('The re-run research arrived')).toBeVisible();
-	await page.reload();
+	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
+	await expect(
+		page.getByRole('link', { name: /Interrupted by the restart/ }).locator('[aria-label="Working"]')
+	).toHaveCount(0);
+	await allowTeardownAborts([`/api/sessions/${interrupted}/item`], () => page.reload());
 	await expect(page.getByTestId('research-complete-badge')).toBeVisible();
 	await expect(page.getByTestId('dispatch-settled')).toHaveText(/Research agent\s*finished/);
 });

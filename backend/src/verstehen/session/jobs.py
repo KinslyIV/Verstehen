@@ -42,7 +42,7 @@ class JobService:
         await self.sweep()
         return SessionJobs(
             await self.jobs_store.list(session_id),
-            self.runtimes.get(session_id).run is not None,
+            self.runtimes.get(session_id).turn_in_flight,
         )
 
     async def sweep(self) -> None:
@@ -55,7 +55,7 @@ class JobService:
         for job in await self.jobs_store.unfinished(owner_device_id=owner):
             if self.job_runner.is_live(job.id):
                 continue
-            if self.runtimes.get(job.session_id).run is not None:
+            if self.runtimes.get(job.session_id).turn_in_flight:
                 continue
             if job.delivery is not None and job.delivery.status == "pending":
                 await self.delivery_service.pump(job.session_id)

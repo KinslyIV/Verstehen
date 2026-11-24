@@ -57,9 +57,10 @@ Frontend, `app/src/`:
   model runs; a `continue` that isn't owed (`needs_continuation` false) saves nothing and still
   returns success.
 - **Settlement order** (`settle`, called at the end of `run`, not a stage): save entries and plan
-  blocks → release the claim → publish `turn-settled` → start an owed handoff → kick compaction →
-  pump deliveries → trigger extraction. If the save throws, the error is remembered and published,
-  and the claim is released anyway.
+  blocks → release the claim (keeping `turn_in_flight` true via `handoff_starting` when a probe
+  handoff is owed, deferring `turn-settled` until the handoff claim is taken or its start fails)
+  → start an owed handoff → kick compaction → pump deliveries → trigger extraction. If the save
+  throws, the error is remembered and published, and the claim is released anyway.
 - **Streaming.** `TurnRun.publish` buffers events and coalesces `message_update`s; a subscriber
   that attaches late replays the log, so a reload mid-turn reattaches without resending input.
   `message_end` carries the tool results the UI must show live (teaching tools, job dispatches,
@@ -188,5 +189,9 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
   continuation, handoff, failure banner). Retry is the exception.
 - **Older ChatGPT replies have no reasoning item id** and may store the API-reported model name.
   Their thinking is omitted from replay; newly saved replies keep the requested identity and id.
-- **The frontend can send the probe handoff twice under load** (400 "No probe handoff is owed",
-  seen in `teach-predict-check`). Open; see the [roadmap](../roadmap.md).
+- **Handoff reservation prevents the duplicate-handoff race.** Releasing the probe claim used to
+  briefly expose `turn_in_flight = false` and publish `turn-settled` before `start("handoff")`
+  claimed the teacher turn, allowing the UI's `synchronize()` to send a competing `POST /input`
+  (`handoff`) that failed with 400 `"No probe handoff is owed"`. Keeping `handoff_starting`
+  reserved through the transition preserves `turn_in_flight = true` and pauses SSE `/turn`
+  listeners on `handoff_ready` until the handoff claims `runtime.run` or releases on failure.

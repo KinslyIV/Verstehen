@@ -16,6 +16,7 @@ from backend.tests.session.test_sessions_api import client_for
 from backend.tests.session.test_turns import (
     completed,
     scripted,
+    session_service_for,
     start,
     turn_service_context,
 )
@@ -35,6 +36,9 @@ from verstehen.store.entries import (
     ToolCallPart,
     ToolResultEntry,
     UserEntry,
+)
+from verstehen.store.entries import (
+    TextPart as SavedText,
 )
 from verstehen.teaching.delivery import (
     NARRATION_BLOCK_REASON,
@@ -757,5 +761,157 @@ def test_plan_marker_preserves_same_response_question_and_next_turn_answer(
             assert isinstance(request, ModelRequest)
             result = request.parts[-1]
             assert isinstance(result, ToolReturnPart) and result.content == answer.text
+
+    asyncio.run(scenario())
+
+
+def test_probe_handoff_keeps_turn_in_flight_across_transition(tmp_path: Path):
+    async def scenario():
+        model = scripted(
+            tmp_path,
+            [
+                {"tool_calls": [call("probe_done", ASSESSMENT)]},
+                {"text": "Probe complete."},
+                {"text": "Teacher took over."},
+            ],
+        )
+        async with turn_service_context(tmp_path, model) as (service, session_id):
+            sessions = session_service_for(service)
+            seen: list[tuple[str, bool]] = []
+            original_publish = service.notifications.publish
+
+            def capture(event):
+                if event.session_id == session_id:
+                    seen.append(
+                        (event.type, service.runtimes.get(session_id).turn_in_flight)
+                    )
+                original_publish(event)
+
+            service.notifications.publish = capture
+            entered_gate = asyncio.Event()
+            release_gate = asyncio.Event()
+            original_gate = service.compaction_gate
+
+            async def pause_handoff_gate(state):
+                if state.input.type == "handoff":
+                    entered_gate.set()
+                    await release_gate.wait()
+                return await original_gate(state)
+
+            service.compaction_gate = pause_handoff_gate
+            probe_run = await start(service, session_id)
+            await entered_gate.wait()
+
+            runtime = service.runtimes.get(session_id)
+            assert runtime.run is None and runtime.handoff_starting
+            assert runtime.turn_in_flight
+            assert "turn-settled" not in [name for name, _ in seen]
+
+            snapshot = await sessions.get(session_id)
+            assert not isinstance(snapshot, Refused)
+            assert snapshot.turn_in_flight and snapshot.turn_error is None
+
+            competing = await service.start(session_id, TurnInput(type="handoff"))
+            assert isinstance(competing, Refused) and competing.status == 409
+
+            streamed = []
+
+            async def collect_stream():
+                async for event in sessions.turn_events(session_id):
+                    streamed.append(event)
+
+            stream_task = asyncio.create_task(collect_stream())
+            await asyncio.sleep(0)
+            assert streamed == []
+
+            release_gate.set()
+            await completed(probe_run)
+            if teacher := runtime.run:
+                await completed(teacher)
+            await asyncio.wait_for(stream_task, 3)
+
+            assert not runtime.turn_in_flight and not runtime.handoff_starting
+            assert not handoff_owed(await service.entries_store.list(session_id))
+            assert [item for item in seen if item[0] != "chats-changed"] == [
+                ("turn-started", True),
+                ("turn-started", True),
+                ("turn-settled", False),
+            ]
+            assert any(
+                event.type == "message_end"
+                and event.message is not None
+                and isinstance(part := event.message.parts[0], SavedText)
+                and part.text == "Teacher took over."
+                for event in streamed
+            )
+
+    asyncio.run(scenario())
+
+
+def test_failed_probe_handoff_releases_turn_in_flight_and_settles(tmp_path: Path):
+    async def scenario():
+        model = scripted(
+            tmp_path,
+            [
+                {"tool_calls": [call("probe_done", ASSESSMENT)]},
+                {"text": "Probe complete."},
+                {"text": "Recovered handoff."},
+            ],
+        )
+        async with turn_service_context(tmp_path, model) as (service, session_id):
+            sessions = session_service_for(service)
+            seen: list[tuple[str, bool]] = []
+            original_publish = service.notifications.publish
+
+            def capture(event):
+                if event.session_id == session_id:
+                    seen.append(
+                        (event.type, service.runtimes.get(session_id).turn_in_flight)
+                    )
+                original_publish(event)
+
+            service.notifications.publish = capture
+            original_gate = service.compaction_gate
+            fail_once = True
+
+            async def failing_gate(state):
+                nonlocal fail_once
+                if state.input.type == "handoff" and fail_once:
+                    fail_once = False
+                    assert service.runtimes.get(session_id).turn_in_flight
+                    raise RuntimeError("Handoff compaction failed")
+                return await original_gate(state)
+
+            service.compaction_gate = failing_gate
+            probe_run = await start(service, session_id)
+            probe_events = []
+
+            async def collect_probe():
+                async for event in probe_run.subscribe():
+                    probe_events.append(event)
+
+            collector = asyncio.create_task(collect_probe())
+            await completed(probe_run)
+            await asyncio.wait_for(collector, 3)
+
+            runtime = service.runtimes.get(session_id)
+            assert not runtime.handoff_starting and not runtime.turn_in_flight
+            assert runtime.failure == "Handoff compaction failed"
+            assert seen[-1] == ("turn-settled", False)
+            assert any(
+                event.type == "error"
+                and event.error_text == "Handoff compaction failed"
+                for event in probe_events
+            )
+            snapshot = await sessions.get(session_id)
+            assert not isinstance(snapshot, Refused)
+            assert not snapshot.turn_in_flight
+            assert snapshot.turn_error == "Handoff compaction failed"
+            assert handoff_owed(snapshot.entries)
+
+            recovered = await service.start(session_id, TurnInput(type="handoff"))
+            assert isinstance(recovered, Continue) and recovered.state.run is not None
+            await completed(recovered.state.run)
+            assert not handoff_owed(await service.entries_store.list(session_id))
 
     asyncio.run(scenario())

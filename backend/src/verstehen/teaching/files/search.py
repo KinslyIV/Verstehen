@@ -4,7 +4,7 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from time import monotonic
 
-import regex
+lazy import regex
 
 from verstehen.teaching.files.access import SourceAccess, regular_file
 
