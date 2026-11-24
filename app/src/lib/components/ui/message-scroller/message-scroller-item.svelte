@@ -15,7 +15,7 @@
 	data-slot="message-scroller-item"
 	{scrollAnchor}
 	class={cn(
-		'min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]',
+		'min-w-0 shrink-0 supports-[overflow-anchor:auto]:[contain-intrinsic-size:auto_10rem] supports-[overflow-anchor:auto]:[content-visibility:auto]',
 		className
 	)}
 	{...restProps}

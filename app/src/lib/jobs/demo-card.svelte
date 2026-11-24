@@ -47,7 +47,9 @@
 			!(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))
 		)
 			box = box.parentElement;
-		(box ?? document.scrollingElement)?.scrollBy(x, y);
+		const scroller = box ?? document.scrollingElement;
+		scroller?.dispatchEvent(new WheelEvent('wheel', { deltaX: x, deltaY: y, bubbles: true }));
+		scroller?.scrollBy(x, y);
 	}
 
 	function receive(event: MessageEvent) {

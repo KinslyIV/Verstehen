@@ -72,6 +72,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   `app.html` sets it before first paint. The lesson thread's header and transcript cap their column
   with it (`layout.css`); as in LearnHarness, the composer, question and practice docks, stats bar,
   and new-session screen keep their fixed `max-w-3xl`. A missing or invalid stored value means Full.
+- **Off-screen rows:** transcript items skip rendering off screen (`content-visibility: auto`) only
+  where the engine has scroll anchoring (`@supports (overflow-anchor: auto)`). WebKitGTK has none,
+  so a row taking its real height would shift the text under the reader; there every row renders.
 - **Scroll to bottom:** the thread's `<Scroller.Button>` is always mounted (also while a turn or a
   question is pending) and shows only while scrolled away from the end; the turn minimap rail is
   documented in [session](session.md#turn-minimap).
