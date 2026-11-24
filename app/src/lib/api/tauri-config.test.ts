@@ -28,3 +28,8 @@ test('the desktop build still bundles the sidecar', () => {
 test('the desktop window leaves HTML5 drag and drop to the page', () => {
 	expect(config.app.windows[0].dragDropEnabled).toBe(false);
 });
+
+test('demo frames keep the inline scripts the CSP allows', () => {
+	expect(config.app.security.csp).toMatch(/script-src [^;]*'unsafe-inline'/);
+	expect(config.app.security.dangerousDisableAssetCspModification).toEqual(['script-src']);
+});

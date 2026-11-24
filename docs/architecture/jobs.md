@@ -52,8 +52,10 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
   (except in a session with an active turn) and saved deliveries are restored. A shutdown leaves running jobs `running` so the next sweep picks them up.
 - **Demo security.** Demo HTML runs in `<iframe sandbox="allow-scripts" srcdoc>` without
   `allow-same-origin`. The app CSP is relaxed (`'unsafe-inline'` and `https:`) so demos can load
-  their CDN scripts; the sandbox and the API token still protect the app. Demos are never
-  delivered untested.
+  their CDN scripts; the sandbox and the API token still protect the app. A `srcdoc` frame inherits
+  the app's CSP, and Tauri would add script hashes that void `'unsafe-inline'`, blocking every inline
+  script in a demo (the size bridge too), so `dangerousDisableAssetCspModification` covers
+  `script-src`. Demos are never delivered untested.
 - **Wheel.** WebKitGTK does not chain the wheel out of the sandboxed frame, so scrolling stalls
   over a demo. The shell script cancels a wheel turn nothing inside the demo can scroll and posts
   `{type: 'demo-wheel', x, y}` (`demoWheel`); the card scrolls its dialog when zoomed, else the
