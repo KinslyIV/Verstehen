@@ -69,9 +69,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   in 2 rem steps, with **Full** (no cap) as the default. `TranscriptWidth`
   (`layout/transcript-width.svelte.ts`) keeps it per device in `localStorage`
   (`verstehen-transcript-width`) and sets `--verstehen-transcript-max` on `<html>`; a script in
-  `app.html` sets it before first paint. The lesson thread, composer, question and practice docks,
-  stats bar, and new-session screen cap their column with it (`layout.css`). A missing or invalid
-  stored value means Full.
+  `app.html` sets it before first paint. The lesson thread's header and transcript cap their column
+  with it (`layout.css`); as in LearnHarness, the composer, question and practice docks, stats bar,
+  and new-session screen keep their fixed `max-w-3xl`. A missing or invalid stored value means Full.
 - **Scroll to bottom:** the thread's `<Scroller.Button>` is always mounted (also while a turn or a
   question is pending) and shows only while scrolled away from the end; the turn minimap rail is
   documented in [session](session.md#turn-minimap).

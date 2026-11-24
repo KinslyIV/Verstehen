@@ -395,7 +395,7 @@
 	</Scroller.Provider>
 	{#if controller.error}<div
 			role="alert"
-			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
+			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
 		>
 			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
 					variant="outline"
