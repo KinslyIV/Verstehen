@@ -188,7 +188,7 @@
 
 <section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
 	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
+			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
 		>
 			<RenameSession
 				{id}
@@ -229,7 +229,9 @@
 				onwheel={handleWheel}
 				aria-label="Conversation"
 			>
-				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6 max-md:px-4">
+				<Scroller.Content
+					class="mx-auto w-full max-w-(--verstehen-transcript-max) gap-6 px-6 py-6 max-md:px-4"
+				>
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
@@ -399,7 +401,7 @@
 	</Scroller.Provider>
 	{#if controller.error}<div
 			role="alert"
-			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
+			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
 		>
 			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
 					variant="outline"

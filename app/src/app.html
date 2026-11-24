@@ -18,6 +18,11 @@
 				document.documentElement.style.colorScheme = light ? 'light' : 'dark';
 				localStorage.setItem('mode-watcher-mode', mode);
 			} catch {}
+			try {
+				const width = Number(localStorage.getItem('verstehen-transcript-width'));
+				if (width >= 46 && width <= 120)
+					document.documentElement.style.setProperty('--verstehen-transcript-max', width + 'rem');
+			} catch {}
 		</script>
 		%sveltekit.head%
 	</head>

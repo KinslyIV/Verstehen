@@ -6,7 +6,14 @@
 	import { setMode, userPrefersMode } from 'mode-watcher';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { clientMode } from '#lib/api/connection.js';
+	import { Slider } from '#lib/components/ui/slider/index.js';
 	import { layout } from '#lib/layout/tiers.svelte.js';
+	import {
+		MAX_REM,
+		MIN_REM,
+		STEP_REM,
+		transcriptWidth
+	} from '#lib/layout/transcript-width.svelte.js';
 	import ReconnectingLine from './reconnecting-line.svelte';
 
 	import SettingsTools from './settings-tools.svelte';
@@ -113,6 +120,35 @@
 							</Button>
 						{/each}
 					</div>
+					{#if !phone}
+						<div class="mt-8 max-w-md" role="group" aria-label="Transcript width">
+							<div class="flex items-center justify-between gap-3">
+								<h3 class="text-sm font-medium">Transcript width</h3>
+								<span class="text-sm text-muted-foreground">
+									{transcriptWidth.rem === null ? 'Full' : `${transcriptWidth.rem}rem`}
+								</span>
+							</div>
+							<div class="mt-3 flex items-center gap-4">
+								<Slider
+									type="single"
+									min={MIN_REM}
+									max={MAX_REM}
+									step={STEP_REM}
+									value={transcriptWidth.rem ?? MAX_REM}
+									onValueChange={(value) => transcriptWidth.set(value)}
+									aria-label="Transcript width in rem"
+								/>
+								<Button
+									variant={transcriptWidth.rem === null ? 'secondary' : 'outline'}
+									size="sm"
+									aria-pressed={transcriptWidth.rem === null}
+									onclick={() => transcriptWidth.set(null)}
+								>
+									Full
+								</Button>
+							</div>
+						</div>
+					{/if}
 				{:else if section === 'Models'}
 					<SettingsModels />
 				{:else if section === 'Accounts'}

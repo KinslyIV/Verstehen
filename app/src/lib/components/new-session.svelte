@@ -109,10 +109,13 @@
 			</Button>
 		</div>
 	</div>
-	{#if error}<p role="alert" class="mx-auto max-w-3xl px-6 text-sm text-destructive max-md:px-4">
+	{#if error}<p
+			role="alert"
+			class="mx-auto max-w-(--verstehen-transcript-max) px-6 text-sm text-destructive max-md:px-4"
+		>
 			{error}
 		</p>{/if}
-	<div class="mx-auto w-full max-w-3xl px-6 max-md:px-4">
+	<div class="mx-auto w-full max-w-(--verstehen-transcript-max) px-6 max-md:px-4">
 		<NodePicker
 			count={picks.items.length}
 			onopen={() => (picking = true)}

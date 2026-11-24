@@ -51,7 +51,7 @@
 </script>
 
 <div
-	class="mx-auto w-full max-w-3xl shrink-0 p-6 max-md:p-3 max-md:pb-[calc(0.75rem+var(--safe-bottom))]"
+	class="mx-auto w-full max-w-(--verstehen-transcript-max) shrink-0 p-6 max-md:p-3 max-md:pb-[calc(0.75rem+var(--safe-bottom))]"
 >
 	{#if queuedSteers.length}<div
 			data-testid="queued-steers"
