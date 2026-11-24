@@ -39,7 +39,7 @@ export const CONFIDENCE_COLORS = [
 	'#22c55e',
 	'#10b981'
 ] as const;
-export const DEFAULT_CONFIDENCE_INDEX = 2;
+export const DEFAULT_CONFIDENCE_INDEX = 4;
 
 export interface DockSelection {
 	selected: Set<number>;

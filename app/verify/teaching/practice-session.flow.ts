@@ -83,7 +83,7 @@ test('practice-session', async ({ page, request }) => {
 		.click();
 	await expect(dock).toHaveCount(0);
 	await expect(page.getByTestId('next-problem')).toBeVisible();
-	await page.getByRole('textbox').press('Enter');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).press('Enter');
 	await expect(page.getByText('Problem dismissed.')).toBeVisible();
 	await expect(dock).toContainText('x^2 + x');
 	const saved = await (await request.get(`/api/sessions/${id}`)).json();

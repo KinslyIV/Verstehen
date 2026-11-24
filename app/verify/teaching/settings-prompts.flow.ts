@@ -27,15 +27,24 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 	await page.screenshot({ path: test.info().outputPath('prompt-view-default.png') });
 	await viewer.getByRole('button', { name: 'Close' }).click();
 	await expect(viewer).toBeHidden();
+	await expect(row).toBeFocused();
 
 	await row.getByRole('button', { name: '+ Add override' }).click();
 	const editor = page.getByRole('dialog', { name: 'Add override' });
 	await editor.getByLabel('Override Markdown').fill('# Verify override\n\nTeach with care.');
 	await editor.getByRole('button', { name: 'Preview' }).click();
 	await expect(editor.getByRole('heading', { name: 'Verify override' })).toBeVisible();
-	await page.screenshot({ path: test.info().outputPath('prompt-edit-preview.png') });
+	await page.screenshot({
+		path: test.info().outputPath('prompt-edit-preview.png'),
+		animations: 'disabled'
+	});
+	const activated = page.waitForResponse((response) =>
+		response.url().endsWith(`/api/prompts/${TEACHING}/enabled`)
+	);
 	await editor.getByRole('button', { name: 'Save and activate' }).click();
+	expect(await (await activated).json()).toEqual({ enabled: true });
 	await expect(editor).toBeHidden();
+	await expect(row).toBeFocused();
 	await expect(row.getByText('Your version')).toBeVisible();
 	await expect(toggle).toBeChecked();
 	expect(await segments()).toMatchObject({ enabled: true });
@@ -43,8 +52,14 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 		'# Verify override\n\nTeach with care.'
 	);
 
+	const switchedOff = page.waitForResponse((response) =>
+		response.url().endsWith(`/api/prompts/${TEACHING}/enabled`)
+	);
 	await toggle.click();
+	expect(await (await switchedOff).json()).toEqual({ enabled: false });
 	await expect(row.getByText('Default', { exact: true })).toBeVisible();
+	await expect(page.getByRole('status')).toHaveCount(0);
+	await expect(page.getByTestId('prompt-section-teacher')).toBeVisible();
 	expect(await segments()).toMatchObject({ enabled: false });
 	expect(await segments()).toMatchObject({
 		override_text: '# Verify override\n\nTeach with care.'
@@ -74,6 +89,7 @@ test('settings-prompts', async ({ page, request, dataDirectory }) => {
 	const removing = page.getByRole('dialog', { name: 'Edit override' });
 	await removing.getByRole('button', { name: 'Delete override' }).click();
 	await expect(removing).toBeHidden();
+	await expect(row).toBeFocused();
 	await expect(row.getByRole('button', { name: '+ Add override' })).toBeVisible();
 	await expect(toggle).toBeDisabled();
 	expect(await segments()).toMatchObject({ override_text: null, enabled: false });

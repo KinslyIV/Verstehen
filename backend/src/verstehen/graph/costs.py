@@ -44,17 +44,18 @@ def plan_cost_label(providers: list[str]) -> str | None:
     return " + ".join(providers) if providers else None
 
 
+def subscription_provider(account: str) -> str | None:
+    """The plan label of a subscription account, or None for an unpriced one."""
+    if account == "claude_code":
+        return "CLI"
+    return "ChatGPT" if account.startswith("chatgpt:") else None
+
+
 def add_usage(totals: CostTotals, record: UsageRecord) -> None:
     totals.runs += 1
     for key in TOKEN_FIELDS:
         totals.tokens[key] += getattr(record, key)
-    provider = (
-        "CLI"
-        if record.account == "claude_code"
-        else "ChatGPT"
-        if record.account.startswith("chatgpt:")
-        else None
-    )
+    provider = subscription_provider(record.account)
     if provider:
         totals.subscription_runs += 1
         if provider not in totals.subscription_providers:

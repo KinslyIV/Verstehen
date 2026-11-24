@@ -133,6 +133,21 @@ def test_prompt_editor_does_not_read_or_activate_symlinked_overrides(tmp_path: P
         assert enabled.status_code == 400
 
 
+def test_the_switch_reply_shows_the_stored_state(tmp_path: Path):
+    with desktop_client(tmp_path) as client:
+        client.put(
+            f"/api/prompts/{SEGMENT}/override", json={"text": "NEW"}, headers=HEADERS
+        )
+        on = client.put(
+            f"/api/prompts/{SEGMENT}/enabled", json={"enabled": True}, headers=HEADERS
+        )
+        assert on.json() == {"enabled": True}
+        off = client.put(
+            f"/api/prompts/{SEGMENT}/enabled", json={"enabled": False}, headers=HEADERS
+        )
+        assert off.json() == {"enabled": False}
+
+
 def test_switching_off_keeps_the_file_and_switching_on_needs_one(tmp_path: Path):
     with desktop_client(tmp_path) as client:
         refused = client.put(

@@ -12,9 +12,11 @@ from verstehen.graph.deletion import (
 from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.organization import (
+    FolderHoldsSources,
     SourceDirectory,
     apply_organization_action,
     folder_is_empty,
+    known_source_ids,
     notes_label,
     parse_organization_action,
     source_directory,
@@ -116,38 +118,35 @@ class GraphService:
             action = parse_organization_action(raw)
         except ValueError as error:
             raise GraphRefused(str(error)) from error
-        sessions = await self.sessions_store.list()
-        async with self.graph_store.transaction() as ledger:
+        created_id = None
+        rename_chat = False
+        async with self.graph_store.transaction_with_session_ids() as (
+            ledger,
+            session_ids,
+        ):
             validate_organization(ledger.organization)
-            directory = source_directory(ledger, sessions)
-            created_id = None
-            entry = None
             if action.action == "rename-source":
-                entry = next(
-                    (entry for entry in directory.sources if entry.id == action.id),
-                    None,
-                )
-                if entry is None or entry.kind == "missing":
-                    raise GraphRefused("Source no longer exists.")
-                if entry.kind == "notes":
+                if any(source.id == action.id for source in ledger.sources):
                     ledger.organization.placements.setdefault(
-                        entry.id, SourcePlacement()
+                        action.id, SourcePlacement()
                     ).name = action.name
+                elif action.id in session_ids:
+                    rename_chat = True
+                else:
+                    raise GraphRefused("Source no longer exists.")
             else:
                 try:
                     created_id = apply_organization_action(
                         ledger.organization,
                         action,
-                        {entry.id for entry in directory.sources},
+                        known_source_ids(ledger, session_ids),
                     )
+                except FolderHoldsSources as error:
+                    raise GraphRefused(str(error), 409, "folder_not_empty") from error
                 except ValueError as error:
                     raise GraphRefused(str(error)) from error
-        if (
-            action.action == "rename-source"
-            and entry is not None
-            and entry.kind == "chat"
-        ):
-            await self.sessions_store.rename(entry.id, action.name)
+        if rename_chat:
+            await self.sessions_store.rename(action.id, action.name)
             async with self.graph_store.transaction() as ledger:
                 ledger.revision += 1
         result = await self.directory()
@@ -173,8 +172,10 @@ class GraphService:
                     await self.check_session(entry.id)
                 for entry in chats:
                     await self.delete_session(entry.id)
-            sessions = await self.sessions_store.list()
-            async with self.graph_store.transaction() as ledger:
+            async with self.graph_store.transaction_with_session_ids() as (
+                ledger,
+                session_ids,
+            ):
                 validate_organization(ledger.organization)
                 delete_sources_traces(
                     ledger, {entry.id for entry in targets}, "delete-nodes"
@@ -193,9 +194,7 @@ class GraphService:
                     for id, p in ledger.organization.placements.items()
                     if id not in removed
                 }
-                remaining = {
-                    entry.id for entry in source_directory(ledger, sessions).sources
-                }
+                remaining = known_source_ids(ledger, session_ids)
                 changed = True
                 while changed:
                     changed = False

@@ -48,7 +48,9 @@ test('mobile-pair', async ({ page, baseURL, serverAdmin }) => {
 	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
 	await expect.poll(() => catalogRequests.includes('/api/models')).toBe(true);
 
-	await page.getByRole('textbox').fill('Understanding derivatives');
+	await page
+		.getByRole('textbox', { name: 'What do you want to learn?' })
+		.fill('Understanding derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByText('A derivative describes', { exact: false })).toBeVisible();
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();

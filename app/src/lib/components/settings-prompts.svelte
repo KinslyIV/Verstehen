@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount, tick } from 'svelte';
+	import { onDestroy, onMount, tick } from 'svelte';
 	import { Switch } from 'bits-ui';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import {
@@ -19,36 +19,52 @@
 	let switching = $state(false);
 	let switchError = $state<string | null>(null);
 	let open = $state<Open>();
-	let read = 0;
+	let reading: AbortController | undefined;
 	const sections = $derived(prompts ? sectionedSegments(prompts) : []);
 
 	async function load(background = false) {
-		const attempt = ++read;
+		reading?.abort();
+		const own = (reading = new AbortController());
 		if (!background) status = 'loading';
 		try {
-			const view = await getPrompts();
-			if (attempt !== read) return;
+			const view = await getPrompts(own.signal);
+			if (own.signal.aborted) return;
 			prompts = view;
 			status = 'ready';
 		} catch {
-			if (attempt === read && !background) status = 'failed';
+			if (!own.signal.aborted && (!background || status === 'loading')) status = 'failed';
 		}
 	}
 
 	onMount(() => void load());
+	onDestroy(() => reading?.abort());
+
+	/** Shows an acknowledged switch at once, without clearing or dimming the list. */
+	function showSwitch(path: string, enabled: boolean) {
+		if (!prompts) return;
+		const update = (segments: PromptSegment[]) =>
+			segments.map((segment) => (segment.path === path ? { ...segment, enabled } : segment));
+		prompts = {
+			teacher: update(prompts.teacher),
+			prober: update(prompts.prober),
+			practice: update(prompts.practice)
+		};
+	}
 
 	async function toggle(path: string, enabled: boolean) {
 		if (switching || status !== 'ready') return;
 		switching = true;
 		switchError = null;
+		let saved = false;
 		try {
-			await setPromptEnabled(path, enabled);
+			saved = (await setPromptEnabled(path, enabled)) === enabled;
 		} catch {
-			switchError = path;
-		} finally {
-			switching = false;
-			void load(true);
+			/* A rejected write is reported like an acknowledgement that shows the old state. */
 		}
+		if (saved) showSwitch(path, enabled);
+		else switchError = path;
+		switching = false;
+		void load(saved);
 	}
 
 	async function save(path: string, text: string, writeText: boolean) {
@@ -58,8 +74,7 @@
 			return 'save-failed';
 		}
 		try {
-			await setPromptEnabled(path, true);
-			return 'saved';
+			return (await setPromptEnabled(path, true)) ? 'saved' : 'activation-failed';
 		} catch {
 			return 'activation-failed';
 		} finally {
@@ -100,7 +115,9 @@
 			{#if status === 'failed'}
 				<p role="alert" class="text-sm text-destructive">Couldn't load prompt segments.</p>
 			{:else}
-				<p role="status" class="text-sm text-muted-foreground">Loading prompt segments…</p>
+				<p role="status" class="text-sm text-muted-foreground">
+					{prompts ? 'Refreshing' : 'Loading'} prompt segments…
+				</p>
 			{/if}
 			<Button variant="outline" size="sm" onclick={() => void load()}>Retry</Button>
 		</div>

@@ -41,6 +41,7 @@ beforeEach(() => {
 	});
 	vi.mocked(api.setPromptEnabled).mockImplementation(async (path, on) => {
 		enabled[path] = on;
+		return on;
 	});
 	vi.mocked(api.deletePromptOverride).mockImplementation(async (path) => {
 		delete overrides[path];
@@ -202,4 +203,163 @@ test('a_failed_load_offers_retry', async () => {
 		.toHaveTextContent("Couldn't load prompt segments.");
 	await screen.getByRole('button', { name: 'Retry' }).click();
 	await expect.element(screen.getByTestId('prompt-section-teacher')).toBeVisible();
+});
+
+const deferred = <T>() => {
+	let resolve!: (value: T) => void;
+	const promise = new Promise<T>((done) => (resolve = done));
+	return { promise, resolve };
+};
+const prompts = (): api.PromptSegments => ({
+	teacher: [segment(TEACHING), segment(VOICE, true)],
+	prober: [segment('prober/10-probe-doctrine.md'), segment(VOICE, true)],
+	practice: [segment('practice/00-base.md')]
+});
+
+test('a_background_refresh_after_a_write_never_clears_or_dims_the_list', async () => {
+	overrides[TEACHING] = '# Saved';
+	const screen = await render(SettingsPrompts);
+	const toggle = screen.getByRole('switch', { name: 'Use your override for Teaching' });
+	await expect.element(toggle).toBeEnabled();
+	const refresh = deferred<api.PromptSegments>();
+	vi.mocked(api.getPrompts).mockReturnValueOnce(refresh.promise);
+	await toggle.click();
+	await expect.element(toggle).toBeChecked();
+	await expect.element(toggle).toBeEnabled();
+	await expect.element(screen.getByTestId('prompt-section-teacher')).toBeVisible();
+	await expect.element(screen.getByRole('status')).not.toBeInTheDocument();
+	await expect
+		.element(
+			screen.getByTestId(`prompt-row-${TEACHING}`).getByRole('button', { name: 'Edit override' })
+		)
+		.toBeEnabled();
+	refresh.resolve(prompts());
+});
+
+test('a_foreground_reload_keeps_the_list_and_says_it_is_refreshing_while_its_rows_wait', async () => {
+	overrides[TEACHING] = '# Saved';
+	const screen = await render(SettingsPrompts);
+	const toggle = screen.getByRole('switch', { name: 'Use your override for Teaching' });
+	await expect.element(toggle).toBeEnabled();
+	const refresh = deferred<api.PromptSegments>();
+	vi.mocked(api.setPromptEnabled).mockRejectedValueOnce(new Error('settings'));
+	vi.mocked(api.getPrompts).mockReturnValueOnce(refresh.promise);
+	await toggle.click();
+	await expect.element(screen.getByRole('status')).toHaveTextContent('Refreshing prompt segments…');
+	await expect.element(screen.getByTestId('prompt-section-teacher')).toBeVisible();
+	await expect
+		.element(
+			screen.getByTestId(`prompt-row-${TEACHING}`).getByRole('button', { name: 'Edit override' })
+		)
+		.toBeDisabled();
+	refresh.resolve(prompts());
+	await expect.element(screen.getByRole('status')).not.toBeInTheDocument();
+});
+
+test('an_out_of_date_read_is_aborted_and_cannot_overwrite_a_newer_one', async () => {
+	const signals: (AbortSignal | undefined)[] = [];
+	const first = deferred<api.PromptSegments>();
+	vi.mocked(api.getPrompts).mockReset();
+	vi.mocked(api.getPrompts).mockImplementationOnce((signal) => {
+		signals.push(signal);
+		return first.promise;
+	});
+	const screen = await render(SettingsPrompts);
+	await expect.element(screen.getByRole('status')).toHaveTextContent('Loading prompt segments…');
+	overrides[TEACHING] = '# Newer';
+	enabled[TEACHING] = true;
+	vi.mocked(api.getPrompts).mockImplementationOnce(async (signal) => {
+		signals.push(signal);
+		return prompts();
+	});
+	await screen.getByRole('button', { name: 'Retry' }).click();
+	await expect
+		.element(screen.getByRole('switch', { name: 'Use your override for Teaching' }))
+		.toBeChecked();
+	expect(signals[0]?.aborted).toBe(true);
+	expect(signals[1]?.aborted).toBe(false);
+	first.resolve({ teacher: [], prober: [], practice: [] });
+	await new Promise((resolve) => setTimeout(resolve, 30));
+	await expect
+		.element(screen.getByRole('switch', { name: 'Use your override for Teaching' }))
+		.toBeChecked();
+});
+
+test('leaving_the_page_aborts_a_read_that_is_still_pending', async () => {
+	let signal: AbortSignal | undefined;
+	vi.mocked(api.getPrompts).mockImplementationOnce((given) => {
+		signal = given;
+		return new Promise(() => {});
+	});
+	const screen = await render(SettingsPrompts);
+	await expect.element(screen.getByRole('status')).toBeVisible();
+	await screen.unmount();
+	expect(signal?.aborted).toBe(true);
+});
+
+test('a_switch_counts_only_when_the_acknowledgement_shows_the_new_state', async () => {
+	overrides[TEACHING] = '# Saved';
+	const screen = await render(SettingsPrompts);
+	const toggle = screen.getByRole('switch', { name: 'Use your override for Teaching' });
+	vi.mocked(api.setPromptEnabled).mockResolvedValueOnce(false);
+	await toggle.click();
+	await expect
+		.element(screen.getByTestId(`prompt-row-${TEACHING}`).getByRole('alert'))
+		.toHaveTextContent("Couldn't switch prompt versions.");
+	await expect.element(toggle).not.toBeChecked();
+	await toggle.click();
+	await expect.element(toggle).toBeChecked();
+	await expect
+		.element(screen.getByTestId(`prompt-row-${TEACHING}`).getByRole('alert'))
+		.not.toBeInTheDocument();
+});
+
+test('edit_and_the_switch_wait_while_a_switch_is_in_flight', async () => {
+	overrides[TEACHING] = '# Saved';
+	const screen = await render(SettingsPrompts);
+	const toggle = screen.getByRole('switch', { name: 'Use your override for Teaching' });
+	const edit = screen
+		.getByTestId(`prompt-row-${TEACHING}`)
+		.getByRole('button', { name: 'Edit override' });
+	const ack = deferred<boolean>();
+	vi.mocked(api.setPromptEnabled).mockReturnValueOnce(ack.promise);
+	await toggle.click();
+	await expect.element(toggle).toBeDisabled();
+	await expect.element(edit).toBeDisabled();
+	ack.resolve(true);
+	await expect.element(toggle).toBeEnabled();
+	await expect.element(edit).toBeEnabled();
+});
+
+test('activation_after_a_save_needs_the_acknowledged_switch', async () => {
+	const screen = await render(SettingsPrompts);
+	await screen.getByRole('button', { name: '+ Add override' }).first().click();
+	const dialog = page.getByRole('dialog');
+	await dialog.getByLabelText('Override Markdown').fill('# Mine');
+	vi.mocked(api.setPromptEnabled).mockResolvedValueOnce(false);
+	await dialog.getByRole('button', { name: 'Save and activate' }).click();
+	await expect
+		.element(dialog.getByRole('alert'))
+		.toHaveTextContent("Override saved, but it couldn't be put in use. Retry activation below.");
+	await dialog.getByRole('button', { name: 'Retry activation' }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+	expect(api.savePromptOverride).toHaveBeenCalledTimes(1);
+});
+
+test('closing_a_dialog_returns_focus_to_the_segments_row', async () => {
+	overrides[TEACHING] = '# Saved';
+	const screen = await render(SettingsPrompts);
+	const row = screen.getByTestId(`prompt-row-${TEACHING}`);
+	await row.getByRole('button', { name: 'View default' }).click();
+	await page
+		.getByRole('dialog', { name: 'View default' })
+		.getByRole('button', { name: 'Close' })
+		.click();
+	await expect.element(row).toHaveFocus();
+	await row.getByRole('button', { name: 'Edit override' }).click();
+	const dialog = page.getByRole('dialog', { name: 'Edit override' });
+	await dialog.getByLabelText('Override Markdown').fill('# Changed');
+	await dialog.getByRole('button', { name: 'Save and activate' }).click();
+	await expect.element(dialog).not.toBeInTheDocument();
+	await expect.element(row).toHaveFocus();
 });

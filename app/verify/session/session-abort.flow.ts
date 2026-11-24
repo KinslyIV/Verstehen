@@ -4,7 +4,7 @@ test.use({ script: 'verify/scripts/session-abort.json' });
 
 test('session-abort', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('textbox').fill('Derivatives');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
 	await expect(page.getByText('A derivative describes', { exact: false })).toBeVisible();
@@ -16,7 +16,7 @@ test('session-abort', async ({ page }) => {
 	await page.reload();
 	await expect(page.locator('.markdown').first()).toHaveText(firstText);
 
-	await page.getByRole('textbox').fill('Integrals');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Integrals');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByText('An integral accumulates', { exact: false })).toBeVisible();
 	await page.keyboard.press('Escape');

@@ -9,6 +9,8 @@
 	import { GraphController } from './controller.svelte.js';
 	import CostControl from './cost-control.svelte';
 	import GraphCanvas from './graph-canvas.svelte';
+	import GraphFolderFilter from './graph-folder-filter.svelte';
+	import { GraphFolderSelection } from './graph-folder-selection.svelte.js';
 	import GraphSearch from './graph-search.svelte';
 	import ImportNotes from './import-notes.svelte';
 	import KnowledgeSummary from './knowledge-summary.svelte';
@@ -19,9 +21,13 @@
 	import { picks } from './picks.svelte.js';
 	import PipelinePills from './pipeline-pills.svelte';
 	import RenderSettingsPanel from './render-settings-panel.svelte';
-	import { isNodeVisible, visibleNodeIds } from './search.js';
+	import { isNodeShown, visibleNodeIds } from './search.js';
+	import { SourceDirectoryReader } from './source-directory.svelte.js';
+	import { graphFolderIds, graphFolderVisibleIds } from './source-organization.js';
 
 	const controller = new GraphController();
+	const folders = new SourceDirectoryReader();
+	const folderSelection = new GraphFolderSelection();
 	const notesImport = new NotesImport(() => {
 		void controller.refreshGraph();
 		void controller.refreshCosts();
@@ -35,7 +41,34 @@
 	const graph = $derived(controller.graph);
 	const nodes = $derived(graph?.snapshot.nodes ?? []);
 	const isEmpty = $derived(nodes.length === 0);
-	const visible = $derived(visibleNodeIds(nodes, query));
+	const organization = $derived(folders.directory?.organization);
+	const listedFolders = $derived(
+		organization && graph
+			? graphFolderIds(
+					organization,
+					new Set(
+						graph.snapshot.propositions.flatMap(
+							(node) => graph.snapshot.node_sessions[node.id] ?? []
+						)
+					)
+				)
+			: new Set<string>()
+	);
+	const folderVisible = $derived(
+		organization && graph
+			? graphFolderVisibleIds({
+					organization,
+					selected: folderSelection.selected,
+					listed: listedFolders,
+					propositionIds: graph.snapshot.propositions.map((node) => node.id),
+					nodeSources: graph.snapshot.node_sessions,
+					impLinks: graph.snapshot.imp_links ?? []
+				})
+			: null
+	);
+	const visible = $derived(
+		visibleNodeIds(nodes, query, folderVisible, graph?.snapshot.imp_links ?? [])
+	);
 	const card = $derived(selected && nodes.find((node) => node.id === selected?.nodeId));
 
 	function deleted(ids: string[]) {
@@ -44,15 +77,19 @@
 		void controller.refreshGraph();
 	}
 
-	function search(value: string) {
-		query = value;
-		const stillVisible = (id: string) =>
-			!value.trim() || nodes.some((node) => node.id === id && isNodeVisible(node, value));
-		if (selected && !stillVisible(selected.nodeId)) selected = undefined;
-	}
+	/** The open card and menu follow what the canvas shows, and close when their node leaves it. */
+	$effect(() => {
+		if (selected && !isNodeShown(nodes, visible, selected.nodeId)) selected = undefined;
+		if (menu && !isNodeShown(nodes, visible, menu.nodeId)) menu = undefined;
+	});
+
+	$effect(() => {
+		if (organization) folderSelection.prune(organization);
+	});
 
 	onMount(() => {
 		return () => {
+			folders.dispose();
 			controller.dispose();
 			notesImport.dispose();
 		};
@@ -141,80 +178,98 @@
 	{/if}
 
 	<div
-		class="pointer-events-none absolute top-3 right-3 z-10 flex max-w-[calc(100%-1.5rem)] flex-col items-end gap-2 *:pointer-events-auto"
+		class="pointer-events-none absolute inset-x-3 top-3 z-10 flex flex-wrap items-start justify-between gap-2"
 	>
-		<div class="flex min-w-0 flex-wrap items-start justify-end gap-2">
-			{#if graph && controller.rendering && !isEmpty}
-				<GraphSearch {query} onquery={search} noMatch={visible !== null && visible.size === 0} />
-			{/if}
-			<div class="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
-				<button
-					type="button"
-					data-testid="open-chain-table"
-					title="Every reasoning chain"
-					class="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
-					onclick={() => (table = 'manage')}
-				>
-					<ListTree class="size-3" />
-					Chains
-				</button>
-			</div>
-			<ImportNotes
-				importing={notesImport.snapshot.importing}
-				onfiles={(files) => notesImport.add(files)}
-			/>
-			{#if graph && controller.rendering && !isEmpty}
-				<RenderSettingsPanel
-					settings={controller.settings}
-					onchange={(update) => controller.changeSettings(update)}
+		{#if graph && controller.rendering && !isEmpty && organization}
+			<div class="pointer-events-auto shrink-0">
+				<GraphFolderFilter
+					{organization}
+					listed={listedFolders}
+					selected={folderSelection.selected}
+					onchange={(next) => folderSelection.set(next)}
 				/>
-			{/if}
-		</div>
-		<div
-			class="flex items-center gap-2 rounded-full bg-card/85 py-0.5 pr-1 pl-1 shadow-lg backdrop-blur"
-		>
-			<NodePicker
-				count={picks.items.length}
-				onopen={() => (table = 'pick')}
-				onclear={() => picks.clear()}
-			/>
-			{#if picks.items.length > 0}
-				<Button
-					href={resolve('/(lesson)/session/new')}
-					size="sm"
-					data-testid="start-teaching"
-					class="rounded-full"
-				>
-					Start teaching
-				</Button>
-				<Button
-					href={`${resolve('/(lesson)/session/new')}?mode=practice`}
-					size="sm"
-					variant="outline"
-					data-testid="start-practice"
-					class="rounded-full"
-				>
-					<Dumbbell class="size-3" /> Start practice
-				</Button>
-			{/if}
-		</div>
-		{#each notesImport.snapshot.errors as error, i (i)}
-			<p role="alert" class="max-w-full text-xs break-words whitespace-pre-wrap text-destructive">
-				{error}
-			</p>
-		{/each}
-		{#each notesImport.snapshot.notices as notice, i (i)}
-			<p
-				role="status"
-				class="max-w-full text-xs break-words whitespace-pre-wrap text-muted-foreground"
-			>
-				{notice}
-			</p>
-		{/each}
-		{#if controller.costs && controller.costs.sources.length > 0}
-			<CostControl costs={controller.costs} />
+			</div>
 		{/if}
-		<PipelinePills runs={controller.runs} />
+		<div
+			class="pointer-events-none ml-auto flex max-w-full min-w-0 flex-col items-end gap-2 *:pointer-events-auto"
+		>
+			<div class="flex min-w-0 flex-wrap items-start justify-end gap-2">
+				{#if graph && controller.rendering && !isEmpty}
+					<GraphSearch
+						{query}
+						onquery={(value) => (query = value)}
+						noMatch={visible !== null && visible.size === 0 && query.trim() !== ''}
+					/>
+				{/if}
+				<div class="shrink-0 rounded-xl border bg-card/85 px-1 py-[3px] shadow-lg backdrop-blur">
+					<button
+						type="button"
+						data-testid="open-chain-table"
+						title="Every reasoning chain"
+						class="flex h-7 items-center gap-1.5 rounded-lg px-2.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
+						onclick={() => (table = 'manage')}
+					>
+						<ListTree class="size-3" />
+						Chains
+					</button>
+				</div>
+				<ImportNotes
+					importing={notesImport.snapshot.importing}
+					onfiles={(files) => notesImport.add(files)}
+				/>
+				{#if graph && controller.rendering && !isEmpty}
+					<RenderSettingsPanel
+						settings={controller.settings}
+						onchange={(update) => controller.changeSettings(update)}
+					/>
+				{/if}
+			</div>
+			<div
+				class="flex items-center gap-2 rounded-full bg-card/85 py-0.5 pr-1 pl-1 shadow-lg backdrop-blur"
+			>
+				<NodePicker
+					count={picks.items.length}
+					onopen={() => (table = 'pick')}
+					onclear={() => picks.clear()}
+				/>
+				{#if picks.items.length > 0}
+					<Button
+						href={resolve('/(lesson)/session/new')}
+						size="sm"
+						data-testid="start-teaching"
+						class="rounded-full"
+					>
+						Start teaching
+					</Button>
+					<Button
+						href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+						size="sm"
+						variant="outline"
+						data-testid="start-practice"
+						class="rounded-full"
+					>
+						<Dumbbell class="size-3" /> Start practice
+					</Button>
+				{/if}
+			</div>
+			{#each notesImport.snapshot.errors as error, i (i)}
+				<p role="alert" class="max-w-full text-xs break-words whitespace-pre-wrap text-destructive">
+					{error}
+				</p>
+			{/each}
+			{#each notesImport.snapshot.notices as notice, i (i)}
+				<p
+					role="status"
+					class="max-w-full text-xs break-words whitespace-pre-wrap text-muted-foreground"
+				>
+					{notice}
+				</p>
+			{/each}
+			{#if controller.costs && controller.costs.sources.length > 0}
+				<CostControl costs={controller.costs} />
+			{/if}
+			<PipelinePills runs={controller.runs} />
+		</div>
 	</div>
 	{#if table}
 		{#key table}<ChainTable mode={table} onclose={() => (table = undefined)} />{/key}

@@ -105,7 +105,7 @@ test('the_question_draft_is_restored_after_a_failed_submit', async () => {
 	const screen = await render(SessionThread, { id: 'one' });
 	const two = screen.getByRole('radio', { name: 'Two' });
 	await two.click();
-	await userEvent.keyboard('{ArrowRight}');
+	await userEvent.keyboard('{ArrowLeft}');
 	const thinking = screen.getByRole('textbox', { name: 'Your thinking' });
 	await thinking.fill('An even number is divisible by two.');
 	await screen.getByRole('button', { name: 'Submit answer' }).click();

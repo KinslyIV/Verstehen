@@ -139,6 +139,7 @@ async def _replace_ledger_table(
     *,
     log_sync: bool,
     removed_source_ids: set[str] | None = None,
+    removed_folder_ids: set[str] | None = None,
 ) -> None:
     async with connection.execute(
         f"SELECT sync_id, payload FROM {table} ORDER BY seq"
@@ -169,6 +170,15 @@ async def _replace_ledger_table(
             (sync_id, payload),
         )
     if log_sync:
+        # Emit replacements before deletes so folder renames stay live across paged syncs.
+        for sync_id, payload in added:
+            await append_sync_log(
+                connection,
+                entity=table,
+                op="upsert",
+                entity_id=sync_id,
+                payload={"sync_id": sync_id, "payload": json.loads(payload)},
+            )
         for sync_id, payload in removed:
             await record_tombstone(connection, entity=table, entity_id=sync_id)
             delete_payload: dict[str, object] = {"sync_id": sync_id}
@@ -180,20 +190,25 @@ async def _replace_ledger_table(
                     and source_id in removed_source_ids
                 ):
                     delete_payload["source_id"] = source_id
+            if table == "graph_source_folders" and removed_folder_ids:
+                parsed = json.loads(payload)
+                if (
+                    isinstance(parsed, dict)
+                    and isinstance(folder_id := parsed.get("id"), str)
+                    and folder_id in removed_folder_ids
+                ):
+                    await record_tombstone(
+                        connection,
+                        entity="graph_source_folder_id",
+                        entity_id=folder_id,
+                    )
+                    delete_payload["folder_id"] = folder_id
             await append_sync_log(
                 connection,
                 entity=table,
                 op="delete",
                 entity_id=sync_id,
                 payload=delete_payload,
-            )
-        for sync_id, payload in added:
-            await append_sync_log(
-                connection,
-                entity=table,
-                op="upsert",
-                entity_id=sync_id,
-                payload={"sync_id": sync_id, "payload": json.loads(payload)},
             )
 
 
@@ -239,9 +254,16 @@ async def write_ledger(
     for id in removed_sources:
         await connection.execute("DELETE FROM usage WHERE session_id = ?", (id,))
     if ledger.organization.folders != previous.organization.folders:
+        removed_folders = {folder.id for folder in previous.organization.folders} - {
+            folder.id for folder in ledger.organization.folders
+        }
         payloads = [folder.model_dump_json() for folder in ledger.organization.folders]
         await _replace_ledger_table(
-            connection, "graph_source_folders", payloads, log_sync=log_sync
+            connection,
+            "graph_source_folders",
+            payloads,
+            log_sync=log_sync,
+            removed_folder_ids=removed_folders,
         )
     if ledger.organization.placements != previous.organization.placements:
         await connection.execute("DELETE FROM graph_source_placements")
@@ -315,6 +337,11 @@ async def write_ledger(
     )
 
 
+async def read_session_ids(connection: Connection) -> set[str]:
+    async with connection.execute("SELECT id FROM sessions") as cursor:
+        return {str(row[0]) for row in await cursor.fetchall()}
+
+
 class GraphStore:
     """Own graph ledgers and serialize each mutation with its coverage and revision.
     Callers mutate a private ledger inside transaction; failures persist nothing.
@@ -365,13 +392,15 @@ class GraphStore:
         return sources, placements
 
     @asynccontextmanager
-    async def transaction(self) -> AsyncGenerator[GraphLedger]:
+    async def _ledger_transaction(
+        self,
+    ) -> AsyncGenerator[tuple[Connection, GraphLedger]]:
         changed = False
         async with self.database.transaction() as connection:
             ledger = await read_ledger(connection)
             revision = ledger.revision
             previous = ledger.model_copy(deep=True)
-            yield ledger
+            yield connection, ledger
             if ledger != previous:
                 ledger.revision = revision + 1
                 await write_ledger(connection, ledger, previous, log_sync=True)
@@ -379,3 +408,16 @@ class GraphStore:
                 changed = True
         if changed and self.changed is not None:
             self.changed(ledger.revision)
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncGenerator[GraphLedger]:
+        async with self._ledger_transaction() as (_, ledger):
+            yield ledger
+
+    @asynccontextmanager
+    async def transaction_with_session_ids(
+        self,
+    ) -> AsyncGenerator[tuple[GraphLedger, set[str]]]:
+        """Run a graph transaction alongside the current session IDs in the same lock."""
+        async with self._ledger_transaction() as (connection, ledger):
+            yield ledger, await read_session_ids(connection)

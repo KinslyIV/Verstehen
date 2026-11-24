@@ -1,10 +1,17 @@
 import { beforeEach, expect, test } from 'vitest';
 import type { SessionItem } from '#lib/api/client.js';
 import {
+	isSearchFolded,
+	kindIncludes,
+	noSearchFolds,
 	readKindFilter,
 	saveKindFilter,
+	readOpenFolders,
+	saveOpenFolders,
 	sessionMeta,
-	visibleSessions
+	toggleSearchFold,
+	unfoldSearchFold,
+	walkIndex
 } from './session-list-model.js';
 
 const now = new Date('2026-01-01T01:00:00Z');
@@ -21,9 +28,9 @@ beforeEach(() => localStorage.clear());
 
 test('the_kind_filter_keeps_all_sessions_or_only_one_kind', () => {
 	const sessions = [session({ id: 'a' }), session({ id: 'b', kind: 'practice' })];
-	expect(visibleSessions(sessions, 'all')).toHaveLength(2);
-	expect(visibleSessions(sessions, 'teach').map(({ id }) => id)).toEqual(['a']);
-	expect(visibleSessions(sessions, 'practice').map(({ id }) => id)).toEqual(['b']);
+	expect(sessions.filter(kindIncludes('all'))).toHaveLength(2);
+	expect(sessions.filter(kindIncludes('teach')).map(({ id }) => id)).toEqual(['a']);
+	expect(sessions.filter(kindIncludes('practice')).map(({ id }) => id)).toEqual(['b']);
 });
 
 test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
@@ -32,6 +39,16 @@ test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
 	expect(readKindFilter()).toBe('practice');
 	localStorage.setItem('verstehen-session-kind-filter', 'nonsense');
 	expect(readKindFilter()).toBe('all');
+});
+
+test('the_open_folders_are_remembered_and_a_corrupt_value_means_none', () => {
+	expect(readOpenFolders().size).toBe(0);
+	saveOpenFolders(new Set(['f1', 'f2']));
+	expect([...readOpenFolders()]).toEqual(['f1', 'f2']);
+	localStorage.setItem('verstehen-sidebar-open-folders', '{nonsense');
+	expect(readOpenFolders().size).toBe(0);
+	localStorage.setItem('verstehen-sidebar-open-folders', '[1,"f3"]');
+	expect([...readOpenFolders()]).toEqual(['f3']);
 });
 
 test('the_row_meta_names_what_the_session_waits_on', () => {
@@ -45,4 +62,29 @@ test('the_row_meta_names_what_the_session_waits_on', () => {
 		'Waiting for input · 1h ago'
 	);
 	expect(sessionMeta({ ...practice, compacting: true }, now)).toBe('Compacting context');
+});
+
+test('a_folder_closed_during_a_search_is_forgotten_when_the_query_changes', () => {
+	const folds = toggleSearchFold(noSearchFolds, 'calc', 'f1');
+	expect(isSearchFolded(folds, 'calc', 'f1')).toBe(true);
+	expect(isSearchFolded(folds, 'calc', 'f2')).toBe(false);
+	expect(isSearchFolded(folds, 'calcu', 'f1')).toBe(false);
+	expect(isSearchFolded(toggleSearchFold(folds, 'calc', 'f1'), 'calc', 'f1')).toBe(false);
+});
+
+test('arrow_keys_start_at_the_first_or_last_row_and_wrap_around', () => {
+	expect(walkIndex(null, 1, 3)).toBe(0);
+	expect(walkIndex(null, -1, 3)).toBe(2);
+	expect(walkIndex(2, 1, 3)).toBe(0);
+	expect(walkIndex(0, -1, 3)).toBe(2);
+	expect(walkIndex(1, 1, 3)).toBe(2);
+	expect(walkIndex(5, 1, 3)).toBe(0);
+});
+
+test('a_new_subfolder_unfolds_its_parent_in_the_search_state_and_leaves_open_parents_alone', () => {
+	const folded = toggleSearchFold(noSearchFolds, 'calc', 'f1');
+	expect(isSearchFolded(unfoldSearchFold(folded, 'calc', 'f1'), 'calc', 'f1')).toBe(false);
+	const open = noSearchFolds;
+	expect(unfoldSearchFold(open, 'calc', 'f1')).toBe(open);
+	expect(readOpenFolders().size).toBe(0);
 });

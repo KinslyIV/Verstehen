@@ -57,7 +57,7 @@ test('graph-chains-table', async ({ page, request, seedGraph }) => {
 	await expect(folderRow).toContainText('Maths');
 	expect((await organization()).folders[0].name).toBe('Maths');
 
-	await page.locator(`[data-source-drag-row="${ids.Integrals}"]`).dragTo(folderRow);
+	await table.locator(`[data-source-drag-row="${ids.Integrals}"]`).dragTo(folderRow);
 	await expect
 		.poll(async () => (await organization()).placements[ids.Integrals]?.folder_id)
 		.toBe(folderId);
@@ -67,7 +67,7 @@ test('graph-chains-table', async ({ page, request, seedGraph }) => {
 	).toBeVisible();
 
 	// Dropping on the empty strip moves it back out.
-	await page
+	await table
 		.locator(`[data-source-drag-row="${ids.Integrals}"]`)
 		.dragTo(page.getByTestId('source-root-drop'));
 	await expect

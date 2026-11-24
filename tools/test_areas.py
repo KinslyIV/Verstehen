@@ -28,6 +28,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
         "src/lib/components/composer.svelte.test.ts",
         "src/lib/components/reasoning.svelte.test.ts",
         "src/lib/components/session-thread.svelte.test.ts",
+        "src/lib/components/stats-bar.svelte.test.ts",
     ),
     "teaching": (
         "src/lib/teaching/*.test.ts",

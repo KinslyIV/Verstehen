@@ -74,8 +74,8 @@ class PromptOverridesService:
         """Write and record the override without changing its switch."""
         await self._edit(path, text)
 
-    async def set_enabled(self, path: str, enabled: bool) -> None:
-        """Use the override or the default; switching on needs a readable override."""
+    async def set_enabled(self, path: str, enabled: bool) -> bool:
+        """Use the override or the default, and return the switch as stored; on needs a readable override."""
         self._require_segment(path)
         async with self.prompt_lock:
             if (
@@ -85,6 +85,7 @@ class PromptOverridesService:
             ):
                 raise MissingPromptOverride(f"{path} has no override to use.")
             await self._write_switch(path, enabled)
+            return (await self._switches()).get(path) is True
 
     async def delete(self, path: str) -> None:
         """Clear the switch and record the deletion in one transaction, then unlink the file."""
