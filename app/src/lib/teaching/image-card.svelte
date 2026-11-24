@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getImage, type ToolResult } from '#lib/api/client.js';
+	import ZoomDialog from '#lib/components/zoom-dialog.svelte';
 	import { shownImage } from './image.js';
 	let { result }: { result?: ToolResult } = $props();
 	const image = $derived(shownImage(result?.details));
@@ -8,6 +9,7 @@
 	);
 	let url = $state<string>();
 	let failed = $state(false);
+	let zoom = $state<ZoomDialog>();
 
 	$effect(() => {
 		const current = source;
@@ -46,14 +48,23 @@
 	</p>
 {:else}
 	<figure class="mx-auto my-4 w-fit max-w-full" data-testid="image-card">
-		<img
-			src={url}
-			alt={image.caption ?? image.path.split(/[\\/]/).pop() ?? 'image'}
-			width={image.width}
-			height={image.height}
-			class="block h-auto max-h-[60vh] w-auto max-w-full rounded-lg"
-			draggable={false}
-		/>
+		<button
+			type="button"
+			aria-label="Zoom image"
+			title="Zoom"
+			onclick={() => zoom?.show()}
+			data-testid="image-zoom"
+			class="block cursor-zoom-in"
+		>
+			<img
+				src={url}
+				alt={image.caption ?? image.path.split(/[\\/]/).pop() ?? 'image'}
+				width={image.width}
+				height={image.height}
+				class="block h-auto max-h-[60vh] w-auto max-w-full rounded-lg"
+				draggable={false}
+			/>
+		</button>
 		<figcaption class="mt-2 w-0 min-w-full space-y-1 text-sm text-muted-foreground">
 			<div class="flex items-baseline gap-2">
 				<span class="text-xs font-medium tracking-wide uppercase">
@@ -63,4 +74,13 @@
 			<p class="text-xs break-all">{image.path}</p>
 		</figcaption>
 	</figure>
+	<ZoomDialog bind:this={zoom} label="Image, enlarged">
+		<img
+			src={url}
+			alt="Zoomed view"
+			draggable={false}
+			style:width={`min(calc(100vw - 2rem), calc((100dvh - 2rem) * ${image.width} / ${image.height}))`}
+			class="block h-auto rounded-lg"
+		/>
+	</ZoomDialog>
 {/if}

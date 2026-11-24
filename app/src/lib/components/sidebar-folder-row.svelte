@@ -22,6 +22,7 @@
 		onrenamed,
 		onstartrename,
 		onnewsubfolder,
+		onnewsession,
 		ondelete,
 		ondragitem,
 		...rest
@@ -39,6 +40,7 @@
 		onrenamed: () => void;
 		onstartrename: () => void;
 		onnewsubfolder: () => void;
+		onnewsession: (mode: 'teach' | 'practice') => void;
 		ondelete: () => void;
 		ondragitem: (item: DraggedEntry | undefined) => void;
 	} = $props();
@@ -102,6 +104,10 @@
 		</ContextMenu.Trigger>
 		<ContextMenu.Content data-testid="folder-context-menu">
 			<ContextMenu.Item onclick={onstartrename}>Rename</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => onnewsession('teach')}>New teaching here</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => onnewsession('practice')}>
+				New practice here
+			</ContextMenu.Item>
 			<ContextMenu.Item onclick={onnewsubfolder}>New subfolder</ContextMenu.Item>
 			<ContextMenu.Item
 				variant="destructive"

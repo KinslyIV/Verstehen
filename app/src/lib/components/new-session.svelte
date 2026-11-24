@@ -11,6 +11,7 @@
 	import NodePicker from '#lib/graph/node-picker.svelte';
 	import { picks } from '#lib/graph/picks.svelte.js';
 	import { OPENING_FAILURE, stashOpening } from '#lib/session/opening.js';
+	import { newSessionQuery } from './new-session-query.js';
 	import Composer from './composer.svelte';
 	import ModelControls from './model-controls.svelte';
 	import SetupDialog from './setup-dialog.svelte';
@@ -21,6 +22,9 @@
 			active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
 		);
 	const kind = $derived(page.url.searchParams.get('mode') === 'practice' ? 'practice' : 'teach');
+	const folderId = $derived(page.url.searchParams.get('folder') ?? undefined);
+	const sessionPath = (mode: 'teach' | 'practice') =>
+		`${resolve('/(lesson)/session/new')}${newSessionQuery(mode, folderId)}`;
 	let pick = $state<ModelPick | null>(null);
 	let setup = $state(false);
 	let menu = $state(false);
@@ -29,7 +33,7 @@
 	let picking = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	let created: { text: string; id: string; kind: typeof kind } | undefined;
+	let created: { text: string; id: string; kind: typeof kind; folderId?: string } | undefined;
 	async function start() {
 		if (!draft.trim() || busy) return;
 		busy = true;
@@ -41,9 +45,14 @@
 				setup = true;
 				return;
 			}
-			if (created?.text !== draft || created.kind !== kind) {
+			if (created?.text !== draft || created.kind !== kind || created.folderId !== folderId) {
 				const graphContext = picks.items.length ? { propositions: picks.items } : undefined;
-				created = { text: draft, kind, ...(await createSession(draft, pick, graphContext, kind)) };
+				created = {
+					text: draft,
+					kind,
+					folderId,
+					...(await createSession(draft, pick, graphContext, kind, folderId))
+				};
 			}
 			stashOpening(created.id, draft);
 			picks.clear();
@@ -53,6 +62,13 @@
 			else if (cause instanceof ApiError && cause.code === 'model_unavailable') {
 				notice = cause.reason ?? cause.message;
 				menu = true;
+			} else if (cause instanceof ApiError && cause.status === 400 && folderId) {
+				error = `${cause.message} Your next message starts the session at the top level.`;
+				created = undefined;
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				await goto(resolve('/(lesson)/session/new') + newSessionQuery(kind), {
+					replaceState: true
+				});
 			} else error = OPENING_FAILURE;
 		} finally {
 			busy = false;
@@ -77,7 +93,7 @@
 			class="mt-5 flex items-center gap-0.5 rounded-md border bg-background p-0.5"
 		>
 			<Button
-				href={resolve('/(lesson)/session/new')}
+				href={sessionPath('teach')}
 				variant="ghost"
 				size="xs"
 				data-sveltekit-replacestate
@@ -88,7 +104,7 @@
 				Teach
 			</Button>
 			<Button
-				href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+				href={sessionPath('practice')}
 				variant="ghost"
 				size="xs"
 				data-sveltekit-replacestate

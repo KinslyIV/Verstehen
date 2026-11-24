@@ -114,3 +114,18 @@ test('image_card_discards_a_fetch_that_finishes_after_unmount', async () => {
 	await Promise.resolve();
 	expect(create).not.toHaveBeenCalled();
 });
+
+test('image_card_zooms_into_a_popup_and_closes_on_backdrop_click', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue(new Response(new Blob(['image'], { type: 'image/png' })))
+	);
+	const screen = await render(ImageCard, { result });
+	await expect.element(screen.getByRole('button', { name: 'Zoom image' })).toBeVisible();
+	await screen.getByRole('button', { name: 'Zoom image' }).click();
+	const dialog = screen.getByTestId('zoom-dialog').element() as HTMLDialogElement;
+	expect(dialog.open).toBe(true);
+	await expect.element(screen.getByRole('img', { name: 'Zoomed view' })).toBeInTheDocument();
+	dialog.click();
+	expect(dialog.open).toBe(false);
+});

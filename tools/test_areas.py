@@ -26,6 +26,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
     "session": (
         "src/lib/session/*.test.ts",
         "src/lib/components/composer.svelte.test.ts",
+        "src/lib/components/new-session.svelte.test.ts",
         "src/lib/components/reasoning.svelte.test.ts",
         "src/lib/components/session-thread.svelte.test.ts",
         "src/lib/components/stats-bar.svelte.test.ts",

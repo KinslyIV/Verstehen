@@ -19,6 +19,8 @@
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
 	import { onAndroidBack } from '#lib/session/android-back.js';
+	import TurnMinimap from '#lib/session/turn-minimap.svelte';
+	import { turnTicks } from '#lib/session/turn-minimap.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
@@ -42,7 +44,7 @@
 	import { planSnapshot } from '#lib/teaching/plan.js';
 	import { getPlanPanel } from '#lib/teaching/plan-panel.js';
 	import { responseResults } from '#lib/teaching/delivery.js';
-	import { responseProse } from '#lib/teaching/response-prose.js';
+	import { responseProse, type ResponseItem } from '#lib/teaching/response-prose.js';
 	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
@@ -59,6 +61,8 @@
 	const phase = $derived(phases.timeline.at(-1) ?? 'probe');
 	const results = $derived(responseResults(controller.entries));
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
+	const ticks = $derived(turnTicks(controller.entries, cards, results));
+	const tickIds = $derived(new Set(ticks.map(({ id }) => id)));
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
@@ -188,7 +192,7 @@
 
 <section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
 	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
+			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
 		>
 			<RenameSession
 				{id}
@@ -229,7 +233,9 @@
 				onwheel={handleWheel}
 				aria-label="Conversation"
 			>
-				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6 max-md:px-4">
+				<Scroller.Content
+					class="mx-auto w-full max-w-(--verstehen-transcript-max) gap-6 px-6 py-6 max-md:px-4"
+				>
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
@@ -256,7 +262,9 @@
 								<PhaseDivider phase="teach" />
 							</Scroller.Item>{/if}
 						{#if entry.kind === 'user'}
-							<Scroller.Item><LearnerMessage content={entry.text} /></Scroller.Item>
+							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
+								<LearnerMessage content={entry.text} />
+							</Scroller.Item>
 						{:else if entry.kind === 'assistant'}
 							{@const thinking = entry.parts
 								.filter((part) => part.type === 'thinking')
@@ -270,43 +278,23 @@
 										(call) => call.messageId === entry.entry_id && !call.question
 									)}
 							{#if thinking || prose.length || malformed.length}
-								<Scroller.Item>
-									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
-									{#each prose as item, i (i)}
-										{#if item.kind === 'text'}
-											<div data-source-entry-id={entry.entry_id}>
-												<AssistantMessage
-													content={item.text}
-													streaming={streaming && i === prose.length - 1}
-												/>
-											</div>
-										{:else if item.kind === 'image'}
-											<ImageCard result={item.result} />
-										{:else if item.kind === 'job'}
-											<DispatchCard
-												kind={item.jobKind}
-												job={jobsByCall.get(item.toolCallId)}
-												now={controller.jobs.now}
-											/>
-										{:else if item.kind === 'problem'}
-											<ProblemCard statement={item.statement} />
-										{:else if item.kind === 'conclude'}
-											<ConcludeCard
-												args={item.args}
-												problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
-												reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
-											/>
-										{:else if item.kind === 'probe'}
-											<ProbeAssessment args={item.args} result={item.result} />
-										{:else}
-											<p
-												data-testid="tool-retry"
-												class="py-1 text-center text-xs text-muted-foreground"
-											>
-												Retrying…
-											</p>
-										{/if}
-									{/each}
+								{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
+								{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
+								{#if split}<Scroller.Item>
+										{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
+										{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
+									</Scroller.Item>{/if}
+								<Scroller.Item
+									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+								>
+									{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
+									{@render responseItems(
+										entry.entry_id!,
+										prose,
+										split ? problemAt : 0,
+										prose.length,
+										streaming
+									)}
 									{#each malformed as call (call.key)}
 										<MalformedQuestion
 											blocked={controller.questionCalls.some(
@@ -368,7 +356,9 @@
 								/>
 							</Scroller.Item>
 						{:else if card}
-							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
+							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
+								<AnsweredCard {...card} />
+							</Scroller.Item>
 						{/if}
 						{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
 							<Scroller.Item>
@@ -394,7 +384,13 @@
 						</p>{/if}
 				</Scroller.Content>
 			</Scroller.Viewport>
-			{#if !pending}<Scroller.Button aria-label="Scroll to bottom" />{/if}
+			<TurnMinimap {ticks} />
+			<Scroller.Button
+				aria-label="Scroll to bottom"
+				variant="outline"
+				size="icon"
+				class="rounded-full shadow-lg ring-1 ring-foreground/10"
+			/>
 		</Scroller.Root>
 	</Scroller.Provider>
 	{#if controller.error}<div
@@ -410,6 +406,46 @@
 					Retry
 				</Button>{/if}
 		</div>{/if}
+	{#snippet responseItems(
+		entryId: string,
+		items: ResponseItem[],
+		from: number,
+		to: number,
+		streaming: boolean
+	)}
+		{#each items.slice(from, to) as item, i (from + i)}
+			{#if item.kind === 'text'}
+				<div data-source-entry-id={entryId}>
+					<AssistantMessage
+						content={item.text}
+						streaming={streaming && from + i === items.length - 1}
+					/>
+				</div>
+			{:else if item.kind === 'image'}
+				<ImageCard result={item.result} />
+			{:else if item.kind === 'job'}
+				<DispatchCard
+					kind={item.jobKind}
+					job={jobsByCall.get(item.toolCallId)}
+					now={controller.jobs.now}
+				/>
+			{:else if item.kind === 'problem'}
+				<ProblemCard statement={item.statement} />
+			{:else if item.kind === 'conclude'}
+				<ConcludeCard
+					args={item.args}
+					problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
+					reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
+				/>
+			{:else if item.kind === 'probe'}
+				<ProbeAssessment args={item.args} result={item.result} />
+			{:else}
+				<p data-testid="tool-retry" class="py-1 text-center text-xs text-muted-foreground">
+					Retrying…
+				</p>
+			{/if}
+		{/each}
+	{/snippet}
 	{#snippet models()}<ModelControls
 			sessionId={id}
 			pick={controller.record?.model_account && controller.record?.model_id

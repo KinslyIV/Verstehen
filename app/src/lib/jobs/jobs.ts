@@ -169,6 +169,11 @@ export function reduceDemoBridgeState(state: DemoBridgeState, data: unknown): De
 	return state;
 }
 
+/** Whether a demo-frame message is the Escape key forwarded out of the sandboxed iframe. */
+export function isDemoEscape(data: unknown): boolean {
+	return asObject(data)?.type === 'demo-escape';
+}
+
 export const DEMO_BRIDGE_SCRIPT = `<script>(function(){
 var send=function(m){try{parent.postMessage(m,"*")}catch(e){}};
 var post=function(){
@@ -182,6 +187,7 @@ send({type:"demo-resize",height:Math.ceil(h)})
 if(typeof ResizeObserver!=="undefined"){new ResizeObserver(post).observe(document.documentElement)}
 window.addEventListener("resize",post);
 window.addEventListener("load",post);
+window.addEventListener("keydown",function(e){if(e.key==="Escape")send({type:"demo-escape"})});
 window.addEventListener("error",function(e){send({type:"demo-error",message:e.message||String(e)})});
 setTimeout(post,50);
 setTimeout(post,400);

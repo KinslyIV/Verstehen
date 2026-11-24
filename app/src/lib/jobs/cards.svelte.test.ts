@@ -224,3 +224,47 @@ test('photo_snapshot_is_not_refetched_when_the_session_record_refreshes', async 
 	expect(loadSnapshot).toHaveBeenCalledOnce();
 	await expect.element(screen.getByRole('switch')).not.toBeInTheDocument();
 });
+
+test('demo_zoom_opens_in_place_holds_its_height_and_closes_on_escape_message_from_its_frame', async () => {
+	const screen = await render(MarkerCard, {
+		entry: marker('demo', { title: 'Working demo', html: '<p>Demo</p>' }),
+		inverted: false,
+		oninvert: vi.fn()
+	});
+	const card = screen.getByTestId('demo-card').element() as HTMLDialogElement;
+	const frame = screen.getByTestId('demo-iframe').element() as HTMLIFrameElement;
+	(screen.getByTestId('demo-zoom').element() as HTMLButtonElement).click();
+	expect(card.open).toBe(true);
+	expect(card.matches(':modal')).toBe(true);
+	expect(screen.getByTestId('demo-iframe').element()).toBe(frame);
+	await expect.element(screen.getByTestId('demo-spacer')).toBeInTheDocument();
+	window.dispatchEvent(
+		new MessageEvent('message', { data: { type: 'demo-escape' }, source: window })
+	);
+	expect(card.open).toBe(true);
+	window.dispatchEvent(
+		new MessageEvent('message', { data: { type: 'demo-escape' }, source: frame.contentWindow })
+	);
+	expect(card.open).toBe(false);
+	await expect.element(screen.getByTestId('demo-spacer')).not.toBeInTheDocument();
+	expect(screen.getByTestId('demo-iframe').element()).toBe(frame);
+});
+
+test('figure_zoom_opens_a_popup_with_the_figure_and_closes_with_its_button', async () => {
+	const screen = await render(MarkerCard, {
+		entry: marker('visual', {
+			svg: '<svg width="80" height="40"><rect width="80" height="40"/></svg>'
+		}),
+		inverted: false,
+		oninvert: vi.fn()
+	});
+	await expect
+		.element(screen.getByRole('img', { name: 'Enlarged figure' }))
+		.not.toBeInTheDocument();
+	await screen.getByRole('button', { name: 'Zoom figure' }).click();
+	await expect.element(screen.getByRole('img', { name: 'Enlarged figure' })).toBeVisible();
+	await screen.getByRole('button', { name: 'Close zoomed view' }).click();
+	await expect
+		.element(screen.getByRole('img', { name: 'Enlarged figure' }))
+		.not.toBeInTheDocument();
+});

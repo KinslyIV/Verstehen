@@ -48,6 +48,7 @@
 			return;
 		}
 		event.dataTransfer?.setData(DRAG_TYPE, JSON.stringify({ kind, id }));
+		event.dataTransfer?.setData('text/plain', id);
 		if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
 		ondragitem({ kind, id });
 	}}

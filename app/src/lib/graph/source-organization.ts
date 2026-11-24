@@ -184,6 +184,22 @@ export function parseDragPayload(raw: string): DraggedEntry | undefined {
 	}
 }
 
+/** Every folder as a Move-to menu choice, depth first so a folder follows its parent. */
+export function folderChoices(
+	organization: SourceOrganization
+): { id: string; name: string; depth: number }[] {
+	const choices: { id: string; name: string; depth: number }[] = [];
+	const walk = (parentId: string | null, depth: number, seen: Set<string>) => {
+		for (const folder of foldersOf(organization)) {
+			if (folder.parent_id !== parentId || seen.has(folder.id)) continue;
+			choices.push({ id: folder.id, name: folder.name, depth });
+			walk(folder.id, depth + 1, new Set([...seen, folder.id]));
+		}
+	};
+	walk(null, 0, new Set());
+	return choices;
+}
+
 /** The move a drop makes, or undefined when it would put a folder inside itself. */
 export function dropMove(
 	organization: SourceOrganization,

@@ -7,6 +7,7 @@
 @custom-variant coarse (@media (pointer: coarse));
 
 :root {
+	--verstehen-transcript-max: 100%;
 	--safe-top: env(safe-area-inset-top, 0px);
 	--safe-bottom: env(safe-area-inset-bottom, 0px);
 	--safe-left: env(safe-area-inset-left, 0px);

@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-24 (version bumped to 0.2.0 on `release/0.2.0` to merge `dev` into `main`).
+> PRs. Last update: 2026-11-24 (UX polish branch `ux-polish-folders-width-zoom-minimap` ready for review).
 
 ## Where we are
 
@@ -41,12 +41,19 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   `asyncssh`, `playwright`, `pypdfium2`, `PIL`, `regex`, `resvg_py`) deferred with module-scope
   `lazy` imports (guarded by `backend/tests/shell/test_startup_imports.py`), plus verify fixture
   and probe-handoff race fixes.
+- **UX polish** (branch `ux-polish-folders-width-zoom-minimap`, not yet merged;
+  [plan](plans/ux-polish.md)): sidebar folder drag-and-drop fixed on the desktop app, **Move to
+  folder** and **New teaching/practice here**, Settings → Appearance → Transcript width, zoom
+  popups for demos, figures, and images, the turn minimap rail, and an always-visible
+  scroll-to-bottom button. Steps 0–4 are committed; the docs sync is Step 5.
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.
 
 ## Next
 
+0. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
+   `dev`; check the folder drag-and-drop in the installed Tauri app by hand.
 1. Merge `release/0.2.0` into `dev`.
 2. Open and merge `dev` → `main` with green GitHub CI (`ci` and `android-debug`), then tag
    `v0.2.0` on `main` to publish the Arch package and signed Android `.apk`.

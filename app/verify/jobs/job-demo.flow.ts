@@ -4,7 +4,7 @@ import { sendLessonMessage } from '../teaching';
 
 test.use({ script: 'verify/scripts/job-demo.json' });
 
-test('job-demo', async ({ page, request, appendEntries }) => {
+test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	await useDemoBrowser(request);
 	const id = await seedTeaching(request, appendEntries, 'Secant slopes');
 	await page.goto(`/session/${id}`);
@@ -18,6 +18,34 @@ test('job-demo', async ({ page, request, appendEntries }) => {
 	const demo = page.frameLocator('[data-testid="demo-iframe"]');
 	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
 	await expect.poll(async () => (await iframe.boundingBox())?.height).toBeGreaterThan(200);
+	await demo.locator('#x').fill('2');
+	await expect(demo.locator('#out')).toHaveText('slope = 3.00');
+
+	await card.scrollIntoViewIfNeeded();
+	const heightBefore = (await card.boundingBox())!.height;
+	await card.getByTestId('demo-zoom').click();
+	await expect(page.getByTestId('demo-spacer')).toBeVisible();
+	expect((await page.getByTestId('demo-spacer').boundingBox())!.height).toBeCloseTo(
+		heightBefore,
+		0
+	);
+	await expect(demo.locator('#out')).toHaveText('slope = 3.00');
+	await expect.poll(async () => (await card.boundingBox())!.width).toBeGreaterThan(800);
+	await page.screenshot({ path: testInfo.outputPath('demo-zoomed.png'), animations: 'disabled' });
+	await demo.locator('#x').fill('3');
+	await demo.locator('#x').focus();
+	await page.keyboard.press('Escape');
+	await expect(page.getByTestId('demo-spacer')).toHaveCount(0);
+	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
+	await card.getByTestId('demo-zoom').click();
+	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
+	await page.keyboard.press('Escape');
+	await card.getByTestId('demo-zoom').click();
+	await page.mouse.click(5, 5);
+	await expect(page.getByTestId('demo-spacer')).toHaveCount(0);
+	await card.getByTestId('demo-zoom').click();
+	await card.getByTestId('demo-zoom').click();
+	await expect(page.getByTestId('demo-spacer')).toHaveCount(0);
 	await demo.locator('#x').fill('2');
 	await expect(demo.locator('#out')).toHaveText('slope = 3.00');
 

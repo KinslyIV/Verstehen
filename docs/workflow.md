@@ -44,10 +44,12 @@ place that names the roles and models; AGENTS.md and plans link here.
   for a new thread, or `t3_worktree_handoff` to move the current thread. `git worktree add` or `cd`
   alone does not update T3's binding. Never switch a shared checkout's branch for another task.
   Before editing, check that the T3 binding, the working directory, and the branch agree.
-- **Commits.** `make check AREA='...'` for the touched areas passes before every commit; full
-  `make check` and `make verify` pass before opening a PR into `dev`. Which checks and flows to
-  run while editing and before merge, and when earlier results may be reused, is in the verify
-  skill (`.claude/skills/verify/SKILL.md`).
+- **Commits.** Implementer subagents only run checks and verify flows for the changes they made
+  (`make check AREA='...'`, `make verify FLOW='...'` / `AREA='...'`) and never run the full test
+  or verify suite. `make check AREA='...'` for the touched areas passes before every commit; the
+  orchestrator runs full `make check` and `make verify` once right before opening a PR into `dev`.
+  Which checks and flows to run while editing and before merge, and when earlier results may be
+  reused, is in the verify skill (`.claude/skills/verify/SKILL.md`).
 - **The orchestrator decides** what the implementer asks: what fits the plan and the docs most
   closely, and the most cautious option when unsure. Each decision goes into the review queue in
   [decisions](decisions.md) with **what was decided, the alternative, and the consequence**.
@@ -79,6 +81,9 @@ place that names the roles and models; AGENTS.md and plans link here.
 - Each round is a fresh reviewer delegate with the plan, the diff, and the earlier findings. It
   reviews against the plan, [AGENTS.md](../AGENTS.md), the [architecture](architecture.md), and
   LearnHarness's code (the specification).
+- **Plausible bugs only.** Reviewers flag — and post-review fixes implement — only plausible real
+  bug cases, concrete plan/spec violations, or real regressions and maintainability hazards; skip
+  contrived or impossible edge cases that cannot happen in practice.
 - **Skeptical of existing code too.** Code the change builds on is reviewed as well; bad design,
   bad choices, and errors are fixed (and searched for elsewhere). A recorded decision that looks
   wrong is flagged; only the user changes it.

@@ -80,30 +80,42 @@ class SessionsStore:
     def __init__(self, database: Database):
         self.database = database
 
-    async def create(
+    def new_session(
         self,
         title: str,
         pick: ModelPick | None = None,
         kind: SessionKind = "teach",
     ) -> Session:
-        session = Session(
+        return Session(
             title=title,
             kind=kind,
             model_account=pick.account if pick else None,
             model_id=pick.model if pick else None,
             thinking_level=pick.thinking_level if pick else None,
         )
+
+    async def insert(self, connection: Connection, session: Session) -> None:
+        """Insert and sync-log a session inside a transaction the caller holds."""
+        await insert_session(connection, session)
+        await append_sync_log(
+            connection,
+            entity="session",
+            op="upsert",
+            entity_id=session.id,
+            session_id=session.id,
+            payload=session.model_dump(mode="json"),
+        )
+        self.database.mark_sync_dirty()
+
+    async def create(
+        self,
+        title: str,
+        pick: ModelPick | None = None,
+        kind: SessionKind = "teach",
+    ) -> Session:
+        session = self.new_session(title, pick, kind)
         async with self.database.transaction() as connection:
-            await insert_session(connection, session)
-            await append_sync_log(
-                connection,
-                entity="session",
-                op="upsert",
-                entity_id=session.id,
-                session_id=session.id,
-                payload=session.model_dump(mode="json"),
-            )
-            self.database.mark_sync_dirty()
+            await self.insert(connection, session)
         return session
 
     async def get(self, session_id: str) -> Session | None:

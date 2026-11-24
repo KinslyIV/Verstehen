@@ -24,3 +24,7 @@ test('the desktop build still bundles the sidecar', () => {
 	expect(config.bundle.externalBin).toEqual(['binaries/verstehen-sidecar']);
 	expect(config.identifier).toBe('local.verstehen.app');
 });
+
+test('the desktop window leaves HTML5 drag and drop to the page', () => {
+	expect(config.app.windows[0].dragDropEnabled).toBe(false);
+});

@@ -277,6 +277,48 @@ test('dispatch_card_follows_the_session_feed_by_tool_call_id', async () => {
 	await expect.element(screen.getByTestId('dispatch-settled')).toMatchTextContent('finished');
 });
 
+test('a_practice_problem_tick_is_anchored_to_its_problem_card', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Practice',
+		kind: 'practice',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{ kind: 'user', entry_id: 'u', text: 'Practice the power rule' },
+			{
+				kind: 'assistant',
+				entry_id: 'p',
+				stop_reason: 'stop',
+				parts: [
+					{
+						type: 'tool_call',
+						tool_call_id: 'c1',
+						tool_name: 'problem',
+						arguments: '{"statement":"Differentiate x^3."}'
+					}
+				]
+			},
+			{
+				kind: 'tool_result',
+				entry_id: 'pr',
+				tool_call_id: 'c1',
+				tool_name: 'problem',
+				is_error: false,
+				text: ''
+			}
+		]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByTestId('problem-card')).toBeVisible();
+	const item = screen
+		.getByTestId('problem-card')
+		.element()
+		.closest('[data-slot="message-scroller-item"]');
+	expect(item?.getAttribute('data-message-id')).toBe('p');
+});
+
 test('android_back_opens_the_dismiss_confirmation_for_a_pending_question_like_escape', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
 		side_segments: { by_entry: {}, entry_points: {}, current: null },

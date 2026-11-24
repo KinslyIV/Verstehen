@@ -3,7 +3,9 @@ import type { SourceDirectory } from '#lib/api/client.js';
 import {
 	canMoveFolder,
 	folderEntries,
+	folderChoices,
 	folderEntryCheck,
+	dropMove,
 	noEntries,
 	sourceNameMatches,
 	toggleSourceEntries
@@ -37,6 +39,25 @@ describe('source folders', () => {
 		expect(canMoveFolder(directory.organization, 'inner', null)).toBe(true);
 		expect(canMoveFolder(directory.organization, 'inner', 'empty')).toBe(true);
 		expect(canMoveFolder(directory.organization, 'inner', 'missing')).toBe(false);
+	});
+
+	it('lists folders depth first for the Move to folder menu', () => {
+		expect(folderChoices(directory.organization)).toEqual([
+			{ id: 'outer', name: 'outer', depth: 0 },
+			{ id: 'inner', name: 'inner', depth: 1 },
+			{ id: 'empty', name: 'empty', depth: 1 }
+		]);
+	});
+
+	it('moves a session to a folder or out of every folder', () => {
+		const item = { kind: 'source' as const, id: 'a' };
+		expect(dropMove(directory.organization, item, 'empty')).toEqual({
+			action: 'move',
+			kind: 'source',
+			id: 'a',
+			parent_id: 'empty'
+		});
+		expect(dropMove(directory.organization, item, null)).toMatchObject({ parent_id: null });
 	});
 
 	it('selects every nested source and empty subfolder with the folder', () => {

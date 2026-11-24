@@ -38,7 +38,7 @@ Frontend, `app/src/lib/`:
 |---|---|
 | `practice/` | `state.ts` (mirrors `practice/state.py`), `practice-dock.svelte` (statement and YOUR THINKING field, replaces the composer while a problem is active), `problem-card.svelte`, `thinking-card.svelte`, `conclude-card.svelte` with `metadata-popover.svelte` |
 | `questions/` | `question-dock.svelte` (replaces the composer while a question is pending), `answered-card.svelte`, `question-core.ts` (LH's `buildAnswer`, grading, shuffle, pending detection), keyboard rules, confidence inputs, the Esc dialogs, `tool-content.svelte` |
-| `teaching/` | phases and dividers, the probe assessment, the plan diagram (`plan-diagram.svelte`, `plan-layout.ts`), `send_to_user` prose (`delivery.ts`), live tool results (`response-prose.ts`), image card, file-access helpers |
+| `teaching/` | phases and dividers, the probe assessment, the plan diagram (`plan-diagram.svelte`, `plan-layout.ts`), `send_to_user` prose (`delivery.ts`), live tool results (`response-prose.ts`), image card (click to zoom in the shared zoom dialog, see [jobs](jobs.md)), file-access helpers |
 
 ## How it works
 

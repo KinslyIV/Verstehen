@@ -6,7 +6,7 @@ import { asObject } from '#lib/questions/question-input.js';
 import { sendToUserText } from './delivery.js';
 
 type Assistant = Extract<Entry, { kind: 'assistant' }>;
-type ResponseItem =
+export type ResponseItem =
 	| { kind: 'text'; text: string }
 	| { kind: 'probe'; args: unknown; result?: ToolResult }
 	| { kind: 'problem'; statement: string }

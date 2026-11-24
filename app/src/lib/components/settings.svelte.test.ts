@@ -1,5 +1,6 @@
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
+import { userEvent } from 'vitest/browser';
 import { SvelteURL } from 'svelte/reactivity';
 
 const { gotoCalls, url } = vi.hoisted(() => ({
@@ -45,4 +46,26 @@ test('settings_follows_section_query_and_updates_it_in_place', async () => {
 	await expect.element(screen.getByRole('heading', { name: 'Accounts' })).toBeVisible();
 	(url.current as SvelteURL).search = '';
 	await expect.element(screen.getByRole('heading', { name: 'Appearance' })).toBeVisible();
+});
+
+test('appearance_sets_and_clears_the_transcript_width', async () => {
+	(url.current as SvelteURL).search = '?section=appearance';
+	const { default: Settings } = await import('#lib/components/settings.svelte');
+	const { transcriptWidth } = await import('#lib/layout/transcript-width.svelte.js');
+	const screen = await render(Settings);
+	const full = screen.getByRole('button', { name: 'Full', exact: true });
+	await expect.element(full).toHaveAttribute('aria-pressed', 'true');
+
+	const thumb = screen.getByRole('slider');
+	(thumb.element() as HTMLElement).focus();
+	await userEvent.keyboard('{ArrowLeft}');
+	expect(transcriptWidth.rem).toBe(118);
+	await expect.element(screen.getByText('118rem')).toBeVisible();
+	expect(document.documentElement.style.getPropertyValue('--verstehen-transcript-max')).toBe(
+		'118rem'
+	);
+
+	await full.click();
+	expect(transcriptWidth.rem).toBeNull();
+	expect(localStorage.getItem('verstehen-transcript-width')).toBeNull();
 });

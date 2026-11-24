@@ -23,7 +23,7 @@ await writeFile(
 test.use({ script });
 test.afterAll(() => rm(sourceDirectory, { recursive: true, force: true }));
 
-test('show-image', async ({ page, request, appendEntries }) => {
+test('show-image', async ({ page, request, appendEntries }, testInfo) => {
 	const created = await request.post('/api/sessions', { data: { title: 'Secant slopes' } });
 	expect(created.ok()).toBe(true);
 	const { id } = await created.json();
@@ -64,6 +64,18 @@ test('show-image', async ({ page, request, appendEntries }) => {
 		.poll(() => card.getByRole('img').evaluate((image) => (image as HTMLImageElement).naturalWidth))
 		.toBe(480);
 	await expect(card.getByText(png)).toBeVisible();
+	await card.getByTestId('image-zoom').click();
+	const zoomed = page.getByRole('img', { name: 'Zoomed view' });
+	await expect(zoomed).toBeVisible();
+	await expect
+		.poll(async () => (await zoomed.boundingBox())!.width)
+		.toBeGreaterThan((await card.getByRole('img').boundingBox())!.width - 1);
+	await page.screenshot({ path: testInfo.outputPath('image-zoomed.png'), animations: 'disabled' });
+	await page.keyboard.press('Escape');
+	await expect(zoomed).toHaveCount(0);
+	await card.getByTestId('image-zoom').click();
+	await page.mouse.click(5, 5);
+	await expect(zoomed).toHaveCount(0);
 	await expect(page.getByText('Shown to the learner:', { exact: false })).toHaveCount(0);
 	await page.reload();
 	await expect(page.getByTestId('image-card')).toBeVisible();

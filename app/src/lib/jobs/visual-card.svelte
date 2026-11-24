@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Download } from '@lucide/svelte';
+	import ZoomDialog from '#lib/components/zoom-dialog.svelte';
 	import { downloadFile } from './download.js';
 	import { loadSnapshot } from './snapshot.js';
 	import InvertSwitch from './invert-switch.svelte';
@@ -14,6 +15,7 @@
 	const snapshotId = $derived(photo?.snapshot_id);
 	let snapshot = $state<string>();
 	let failed = $state(false);
+	let zoom = $state<ZoomDialog>();
 	const natural = $derived(svgNaturalWidth(result.svg));
 	const svg = $derived(photo && snapshot ? embedLearnerImage(result.svg, snapshot) : result.svg);
 	const shownInverted = $derived(!photo && inverted);
@@ -64,17 +66,26 @@
 			style:filter={shownInverted ? 'invert(1) hue-rotate(180deg)' : undefined}
 			data-testid="visual-svg"
 		>
-			<img
-				src={svgDataUri(svg)}
-				alt="Figure"
-				width={natural ?? undefined}
-				draggable={false}
-				class={photo
-					? 'block h-auto max-h-[60vh] w-auto max-w-full'
-					: natural !== null
-						? 'block h-auto max-w-full'
-						: 'block h-auto w-full'}
-			/>
+			<button
+				type="button"
+				aria-label="Zoom figure"
+				title="Zoom"
+				onclick={() => zoom?.show()}
+				data-testid="visual-zoom"
+				class="block w-full cursor-zoom-in"
+			>
+				<img
+					src={svgDataUri(svg)}
+					alt="Figure"
+					width={natural ?? undefined}
+					draggable={false}
+					class={photo
+						? 'block h-auto max-h-[60vh] w-auto max-w-full'
+						: natural !== null
+							? 'block h-auto max-w-full'
+							: 'block h-auto w-full'}
+				/>
+			</button>
 		</div>
 		<figcaption
 			class={[
@@ -104,4 +115,17 @@
 			</div>
 		</figcaption>
 	</figure>
+	<ZoomDialog bind:this={zoom} label="Figure, enlarged">
+		<img
+			src={svgDataUri(svg)}
+			alt="Enlarged figure"
+			draggable={false}
+			style:filter={shownInverted ? 'invert(1) hue-rotate(180deg)' : undefined}
+			class={[
+				'block h-auto max-h-[calc(100dvh-2rem)] max-w-[calc(100vw-2rem)] rounded-lg object-contain',
+				'w-[min(calc(100vw-2rem),96rem)]',
+				!photo && 'bg-white'
+			]}
+		/>
+	</ZoomDialog>
 {/if}

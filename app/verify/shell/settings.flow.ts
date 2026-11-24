@@ -17,6 +17,39 @@ test('settings', async ({ page, request }) => {
 		animations: 'disabled'
 	});
 
+	const width = page.getByRole('group', { name: 'Transcript width' });
+	await expect(width.getByRole('button', { name: 'Full', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await width.getByRole('slider').focus();
+	await page.keyboard.press('Home');
+	await expect(width.getByText('46rem')).toBeVisible();
+	await page.keyboard.press('ArrowRight');
+	await expect(width.getByText('48rem')).toBeVisible();
+	await page.reload();
+	await expect(width.getByText('48rem')).toBeVisible();
+	const transcriptMax = () =>
+		page.evaluate(() =>
+			document.documentElement.style.getPropertyValue('--verstehen-transcript-max')
+		);
+	const composerWidth = () =>
+		page
+			.getByPlaceholder('What do you want to learn?')
+			.evaluate((element) => element.closest('form, div')?.getBoundingClientRect().width ?? 0);
+	expect(await transcriptMax()).toBe('48rem');
+	await page.goto('/');
+	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
+	const capped = await composerWidth();
+	await page.goto('/settings');
+	await width.getByRole('button', { name: 'Full', exact: true }).click();
+	expect(await transcriptMax()).toBe('');
+	await page.goto('/');
+	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
+	// Like LearnHarness's dock, the composer keeps its width; only the transcript follows the slider.
+	expect(await composerWidth()).toBe(capped);
+	await page.goto('/settings');
+
 	await page.getByRole('button', { name: 'Models', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Choose Main model' })).toContainText(
 		'Scripted teacher'

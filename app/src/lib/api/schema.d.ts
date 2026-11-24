@@ -2011,6 +2011,24 @@ export interface components {
 			/** Missing */
 			missing: ('strong' | 'cheap' | 'vision')[];
 		};
+		/** NewSessionInput */
+		NewSessionInput: {
+			/**
+			 * Title
+			 * @default
+			 */
+			title: string | null;
+			/**
+			 * Kind
+			 * @default teach
+			 * @enum {string}
+			 */
+			kind: 'teach' | 'practice';
+			model?: components['schemas']['ModelPick'] | null;
+			graph_context?: components['schemas']['GraphContext'] | null;
+			/** Folder Id */
+			folder_id?: string | null;
+		};
 		/** NodeDeleted */
 		NodeDeleted: {
 			stats: components['schemas']['NodeDeletionStats'];
@@ -5534,7 +5552,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['SessionInput'];
+				'application/json': components['schemas']['NewSessionInput'];
 			};
 		};
 		responses: {

@@ -197,12 +197,13 @@ export async function createSession(
 	title: string,
 	model?: ModelPick | null,
 	graph_context?: GraphContext,
-	kind: SessionKind = 'teach'
+	kind: SessionKind = 'teach',
+	folder_id?: string
 ): Promise<components['schemas']['Created']> {
 	return (
 		await request('/api/sessions', {
 			method: 'POST',
-			body: JSON.stringify({ title, model, graph_context, kind })
+			body: JSON.stringify({ title, model, graph_context, kind, folder_id })
 		})
 	).json();
 }

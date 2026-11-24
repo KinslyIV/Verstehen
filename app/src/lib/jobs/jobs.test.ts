@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import {
 	demoSrcDoc,
+	isDemoEscape,
 	embedLearnerImage,
 	formatElapsed,
 	INITIAL_DEMO_BRIDGE_STATE,
@@ -28,6 +29,10 @@ test('demo_bridge_bounds_height_and_reports_errors', () => {
 	expect(reduceDemoBridgeState(state, { type: 'demo-error', message: 'Oops' }).error).toBe('Oops');
 	expect(demoSrcDoc('<body>demo</body>')).toContain('postMessage');
 	expect(demoSrcDoc('<body>demo</body>')).toMatch(/<script>[\s\S]*<\/script><\/body>$/);
+	expect(demoSrcDoc('<body>demo</body>')).toContain('"demo-escape"');
+	expect(isDemoEscape({ type: 'demo-escape' })).toBe(true);
+	expect(isDemoEscape({ type: 'demo-resize' })).toBe(false);
+	expect(isDemoEscape('demo-escape')).toBe(false);
 });
 
 test('annotation_embeds_only_the_image_placeholder_and_svg_is_an_image', () => {
