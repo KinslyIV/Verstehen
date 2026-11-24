@@ -19,6 +19,8 @@
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
 	import { onAndroidBack } from '#lib/session/android-back.js';
+	import TurnMinimap from '#lib/session/turn-minimap.svelte';
+	import { turnTicks } from '#lib/session/turn-minimap.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
@@ -59,6 +61,8 @@
 	const phase = $derived(phases.timeline.at(-1) ?? 'probe');
 	const results = $derived(responseResults(controller.entries));
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
+	const ticks = $derived(turnTicks(controller.entries, cards, results));
+	const tickIds = $derived(new Set(ticks.map(({ id }) => id)));
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
@@ -258,7 +262,9 @@
 								<PhaseDivider phase="teach" />
 							</Scroller.Item>{/if}
 						{#if entry.kind === 'user'}
-							<Scroller.Item><LearnerMessage content={entry.text} /></Scroller.Item>
+							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
+								<LearnerMessage content={entry.text} />
+							</Scroller.Item>
 						{:else if entry.kind === 'assistant'}
 							{@const thinking = entry.parts
 								.filter((part) => part.type === 'thinking')
@@ -370,7 +376,9 @@
 								/>
 							</Scroller.Item>
 						{:else if card}
-							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
+							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
+								<AnsweredCard {...card} />
+							</Scroller.Item>
 						{/if}
 						{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
 							<Scroller.Item>
@@ -396,7 +404,13 @@
 						</p>{/if}
 				</Scroller.Content>
 			</Scroller.Viewport>
-			{#if !pending}<Scroller.Button aria-label="Scroll to bottom" />{/if}
+			<TurnMinimap {ticks} />
+			<Scroller.Button
+				aria-label="Scroll to bottom"
+				variant="outline"
+				size="icon"
+				class="rounded-full shadow-lg ring-1 ring-foreground/10"
+			/>
 		</Scroller.Root>
 	</Scroller.Provider>
 	{#if controller.error}<div

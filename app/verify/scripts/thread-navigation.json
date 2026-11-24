@@ -1,0 +1,54 @@
+[
+	{
+		"text": "## Bikes 1\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 2\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 3\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 4\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 5\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 6\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 7\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Bikes 8\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.",
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Which example should we use?",
+					"options": [
+						{
+							"label": "A bike",
+							"description": "First"
+						},
+						{
+							"label": "A clock",
+							"description": "Second"
+						}
+					]
+				}
+			}
+		]
+	},
+	{
+		"text": "## Hills 1\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 2\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 3\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 4\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 5\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 6\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 7\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Hills 8\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.",
+		"tool_calls": [
+			{
+				"name": "ask_user_question",
+				"arguments": {
+					"question": "Is a steeper hill a larger slope?",
+					"options": [
+						{
+							"label": "Yes",
+							"description": "First"
+						},
+						{
+							"label": "No",
+							"description": "Second"
+						}
+					]
+				}
+			}
+		]
+	},
+	{
+		"text": "## Summary 1\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 2\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 3\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 4\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 5\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 6\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 7\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Summary 8\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged."
+	},
+	{
+		"text": "## Follow-up 1\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 2\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 3\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 4\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 5\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 6\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 7\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged.\n\n## Follow-up 8\n\nCompare the rise and the run between two points on the same line. Changing the starting point leaves the ratio unchanged."
+	},
+	{
+		"text": "Slow closing remark that keeps the turn open for a while.",
+		"delay_ms": 3000
+	}
+]
