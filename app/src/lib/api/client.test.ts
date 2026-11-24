@@ -1,6 +1,14 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { health, listSessions, setToken, streamTurn } from './client';
+import {
+	deleteSession,
+	health,
+	listSessions,
+	refreshModels,
+	revokeOwnDevice,
+	setToken,
+	streamTurn
+} from './client';
 
 vi.mock('@tauri-apps/api/core', () => ({
 	invoke: vi.fn(),
@@ -141,4 +149,41 @@ test('browser_sign_in_opens_a_new_tab_without_an_opener', async () => {
 		'noopener,noreferrer'
 	);
 	expect(invoke).not.toHaveBeenCalled();
+});
+
+test('void_requests_drain_their_response_body_before_resolving', async () => {
+	let controller!: ReadableStreamDefaultController<Uint8Array>;
+	const streamResponse = new Response(
+		new ReadableStream({
+			start(ctrl) {
+				controller = ctrl;
+			}
+		})
+	);
+	const sessionResponse = new Response('{"ok":true}');
+	const fetchMock = vi
+		.fn()
+		.mockResolvedValueOnce(streamResponse)
+		.mockResolvedValueOnce(new Response(null, { status: 204 }))
+		.mockResolvedValueOnce(sessionResponse);
+	vi.stubGlobal('fetch', fetchMock);
+
+	let settled = false;
+	const pending = revokeOwnDevice('device-1').then(() => {
+		settled = true;
+	});
+	await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+	await Promise.resolve();
+	await Promise.resolve();
+	expect(settled).toBe(false);
+
+	controller.enqueue(new TextEncoder().encode('{"ok":true}'));
+	controller.close();
+	await pending;
+	expect(settled).toBe(true);
+	expect(streamResponse.bodyUsed).toBe(true);
+
+	await expect(refreshModels()).resolves.toBeUndefined();
+	await expect(deleteSession('s1', 'preserve-graph')).resolves.toBeUndefined();
+	expect(sessionResponse.bodyUsed).toBe(true);
 });

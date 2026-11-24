@@ -68,7 +68,6 @@ async def two_backends(tmp_path: Path):
         async with laptop_app.router.lifespan_context(laptop_app):
             # Cancel laptop background loops so tests drive sync_now() deterministically.
             await laptop_app.state.sync_service.close()
-            laptop_app.state.sync_service._closed = False
             laptop_app.state.sync_service._client_factory = lambda: httpx2.AsyncClient(
                 transport=httpx2.ASGITransport(app=server_app),
                 trust_env=False,

@@ -77,6 +77,7 @@ def test_unconfigured_android_release_is_skipped_with_a_notice_before_any_setup(
     assert "id: signing" in first and "::notice::" in first and "::error::" not in first
     assert "exit 1" not in first
     assert all("steps.signing.outputs.configured == 'true'" in step for step in rest)
+    assert any("android-actions/setup-android@v4" in step for step in rest)
 
 
 def test_signing_secrets_reach_only_the_check_and_build_steps():
@@ -101,7 +102,7 @@ def test_ci_builds_the_debug_apk_only_for_pull_requests_without_secrets():
     assert "if: github.event_name == 'pull_request'" in job
     assert "secrets." not in job
     assert "distribution: temurin" in job and "java-version: '21'" in job
-    assert "android-actions/setup-android@v3" in job
+    assert "android-actions/setup-android@v4" in job
     assert "run: make android-debug" in job
     assert "path: dist/verstehen-*-debug.apk" in job
 

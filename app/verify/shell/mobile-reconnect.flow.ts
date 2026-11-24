@@ -13,7 +13,7 @@ const reply =
 	'A derivative describes how quickly a quantity changes. What do you already know about slope?';
 const firstChunk = reply.slice(0, Math.floor(reply.length / 3));
 
-test('mobile-reconnect', async ({ page, context }) => {
+test('mobile-reconnect', async ({ page, setOffline }) => {
 	const posts: string[] = [];
 	const streams: string[] = [];
 	const cutStreams: string[] = [];
@@ -34,10 +34,10 @@ test('mobile-reconnect', async ({ page, context }) => {
 	await expect(page.getByText(firstChunk, { exact: false })).toBeVisible();
 	await expect(page.getByText(reply, { exact: true })).toHaveCount(0);
 
-	await context.setOffline(true);
+	await setOffline(true);
 	const line = page.getByTestId('reconnecting');
 	await expect(line).toHaveText('Reconnecting…');
-	expect(cutStreams.length).toBeGreaterThanOrEqual(1);
+	await expect.poll(() => cutStreams.length).toBeGreaterThanOrEqual(1);
 	await page.waitForTimeout(4000);
 	const header = (await page.locator('header').first().boundingBox())!;
 	expect((await line.boundingBox())!.y).toBeGreaterThanOrEqual(header.y + header.height - 1);
@@ -48,7 +48,7 @@ test('mobile-reconnect', async ({ page, context }) => {
 		animations: 'disabled'
 	});
 
-	await context.setOffline(false);
+	await setOffline(false);
 	await expect(line).toHaveCount(0, { timeout: 15_000 });
 	await expect(page.getByText(reply, { exact: true })).toHaveCount(1, { timeout: 15_000 });
 	await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();

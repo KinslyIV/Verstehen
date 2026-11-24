@@ -149,6 +149,13 @@ async function request(path: string, init: RequestInit = {}): Promise<Response> 
 	return response;
 }
 
+/** Sends a non-streaming request and drains its body so navigation cannot abort an unread response. */
+async function requestSettled(path: string, init: RequestInit = {}): Promise<Response> {
+	const response = await request(path, init);
+	await response.text();
+	return response;
+}
+
 /** Redeems a pairing code with the server at `address` and returns the new connection. */
 export async function pairDevice(
 	address: string,
@@ -227,10 +234,10 @@ export async function renameSession(
 	).json();
 }
 export async function deleteSession(id: string, mode: DeleteMode): Promise<void> {
-	await request(`${sessionPath(id)}?mode=${mode}`, { method: 'DELETE' });
+	await requestSettled(`${sessionPath(id)}?mode=${mode}`, { method: 'DELETE' });
 }
 export async function postInput(id: string, input: TurnInput, signal?: AbortSignal): Promise<void> {
-	await request(`${sessionPath(id)}/input`, {
+	await requestSettled(`${sessionPath(id)}/input`, {
 		method: 'POST',
 		body: JSON.stringify(input),
 		signal
@@ -241,7 +248,7 @@ export async function dismissQuestion(
 	input: DismissInput,
 	signal: AbortSignal
 ): Promise<boolean> {
-	const response = await request(`${sessionPath(id)}/dismiss`, {
+	const response = await requestSettled(`${sessionPath(id)}/dismiss`, {
 		method: 'POST',
 		body: JSON.stringify(input),
 		signal
@@ -249,7 +256,7 @@ export async function dismissQuestion(
 	return response.status === 202;
 }
 export async function abortSession(id: string): Promise<void> {
-	await request(`${sessionPath(id)}/abort`, { method: 'POST' });
+	await requestSettled(`${sessionPath(id)}/abort`, { method: 'POST' });
 }
 
 /** Decode complete SSE frames across arbitrary UTF-8 and network boundaries. */
@@ -311,7 +318,7 @@ export async function getModels(): Promise<ModelCatalog> {
 	return (await request('/api/models')).json();
 }
 export async function refreshModels(force = false): Promise<void> {
-	await request(force ? '/api/models/refresh?force=true' : '/api/models/refresh', {
+	await requestSettled(force ? '/api/models/refresh?force=true' : '/api/models/refresh', {
 		method: 'POST'
 	});
 }
@@ -333,10 +340,13 @@ export async function getPrompts(signal?: AbortSignal): Promise<PromptSegments> 
 	return (await request('/api/prompts', { signal })).json();
 }
 export async function savePromptOverride(path: string, text: string): Promise<void> {
-	await request(`${promptPath(path)}/override`, { method: 'PUT', body: JSON.stringify({ text }) });
+	await requestSettled(`${promptPath(path)}/override`, {
+		method: 'PUT',
+		body: JSON.stringify({ text })
+	});
 }
 export async function deletePromptOverride(path: string): Promise<void> {
-	await request(`${promptPath(path)}/override`, { method: 'DELETE' });
+	await requestSettled(`${promptPath(path)}/override`, { method: 'DELETE' });
 }
 /** Resolves with the switch as the server stored it. */
 export async function setPromptEnabled(path: string, enabled: boolean): Promise<boolean> {
@@ -360,7 +370,7 @@ export async function setModelSlot(
 	).json();
 }
 export async function setSessionModel(id: string, model: ModelPick): Promise<void> {
-	await request(sessionPath(id), { method: 'PATCH', body: JSON.stringify({ model }) });
+	await requestSettled(sessionPath(id), { method: 'PATCH', body: JSON.stringify({ model }) });
 }
 export async function listChatGPTAccounts(): Promise<Account[]> {
 	return (await request('/api/accounts/chatgpt')).json();
@@ -381,7 +391,7 @@ export async function getSignIn(id: string): Promise<SignInStatus> {
 	return (await request(`/api/accounts/chatgpt/sign-in/${encodeURIComponent(id)}`)).json();
 }
 export async function removeChatGPTAccount(id: string): Promise<void> {
-	await request(`/api/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	await requestSettled(`/api/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 export async function getClaudeCode(): Promise<BinaryStatus> {
 	return (await request('/api/accounts/claude-code')).json();
@@ -433,10 +443,10 @@ export async function getJobs(session: string, signal?: AbortSignal): Promise<Jo
 	return (await request(`/api/jobs?session=${encodeURIComponent(session)}`, { signal })).json();
 }
 export async function abortJob(id: string): Promise<void> {
-	await request(`/api/jobs/${encodeURIComponent(id)}/abort`, { method: 'POST' });
+	await requestSettled(`/api/jobs/${encodeURIComponent(id)}/abort`, { method: 'POST' });
 }
 export async function steerSession(id: string, steerId: string, text: string): Promise<void> {
-	await request(`${sessionPath(id)}/steer`, {
+	await requestSettled(`${sessionPath(id)}/steer`, {
 		method: 'POST',
 		body: JSON.stringify({ id: steerId, text })
 	});
@@ -446,7 +456,7 @@ export async function setArtifactView(
 	entryId: string,
 	inverted: boolean
 ): Promise<void> {
-	await request(`${sessionPath(id)}/artifact-views/${encodeURIComponent(entryId)}`, {
+	await requestSettled(`${sessionPath(id)}/artifact-views/${encodeURIComponent(entryId)}`, {
 		method: 'PUT',
 		body: JSON.stringify({ inverted })
 	});
@@ -485,7 +495,7 @@ export async function streamSideChat(
 	return readEvents(response, (_, data) => receive(JSON.parse(data)));
 }
 export async function stopSideChat(id: string, threadId: string): Promise<void> {
-	await request(`${sidePath(id)}/${encodeURIComponent(threadId)}/stop`, { method: 'POST' });
+	await requestSettled(`${sidePath(id)}/${encodeURIComponent(threadId)}/stop`, { method: 'POST' });
 }
 
 export async function getGraph(signal?: AbortSignal): Promise<GraphSnapshot> {
@@ -510,7 +520,10 @@ export async function getGraphRenderSettings(
 	return (await request('/api/graph/render-settings', { signal })).json();
 }
 export async function putGraphRenderSettings(settings: GraphRenderSettings): Promise<void> {
-	await request('/api/graph/render-settings', { method: 'PUT', body: JSON.stringify(settings) });
+	await requestSettled('/api/graph/render-settings', {
+		method: 'PUT',
+		body: JSON.stringify(settings)
+	});
 }
 export async function getGraphCosts(signal?: AbortSignal): Promise<GraphCostSummary> {
 	return (await request('/api/graph/costs', { signal })).json();
@@ -551,12 +564,12 @@ export async function deleteSources(body: {
 	).json();
 }
 export async function deleteGraphNode(id: string): Promise<void> {
-	await request(`/api/graph/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	await requestSettled(`/api/graph/nodes/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 /** Starts a manual extraction; a 409 means one is already running and counts as started. */
 export async function extractCoverage(sessionId: string): Promise<void> {
 	try {
-		await request('/api/graph/coverage/extract', {
+		await requestSettled('/api/graph/coverage/extract', {
 			method: 'POST',
 			body: JSON.stringify({ session_id: sessionId })
 		});
@@ -565,7 +578,9 @@ export async function extractCoverage(sessionId: string): Promise<void> {
 	}
 }
 export async function abortExtraction(source: string): Promise<void> {
-	await request(`/api/graph/extractions/${encodeURIComponent(source)}/abort`, { method: 'POST' });
+	await requestSettled(`/api/graph/extractions/${encodeURIComponent(source)}/abort`, {
+		method: 'POST'
+	});
 }
 
 export async function getSyncStatus(signal?: AbortSignal): Promise<SyncStatusResponse> {
@@ -583,7 +598,7 @@ export async function getServerInstallStatus(signal?: AbortSignal): Promise<Serv
 	return (await request('/api/server/install', { signal })).json();
 }
 export async function trustServerHost(body: TrustHostInput): Promise<void> {
-	await request('/api/server/trust-host', { method: 'POST', body: JSON.stringify(body) });
+	await requestSettled('/api/server/trust-host', { method: 'POST', body: JSON.stringify(body) });
 }
 export async function connectServer(body: ServerConnectInput): Promise<SyncStatusResponse> {
 	return (
@@ -613,7 +628,9 @@ export async function getServerChatGPTSignIn(id: string): Promise<SignInStatus> 
 	return (await request(`/api/server/accounts/chatgpt/sign-in/${encodeURIComponent(id)}`)).json();
 }
 export async function removeServerChatGPTAccount(id: string): Promise<void> {
-	await request(`/api/server/accounts/chatgpt/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	await requestSettled(`/api/server/accounts/chatgpt/${encodeURIComponent(id)}`, {
+		method: 'DELETE'
+	});
 }
 export async function getOwnDeviceName(id: string): Promise<string | undefined> {
 	const { devices } = await (await request('/api/auth/devices')).json();
@@ -621,7 +638,7 @@ export async function getOwnDeviceName(id: string): Promise<string | undefined> 
 }
 /** Ends this device's pairing on the server it is paired with. */
 export async function revokeOwnDevice(id: string): Promise<void> {
-	await request(`/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	await requestSettled(`/api/auth/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
 export async function listServerDevices(): Promise<Device[]> {
 	return (await (await request('/api/server/devices')).json()).devices;
@@ -630,5 +647,5 @@ export async function createServerPairingCode(): Promise<PairingCodeResponse> {
 	return (await request('/api/server/pairing-code', { method: 'POST' })).json();
 }
 export async function revokeServerDevice(id: string): Promise<void> {
-	await request(`/api/server/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
+	await requestSettled(`/api/server/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
