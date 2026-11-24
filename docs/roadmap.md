@@ -125,8 +125,8 @@ merges.
   the second session via client-side sidebar navigation so `SessionList` stays mounted, waiting
   for UI settlement, and scoping any trailing old-document `/item` abort via `allowTeardownAborts`
   before `framenavigated` on `page.reload()`), and the `fixtures.ts` Vite preview port collision
-  race (`freePort` TOCTOU + `ready()` polling another worker's server, replaced by `--port 0` +
-  per-child stdout handshake) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
+  race (`freePort` TOCTOU + `ready()` polling another worker's server, replaced by `--port 0`,
+  per-child stdout handshake, and a persistent local upstream forwarder across sidecar restarts) are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows

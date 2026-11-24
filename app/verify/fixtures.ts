@@ -2,6 +2,7 @@ import { test as base, expect, type Frame, type Request } from '@playwright/test
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { createConnection, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { createInterface } from 'node:readline';
@@ -55,12 +56,12 @@ async function handshake(child: ChildProcess): Promise<number> {
 
 class PreviewExitError extends Error {}
 
-async function previewHandshake(child: ChildProcess, expectedPort?: number): Promise<number> {
+async function previewHandshake(child: ChildProcess): Promise<number> {
 	if (!child.stdout) throw new Error('Vite preview stdout is missing');
 	const lines = createInterface({ input: child.stdout });
-	let timedOut = false;
+	const timeout = new AbortController();
 	const timer = setTimeout(() => {
-		timedOut = true;
+		timeout.abort();
 		lines.close();
 	}, 15000);
 	try {
@@ -70,12 +71,21 @@ async function previewHandshake(child: ChildProcess, expectedPort?: number): Pro
 			const port = Number(match[1]);
 			if (!Number.isInteger(port) || port < 1 || port > 65535)
 				throw new Error(`Invalid preview URL line: ${line}`);
-			if (expectedPort !== undefined && port !== expectedPort)
-				throw new Error(`Vite preview bound port ${port} instead of ${expectedPort}`);
 			return port;
 		}
-		if (timedOut) throw new Error('Vite preview did not print its local URL within 15 seconds');
-		if (child.exitCode === null && child.signalCode === null) await once(child, 'exit');
+		if (timeout.signal.aborted)
+			throw new Error('Vite preview did not print its local URL within 15 seconds');
+		if (child.exitCode === null && child.signalCode === null) {
+			try {
+				await once(child, 'exit', { signal: timeout.signal });
+			} catch (error) {
+				if (timeout.signal.aborted)
+					throw new Error('Vite preview did not print its local URL within 15 seconds', {
+						cause: error
+					});
+				throw error;
+			}
+		}
 		throw new PreviewExitError(
 			`Vite preview exited with ${child.exitCode ?? child.signalCode} before listening`
 		);
@@ -84,6 +94,68 @@ async function previewHandshake(child: ChildProcess, expectedPort?: number): Pro
 		lines.close();
 		child.stdout.resume();
 	}
+}
+
+interface UpstreamForwarder {
+	readonly port: number;
+	pause(): void;
+	pointTo(port: number): void;
+	close(): Promise<void>;
+}
+
+/** Keep one stable upstream listener so `restartSidecar()` swaps backend ports without restarting Vite. */
+async function createUpstreamForwarder(initialPort: number): Promise<UpstreamForwarder> {
+	let targetPort: number | null = initialPort;
+	const sockets = new Set<Socket>();
+	const server = createServer((client) => {
+		if (targetPort === null) {
+			client.destroy();
+			return;
+		}
+		const upstream = createConnection({ host: '127.0.0.1', port: targetPort });
+		client.setNoDelay(true);
+		upstream.setNoDelay(true);
+		sockets.add(client);
+		sockets.add(upstream);
+		client.on('close', () => {
+			sockets.delete(client);
+			upstream.destroy();
+		});
+		upstream.on('close', (hadError) => {
+			sockets.delete(upstream);
+			if (hadError) client.destroy();
+		});
+		client.on('error', () => upstream.destroy());
+		upstream.on('error', () => client.destroy());
+		client.pipe(upstream);
+		upstream.pipe(client);
+	});
+	server.listen(0, '127.0.0.1');
+	await once(server, 'listening');
+	const address = server.address();
+	if (!address || typeof address === 'string') {
+		await new Promise<void>((resolve) => server.close(() => resolve()));
+		throw new Error('No free upstream forwarder port');
+	}
+	return {
+		port: address.port,
+		pause: () => {
+			targetPort = null;
+			for (const socket of sockets) socket.destroy();
+			sockets.clear();
+		},
+		pointTo: (port) => {
+			targetPort = port;
+		},
+		close: async () => {
+			targetPort = null;
+			for (const socket of sockets) socket.destroy();
+			sockets.clear();
+			await new Promise<void>((resolve, reject) =>
+				server.close((error) => (error ? reject(error) : resolve()))
+			);
+		}
+	};
 }
 
 const appendEntries = `
@@ -253,6 +325,7 @@ export const test = base.extend<{
 		const remote = client === 'remote';
 		const sidecarArguments = remote ? ['--server', '--port', '0'] : [];
 		const children: ChildProcess[] = [];
+		let forwarder: UpstreamForwarder | undefined;
 		try {
 			let sidecar = await start(
 				resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -261,13 +334,13 @@ export const test = base.extend<{
 			);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
+			forwarder = await createUpstreamForwarder(port);
 			const launchPreview = async (
-				sidecarPort: number,
-				fixedPort?: number
+				upstreamPort: number
 			): Promise<{ child: ChildProcess; port: number }> => {
 				const previewEnv: NodeJS.ProcessEnv = {
 					...env,
-					VERSTEHEN_PORT: String(sidecarPort),
+					VERSTEHEN_PORT: String(upstreamPort),
 					NO_COLOR: '1',
 					...(remote
 						? { PUBLIC_VERSTEHEN_CLIENT: 'remote', PUBLIC_VERSTEHEN_EXTRA_HOSTS: '127.0.0.1' }
@@ -280,15 +353,8 @@ export const test = base.extend<{
 					'--host',
 					'127.0.0.1',
 					'--port',
-					String(fixedPort ?? 0),
-					...(fixedPort === undefined ? [] : ['--strictPort'])
+					'0'
 				];
-				if (fixedPort !== undefined) {
-					const child = await start(process.execPath, args, previewEnv);
-					children.push(child);
-					await previewHandshake(child, fixedPort);
-					return { child, port: fixedPort };
-				}
 				for (let attempt = 1; ; attempt++) {
 					const child = await start(process.execPath, args, previewEnv);
 					try {
@@ -301,10 +367,10 @@ export const test = base.extend<{
 					}
 				}
 			};
-			const { child: initialPreview, port: previewPort } = await launchPreview(port);
-			let preview = initialPreview;
+			const { port: previewPort } = await launchPreview(forwarder.port);
 			const url = `http://127.0.0.1:${previewPort}`;
 			sidecarControl.restart = async () => {
+				forwarder?.pause();
 				await stop(sidecar);
 				sidecar = await start(
 					resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -312,9 +378,7 @@ export const test = base.extend<{
 					env
 				);
 				children.push(sidecar);
-				const nextSidecarPort = await handshake(sidecar);
-				await stop(preview);
-				({ child: preview } = await launchPreview(nextSidecarPort, previewPort));
+				forwarder?.pointTo(await handshake(sidecar));
 			};
 			if (script !== 'none') {
 				const api = await playwright.request.newContext({ baseURL: url });
@@ -336,6 +400,7 @@ export const test = base.extend<{
 			}
 			await use(url);
 		} finally {
+			await forwarder?.close();
 			await Promise.all(children.map(stop));
 		}
 	},
