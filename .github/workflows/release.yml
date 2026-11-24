@@ -63,7 +63,7 @@ jobs:
           cache: npm
           cache-dependency-path: app/package-lock.json
       - if: steps.signing.outputs.configured == 'true'
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
       - if: steps.signing.outputs.configured == 'true'
         run: npm ci --prefix app
       - name: Build the signed .apk

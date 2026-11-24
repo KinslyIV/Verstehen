@@ -96,15 +96,15 @@ async function previewHandshake(child: ChildProcess): Promise<number> {
 	}
 }
 
-interface UpstreamForwarder {
+interface TcpForwarder {
 	readonly port: number;
 	pause(): void;
 	pointTo(port: number): void;
 	close(): Promise<void>;
 }
 
-/** Keep one stable upstream listener so `restartSidecar()` swaps backend ports without restarting Vite. */
-async function createUpstreamForwarder(initialPort: number): Promise<UpstreamForwarder> {
+/** Keep one stable listener so upstream port swaps or offline pauses preserve the bound port. */
+async function createTcpForwarder(initialPort: number): Promise<TcpForwarder> {
 	let targetPort: number | null = initialPort;
 	const sockets = new Set<Socket>();
 	const server = createServer((client) => {
@@ -251,6 +251,8 @@ export const test = base.extend<{
 	serverAdmin: { token: string };
 	sidecarControl: { restart: () => Promise<void> };
 	restartSidecar: () => Promise<void>;
+	networkControl: { setOffline: (offline: boolean) => void };
+	setOffline: (offline: boolean) => Promise<void>;
 	teardownControl: {
 		run: <T>(paths: readonly string[], action: () => Promise<T>) => Promise<T>;
 		isExpected: (request: Request) => boolean;
@@ -277,6 +279,27 @@ export const test = base.extend<{
 	restartSidecar: async ({ baseURL, sidecarControl }, use) => {
 		if (!baseURL) throw new Error('Preview is not started');
 		await use(() => sidecarControl.restart());
+	},
+	networkControl: async ({ goesOffline }, use) => {
+		await use({
+			setOffline: () => {
+				throw new Error(
+					goesOffline ? 'Preview is not started' : 'setOffline requires goesOffline: true'
+				);
+			}
+		});
+	},
+	setOffline: async ({ baseURL, context, networkControl }, use) => {
+		if (!baseURL) throw new Error('Preview is not started');
+		await use(async (offline) => {
+			if (offline) {
+				await context.setOffline(true);
+				networkControl.setOffline(true);
+			} else {
+				networkControl.setOffline(false);
+				await context.setOffline(false);
+			}
+		});
 	},
 	dataDirectory: async ({ script, learnHarnessFolder }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
@@ -311,7 +334,16 @@ export const test = base.extend<{
 		});
 	},
 	baseURL: async (
-		{ script, client, playwright, dataDirectory, sidecarControl, serverAdmin },
+		{
+			script,
+			client,
+			goesOffline,
+			playwright,
+			dataDirectory,
+			sidecarControl,
+			networkControl,
+			serverAdmin
+		},
 		use
 	) => {
 		const env = Object.fromEntries(
@@ -325,7 +357,8 @@ export const test = base.extend<{
 		const remote = client === 'remote';
 		const sidecarArguments = remote ? ['--server', '--port', '0'] : [];
 		const children: ChildProcess[] = [];
-		let forwarder: UpstreamForwarder | undefined;
+		let upstreamForwarder: TcpForwarder | undefined;
+		let browserForwarder: TcpForwarder | undefined;
 		try {
 			let sidecar = await start(
 				resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -334,7 +367,7 @@ export const test = base.extend<{
 			);
 			children.push(sidecar);
 			const port = await handshake(sidecar);
-			forwarder = await createUpstreamForwarder(port);
+			upstreamForwarder = await createTcpForwarder(port);
 			const launchPreview = async (
 				upstreamPort: number
 			): Promise<{ child: ChildProcess; port: number }> => {
@@ -367,10 +400,19 @@ export const test = base.extend<{
 					}
 				}
 			};
-			const { port: previewPort } = await launchPreview(forwarder.port);
-			const url = `http://127.0.0.1:${previewPort}`;
+			const { port: previewPort } = await launchPreview(upstreamForwarder.port);
+			let browserPort = previewPort;
+			if (goesOffline) {
+				browserForwarder = await createTcpForwarder(previewPort);
+				browserPort = browserForwarder.port;
+				networkControl.setOffline = (offline) => {
+					if (offline) browserForwarder?.pause();
+					else browserForwarder?.pointTo(previewPort);
+				};
+			}
+			const url = `http://127.0.0.1:${browserPort}`;
 			sidecarControl.restart = async () => {
-				forwarder?.pause();
+				upstreamForwarder?.pause();
 				await stop(sidecar);
 				sidecar = await start(
 					resolve(appDirectory, '../backend/.venv/bin/verstehen'),
@@ -378,7 +420,7 @@ export const test = base.extend<{
 					env
 				);
 				children.push(sidecar);
-				forwarder?.pointTo(await handshake(sidecar));
+				upstreamForwarder?.pointTo(await handshake(sidecar));
 			};
 			if (script !== 'none') {
 				const api = await playwright.request.newContext({ baseURL: url });
@@ -400,7 +442,8 @@ export const test = base.extend<{
 			}
 			await use(url);
 		} finally {
-			await forwarder?.close();
+			await browserForwarder?.close();
+			await upstreamForwarder?.close();
 			await Promise.all(children.map(stop));
 		}
 	},
@@ -457,10 +500,14 @@ export const test = base.extend<{
 	browserErrors: [
 		async ({ page, expectedStatuses, goesOffline, teardownControl }, use, testInfo) => {
 			const errors: string[] = [];
+			const offlineError = (text: string) =>
+				/ERR_(INTERNET_DISCONNECTED|INCOMPLETE_CHUNKED_ENCODING|CONNECTION_RESET|EMPTY_RESPONSE)/.test(
+					text
+				);
 			page.on('console', (message) => {
 				if (
 					message.type() === 'error' &&
-					!(goesOffline && message.text().includes('ERR_INTERNET_DISCONNECTED')) &&
+					!(goesOffline && offlineError(message.text())) &&
 					!expectedStatuses.some((status) =>
 						message
 							.text()
@@ -475,7 +522,7 @@ export const test = base.extend<{
 			page.on(
 				'requestfailed',
 				(request) =>
-					!(goesOffline && request.failure()?.errorText.includes('ERR_INTERNET_DISCONNECTED')) &&
+					!(goesOffline && offlineError(request.failure()?.errorText ?? '')) &&
 					!teardownControl.isExpected(request) &&
 					!(
 						request.failure()?.errorText.includes('ERR_ABORTED') &&

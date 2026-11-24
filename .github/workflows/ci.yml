@@ -55,7 +55,7 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: app/package-lock.json
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
       - run: npm ci --prefix app
       - name: Build the debug .apk
         env:

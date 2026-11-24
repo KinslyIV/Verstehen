@@ -157,7 +157,14 @@ merges.
   per-child stdout handshake, and a persistent local upstream forwarder across sidecar restarts),
   and the duplicate probe handoff race (keeping `turn_in_flight` true via `runtime.handoff_starting`
   and deferring `turn-settled` across settlement until `start("handoff")` claims the turn or fails)
-  are fixed. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
+  are fixed. The `mobile-settings` race (`DELETE /api/auth/devices/...` returning `200` with an
+  unread body aborted on navigation with `net::ERR_ABORTED`) is fixed by draining non-streaming
+  void/status responses in `app/src/lib/api/client.ts`, the `test_sync.py` `two_backends()` race
+  (background sync loops restarted by `configure()` racing with `flush_deferred`) is fixed by
+  keeping the fixture's `sync_service` closed, and the `mobile-reconnect` race
+  (`context.setOffline(true)` not severing an already-open loopback `/stream` socket) is fixed by
+  cutting the browser-facing verify forwarder's live sockets via `setOffline` alongside
+  `context.setOffline`. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
