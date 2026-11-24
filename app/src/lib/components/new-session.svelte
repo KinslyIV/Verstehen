@@ -62,6 +62,13 @@
 			else if (cause instanceof ApiError && cause.code === 'model_unavailable') {
 				notice = cause.reason ?? cause.message;
 				menu = true;
+			} else if (cause instanceof ApiError && cause.status === 400 && folderId) {
+				error = `${cause.message} Your next message starts the session at the top level.`;
+				created = undefined;
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				await goto(resolve('/(lesson)/session/new') + newSessionQuery(kind), {
+					replaceState: true
+				});
 			} else error = OPENING_FAILURE;
 		} finally {
 			busy = false;

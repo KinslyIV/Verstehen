@@ -278,7 +278,9 @@
 										(call) => call.messageId === entry.entry_id && !call.question
 									)}
 							{#if thinking || prose.length || malformed.length}
-								<Scroller.Item>
+								<Scroller.Item
+									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+								>
 									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
 									{#each prose as item, i (i)}
 										{#if item.kind === 'text'}

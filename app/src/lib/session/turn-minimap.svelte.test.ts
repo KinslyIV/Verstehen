@@ -31,7 +31,8 @@ test('clicking_a_tick_scrolls_its_item_into_view_and_highlights_it', async () =>
 		.toHaveAttribute('aria-current', 'true');
 });
 
-test('a_single_exchange_shows_no_rail', async () => {
+test('a_single_exchange_shows_a_rail_with_one_tick', async () => {
 	const screen = await render(Harness, { ticks: ticks.slice(0, 1) });
-	await expect.element(screen.getByTestId('turn-minimap')).not.toBeInTheDocument();
+	await expect.element(screen.getByTestId('turn-tick')).toBeInTheDocument();
+	await expect.element(screen.getByRole('button', { name: /^You:/ })).toBeInTheDocument();
 });

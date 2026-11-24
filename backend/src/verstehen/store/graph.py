@@ -415,6 +415,14 @@ class GraphStore:
             yield ledger
 
     @asynccontextmanager
+    async def transaction_with_connection(
+        self,
+    ) -> AsyncGenerator[tuple[Connection, GraphLedger]]:
+        """Run a graph transaction that also lets the caller write other tables atomically."""
+        async with self._ledger_transaction() as (connection, ledger):
+            yield connection, ledger
+
+    @asynccontextmanager
     async def transaction_with_session_ids(
         self,
     ) -> AsyncGenerator[tuple[GraphLedger, set[str]]]:

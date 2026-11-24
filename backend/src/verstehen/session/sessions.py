@@ -125,11 +125,6 @@ class SessionService:
         kind: SessionKind = "teach",
         folder_id: str | None = None,
     ) -> Session | Refused:
-        if folder_id is not None and not any(
-            folder.id == folder_id
-            for folder in (await self.graph_store.read()).organization.folders
-        ):
-            return Refused(400, {"error": "Folder no longer exists."})
         if pick is not None:
             try:
                 pick = await self.resolver_service.normalize(pick)
@@ -137,14 +132,20 @@ class SessionService:
                 return Refused(503, error.envelope())
         else:
             pick = (await self.resolver_service.settings_store.read()).models.strong
-        session = await self.sessions_store.create(
-            title_from_prompt(title or "Untitled session"), pick, kind=kind
+        session = self.sessions_store.new_session(
+            title_from_prompt(title or "Untitled session"), pick, kind
         )
-        if folder_id is not None:
-            async with self.graph_store.transaction() as ledger:
+        async with self.graph_store.transaction_with_connection() as (
+            connection,
+            ledger,
+        ):
+            if folder_id is not None:
+                if not any(f.id == folder_id for f in ledger.organization.folders):
+                    return Refused(400, {"error": "Folder no longer exists."})
                 ledger.organization.placements[session.id] = SourcePlacement(
                     folder_id=folder_id
                 )
+            await self.sessions_store.insert(connection, session)
         if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
                 session.id,

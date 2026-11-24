@@ -70,6 +70,7 @@ test.describe('on a phone', () => {
 	test('thread-navigation-phone', async ({ page }) => {
 		await startLesson(page, 'Teach me about derivatives');
 		await expect(page.getByTestId('question-dock')).toBeVisible();
+		await expect(page.getByTestId('turn-minimap').getByTestId('turn-tick')).toHaveCount(1);
 		await expect(page.getByTestId('turn-minimap')).toBeHidden();
 		await page.screenshot({ path: test.info().outputPath('phone.png'), animations: 'disabled' });
 	});

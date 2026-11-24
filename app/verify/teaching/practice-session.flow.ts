@@ -19,6 +19,14 @@ test('practice-session', async ({ page, request }) => {
 	await expect(page.getByRole('link', { name: /Problem waiting/ })).toBeVisible();
 	await page.screenshot({ path: test.info().outputPath('posed.png'), animations: 'disabled' });
 
+	// The problem has a tick on the turn rail that jumps to its card.
+	const ticks = page.getByTestId('turn-minimap').getByTestId('turn-tick');
+	await expect(ticks).toHaveCount(2);
+	await ticks.first().click();
+	await ticks.last().click();
+	await expect(page.getByTestId('problem-card')).toBeInViewport();
+	await expect(ticks.last()).toHaveAttribute('data-active', 'true');
+
 	// Reloading an open problem keeps the dock and starts no continue turn.
 	await page.reload();
 	await expect(dock).toContainText('Differentiate');

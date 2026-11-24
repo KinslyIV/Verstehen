@@ -56,7 +56,7 @@ test('job-visual-annotate', async ({ page, request, appendEntries }, testInfo) =
 		.poll(async () => (await zoomed.boundingBox())!.width)
 		.toBeGreaterThan((await figure.getByRole('img', { name: 'Figure' }).boundingBox())!.width);
 	await page.screenshot({ path: testInfo.outputPath('figure-zoomed.png'), animations: 'disabled' });
-	await page.keyboard.press('Escape');
+	await page.getByTestId('zoom-close').click();
 	await expect(zoomed).toHaveCount(0);
 	await photo.scrollIntoViewIfNeeded();
 	await photo.getByTestId('visual-zoom').click();

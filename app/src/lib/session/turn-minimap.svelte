@@ -39,7 +39,7 @@
 	}
 </script>
 
-{#if ticks.length > 1}
+{#if ticks.length > 0}
 	<div
 		bind:clientHeight={areaHeight}
 		data-testid="turn-minimap"

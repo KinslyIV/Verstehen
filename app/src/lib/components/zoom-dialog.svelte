@@ -27,7 +27,7 @@
 			aria-label="Close zoomed view"
 			onclick={() => dialog?.close()}
 			data-testid="zoom-close"
-			class="absolute top-3 right-3 rounded-md bg-black/50 p-2 text-white hover:bg-black/70"
+			class="absolute top-3 right-3 z-10 rounded-md bg-black/70 p-2 text-white ring-1 ring-white/40 hover:bg-black/90"
 		>
 			<X class="size-4" />
 		</button>
