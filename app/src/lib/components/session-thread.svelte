@@ -18,6 +18,7 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { forwardDockWheel } from '#lib/session/dock-wheel.js';
 	import { onAndroidBack } from '#lib/session/android-back.js';
 	import TurnMinimap from '#lib/session/turn-minimap.svelte';
 	import { turnTicks } from '#lib/session/turn-minimap.js';
@@ -70,6 +71,20 @@
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion | ActiveProblem>();
 	let previousHeight = 0;
+	let dockHeight = $state(0);
+	let reserve = $state(0);
+	let reservedFor: string | undefined;
+	const dockOwner = $derived(pending?.key ?? controller.activeProblem?.toolCallId);
+
+	/** The transcript's bottom reserve: the dock's tallest height while one question or problem owns it. */
+	$effect(() => {
+		const height = dockHeight;
+		const owner = dockOwner;
+		untrack(() => {
+			reserve = owner && owner === reservedFor ? Math.max(reserve, height) : height;
+			reservedFor = owner;
+		});
+	});
 
 	function handleScroll() {
 		if (!viewport) return;
@@ -190,7 +205,12 @@
 
 <svelte:window onkeydown={escape} />
 
-<section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
+<section
+	class="relative flex h-full min-h-0 min-w-0 flex-col"
+	aria-label="Lesson"
+	style:--dock-reserve="{reserve}px"
+	style:--dock-height="{dockHeight}px"
+>
 	{#if controller.record}<div
 			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
 		>
@@ -234,7 +254,7 @@
 				aria-label="Conversation"
 			>
 				<Scroller.Content
-					class="mx-auto w-full max-w-(--verstehen-transcript-max) gap-6 px-6 py-6 max-md:px-4"
+					class="mx-auto w-full max-w-(--verstehen-transcript-max) gap-6 px-6 pt-6 pb-[calc(var(--dock-reserve)+1.5rem)] max-md:px-4"
 				>
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
@@ -389,23 +409,10 @@
 				aria-label="Scroll to bottom"
 				variant="outline"
 				size="icon"
-				class="rounded-full shadow-lg ring-1 ring-foreground/10"
+				class="rounded-full shadow-lg ring-1 ring-foreground/10 data-[direction=end]:bottom-[calc(var(--dock-height)+2.5rem)]"
 			/>
 		</Scroller.Root>
 	</Scroller.Provider>
-	{#if controller.error}<div
-			role="alert"
-			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
-		>
-			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
-					variant="outline"
-					size="sm"
-					disabled={controller.busy || controller.compacting}
-					onclick={() => void controller.send('retry')}
-				>
-					Retry
-				</Button>{/if}
-		</div>{/if}
 	{#snippet responseItems(
 		entryId: string,
 		items: ResponseItem[],
@@ -466,74 +473,99 @@
 			bind:open={controller.modelMenuOpen}
 			notice={controller.notice}
 		/>{/snippet}
-	{#if pending}
-		{#key pending.key}
-			<QuestionDock
-				question={pending.question}
-				initialDraft={controller.getQuestionDraft(pending.key)}
-				teach={phase === 'teach'}
-				requiresReveal={questionNeedsReveal(
-					pending.question.tool,
-					{ type: pending.question.questionType },
-					phase
-				)}
-				wasQuestion={controller.questionArrival.wasQuestion}
-				{expanded}
-				busy={controller.busy}
-				compacting={controller.compacting}
-				modelMenuOpen={controller.modelMenuOpen}
-				onexpand={() => void expand()}
-				onsubmit={(answer, draft) => {
-					if (pending) void controller.answerQuestion(pending, answer, draft);
-				}}
-				onstop={() => void controller.stop()}
-				onworking={(text) => (controller.working = text)}
-				{models}
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 z-20">
+		<div
+			bind:clientHeight={dockHeight}
+			{@attach forwardDockWheel(() => viewport)}
+			class="pointer-events-auto relative bg-background"
+		>
+			<div
+				aria-hidden="true"
+				class="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-linear-to-t from-background to-transparent"
+			></div>
+			{#if controller.error}<div
+					role="alert"
+					class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
+				>
+					<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
+							variant="outline"
+							size="sm"
+							disabled={controller.busy || controller.compacting}
+							onclick={() => void controller.send('retry')}
+						>
+							Retry
+						</Button>{/if}
+				</div>{/if}
+			{#if pending}
+				{#key pending.key}
+					<QuestionDock
+						question={pending.question}
+						initialDraft={controller.getQuestionDraft(pending.key)}
+						teach={phase === 'teach'}
+						requiresReveal={questionNeedsReveal(
+							pending.question.tool,
+							{ type: pending.question.questionType },
+							phase
+						)}
+						wasQuestion={controller.questionArrival.wasQuestion}
+						{expanded}
+						busy={controller.busy}
+						compacting={controller.compacting}
+						modelMenuOpen={controller.modelMenuOpen}
+						onexpand={() => void expand()}
+						onsubmit={(answer, draft) => {
+							if (pending) void controller.answerQuestion(pending, answer, draft);
+						}}
+						onstop={() => void controller.stop()}
+						onworking={(text) => (controller.working = text)}
+						{models}
+					/>
+				{/key}
+			{:else if controller.activeProblem}
+				{#key controller.activeProblem.toolCallId}
+					<PracticeDock
+						statement={controller.activeProblem.statement}
+						bind:thinking={controller.thinkingDraft}
+						{expanded}
+						busy={controller.busy}
+						compacting={controller.compacting}
+						modelMenuOpen={controller.modelMenuOpen}
+						onexpand={() => void expand()}
+						onsubmit={() => void controller.sendThinking()}
+						onstop={() => void controller.stop()}
+						{models}
+					/>
+				{/key}
+			{:else}
+				<Composer
+					bind:draft={controller.draft}
+					busy={controller.busy}
+					compacting={controller.compacting}
+					disabled={controller.loading}
+					nextReady={controller.nextReady}
+					onnext={() => void controller.sendNext()}
+					placeholder={controller.nextReady
+						? 'Ask anything, or press Enter for the next one.'
+						: 'Ask, answer, or steer the lesson…'}
+					queuedSteers={controller.queuedSteers}
+					onsend={() => void controller.send()}
+					onstop={() => void controller.stop()}
+					{models}
+				/>
+			{/if}
+			<StatsBar
+				sessionId={id}
+				busy={controller.busy || controller.compacting}
+				pick={controller.record?.model_account && controller.record?.model_id
+					? {
+							account: controller.record.model_account,
+							model: controller.record.model_id,
+							thinking_level: controller.record.thinking_level
+						}
+					: null}
 			/>
-		{/key}
-	{:else if controller.activeProblem}
-		{#key controller.activeProblem.toolCallId}
-			<PracticeDock
-				statement={controller.activeProblem.statement}
-				bind:thinking={controller.thinkingDraft}
-				{expanded}
-				busy={controller.busy}
-				compacting={controller.compacting}
-				modelMenuOpen={controller.modelMenuOpen}
-				onexpand={() => void expand()}
-				onsubmit={() => void controller.sendThinking()}
-				onstop={() => void controller.stop()}
-				{models}
-			/>
-		{/key}
-	{:else}
-		<Composer
-			bind:draft={controller.draft}
-			busy={controller.busy}
-			compacting={controller.compacting}
-			disabled={controller.loading}
-			nextReady={controller.nextReady}
-			onnext={() => void controller.sendNext()}
-			placeholder={controller.nextReady
-				? 'Ask anything, or press Enter for the next one.'
-				: 'Ask, answer, or steer the lesson…'}
-			queuedSteers={controller.queuedSteers}
-			onsend={() => void controller.send()}
-			onstop={() => void controller.stop()}
-			{models}
-		/>
-	{/if}
-	<StatsBar
-		sessionId={id}
-		busy={controller.busy || controller.compacting}
-		pick={controller.record?.model_account && controller.record?.model_id
-			? {
-					account: controller.record.model_account,
-					model: controller.record.model_id,
-					thinking_level: controller.record.thinking_level
-				}
-			: null}
-	/>
+		</div>
+	</div>
 	{#if abortTarget}
 		<AbortTurnDialog
 			mode={abortTarget === 'turn' ? 'turn' : 'key' in abortTarget ? 'question' : 'problem'}

@@ -78,6 +78,14 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **Scroll to bottom:** the thread's `<Scroller.Button>` is always mounted (also while a turn or a
   question is pending) and shows only while scrolled away from the end; the turn minimap rail is
   documented in [session](session.md#turn-minimap).
+- **Floating bottom block:** as in LearnHarness, the error line, the composer or the question and
+  practice dock (and their folded bars), and the stats bar sit in one overlay over the bottom of the
+  transcript (`session-thread.svelte`), with a short gradient above it. The overlay's height
+  (`bind:clientHeight`) becomes the transcript's bottom padding (`--dock-reserve`); while one
+  question or problem owns the dock the reserve only grows, so folding and unfolding (still at 96 and
+  16 px from the end) are visual only and never change the scroll area's height. The scroll-to-bottom
+  button follows the live overlay height. A wheel over the overlay scrolls the transcript unless
+  something inside it can scroll (`session/dock-wheel.ts`).
 - **Stats bar:** `stats-bar.svelte` sits under the composer or dock on `/session/{id}` once stats
   load (`41k / 200k · CLI`, `? · —` before a completed reply, absent on `/` or `/session/new`):
   `—` for an unpriced model, never a dollar zero. Its popover is Session stats (see [session](session.md#session-stats)); outside
