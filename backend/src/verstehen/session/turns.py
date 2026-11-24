@@ -145,6 +145,7 @@ class TurnState:
     saved: list[Entry] = field(default_factory=list)
     before_compaction: list[Entry] | None = None
     dropped: set[str] = field(default_factory=set)
+    for_handoff: bool = False
 
     @property
     def role(self) -> Literal["teacher", "prober", "practice"]:
@@ -330,6 +331,10 @@ class TurnService:
             session = await self.sessions_store.get(state.session_id)
             if session is None:
                 return Refused(404, {"error": "Unknown session"})
+            if state.runtime.handoff_starting and not state.for_handoff:
+                return Refused(
+                    409, {"error": "A turn is already running for this session"}
+                )
             state.session_kind = session.kind
             state.entries = await self.entries_store.list(state.session_id)
             try:
@@ -436,7 +441,7 @@ class TurnService:
         return appends
 
     async def claim(self, state: TurnState) -> Refused | Continue:
-        state.run = state.runtime.claim_turn()
+        state.run = state.runtime.claim_turn(for_handoff=state.for_handoff)
         if state.run is None:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
@@ -463,7 +468,11 @@ class TurnService:
         async with state.runtime.lock:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
-            if state.runtime.run is not None or state.runtime.compaction is not None:
+            if (
+                state.runtime.run is not None
+                or state.runtime.compaction is not None
+                or (state.runtime.handoff_starting and not state.for_handoff)
+            ):
                 return Refused(
                     409, {"error": "A turn is already running for this session"}
                 )
@@ -639,8 +648,16 @@ class TurnService:
         state.run.task = asyncio.create_task(self.run(state))
         return Continue(state)
 
-    async def start(self, session_id: str, input: TurnInput) -> Refused | Continue:
-        state = TurnState(session_id, input, self.runtimes.get(session_id), [])
+    async def start(
+        self, session_id: str, input: TurnInput, *, for_handoff: bool = False
+    ) -> Refused | Continue:
+        state = TurnState(
+            session_id,
+            input,
+            self.runtimes.get(session_id),
+            [],
+            for_handoff=for_handoff,
+        )
         for stage in (
             self.validate,
             self.model_gate,
@@ -809,13 +826,56 @@ class TurnService:
         await self.entries_store.append(state.session_id, [*entries, *markers])
         state.runtime.delivery.discard(entry.entry_id for entry in entries)
         self.notify_changed(state.session_id)
-        await self.finish(state)
-        if not self.runtimes.closing and handoff_owed([*state.entries, *entries]):
-            await self.start(state.session_id, TurnInput(type="handoff"))
+        reserve_handoff = not self.runtimes.closing and handoff_owed(
+            [*state.entries, *entries]
+        )
+        if reserve_handoff:
+            await self.finish(state, reserve_handoff=True)
+            await self.start_reserved_handoff(state)
+        else:
+            await self.finish(state)
         await self.compaction_service.kick(state.session_id, state.role)
         await self.pump_deliveries(state.session_id)
         if not self.runtimes.closing:
             await self.extraction_service.trigger(state.session_id)
+
+    async def start_reserved_handoff(self, state: TurnState) -> None:
+        assert state.run is not None
+        error_text: str | None = None
+        try:
+            result = await self.start(
+                state.session_id, TurnInput(type="handoff"), for_handoff=True
+            )
+            if isinstance(result, Refused):
+                error_text = (
+                    str(result.reason.get("error", "")) or "Probe handoff failed"
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            error_text = str(error)
+        finally:
+            await self.release_handoff_reservation(
+                state.runtime, state.session_id, state.run, error_text
+            )
+
+    async def release_handoff_reservation(
+        self,
+        runtime: SessionRuntime,
+        session_id: str,
+        probe_run: TurnRun,
+        error_text: str | None = None,
+    ) -> None:
+        async with runtime.lock:
+            if not runtime.handoff_starting:
+                return
+            if error_text is not None:
+                runtime.remember_failure(error_text)
+                probe_run.publish(TurnEvent(type="error", error_text=error_text))
+            runtime.end_handoff()
+        self.notifications.publish(
+            Notification(type="turn-settled", session_id=session_id)
+        )
 
     async def pump_deliveries(self, session_id: str) -> None:
         try:
@@ -823,16 +883,25 @@ class TurnService:
         except Exception:
             logger.exception("Delivery pump failed for session %s", session_id)
 
-    async def finish(self, state: TurnState, *, apply_dismissal: bool = True) -> None:
+    async def finish(
+        self,
+        state: TurnState,
+        *,
+        apply_dismissal: bool = True,
+        reserve_handoff: bool = False,
+    ) -> None:
         assert state.run is not None
         async with state.runtime.lock:
             if apply_dismissal and state.run.parked_dismissal is not None:
                 await self.apply_parked_dismissal(state, state.run.parked_dismissal)
             state.runtime.delivery.release(state.run)
             state.runtime.release_turn(state.run)
-        self.notifications.publish(
-            Notification(type="turn-settled", session_id=state.session_id)
-        )
+            if reserve_handoff:
+                state.runtime.begin_handoff()
+        if not reserve_handoff:
+            self.notifications.publish(
+                Notification(type="turn-settled", session_id=state.session_id)
+            )
 
 
 def update_response(

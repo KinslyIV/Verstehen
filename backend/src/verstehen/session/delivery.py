@@ -66,7 +66,7 @@ class DeliveryService:
         if not runtime.delivery.pending_markers():
             return
         async with runtime.lock:
-            if runtime.run is not None or runtime.compaction is not None:
+            if runtime.turn_in_flight or runtime.compaction is not None:
                 return
             entries = await self.entries_store.list(session_id)
         if (

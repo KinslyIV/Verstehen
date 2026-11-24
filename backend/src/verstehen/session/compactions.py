@@ -88,7 +88,7 @@ class CompactionService:
     async def kick(self, session_id: str, role: TurnRole) -> None:
         runtime = self.runtimes.get(session_id)
         async with runtime.lock:
-            if runtime.compaction is None:
+            if runtime.compaction is None and not runtime.turn_in_flight:
                 await self.start_if_needed(session_id, runtime, role)
 
     async def start_if_needed(

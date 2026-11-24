@@ -180,10 +180,16 @@ def test_input_is_saved_before_model_runs_and_reply_before_claim_release(
         ):
             finish = turn_service.finish
 
-            async def check_before_release(state, *, apply_dismissal=True):
+            async def check_before_release(
+                state, *, apply_dismissal=True, reserve_handoff=False
+            ):
                 saved = await turn_service.entries_store.list(session_id)
                 assert len(saved) == 2 and saved[-1].kind == "assistant"
-                await finish(state, apply_dismissal=apply_dismissal)
+                await finish(
+                    state,
+                    apply_dismissal=apply_dismissal,
+                    reserve_handoff=reserve_handoff,
+                )
 
             turn_service.finish = check_before_release
             run = await start(turn_service, session_id)

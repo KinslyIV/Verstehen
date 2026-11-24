@@ -103,7 +103,7 @@ class SessionService:
         runtime = self.runtimes.get(session.id)
         return ListedSession(
             session,
-            runtime.run is not None,
+            runtime.turn_in_flight,
             runtime.compaction is not None,
             pending_question=dangling_question_of(window) is not None,
             pending_problem=session.kind == "practice"
@@ -151,11 +151,13 @@ class SessionService:
             if session is None:
                 return Refused(404, {"error": "Not found"})
             entries = await self.entries_store.list(session_id)
-            failed = failed_response_at_end(entries) if runtime.run is None else None
+            failed = (
+                failed_response_at_end(entries) if not runtime.turn_in_flight else None
+            )
             return SessionSnapshot(
                 session,
                 entries,
-                runtime.run is not None,
+                runtime.turn_in_flight,
                 runtime.failure or (failed.error_text if failed else None),
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
@@ -247,7 +249,7 @@ class SessionService:
         async with runtime.lock:
             if await self.sessions_store.get(session_id) is None:
                 return Refused(404, {"error": "Not found"})
-            if runtime.run is not None:
+            if runtime.turn_in_flight:
                 return Refused(
                     409,
                     {
@@ -310,6 +312,8 @@ class SessionService:
 
     async def turn_events(self, session_id: str) -> AsyncGenerator[TurnEvent]:
         runtime = self.runtimes.get(session_id)
+        if runtime.run is None and runtime.handoff_starting:
+            await runtime.handoff_ready.wait()
         run = runtime.run
         if run is None:
             if runtime.failure is not None:
