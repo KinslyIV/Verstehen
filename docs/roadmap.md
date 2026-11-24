@@ -56,33 +56,26 @@ All of this is merged into `main`.
 
 ## Next
 
-1. **Finish the waiting work.** `chatgpt-catalog-cache` (ChatGPT model lists cached per account),
-   docs redesign, slim verification, and `reasoning-resend` (ChatGPT encrypted reasoning resent to
-   the same model) are in `dev`; `learnharness-import` (`verstehen-sidecar import-learnharness
-   <folder> [--dry-run]`: replace every session, job, usage row, and graph table with a
-   LearnHarness data folder after a backup and a typed `replace`, converting ChatGPT reasoning so
-   it can be replayed) awaits review before merging into `dev`. Then `dev` merges into `main`.
-2. **M10 Practice sessions** (built on `m10-practice`, awaiting review). The practitioner agent
-   with `problem` and `conclude`, practice sessions (`0010_practice_sessions.sql`), the practice
-   graph tools and problem targets, practice blocks in the side chat's lesson document, the
-   practice dock, `Next problem →`, sidebar and graph creation flows, and LearnHarness import of
-   practice sessions.
-3. **M11 Smaller features and later providers.** First, M11a ([plan](plans/m11-folders-search-stats.md)):
-   LH's shared sidebar folders and graph folder filter, sidebar title search (LH's fuzzy match), and
-   the stats bar below the composer (context against the model's limit, session cost, per-turn
-   usage). Then the [LH catch-up list](#lh-catch-up); the activity
-   dock (the right panel's Activity tab is a placeholder until then); themes as shadcn theme
-   variables; a prompt-override UI if needed; API keys, a custom endpoint, Copilot (Pydantic AI has
-   a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a subscription login
-   would be our own code).
-4. **Mobile app (Android) and two-way sync.** Independent of M10/M11 (can be scheduled before or
-   after them): local-first laptop backend syncing automatically with an always-on Tailscale server
-   backend, plus a client-only Capacitor Android `.apk` paired by short code. Approved plan:
-   [mobile-and-sync](plans/mobile-and-sync.md). Milestones A–C are in `dev`; Milestone D (the
-   Android app, phone and tablet UI, and SSE recovery, with the former E folded in) is planned in
-   [mobile-sync-d](plans/mobile-sync-d.md). Its PR 1 (the Android app, remote mode, and `/pair`) is
-   in `dev`; PR 2 (phone and tablet layouts, graph touch, phone Settings, SSE recovery) is built
-   and waits for review.
+1. **Release `0.2.0` (`dev` → `main`).** Already merged into `dev` and queued for `0.2.0` on
+   `main`: `chatgpt-catalog-cache`, docs redesign (PR #4), slim verification (PR #5),
+   `reasoning-resend` (PR #3), worker and extraction simplifications (PR #7, PR #10),
+   `learnharness-import` (PR #9; `verstehen-sidecar import-learnharness <folder> [--dry-run]`),
+   **M10 Practice sessions** (PR #14; practitioner agent with `problem` and `conclude`,
+   `0010_practice_sessions.sql`, practice dock, sidebar/graph entry points, and LearnHarness
+   practice import), **Mobile app (Android) and two-way sync Milestones A–D** (PR #12–#17;
+   local-first laptop ↔ Tailscale server sync, Settings → Sync SSH install/update/rollback,
+   Capacitor Android `.apk` with `/pair`, phone/tablet layouts, `/graph` touch, phone Settings, and
+   SSE recovery), **Desktop responsiveness** (PR #18; early shell paint, saved model catalogs,
+   Thinking slider, lighter reads, and prompt editor), **M11a** (PR #19;
+   [plan](plans/m11-folders-search-stats.md), shared sidebar folders, graph folder filter, sidebar
+   title search, stats bar, 90% quiz confidence, and prompt editor follow-ups), and **Python 3.15
+   + PEP 810 lazy imports** (PR #20). `release/0.2.0` bumps the version to `0.2.0` and refreshes
+   [status](status.md) and this roadmap ahead of merging `dev` into `main`.
+2. **M11b Smaller features and later providers.** Remaining items from the
+   [LH catch-up list](#lh-catch-up); the activity dock (the right panel's Activity tab is a
+   placeholder until then); themes as shadcn theme variables; API keys, a custom endpoint, Copilot
+   (Pydantic AI has a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a
+   subscription login would be our own code).
 
 ## LH catch-up
 
