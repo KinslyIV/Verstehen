@@ -18,6 +18,9 @@ Run from the repository root after `make setup`:
 
 When to run what:
 
+- **Subagents / implementers:** run ONLY the scoped checks and flows for the changes you made
+  (`make check AREA='…'` and `make verify FLOW='…'` / `AREA='…'`). Never run the full `make check`
+  or `make verify` suite from an implementer subagent.
 - **While editing:** the affected `make check-backend AREA='…'` / `make check-frontend AREA='…'`
   (add `SLOW=1` when touching CLI subprocess or headless Chromium worker tests), and the affected
   fake-model flows batched in one `make verify AREA='…'` or `make verify FLOW='…'` (or
@@ -25,9 +28,10 @@ When to run what:
 - **Before every commit:** `make check AREA='…'` for the touched area(s) (lints, types, and custom
   checks always run across the whole repo; pytest and Vitest scope to `AREA` and skip
   `@pytest.mark.slow` unless `SLOW=1`).
-- **Before opening a PR into `dev`:** full `make check` (runs all areas including `@pytest.mark.slow`)
-  and full `make verify` (or `make verify-run` when the build guard passes). Run `make verify-live`
-  once per milestone before the milestone's PR into `dev`.
+- **Before opening a PR into `dev` (orchestrator only):** full `make check` (runs all areas
+  including `@pytest.mark.slow`) and full `make verify` (or `make verify-run` when the build guard
+  passes), run once right before opening the PR. Run `make verify-live` once per milestone before
+  the milestone's PR into `dev`.
 - **On `dev` → `main`:** CI runs `make check` and `make verify`.
 - **Docs-only and offline tooling work:** `make check AREA=shell` on commits and full `make check`
   before the PR; no UI flows (CI still runs `make verify`).
