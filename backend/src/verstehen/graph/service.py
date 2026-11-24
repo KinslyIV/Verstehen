@@ -1,4 +1,5 @@
 from collections.abc import Awaitable, Callable
+from contextlib import nullcontext
 
 from pydantic import BaseModel
 
@@ -11,9 +12,12 @@ from verstehen.graph.deletion import (
 from verstehen.graph.errors import GraphRefused
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.organization import (
+    FolderHoldsSources,
     SourceDirectory,
     apply_organization_action,
     folder_is_empty,
+    known_source_ids,
+    notes_label,
     parse_organization_action,
     source_directory,
     validate_organization,
@@ -23,7 +27,12 @@ from verstehen.graph.render_settings import (
     GraphRenderSettings,
     sanitize_render_settings,
 )
-from verstehen.graph.snapshot import GraphSnapshot, graph_snapshot
+from verstehen.graph.snapshot import (
+    GraphSnapshot,
+    GraphTitles,
+    graph_snapshot,
+    graph_titles,
+)
 from verstehen.store.graph import GraphStore, Position, SourcePlacement
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
@@ -37,6 +46,7 @@ class NodeDeleted(BaseModel):
 
 class PositionsSaved(BaseModel):
     positions: dict[str, Position]
+    revision: int | None
 
 
 class GraphService:
@@ -67,27 +77,30 @@ class GraphService:
             await self.graph_store.read(), await self.sessions_store.list()
         )
 
+    async def titles(self) -> GraphTitles:
+        return graph_titles(await self.sessions_store.list())
+
     async def directory(self) -> SourceDirectory:
         ledger = await self.graph_store.read()
         validate_organization(ledger.organization)
         return source_directory(ledger, await self.sessions_store.list())
 
-    def check_deletion(self, message: str) -> None:
-        if self.extraction_service.running():
-            raise GraphRefused(message, 409, "extraction_running")
-
     async def delete_node(self, id: str) -> NodeDeleted:
-        async with self.graph_store.transaction() as ledger:
-            self.check_deletion("An extraction is running — try again when it finishes")
-            stats = delete_node_traces(ledger, id)
-            if stats is None:
-                raise GraphRefused("No such node", 404, "not_found")
+        with self.extraction_service.deleting_graph(
+            "An extraction is running — try again when it finishes"
+        ):
+            async with self.graph_store.transaction() as ledger:
+                stats = delete_node_traces(ledger, id)
+                if stats is None:
+                    raise GraphRefused("No such node", 404, "not_found")
         return NodeDeleted(stats=stats, revision=ledger.revision)
 
     async def positions(self, raw: object) -> PositionsSaved:
         async with self.graph_store.transaction() as ledger:
+            previous_revision = ledger.revision
             positions = commit_positions(ledger, raw)
-        return PositionsSaved(positions=positions)
+        revision = ledger.revision if ledger.revision != previous_revision else None
+        return PositionsSaved(positions=positions, revision=revision)
 
     async def render_settings(self) -> GraphRenderSettings | None:
         raw = await self.settings_store.get("graph_render_settings")
@@ -105,38 +118,35 @@ class GraphService:
             action = parse_organization_action(raw)
         except ValueError as error:
             raise GraphRefused(str(error)) from error
-        sessions = await self.sessions_store.list()
-        async with self.graph_store.transaction() as ledger:
+        created_id = None
+        rename_chat = False
+        async with self.graph_store.transaction_with_session_ids() as (
+            ledger,
+            session_ids,
+        ):
             validate_organization(ledger.organization)
-            directory = source_directory(ledger, sessions)
-            created_id = None
-            entry = None
             if action.action == "rename-source":
-                entry = next(
-                    (entry for entry in directory.sources if entry.id == action.id),
-                    None,
-                )
-                if entry is None or entry.kind == "missing":
-                    raise GraphRefused("Source no longer exists.")
-                if entry.kind == "notes":
+                if any(source.id == action.id for source in ledger.sources):
                     ledger.organization.placements.setdefault(
-                        entry.id, SourcePlacement()
+                        action.id, SourcePlacement()
                     ).name = action.name
+                elif action.id in session_ids:
+                    rename_chat = True
+                else:
+                    raise GraphRefused("Source no longer exists.")
             else:
                 try:
                     created_id = apply_organization_action(
                         ledger.organization,
                         action,
-                        {entry.id for entry in directory.sources},
+                        known_source_ids(ledger, session_ids),
                     )
+                except FolderHoldsSources as error:
+                    raise GraphRefused(str(error), 409, "folder_not_empty") from error
                 except ValueError as error:
                     raise GraphRefused(str(error)) from error
-        if (
-            action.action == "rename-source"
-            and entry is not None
-            and entry.kind == "chat"
-        ):
-            await self.sessions_store.rename(entry.id, action.name)
+        if rename_chat:
+            await self.sessions_store.rename(action.id, action.name)
             async with self.graph_store.transaction() as ledger:
                 ledger.revision += 1
         result = await self.directory()
@@ -149,65 +159,72 @@ class GraphService:
         targets = [
             entry for entry in directory.sources if entry.id in request.source_ids
         ]
-        if targets:
-            self.check_deletion(
+        chats = [entry for entry in targets if entry.kind == "chat"]
+        with (
+            self.extraction_service.deleting_graph(
                 "An extraction is running — try again when the activity dock drains."
             )
-        chats = [entry for entry in targets if entry.kind == "chat"]
-        if request.delete_sessions:
-            for entry in chats:
-                await self.check_session(entry.id)
-            for entry in chats:
-                await self.delete_session(entry.id)
-        sessions = await self.sessions_store.list()
-        async with self.graph_store.transaction() as ledger:
-            validate_organization(ledger.organization)
-            if targets:
-                self.check_deletion(
-                    "An extraction is running — try again when the activity dock drains."
+            if targets
+            else nullcontext()
+        ):
+            if request.delete_sessions:
+                for entry in chats:
+                    await self.check_session(entry.id)
+                for entry in chats:
+                    await self.delete_session(entry.id)
+            async with self.graph_store.transaction_with_session_ids() as (
+                ledger,
+                session_ids,
+            ):
+                validate_organization(ledger.organization)
+                delete_sources_traces(
+                    ledger, {entry.id for entry in targets}, "delete-nodes"
                 )
-            delete_sources_traces(
-                ledger, {entry.id for entry in targets}, "delete-nodes"
-            )
-            notes = {entry.id for entry in targets if entry.kind == "notes"}
-            ledger.sources = [
-                source for source in ledger.sources if source.id not in notes
-            ]
-            removed = set(request.source_ids) - {
-                entry.id
-                for entry in targets
-                if entry.kind == "chat" and not request.delete_sessions
-            }
-            ledger.organization.placements = {
-                id: p
-                for id, p in ledger.organization.placements.items()
-                if id not in removed
-            }
-            remaining = {
-                entry.id for entry in source_directory(ledger, sessions).sources
-            }
-            changed = True
-            while changed:
-                changed = False
-                for id in request.folder_ids:
-                    folder = next(
-                        (f for f in ledger.organization.folders if f.id == id), None
-                    )
-                    if folder and folder_is_empty(ledger.organization, id, remaining):
-                        ledger.organization.folders.remove(folder)
-                        ledger.organization.placements = {
-                            key: p
-                            for key, p in ledger.organization.placements.items()
-                            if p.folder_id != id
-                        }
-                        changed = True
+                notes = {entry.id for entry in targets if entry.kind == "notes"}
+                ledger.sources = [
+                    source for source in ledger.sources if source.id not in notes
+                ]
+                removed = set(request.source_ids) - {
+                    entry.id
+                    for entry in targets
+                    if entry.kind == "chat" and not request.delete_sessions
+                }
+                ledger.organization.placements = {
+                    id: p
+                    for id, p in ledger.organization.placements.items()
+                    if id not in removed
+                }
+                remaining = known_source_ids(ledger, session_ids)
+                changed = True
+                while changed:
+                    changed = False
+                    for id in request.folder_ids:
+                        folder = next(
+                            (f for f in ledger.organization.folders if f.id == id), None
+                        )
+                        if folder and folder_is_empty(
+                            ledger.organization, id, remaining
+                        ):
+                            ledger.organization.folders.remove(folder)
+                            ledger.organization.placements = {
+                                key: p
+                                for key, p in ledger.organization.placements.items()
+                                if p.folder_id != id
+                            }
+                            changed = True
         return await self.directory()
 
     async def costs(self) -> GraphCostSummary:
-        directory = await self.directory()
+        sessions = await self.sessions_store.list()
+        sources, placements = await self.graph_store.read_notes_sources()
+        titles = {session.id: session.title for session in sessions}
+        titles |= {
+            source.id: notes_label(source, placements.get(source.id))
+            for source in sources
+        }
         return graph_cost_summary(
             await self.usage_store.list_graph(),
-            {s.id: s.label or s.id for s in directory.sources},
+            {id: title for id, title in titles.items() if title},
         )
 
 

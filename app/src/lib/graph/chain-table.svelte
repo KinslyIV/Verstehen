@@ -31,9 +31,8 @@
 	import { picks } from './picks.svelte.js';
 	import SourceBlock from './source-block.svelte';
 	import SourceDragRow from './source-drag-row.svelte';
+	import { SourceDrop } from './source-drop.svelte.js';
 	import {
-		DRAG_TYPE,
-		canMoveFolder,
 		folderEntryCheck,
 		noEntries,
 		toggleSourceEntries,
@@ -46,6 +45,10 @@
 
 	const data = new ChainTableData();
 	onDestroy(() => data.dispose());
+	const drop = new SourceDrop(
+		() => data.directory?.organization,
+		(action) => data.organize(action)
+	);
 
 	let query = $state('');
 	let sort = $state<ChainSort>({ col: 'name', dir: 1 });
@@ -57,8 +60,6 @@
 	let creatingFolder = $state(false);
 	let editingId = $state<string>();
 	let deleting = $state<{ sources: SourceEntry[]; folders: SourceFolder[] }>();
-	let dragged = $state<{ kind: 'source' | 'folder'; id: string }>();
-	let dropTarget = $state<string | null | undefined>(undefined);
 	let root = $state<HTMLDivElement>();
 	let search = $state<HTMLInputElement>();
 	let navigation = $state<ReturnType<typeof attachChainNavigation>>();
@@ -161,57 +162,6 @@
 		}
 	}
 
-	function dropProps(parentId: string | null) {
-		return {
-			ondragover(event: DragEvent) {
-				if (!event.dataTransfer || !Array.from(event.dataTransfer.types).includes(DRAG_TYPE))
-					return;
-				event.preventDefault();
-				event.stopPropagation();
-				const valid =
-					!directory ||
-					dragged?.kind !== 'folder' ||
-					canMoveFolder(directory.organization, dragged.id, parentId);
-				event.dataTransfer.dropEffect = valid ? 'move' : 'none';
-				dropTarget = valid ? parentId : undefined;
-			},
-			ondragleave(event: DragEvent) {
-				if (
-					event.currentTarget instanceof Node &&
-					event.currentTarget.contains(event.relatedTarget as Node | null)
-				)
-					return;
-				event.stopPropagation();
-				if (dropTarget === parentId) dropTarget = undefined;
-			},
-			ondrop(event: DragEvent) {
-				const raw = event.dataTransfer?.getData(DRAG_TYPE);
-				if (!raw) return;
-				event.preventDefault();
-				event.stopPropagation();
-				dropTarget = undefined;
-				dragged = undefined;
-				let item: { kind?: unknown; id?: unknown };
-				try {
-					item = JSON.parse(raw);
-				} catch {
-					return;
-				}
-				if ((item.kind !== 'source' && item.kind !== 'folder') || typeof item.id !== 'string')
-					return;
-				if (
-					item.kind === 'folder' &&
-					directory &&
-					!canMoveFolder(directory.organization, item.id, parentId)
-				)
-					return;
-				void data
-					.organize({ action: 'move', kind: item.kind, id: item.id, parent_id: parentId })
-					.catch(() => {});
-			}
-		};
-	}
-
 	function keydown(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || deleting) return;
 		event.preventDefault();
@@ -231,7 +181,7 @@
 	{#each directory && built ? levelItems( { parentId, groups: built.groups, directory, sourceNodes, query, sort } ) : [] as item (item.id)}
 		{#if item.kind === 'source'}
 			{@const group = item.group}
-			<div {...dropProps(parentId)}>
+			<div {...drop.props(parentId)}>
 				<SourceBlock
 					{group}
 					{depth}
@@ -251,7 +201,7 @@
 					onpicknodes={pickNodes}
 					onchecksource={(next) => group.birth && checkEntry('source', group.birth, next)}
 					onrename={(name) => data.organize({ action: 'rename-source', id: group.birth!, name })}
-					ondragitem={(value) => (dragged = value)}
+					ondragitem={(value) => drop.drag(value)}
 				/>
 			</div>
 		{:else if directory}
@@ -271,17 +221,17 @@
 			<div
 				data-testid="source-folder-{folder.id}"
 				class="relative border-b border-border/60"
-				{...dropProps(folder.id)}
+				{...drop.props(folder.id)}
 			>
 				<SourceDragRow
 					{...chainRowAttributes(['folder', folder.id], depth, open)}
 					kind="folder"
 					id={folder.id}
 					enabled={editingId !== folder.id}
-					ondragitem={(value) => (dragged = value)}
+					ondragitem={(value) => drop.drag(value)}
 					data-testid="folder-row-{folder.id}"
-					data-drop-active={dropTarget === folder.id}
-					class="flex items-center gap-1 py-1.5 pr-3 transition-colors {dropTarget === folder.id
+					data-drop-active={drop.target === folder.id}
+					class="flex items-center gap-1 py-1.5 pr-3 transition-colors {drop.target === folder.id
 						? 'bg-accent/50'
 						: ''}"
 					style="padding-left: {12 + depth * 36}px"
@@ -444,9 +394,9 @@
 					<div
 						data-testid="source-root-drop"
 						aria-label="Move outside folders"
-						data-drop-active={dropTarget === null}
-						class="min-h-16 flex-1 transition-colors {dropTarget === null ? 'bg-accent/30' : ''}"
-						{...dropProps(null)}
+						data-drop-active={drop.target === null}
+						class="min-h-16 flex-1 transition-colors {drop.target === null ? 'bg-accent/30' : ''}"
+						{...drop.props(null)}
 					></div>
 				{/if}
 			</div>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { LoaderCircle } from '@lucide/svelte';
+	import { ArrowRight, Dumbbell, LoaderCircle } from '@lucide/svelte';
 	import * as Scroller from '#lib/components/ui/message-scroller/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
@@ -18,6 +18,7 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { onAndroidBack } from '#lib/session/android-back.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
 	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
@@ -27,6 +28,15 @@
 	import SideEntryButton from '#lib/sidechat/side-entry-button.svelte';
 	import CoverageRing from '#lib/graph/coverage-ring.svelte';
 	import SelectionAsk from '#lib/sidechat/selection-ask.svelte';
+	import PracticeDock from '#lib/practice/practice-dock.svelte';
+	import type { ActiveProblem } from '#lib/practice/state.js';
+	import ProblemCard from '#lib/practice/problem-card.svelte';
+	import ThinkingCard from '#lib/practice/thinking-card.svelte';
+	import ConcludeCard from '#lib/practice/conclude-card.svelte';
+	import GraphContextCard from '#lib/graph/graph-context-card.svelte';
+	import { graphContextOf } from '#lib/graph/graph-context.js';
+	import { modelSolutionForConclude, problemInputForConclude } from '#lib/practice/state.js';
+	import { asObject } from '#lib/questions/question-input.js';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
@@ -36,6 +46,7 @@
 	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
+	import StatsBar from './stats-bar.svelte';
 	import ModelControls from './model-controls.svelte';
 	import SetupDialog from './setup-dialog.svelte';
 	import Reasoning from './reasoning.svelte';
@@ -53,7 +64,7 @@
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
-	let abortTarget = $state<'turn' | PendingQuestion>();
+	let abortTarget = $state<'turn' | PendingQuestion | ActiveProblem>();
 	let previousHeight = 0;
 
 	function handleScroll() {
@@ -91,22 +102,30 @@
 	function escape(event: KeyboardEvent) {
 		if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || event.repeat)
 			return;
+		if (requestAbort()) event.preventDefault();
+	}
+
+	/** Escape and Android Back: ask to abort the pending question, problem, or turn; false if none. */
+	function requestAbort(): boolean {
 		const target = escAbortTarget({
 			overlay:
 				!!abortTarget || controller.setupOpen || controller.modelMenuOpen || hasOpenOverlay(),
 			pending: !!pending,
+			problem: !!controller.activeProblem,
 			busy: controller.busy
 		});
-		if (!target) return;
-		event.preventDefault();
-		abortTarget = target === 'turn' ? 'turn' : pending;
+		if (!target) return false;
+		abortTarget =
+			target === 'question' ? pending : target === 'problem' ? controller.activeProblem : target;
+		return true;
 	}
 
 	function confirmAbort() {
 		const target = abortTarget;
 		abortTarget = undefined;
 		if (target === 'turn') void controller.stop();
-		else if (target) void controller.dismissPending(target);
+		else if (target && 'key' in target) void controller.dismissPending(target);
+		else if (target) void controller.dismissProblem(target);
 	}
 
 	onMount(() => {
@@ -127,7 +146,8 @@
 			}
 		})();
 		const sync = (event: Event) => {
-			if ((event as CustomEvent<string>).detail === id) void controller.synchronize();
+			const detail = (event as CustomEvent<string>).detail;
+			if (detail === id || detail === '') void controller.synchronize();
 		};
 		const syncSideChats = (event: Event) => {
 			const detail = (event as CustomEvent<string>).detail;
@@ -150,7 +170,9 @@
 		void controller.jobs.refresh();
 		void controller.jobs.refreshExtractions();
 		void controller.side.refresh();
+		const stopAndroidBack = onAndroidBack(requestAbort);
 		return () => {
+			stopAndroidBack();
 			window.removeEventListener('verstehen:sessions-changed', sync);
 			window.removeEventListener('verstehen:jobs-changed', syncJobs);
 			window.removeEventListener('verstehen:side-chats-changed', syncSideChats);
@@ -166,7 +188,7 @@
 
 <section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
 	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3"
+			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
 		>
 			<RenameSession
 				{id}
@@ -175,21 +197,30 @@
 					if (controller.record) controller.record.title = title;
 				}}
 			/>
-			<span
-				data-testid="phase-chip"
-				data-phase={phase}
-				class="shrink-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
-			>
-				{phaseLabel[phase]}
-			</span>
-			<CoverageRing
-				sessionId={id}
-				coverage={controller.record.coverage}
-				onextract={() => controller.scheduleCoverage()}
-			/>
+			{#if controller.isPractice}<span
+					data-testid="phase-chip"
+					data-phase="practice"
+					class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+				>
+					<Dumbbell class="size-3" aria-hidden="true" /> Practice
+				</span>{:else}<span
+					data-testid="phase-chip"
+					data-phase={phase}
+					class="shrink-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+				>
+					{phaseLabel[phase]}
+				</span>
+				<CoverageRing
+					sessionId={id}
+					coverage={controller.record.coverage}
+					onextract={() => controller.scheduleCoverage()}
+				/>{/if}
 		</div>{/if}
 	<Scroller.Provider
-		autoScroll={controller.questionCalls.length > 0 || cards.size > 0 || phase !== 'probe'}
+		autoScroll={controller.isPractice ||
+			controller.questionCalls.length > 0 ||
+			cards.size > 0 ||
+			phase !== 'probe'}
 	>
 		<Scroller.Root>
 			<Scroller.Viewport
@@ -198,10 +229,11 @@
 				onwheel={handleWheel}
 				aria-label="Conversation"
 			>
-				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6">
+				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6 max-md:px-4">
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
+						{@const graphContext = graphContextOf(entry)}
 						{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
 								<div
 									role="separator"
@@ -220,7 +252,7 @@
 									></span>
 								</div>
 							</Scroller.Item>{/if}
-						{#if index === phases.teachAt}<Scroller.Item>
+						{#if index === phases.teachAt && !controller.isPractice}<Scroller.Item>
 								<PhaseDivider phase="teach" />
 							</Scroller.Item>{/if}
 						{#if entry.kind === 'user'}
@@ -256,6 +288,14 @@
 												job={jobsByCall.get(item.toolCallId)}
 												now={controller.jobs.now}
 											/>
+										{:else if item.kind === 'problem'}
+											<ProblemCard statement={item.statement} />
+										{:else if item.kind === 'conclude'}
+											<ConcludeCard
+												args={item.args}
+												problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
+												reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
+											/>
 										{:else if item.kind === 'probe'}
 											<ProbeAssessment args={item.args} result={item.result} />
 										{:else}
@@ -285,6 +325,22 @@
 										onopen={openSide}
 									/>
 								</Scroller.Item>{/if}
+						{:else if entry.kind === 'marker' && graphContext}
+							<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
+						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
+							{@const text = asObject(entry.details)?.text}
+							<Scroller.Item>
+								<ThinkingCard text={typeof text === 'string' ? text : entry.content} />
+							</Scroller.Item>
+						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-next' && entry.display}
+							<Scroller.Item>
+								<p
+									data-testid="practice-next-line"
+									class="flex items-center justify-center gap-1.5 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+								>
+									<ArrowRight class="size-3" aria-hidden="true" /> Next problem
+								</p>
+							</Scroller.Item>
 						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
 							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
 						{:else if block && entry.kind === 'marker' && entry.display}
@@ -343,7 +399,7 @@
 	</Scroller.Provider>
 	{#if controller.error}<div
 			role="alert"
-			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive"
+			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
 		>
 			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
 					variant="outline"
@@ -399,22 +455,52 @@
 				{models}
 			/>
 		{/key}
+	{:else if controller.activeProblem}
+		{#key controller.activeProblem.toolCallId}
+			<PracticeDock
+				statement={controller.activeProblem.statement}
+				bind:thinking={controller.thinkingDraft}
+				{expanded}
+				busy={controller.busy}
+				compacting={controller.compacting}
+				modelMenuOpen={controller.modelMenuOpen}
+				onexpand={() => void expand()}
+				onsubmit={() => void controller.sendThinking()}
+				onstop={() => void controller.stop()}
+				{models}
+			/>
+		{/key}
 	{:else}
 		<Composer
 			bind:draft={controller.draft}
 			busy={controller.busy}
 			compacting={controller.compacting}
 			disabled={controller.loading}
-			placeholder="Ask, answer, or steer the lesson…"
+			nextReady={controller.nextReady}
+			onnext={() => void controller.sendNext()}
+			placeholder={controller.nextReady
+				? 'Ask anything, or press Enter for the next one.'
+				: 'Ask, answer, or steer the lesson…'}
 			queuedSteers={controller.queuedSteers}
 			onsend={() => void controller.send()}
 			onstop={() => void controller.stop()}
 			{models}
 		/>
 	{/if}
+	<StatsBar
+		sessionId={id}
+		busy={controller.busy || controller.compacting}
+		pick={controller.record?.model_account && controller.record?.model_id
+			? {
+					account: controller.record.model_account,
+					model: controller.record.model_id,
+					thinking_level: controller.record.thinking_level
+				}
+			: null}
+	/>
 	{#if abortTarget}
 		<AbortTurnDialog
-			mode={abortTarget === 'turn' ? 'turn' : 'question'}
+			mode={abortTarget === 'turn' ? 'turn' : 'key' in abortTarget ? 'question' : 'problem'}
 			busy={controller.busy}
 			onclose={() => (abortTarget = undefined)}
 			onconfirm={confirmAbort}

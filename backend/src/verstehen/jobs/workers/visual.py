@@ -1,23 +1,26 @@
-import asyncio
 import base64
 import re
 import xml.etree.ElementTree as ET
+from typing import Annotated
 from xml.dom import minidom
 
-import resvg_py
-from pydantic import BaseModel
-from pydantic_ai import BinaryContent
+from pydantic import BaseModel, Field
+from pydantic_ai import Agent, BinaryContent
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models import Model
+from pydantic_ai.tools import ToolReturn
+from pydantic_ai.usage import RunUsage, UsageLimits
+lazy import resvg_py
 
 from verstehen.jobs.contracts import VisualImage, VisualInput, VisualResult
 from verstehen.jobs.workers.common import (
     ActivityCallback,
     UsageCallback,
-    WorkerLoop,
-    calls,
+    WorkerModel,
+    ignore_activity,
     run_cpu,
-    text,
-    tool_result,
+    worker_tool,
 )
 
 INSTRUCTIONS = """You are a visual maker — a diagram author + renderer for precise, spatial figures. You
@@ -83,42 +86,13 @@ LOOK_MESSAGE = "Here is the current render of your SVG — inspect it critically
 
 UNLOOKED_FINISH_MESSAGE = "You finished without looking at a render of your final SVG. Above is its render. If it is correct and clean, reply with just your notes; otherwise call write_svg with fixes and render again."
 
-SCHEMAS = [
-    {
-        "name": "write_svg",
-        "description": "Write the complete SVG source for the figure (overwrites any previous version).",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "svg": {
-                    "type": "string",
-                    "description": 'Complete <svg xmlns="…">…</svg> markup.',
-                }
-            },
-            "required": ["svg"],
-        },
-    },
-    {
-        "name": "edit_svg",
-        "description": "Replace one exact spot in the current SVG: old_text must appear EXACTLY ONCE and is replaced by new_text. Call write_svg first. For larger changes, write_svg the whole document.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "old_text": {
-                    "type": "string",
-                    "description": "The exact text to replace — must match exactly once in the current SVG.",
-                },
-                "new_text": {"type": "string", "description": "The replacement text."},
-            },
-            "required": ["old_text", "new_text"],
-        },
-    },
-    {
-        "name": "render_svg",
-        "description": "Render the current SVG to a PNG and show it to you for inspection. No arguments.",
-        "parameters_json_schema": {"type": "object", "properties": {}, "required": []},
-    },
-]
+WRITE_DESCRIPTION = (
+    "Write the complete SVG source for the figure (overwrites any previous version)."
+)
+EDIT_DESCRIPTION = "Replace one exact spot in the current SVG: old_text must appear EXACTLY ONCE and is replaced by new_text. Call write_svg first. For larger changes, write_svg the whole document."
+RENDER_DESCRIPTION = (
+    "Render the current SVG to a PNG and show it to you for inspection. No arguments."
+)
 
 LEARNER_IMAGE_HREF = "learner-image"
 
@@ -260,7 +234,6 @@ async def run_visual_maker(
     learner_image: LearnerImage | None = None,
     on_activity: ActivityCallback | None = None,
     on_usage: UsageCallback | None = None,
-    cancellation: asyncio.Event | None = None,
     max_iterations: int = 8,
 ) -> VisualResult:
     image = learner_image
@@ -286,19 +259,71 @@ async def run_visual_maker(
             "Author the SVG, render it, look at it, iterate until correct, then finish with your notes.",
         ]
     )
-    loop = WorkerLoop(
-        model,
-        INSTRUCTIONS + ("\n\n" + IMAGE_INSTRUCTIONS if image else ""),
-        prompt,
-        SCHEMAS,
-        role="visualMaker",
-        on_activity=on_activity,
-        on_usage=on_usage,
-        cancellation=cancellation,
-    )
-    if image:
-        loop.user([BinaryContent(data=image.data, media_type=image.mime_type)])
+    note = on_activity or ignore_activity
     current = rendered = final_text = ""
+
+    async def write(
+        svg: Annotated[
+            str,
+            Field(description='Complete <svg xmlns="…">…</svg> markup.'),
+        ],
+    ) -> str:
+        nonlocal current
+        if "<svg" not in svg:
+            return (
+                "ERROR: expected a complete <svg>…</svg> document in the `svg` field."
+            )
+        if image and (
+            problem := annotation_placement_problem(svg, image.width, image.height)
+        ):
+            return f"ERROR: {problem}."
+        current = svg
+        await note(f"write_svg: {len(svg) / 1024:.1f} KB")
+        return f"Saved ({len(svg)} bytes). Call render_svg to look at it."
+
+    async def edit(
+        old_text: Annotated[
+            str,
+            Field(
+                description="The exact text to replace — must match exactly once in the current SVG."
+            ),
+        ],
+        new_text: Annotated[str, Field(description="The replacement text.")],
+    ) -> str:
+        nonlocal current
+        if not current:
+            return "ERROR: nothing to edit — call write_svg first."
+        if not old_text:
+            return "ERROR: expected old_text (non-empty) and new_text strings."
+        count = current.count(old_text)
+        if count == 0:
+            return f"ERROR: old_text not found. Closest line for reference:\n{snippet_around(current, old_text)}"
+        if count > 1:
+            return f"ERROR: old_text appears {count} times — it must match EXACTLY ONCE. Include more surrounding context to make it unique."
+        edited = current.replace(old_text, new_text)
+        if image and (
+            problem := annotation_placement_problem(edited, image.width, image.height)
+        ):
+            return f"ERROR: edit not applied — {problem}."
+        current = edited
+        await note("edit_svg: applied")
+        return "OK — replaced 1 occurrence. Call render_svg to look at the edited SVG."
+
+    async def render() -> ToolReturn[str] | str:
+        nonlocal rendered
+        if not current:
+            return "ERROR: nothing to render — call write_svg first."
+        try:
+            png = await run_cpu(render_svg, current, image)
+        except Exception as error:
+            await note("render_svg: render error")
+            return f"RENDER ERROR (the SVG may be malformed): {error}. Fix it with write_svg and render again."
+        rendered = current
+        await note("render_svg: inspecting render")
+        return ToolReturn(
+            return_value="Rendered — the PNG follows in the next message. Look at it.",
+            content=[LOOK_MESSAGE, BinaryContent(data=png, media_type="image/png")],
+        )
 
     def finish(notes: str) -> VisualResult:
         if not current:
@@ -310,102 +335,58 @@ async def run_visual_maker(
         return VisualResult(
             svg=current,
             notes=notes or None,
-            image=VisualImage(path=image.path, snapshot_id=image.snapshot_id)
+            image=VisualImage(
+                path=image.path,
+                snapshot_id=image.snapshot_id,
+                extension="png" if image.mime_type == "image/png" else "jpeg",
+            )
             if image
             else None,
         )
 
+    agent = Agent(
+        WorkerModel(model, "visualMaker", on_usage),
+        system_prompt=INSTRUCTIONS + ("\n\n" + IMAGE_INSTRUCTIONS if image else ""),
+        deps_type=type(None),
+        output_type=str | None,
+        tools=[
+            worker_tool(write, "write_svg", WRITE_DESCRIPTION),
+            worker_tool(edit, "edit_svg", EDIT_DESCRIPTION),
+            worker_tool(render, "render_svg", RENDER_DESCRIPTION),
+        ],
+        retries=max_iterations,
+    )
+    usage = RunUsage()
+    limits = UsageLimits(request_limit=max_iterations)
+    next_prompt: str | list[UserContent] = (
+        [prompt, BinaryContent(data=image.data, media_type=image.mime_type)]
+        if image
+        else prompt
+    )
+    history: list[ModelMessage] | None = None
     try:
-        for _ in range(max_iterations):
-            response = await loop.request()
-            if not calls(response):
-                final_text = text(response)
-                if current and rendered != current:
-                    try:
-                        png = await run_cpu(render_svg, current, image)
-                    except Exception as error:
-                        return VisualResult(
-                            svg="",
-                            notes=f"FAILED: rendering the final SVG failed — {error}",
-                        )
-                    loop.activity("render_svg: inspecting final render")
-                    rendered = current
-                    loop.user(
-                        [
-                            UNLOOKED_FINISH_MESSAGE,
-                            BinaryContent(data=png, media_type="image/png"),
-                        ]
-                    )
-                    continue
+        while True:
+            result = await agent.run(
+                next_prompt, message_history=history, usage=usage, usage_limits=limits
+            )
+            final_text, history = (result.output or "").strip(), result.all_messages()
+            if not current or rendered == current:
                 return finish(final_text)
-            results = []
-            png = None
-            for call in calls(response):
-                try:
-                    args = loop.arguments(call)
-                except ValueError as error:
-                    results.append(tool_result(call, f"ERROR: {error}"))
-                    continue
-                if call.tool_name == "write_svg":
-                    svg = args.get("svg")
-                    if not isinstance(svg, str) or "<svg" not in svg:
-                        value = "ERROR: expected a complete <svg>…</svg> document in the `svg` field."
-                    elif image and (
-                        problem := annotation_placement_problem(
-                            svg, image.width, image.height
-                        )
-                    ):
-                        value = f"ERROR: {problem}."
-                    else:
-                        current = svg
-                        loop.activity(f"write_svg: {len(svg) / 1024:.1f} KB")
-                        value = (
-                            f"Saved ({len(svg)} bytes). Call render_svg to look at it."
-                        )
-                elif call.tool_name == "edit_svg":
-                    old, new = args.get("old_text"), args.get("new_text")
-                    if not current:
-                        value = "ERROR: nothing to edit — call write_svg first."
-                    elif (
-                        not isinstance(old, str) or not old or not isinstance(new, str)
-                    ):
-                        value = (
-                            "ERROR: expected old_text (non-empty) and new_text strings."
-                        )
-                    elif current.count(old) == 0:
-                        value = f"ERROR: old_text not found. Closest line for reference:\n{snippet_around(current, old)}"
-                    elif current.count(old) > 1:
-                        value = f"ERROR: old_text appears {current.count(old)} times — it must match EXACTLY ONCE. Include more surrounding context to make it unique."
-                    elif image and (
-                        problem := annotation_placement_problem(
-                            current.replace(old, new), image.width, image.height
-                        )
-                    ):
-                        value = f"ERROR: edit not applied — {problem}."
-                    else:
-                        current = current.replace(old, new)
-                        loop.activity("edit_svg: applied")
-                        value = "OK — replaced 1 occurrence. Call render_svg to look at the edited SVG."
-                elif call.tool_name == "render_svg":
-                    if not current:
-                        value = "ERROR: nothing to render — call write_svg first."
-                    else:
-                        try:
-                            png = await run_cpu(render_svg, current, image)
-                            rendered = current
-                            loop.activity("render_svg: inspecting render")
-                            value = "Rendered — the PNG follows in the next message. Look at it."
-                        except Exception as error:
-                            loop.activity("render_svg: render error")
-                            value = f"RENDER ERROR (the SVG may be malformed): {error}. Fix it with write_svg and render again."
-                else:
-                    value = f'ERROR: unknown tool "{call.tool_name}". Use write_svg, edit_svg, or render_svg.'
-                results.append(tool_result(call, value))
-            loop.results(results)
-            if png:
-                loop.user(
-                    [LOOK_MESSAGE, BinaryContent(data=png, media_type="image/png")]
+            try:
+                png = await run_cpu(render_svg, current, image)
+            except Exception as error:
+                return VisualResult(
+                    svg="",
+                    notes=f"FAILED: rendering the final SVG failed — {error}",
                 )
+            await note("render_svg: inspecting final render")
+            rendered = current
+            next_prompt = [
+                UNLOOKED_FINISH_MESSAGE,
+                BinaryContent(data=png, media_type="image/png"),
+            ]
+    except UsageLimitExceeded:
+        pass
     except Exception as error:
         return VisualResult(svg="", notes=f"FAILED: the maker crashed — {error}")
     if current and rendered == current:

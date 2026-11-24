@@ -72,3 +72,53 @@ test('compaction_limit_empty_means_default_and_invalid_input_is_not_saved', asyn
 	await userEvent.click(screen.getByText('Compaction limit'));
 	expect(saveSettings).not.toHaveBeenCalled();
 });
+
+test('file_access_restricts_validates_paths_and_adds_and_removes_folders', async () => {
+	let state: Settings = { ...lessonSettings };
+	vi.mocked(getSettings)
+		.mockReset()
+		.mockImplementation(async () => state);
+	vi.mocked(saveSettings)
+		.mockReset()
+		.mockImplementation(async (next) => {
+			state = next;
+			return next;
+		});
+
+	const screen = await render(SettingsLesson);
+	await expect
+		.element(screen.getByText('Broad local source access, except protected locations'))
+		.toBeVisible();
+
+	await screen.getByRole('switch', { name: 'Restrict to listed folders' }).click();
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].file_access)
+		.toEqual({ restricted: true, folders: [] });
+	await expect
+		.element(screen.getByText('Restricted: no folders allowed. Add a folder to enable access.'))
+		.toBeVisible();
+
+	const folderInput = screen.getByLabelText('Allowed folder path');
+	await folderInput.fill('relative/folder');
+	await screen.getByRole('button', { name: 'Add folder' }).click();
+	await expect
+		.element(screen.getByRole('alert'))
+		.toHaveTextContent('Enter an absolute path or ~/folder.');
+
+	await folderInput.fill('~/Notes');
+	await screen.getByRole('button', { name: 'Add folder' }).click();
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].file_access)
+		.toEqual({ restricted: true, folders: ['~/Notes'] });
+
+	await folderInput.fill('/tmp/lesson-notes');
+	await screen.getByRole('button', { name: 'Add folder' }).click();
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].file_access)
+		.toEqual({ restricted: true, folders: ['~/Notes', '/tmp/lesson-notes'] });
+
+	await screen.getByRole('button', { name: 'Remove /tmp/lesson-notes' }).click();
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].file_access)
+		.toEqual({ restricted: true, folders: ['~/Notes'] });
+});

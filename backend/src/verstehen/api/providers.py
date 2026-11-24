@@ -1,12 +1,12 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from verstehen.api.sessions import ApiError, ModelUnavailable
 from verstehen.providers.resolve import ResolutionError
 from verstehen.providers.service import ModelCatalog, ProviderService
-from verstehen.store.settings import ModelPick, Settings
+from verstehen.store.settings import ModelPick, Settings, SlotName
 
 
 def get_provider_service(request: Request) -> ProviderService:
@@ -35,11 +35,14 @@ async def get_settings(provider_service: ProviderServiceDependency) -> SettingsS
 
 
 @router.put("/api/settings", response_model=Settings)
-async def put_settings(
+@router.patch("/api/settings", response_model=Settings)
+async def write_settings(
     body: Settings, provider_service: ProviderServiceDependency, request: Request
 ):
     try:
-        saved = await provider_service.save_settings(body)
+        saved = await provider_service.save_settings(
+            body, partial=request.method == "PATCH"
+        )
         await request.app.state.turn_service.delivery_service.pump_all()
         return saved
     except ResolutionError as error:
@@ -48,7 +51,17 @@ async def put_settings(
 
 @router.get("/api/models", response_model=ModelCatalog)
 async def get_models(provider_service: ProviderServiceDependency) -> ModelCatalog:
+    """The saved catalog: no account is contacted."""
     return await provider_service.catalog()
+
+
+@router.post("/api/models/refresh", status_code=204)
+async def refresh_models(
+    provider_service: ProviderServiceDependency, force: bool = False
+) -> Response:
+    """Contact every account and save its models; `force` drops cached lists first."""
+    await provider_service.refresh(force)
+    return Response(status_code=204)
 
 
 @router.post("/api/settings/default-model", response_model=ModelPick)
@@ -57,5 +70,20 @@ async def set_default_model(
 ):
     try:
         return await provider_service.set_default(body)
+    except ResolutionError as error:
+        return JSONResponse(error.envelope(), status_code=503)
+
+
+@router.put("/api/settings/models/{slot}", response_model=ModelPick)
+async def put_model_slot(
+    slot: SlotName,
+    body: ModelPick,
+    provider_service: ProviderServiceDependency,
+    request: Request,
+):
+    try:
+        saved = await provider_service.set_slot(slot, body)
+        await request.app.state.turn_service.delivery_service.pump_all()
+        return saved
     except ResolutionError as error:
         return JSONResponse(error.envelope(), status_code=503)

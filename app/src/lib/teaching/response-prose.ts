@@ -1,11 +1,16 @@
 import type { Entry, ToolResult } from '#lib/api/client.js';
 import { isJobKind, type JobKind } from '#lib/jobs/jobs.js';
+import { CONCLUDE_TOOL, PROBLEM_TOOL } from '#lib/practice/state.js';
+import { parseJson } from '#lib/questions/question-core.js';
+import { asObject } from '#lib/questions/question-input.js';
 import { sendToUserText } from './delivery.js';
 
 type Assistant = Extract<Entry, { kind: 'assistant' }>;
 type ResponseItem =
 	| { kind: 'text'; text: string }
 	| { kind: 'probe'; args: unknown; result?: ToolResult }
+	| { kind: 'problem'; statement: string }
+	| { kind: 'conclude'; args: unknown; toolCallId: string }
 	| { kind: 'tool-retry' }
 	| { kind: 'image'; result?: ToolResult }
 	| { kind: 'job'; jobKind: JobKind; toolCallId: string };
@@ -36,6 +41,13 @@ export function responseProse(
 		} else if (result && isJobKind(part.tool_name)) {
 			flushText();
 			items.push({ kind: 'job', jobKind: part.tool_name, toolCallId: part.tool_call_id });
+		} else if (result && part.tool_name === PROBLEM_TOOL) {
+			flushText();
+			const statement = asObject(parseJson(part.arguments))?.statement;
+			items.push({ kind: 'problem', statement: typeof statement === 'string' ? statement : '' });
+		} else if (result && part.tool_name === CONCLUDE_TOOL) {
+			flushText();
+			items.push({ kind: 'conclude', args: part.arguments, toolCallId: part.tool_call_id });
 		} else if (part.tool_name === 'probe_done') {
 			flushText();
 			items.push({ kind: 'probe', args: part.arguments, result });

@@ -3,8 +3,8 @@ import tempfile
 from functools import partial
 from pathlib import Path
 
-from claude_agent_sdk import ClaudeAgentOptions
 from pydantic_ai.settings import ThinkingEffort
+lazy from claude_agent_sdk import ClaudeAgentOptions
 
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
@@ -14,7 +14,7 @@ from verstehen.store.settings import ModelPick
 from . import binary
 from .binary import BinaryStatus
 from .context import context_window
-from .model import ClaudeCodeModel
+lazy from .model import ClaudeCodeModel
 
 THINKING_LEVELS: list[ThinkingEffort] = ["low", "medium", "high", "xhigh", "max"]
 MODEL_NAMES = {
@@ -136,6 +136,25 @@ class ClaudeCodeAccountAdapter:
                 status.path, self.directory.name, pick.thinking_level
             ),
         )
+
+    def forget_models(self) -> None:
+        pass
+
+    def seen_limits(self) -> dict[str, int]:
+        """The limits read for the binary already inspected, by model; never inspects or probes."""
+        status = self.binary_status
+        if (
+            status is None
+            or status.state not in ("tested", "untested")
+            or status.path is None
+            or status.version is None
+        ):
+            return {}
+        return {
+            model: limit
+            for (path, version, model), limit in self.runtime_limits.items()
+            if path == str(status.path) and version == status.version
+        }
 
     async def context_limit(self, account: Account, model: str) -> int | None:
         status = await self.status()

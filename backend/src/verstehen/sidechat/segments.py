@@ -3,7 +3,8 @@ from collections.abc import Sequence
 from pydantic import BaseModel
 
 from verstehen.store.entries import Entry, ToolCallPart
-from verstehen.teaching.prose import teacher_prose
+from verstehen.teaching.practice.schemas import PRACTICE_PROBLEM_TOOL
+from verstehen.teaching.prose import failed_output_call_ids, teacher_prose
 from verstehen.teaching.questions.validation import (
     QUESTION_SCHEMAS,
     is_displayable_question,
@@ -23,10 +24,17 @@ def scan_side_segments(
     segment = None
     by_entry = {}
     for entry in entries:
-        if entry.kind == "user" or (
-            entry.kind == "tool_result"
-            and entry.tool_name in QUESTION_SCHEMAS
-            and not entry.is_error
+        if (
+            entry.kind == "user"
+            or (
+                entry.kind == "marker"
+                and entry.marker_type in ("practice-thinking", "practice-next")
+            )
+            or (
+                entry.kind == "tool_result"
+                and entry.tool_name in QUESTION_SCHEMAS
+                and not entry.is_error
+            )
         ):
             segment = None
         elif entry.kind == "assistant" and segment is None:
@@ -44,14 +52,22 @@ def side_segment_id(
 
 def side_entry_points(entries: Sequence[Entry]) -> dict[str, str]:
     by_entry, _ = scan_side_segments(entries)
+    failed = failed_output_call_ids(entries)
     last_visible = {}
     for entry in entries:
         if entry.kind != "assistant":
             continue
-        visible = any(text.strip() for text in teacher_prose(entry, entries)) or any(
+        visible = any(
+            text.strip() for text in teacher_prose(entry, entries, failed)
+        ) or any(
             isinstance(part, ToolCallPart)
-            and part.tool_name in QUESTION_SCHEMAS
-            and is_displayable_question(part.tool_name, part.arguments)
+            and (
+                part.tool_name == PRACTICE_PROBLEM_TOOL
+                or (
+                    part.tool_name in QUESTION_SCHEMAS
+                    and is_displayable_question(part.tool_name, part.arguments)
+                )
+            )
             for part in entry.parts
         )
         segment = by_entry[entry.entry_id]

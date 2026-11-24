@@ -1,19 +1,23 @@
-import asyncio
 import re
 from pathlib import Path
+from typing import Annotated
 
-from pydantic_ai import BinaryContent
+from pydantic import Field
+from pydantic_ai import Agent, BinaryContent
+from pydantic_ai.exceptions import UsageLimitExceeded
+from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models import Model
+from pydantic_ai.tools import ToolReturn
+from pydantic_ai.usage import RunUsage, UsageLimits
 
 from verstehen.jobs.contracts import PdfInput, PdfResult
 from verstehen.jobs.workers.common import (
     ActivityCallback,
     UsageCallback,
-    WorkerLoop,
-    calls,
+    WorkerModel,
+    ignore_activity,
     run_cpu,
-    text,
-    tool_result,
+    worker_tool,
 )
 from verstehen.jobs.workers.pdf_ops import (
     open_pdf,
@@ -57,68 +61,10 @@ extracted or rendered."""
 
 UNREAD_FINISH_MESSAGE = "You finished without consulting any page of the PDF — your brief would be invention, not reading. Extract or render the relevant pages first, then write the brief from what you actually saw."
 
-SCHEMAS = [
-    {
-        "name": "pdf_info",
-        "description": "Metadata + per-page triage signals for the PDF (page count, text length, image count, math density). ALWAYS call this first.",
-        "parameters_json_schema": {"type": "object", "properties": {}, "required": []},
-    },
-    {
-        "name": "pdf_extract",
-        "description": "Extract text from pages (spec: 'all', '1-5', '1,3,7', '3'). Use pdf_info first; narrow the spec for big documents.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "pages": {
-                    "type": "string",
-                    "description": "Page spec, e.g. 'all', '1-5', '1,3,7'",
-                }
-            },
-            "required": ["pages"],
-        },
-    },
-    {
-        "name": "pdf_render",
-        "description": "Render pages to images and show them to you for visual reading (equations, diagrams, layout). DPI: 100 text, 150 default, 200 dense small print. Max 6 pages per call.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "pages": {
-                    "type": "string",
-                    "description": "Page spec, e.g. '1-3' or '2,5,8'",
-                },
-                "dpi": {
-                    "type": "integer",
-                    "minimum": 72,
-                    "maximum": 300,
-                    "description": "Render DPI (100 text / 150 default / 200 dense)",
-                },
-            },
-            "required": ["pages"],
-        },
-    },
-    {
-        "name": "pdf_search",
-        "description": "Search the PDF's text by keyword or regex (case-insensitive); returns hits with context lines. Use for long documents before reading anything at length.",
-        "parameters_json_schema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "Keyword or regex"},
-                "context_lines": {
-                    "type": "integer",
-                    "minimum": 0,
-                    "maximum": 8,
-                    "description": "Context lines around each hit (default 3)",
-                },
-                "literal": {
-                    "type": "boolean",
-                    "description": "true = treat the query literally (no regex; default false)",
-                },
-            },
-            "required": ["query"],
-        },
-    },
-]
+INFO_DESCRIPTION = "Metadata + per-page triage signals for the PDF (page count, text length, image count, math density). ALWAYS call this first."
+EXTRACT_DESCRIPTION = "Extract text from pages (spec: 'all', '1-5', '1,3,7', '3'). Use pdf_info first; narrow the spec for big documents."
+RENDER_DESCRIPTION = "Render pages to images and show them to you for visual reading (equations, diagrams, layout). DPI: 100 text, 150 default, 200 dense small print. Max 6 pages per call."
+SEARCH_DESCRIPTION = "Search the PDF's text by keyword or regex (case-insensitive); returns hits with context lines. Use for long documents before reading anything at length."
 
 MAX_ITERATIONS = 14
 
@@ -130,7 +76,6 @@ async def run_pdf_reader(
     access: SourceAccess,
     on_activity: ActivityCallback | None = None,
     on_usage: UsageCallback | None = None,
-    cancellation: asyncio.Event | None = None,
     max_iterations: int = MAX_ITERATIONS,
 ) -> PdfResult:
     path = input.path
@@ -160,114 +105,143 @@ async def run_pdf_reader(
             "Read the document per your doctrine, then produce your final brief in the required format.",
         ]
     )
-    loop = WorkerLoop(
-        model,
-        INSTRUCTIONS,
-        prompt,
-        SCHEMAS,
-        role="pdfReader",
-        on_activity=on_activity,
-        on_usage=on_usage,
-        cancellation=cancellation,
+    note = on_activity or ignore_activity
+
+    async def info() -> str:
+        await note("pdf_info: triaging")
+        try:
+            triage = await run_cpu(pdf_info, resolved)
+            return "\n".join(
+                [
+                    f"File: {path}",
+                    f"Pages: {triage['page_count']} (mean text length/page: {triage['mean_text_length']})",
+                    *[
+                        f"p{p['page']}: len={p['text_length']} img={p['image_count']} math={p['math_density']:.2f}"
+                        for p in triage["pages"]
+                    ],
+                ]
+            )
+        except Exception as error:
+            return f"ERROR: {error}"
+
+    async def extract(
+        pages: Annotated[
+            str, Field(description="Page spec, e.g. 'all', '1-5', '1,3,7'")
+        ],
+    ) -> str:
+        await note(f"pdf_extract: {pages}")
+        try:
+            value, _ = await run_cpu(pdf_extract, resolved, pages)
+            if len(value) > 24000:
+                value = (
+                    value[:24000]
+                    + "\n\n[Output truncated at 24000 chars — narrow the page spec and extract in smaller batches.]"
+                )
+            delivered = {int(n) for n in re.findall(r"--- Page (\d+) ---", value)}
+            consulted.update(delivered)
+            read.update(delivered)
+            return value
+        except Exception as error:
+            return f"ERROR: {error}"
+
+    async def search(
+        query: Annotated[str, Field(description="Keyword or regex")],
+        context_lines: Annotated[
+            int,
+            Field(
+                ge=0,
+                le=8,
+                strict=True,
+                description="Context lines around each hit (default 3)",
+            ),
+        ] = 3,
+        literal: Annotated[
+            bool,
+            Field(
+                strict=True,
+                description="true = treat the query literally (no regex; default false)",
+            ),
+        ] = False,
+    ) -> str:
+        await note(f'pdf_search: "{query}"')
+        try:
+            hits = await run_cpu(pdf_search, resolved, query, context_lines, literal)
+            consulted.update(hit["page"] for hit in hits)
+            value = (
+                "\n".join(
+                    f"=== Page {hit['page']}, line {hit['line']} ===\n{hit['context']}"
+                    for hit in hits[:40]
+                )
+                or "No hits."
+            )
+            if len(hits) > 40:
+                value += f"\n\n[{len(hits) - 40} more hits — narrow the query.]"
+            return value
+        except Exception as error:
+            return f"ERROR: {error}"
+
+    async def render(
+        pages: Annotated[str, Field(description="Page spec, e.g. '1-3' or '2,5,8'")],
+        dpi: Annotated[
+            int,
+            Field(
+                ge=72,
+                le=300,
+                strict=True,
+                description="Render DPI (100 text / 150 default / 200 dense)",
+            ),
+        ] = 150,
+    ) -> ToolReturn[str] | str:
+        await note(f"pdf_render: {pages} @{dpi}dpi")
+        try:
+            rendered = await run_cpu(pdf_render, resolved, pages, dpi)
+        except Exception as error:
+            return f"ERROR: {error}"
+        if not rendered:
+            return "ERROR: no pages rendered (spec matched nothing?)"
+        images: list[str | BinaryContent] = []
+        for number, png in rendered:
+            images.extend(
+                [f"Page {number}", BinaryContent(data=png, media_type="image/png")]
+            )
+            read.add(number)
+            consulted.add(number)
+        return ToolReturn(
+            return_value=f"Rendered {len(rendered)} page(s) at {dpi} DPI — processed images or explicit omission notes follow below. Read the images carefully (equations, diagrams, layout).",
+            content=images,
+        )
+
+    agent = Agent(
+        WorkerModel(model, "pdfReader", on_usage),
+        system_prompt=INSTRUCTIONS,
+        deps_type=type(None),
+        output_type=str | None,
+        tools=[
+            worker_tool(info, "pdf_info", INFO_DESCRIPTION),
+            worker_tool(extract, "pdf_extract", EXTRACT_DESCRIPTION),
+            worker_tool(render, "pdf_render", RENDER_DESCRIPTION),
+            worker_tool(search, "pdf_search", SEARCH_DESCRIPTION),
+        ],
+        retries=max_iterations,
     )
+    usage = RunUsage()
+    limits = UsageLimits(request_limit=max_iterations)
+    next_prompt = prompt
+    history: list[ModelMessage] | None = None
     final_text = ""
     nudged = False
     try:
-        for _ in range(max_iterations):
-            response = await loop.request()
-            if not calls(response):
-                final_text = text(response)
-                if not consulted and not nudged:
-                    nudged = True
-                    loop.user(UNREAD_FINISH_MESSAGE)
-                    continue
+        while True:
+            result = await agent.run(
+                next_prompt, message_history=history, usage=usage, usage_limits=limits
+            )
+            final_text, history = (result.output or "").strip(), result.all_messages()
+            if consulted or nudged:
                 return finish(final_text or "(no brief text)")
-            results = []
-            images = []
-            for call in calls(response):
-                try:
-                    args = loop.arguments(call)
-                except ValueError as error:
-                    results.append(tool_result(call, f"ERROR: {error}"))
-                    continue
-                try:
-                    if call.tool_name == "pdf_info":
-                        loop.activity("pdf_info: triaging")
-                        info = await run_cpu(pdf_info, resolved)
-                        value = "\n".join(
-                            [
-                                f"File: {path}",
-                                f"Pages: {info['page_count']} (mean text length/page: {info['mean_text_length']})",
-                                *[
-                                    f"p{p['page']}: len={p['text_length']} img={p['image_count']} math={p['math_density']:.2f}"
-                                    for p in info["pages"]
-                                ],
-                            ]
-                        )
-                    elif call.tool_name == "pdf_extract":
-                        spec = str(args.get("pages", "all"))
-                        loop.activity(f"pdf_extract: {spec}")
-                        value, numbers = await run_cpu(pdf_extract, resolved, spec)
-                        if len(value) > 24000:
-                            value = (
-                                value[:24000]
-                                + "\n\n[Output truncated at 24000 chars — narrow the page spec and extract in smaller batches.]"
-                            )
-                        delivered = {
-                            int(n) for n in re.findall(r"--- Page (\d+) ---", value)
-                        }
-                        consulted.update(delivered)
-                        read.update(delivered)
-                    elif call.tool_name == "pdf_search":
-                        query = str(args.get("query", ""))
-                        loop.activity(f'pdf_search: "{query}"')
-                        hits = await run_cpu(
-                            pdf_search,
-                            resolved,
-                            query,
-                            args.get("context_lines", 3),
-                            args.get("literal", False),
-                        )
-                        consulted.update(hit["page"] for hit in hits)
-                        value = (
-                            "\n".join(
-                                f"=== Page {hit['page']}, line {hit['line']} ===\n{hit['context']}"
-                                for hit in hits[:40]
-                            )
-                            or "No hits."
-                        )
-                        if len(hits) > 40:
-                            value += (
-                                f"\n\n[{len(hits) - 40} more hits — narrow the query.]"
-                            )
-                    elif call.tool_name == "pdf_render":
-                        spec, dpi = str(args.get("pages", "1")), args.get("dpi", 150)
-                        if not isinstance(dpi, int) or not 72 <= dpi <= 300:
-                            raise ValueError("dpi must be between 72 and 300")
-                        loop.activity(f"pdf_render: {spec} @{dpi}dpi")
-                        rendered = await run_cpu(pdf_render, resolved, spec, dpi)
-                        for number, png in rendered:
-                            images.extend(
-                                [
-                                    f"Page {number}",
-                                    BinaryContent(data=png, media_type="image/png"),
-                                ]
-                            )
-                            read.add(number)
-                            consulted.add(number)
-                        value = (
-                            f"Rendered {len(rendered)} page(s) at {dpi} DPI — processed images or explicit omission notes follow below. Read the images carefully (equations, diagrams, layout)."
-                            if rendered
-                            else "ERROR: no pages rendered (spec matched nothing?)"
-                        )
-                    else:
-                        value = f'ERROR: unknown tool "{call.tool_name}"'
-                except Exception as error:
-                    value = f"ERROR: {error}"
-                results.append(tool_result(call, value))
-            loop.results(results)
-            if images:
-                loop.user(images)
+            nudged = True
+            next_prompt = UNREAD_FINISH_MESSAGE
+    except UsageLimitExceeded:
+        pass
     except Exception as error:
         return finish(f"PDF failed: the reader crashed — {error}")
     return finish(

@@ -1,0 +1,87 @@
+import type { SessionItem } from '#lib/api/client.js';
+import { timeAgo } from './time-ago.js';
+
+export type KindFilter = 'teach' | 'practice' | 'all';
+export const kindFilters: { value: KindFilter; label: string }[] = [
+	{ value: 'teach', label: 'Teaching' },
+	{ value: 'practice', label: 'Practice' },
+	{ value: 'all', label: 'All' }
+];
+const storageKey = 'verstehen-session-kind-filter';
+
+export function readKindFilter(): KindFilter {
+	try {
+		const stored = localStorage.getItem(storageKey);
+		return kindFilters.some(({ value }) => value === stored) ? (stored as KindFilter) : 'all';
+	} catch {
+		return 'all';
+	}
+}
+
+export function saveKindFilter(filter: KindFilter): void {
+	try {
+		localStorage.setItem(storageKey, filter);
+	} catch {
+		/* The filter still applies for this visit. */
+	}
+}
+
+export const kindIncludes = (filter: KindFilter) => (session: SessionItem) =>
+	filter === 'all' || session.kind === filter;
+
+const openFoldersKey = 'verstehen-sidebar-open-folders';
+
+/** The folders the learner left open in this sidebar, remembered on this device. */
+export function readOpenFolders(): Set<string> {
+	try {
+		const stored: unknown = JSON.parse(localStorage.getItem(openFoldersKey) ?? '[]');
+		return new Set(Array.isArray(stored) ? stored.filter((id) => typeof id === 'string') : []);
+	} catch {
+		return new Set();
+	}
+}
+
+export function saveOpenFolders(ids: ReadonlySet<string>): void {
+	try {
+		localStorage.setItem(openFoldersKey, JSON.stringify([...ids]));
+	} catch {
+		/* The folders stay open for this visit. */
+	}
+}
+
+/** The row's second line: what the session waits on or is doing, else how long ago. */
+export function sessionMeta(session: SessionItem, now: Date): string {
+	const ago = timeAgo(session.updated_at, now);
+	if (session.compacting) return 'Compacting context';
+	if (session.pending_question) return `Waiting for input · ${ago}`;
+	if (session.kind === 'practice' && session.pending_problem) return `Problem waiting · ${ago}`;
+	return session.busy ? 'Working…' : ago;
+}
+
+/** The folders the learner closed during one search; a different query forgets them. */
+export interface SearchFolds {
+	query: string;
+	ids: ReadonlySet<string>;
+}
+
+export const noSearchFolds: SearchFolds = { query: '', ids: new Set() };
+
+export const isSearchFolded = (folds: SearchFolds, query: string, id: string) =>
+	folds.query === query && folds.ids.has(id);
+
+export function toggleSearchFold(folds: SearchFolds, query: string, id: string): SearchFolds {
+	const ids = new Set(folds.query === query ? folds.ids : []);
+	if (!ids.delete(id)) ids.add(id);
+	return { query, ids };
+}
+
+/** Shows a folder that this search closed; a folder already shown is left alone. */
+export function unfoldSearchFold(folds: SearchFolds, query: string, id: string): SearchFolds {
+	return isSearchFolded(folds, query, id) ? toggleSearchFold(folds, query, id) : folds;
+}
+
+/** The row the arrow keys land on: the first or last from nowhere, else one step with wrap-around. */
+export function walkIndex(current: number | null, direction: 1 | -1, count: number): number {
+	if (current === null || current >= count) return direction === 1 ? 0 : count - 1;
+	return (current + direction + count) % count;
+}

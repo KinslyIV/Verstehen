@@ -9,7 +9,8 @@ import {
 	getSearchKeys,
 	setSearchKey,
 	type Settings,
-	type BrowserDownloadProgress
+	type BrowserDownloadProgress,
+	type SearchKeysStatus
 } from '#lib/api/client.js';
 import SettingsTools from './settings-tools.svelte';
 
@@ -108,4 +109,92 @@ test('environment keys are masked and read only, and missing selected keys show 
 		.toBeDisabled();
 	await expect.element(screen.getByText('…abcd (24 chars) · from environment')).toBeVisible();
 	expect(setSearchKey).not.toHaveBeenCalled();
+});
+
+test.each([
+	{ progress: { state: 'idle' }, button: 'enabled', status: null },
+	{
+		progress: {
+			state: 'downloading',
+			percent: 50,
+			message: 'Downloading Chromium · 50% of 120 MiB'
+		},
+		button: 'disabled',
+		status: 'Downloading Chromium · 50% of 120 MiB'
+	},
+	{
+		progress: { state: 'failed', error: 'Offline download failed. Try again.' },
+		button: 'enabled',
+		status: 'Offline download failed. Try again.'
+	}
+] as {
+	progress: BrowserDownloadProgress;
+	button: 'enabled' | 'disabled';
+	status: string | null;
+}[])(
+	'download_$progress.state_shows_the_button_and_progress_when_no_browser_is_found',
+	async ({ progress, button, status }) => {
+		vi.mocked(browserDownload).mockResolvedValue(progress);
+		const screen = await render(SettingsTools);
+		const download = screen.getByRole('button', { name: 'Download Chromium for demos' });
+		if (button === 'enabled') await expect.element(download).toBeEnabled();
+		else await expect.element(download).toBeDisabled();
+		if (status) await expect.element(screen.getByText(status)).toBeVisible();
+		const bar = screen.getByRole('progressbar', { name: 'Chromium download' });
+		if (progress.state === 'downloading') await expect.element(bar).toHaveValue(50);
+		else await expect.element(bar).not.toBeInTheDocument();
+	}
+);
+
+test('download_found_shows_the_browser_path_without_a_download_button', async () => {
+	vi.mocked(getDemoBrowser).mockResolvedValue({ path: '/opt/demo/chromium', source: 'setting' });
+	const screen = await render(SettingsTools);
+	await expect.element(screen.getByText('/opt/demo/chromium · setting')).toBeVisible();
+	await expect
+		.element(screen.getByRole('button', { name: 'Download Chromium for demos' }))
+		.not.toBeInTheDocument();
+});
+
+test('setting_and_clearing_search_key_switching_engine_and_committing_browser_path', async () => {
+	let searchKeys: SearchKeysStatus = {
+		tavily: { present: false, source: 'none', masked: null },
+		brave: { present: false, source: 'none', masked: null },
+		effective_engine: null
+	};
+	vi.mocked(getSearchKeys).mockImplementation(async () => searchKeys);
+	vi.mocked(setSearchKey).mockImplementation(async (engine, key) => {
+		if (engine === 'tavily') {
+			searchKeys = {
+				...searchKeys,
+				tavily: key
+					? { present: true, source: 'file', masked: '…1234 (13 chars)' }
+					: { present: false, source: 'none', masked: null },
+				effective_engine: key ? 'tavily' : null
+			};
+		}
+		return searchKeys;
+	});
+
+	const screen = await render(SettingsTools);
+	const tavilyInput = screen.getByLabelText('Tavily', { exact: true });
+	await tavilyInput.fill('tvly-key-1234');
+	await screen.getByRole('button', { name: 'Set Tavily key' }).click();
+	expect(setSearchKey).toHaveBeenCalledWith('tavily', 'tvly-key-1234');
+	await expect.element(screen.getByText('…1234 (13 chars)')).toBeVisible();
+
+	const engineSelect = screen.getByLabelText('Search engine');
+	await userEvent.selectOptions(engineSelect, 'tavily');
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].search_engine)
+		.toBe('tavily');
+
+	await screen.getByRole('button', { name: 'Clear Tavily key' }).click();
+	expect(setSearchKey).toHaveBeenCalledWith('tavily', null);
+
+	const browserInput = screen.getByLabelText('Browser path');
+	await browserInput.fill('/usr/bin/chromium');
+	await userEvent.keyboard('{Enter}');
+	await expect
+		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].demo_browser)
+		.toBe('/usr/bin/chromium');
 });

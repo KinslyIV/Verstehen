@@ -1,627 +1,433 @@
 # Decisions
 
-## Decided
+Only what the code and the other docs don't already say. LearnHarness's code is the specification,
+so this file mainly lists where Verstehen **deliberately differs** from it: an agent comparing the
+two must not "fix" these. How each area works is in [architecture](architecture.md); what's left is
+in the [roadmap](roadmap.md); the working rules are in [workflow](workflow.md).
 
-| Date | Decision | Reason |
-|---|---|---|
-| 2026-11-21 | **User decision:** The repository goes public under **AGPL-3.0-only**, matching LearnHarness. Git history is rewritten to use the GitHub noreply email. | Publish the port under its upstream license while keeping the user's personal email out of public history. |
-| 2026-11-21 | **User decision:** GitHub-hosted runners run `make check` and `make verify` on every PR against `main` and push to `main`. Fake-model Playwright flows retry once in CI and never locally; flaky passes remain visible in the list reporter. `make verify-live` stays local and never runs in CI. | GitHub-hosted runners are free for public repositories; one retry handles intermittent timing flakes while preserving visibility. Live verification needs the user's Claude login. |
-| 2026-11-21 | **User decision:** Releases are cut by manually pushing a `vX.Y.Z` tag matching the three application versions. The release workflow builds the Arch package with `make app` and attaches it to a GitHub Release. | Keep release timing manual and let the Arch laptop download a built package. |
-| 2026-11-21 | **User decision:** Protect `main` with the required `ci` check. Agents push task branches and open PRs against `main`, but never push to `main`, force-push, or merge. The user merges. | Require passing checks and keep merge authority with the user. |
-| 2026-11-21 | **Orchestrator decision, for user review:** In Settings → Accounts the line "Uses your Claude Code login. Run claude to sign in." shows only when Claude Code is usable (tested or untested); when it is not usable, the reason alone says what to do first (install, reinstall, or update), and sign-in only matters once a usable `claude` exists. The desktop shell's `plugins.shell.open` allow-list also permits exactly `https://code.claude.com/docs/en/setup` (a test reads it), so the Install button opens in the app. | Signing in is the next step only for a usable binary; next to the not-installed reason it repeated "run claude to sign in"; without the allow-list entry the button would do nothing in the Tauri app. |
-| 2026-11-21 | **User decision (supersedes the Claude Code download):** The **"Download the tested version" feature is removed**. Verstehen uses only an installed `claude`, found on PATH and the known folders. When Claude Code is `not_installed` or `too_old`, Settings → Accounts shows an **Install Claude Code** button that opens https://code.claude.com/docs/en/setup. Reasons now read: "Install Claude Code, then run claude to sign in." (not found), "Cannot determine the Claude Code version. Reinstall Claude Code." (unreadable version), "Update Claude Code with claude update." (too old). `TESTED_VERSION`, `MINIMUM_VERSION`, and the untested warning stay. The Chromium demo-browser download is unchanged. | The download saved nothing: the user must run `claude` in a terminal to sign in anyway, and the downloaded copy isn't on PATH. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** The graph page gets the pick chip too: the **Pick nodes** / **N nodes selected** chip with Clear sits under the search row and opens the chains table in pick mode, and **Start session** sits beside it once something is picked. The page's **Chains** button opens the table in manage mode (organize and delete). | User decision 3 says the page shows Start session once something is picked but not how to pick there; LH's table has a pick mode and a delete mode, and we need both reachable. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** Node deletion has two entry points: right-click a node (LH) and a **Delete** button on the detail card (the plan's T3 card bullet). The delete dialog follows LH's code: names, a permanence line, no pre-flight impact read, nodes deleted one after another and stopped at the first refusal. LH's unused `folders` variant is not ported. | LH's `delete-node-dialog.tsx` has no impact read (owner ruling 2026-09-30 in its header), so the plan's "unioned impact" has nothing to port. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** The extraction-running line in the node and source dialogs reads "An extraction is running — try again when it finishes." (shown for code `extraction_running`), not LH's "…when the activity dock drains." | We have no activity dock until M11. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** The session delete dialog offers Try again on every failure (LH), where the old M2 dialog offered it only for a 409. The session list always sends an explicit `mode` (`delete-nodes` only when the traces box is checked). | LH shows the server's line and Try again for 409 and 503 alike; T2's default for an omitted mode was only a bridge until this UI. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** Settings → Graph uses LH's labels: **Extraction**, **Graph rendering**, **Extraction chunk budget** (hint "N tok"), and **Graph tools** ("Lets the tutor consult your knowledge map between sessions", "Graph is disabled" with Extraction off), not the plan's "chunk size" and "Prober graph tools". The Graph rendering hint reads "Off = the graph page shows the summary view" (LH: "home shows the chains view"). Empty chunk budget writes the default 4096 explicitly. | AGENTS.md: copy LH's labels and texts; LH's home is our graph page; the settings PUT replaces whole sections, so the field cannot be left unset. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** **Extract now** is the button text in the coverage ring's popover and the session menu block while idle ("Running" while a run is active or requested); LH's menu says "Extract" and its popover has no button. | The plan and the user's wording say Extract now; one component serves both places. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** The coverage ring, the session menu block, and the Jobs-tab extraction rows refresh on `extractions-changed`, `graph-changed`, and turn settle instead of LH's 2-second polls. The ring refetches only the session's coverage (`scheduleCoverage`). | The port has the events LH lacks (plan: one `graph-changed` event, `extractions-changed` per start, phase, and finish). |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** The chains table is an overlay inside the lesson area (under the app's header), not a full-bleed surface over LH's top bar. Not ported: the tree guide lines, the custom drag preview, and the `lh:kbd-find` shortcut; the practice-session filter has nothing to hide before M10. The table reads `propositions` from the snapshot (not `nodes`, which include implication nodes). | Look is ours (AGENTS.md); the omitted pieces are presentation or need M10/M11 surfaces. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** Picks are cleared when the session is created, pruned whenever a refetch shows a picked node is gone, and the new-session screen reuses its created session only while the picks are unchanged. A session holding only the `graph-context` marker still counts as unopened, so the opening message is sent. | LH drops the picks with the home screen; without this the first message of a pick-started session was never sent. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T4):** Backend fix found by `graph-picks`: the `graph-context` marker is projected to the model as a user message before the learner's first message (`session/projection.py`). T2 wrote the marker but a turn on such a session failed with "marker projection is not implemented". | LH sends the marker as its own message before the first user message (`native-messages.ts:322`). |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3 review):** The empty graph's second line reads "Add your notes with the Extract files button." instead of LH's "Attach your material with the paperclip or drag and drop." | Our graph page has no paperclip or drop target; LH's line points at its home composer. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9):** GPT-6.1 Sol hit the ChatGPT usage limit (until 2026-11-26) during the T2 review fixes; those fixes and the remaining M9 tasks run on Claude **Sonnet 5.5, medium effort** (the standing stopgap). | Keep M9 moving. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The canvas port keeps the API's snake_case setting names (`node_size`, `charge_strength`, `regions.edge_alpha`) instead of LH's camelCase, and ports only the ladders, ranges, defaults, and slider mapping of `render-settings.ts`. The sanitizers and their tests stay in the backend (T1), which sanitizes every GET and PUT. | One naming through the API and the canvas; no second sanitizer to keep in step. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The page settles the layout with `incrementalLayout` over the whole snapshot (all birth-session clusters, implication nodes attached by their premises' majority, as LH's settle does) and saves every position with one `PUT /api/graph/positions`. `session-clusters.ts` is ported only as `birthSessionPartition` and the implication attach in `layout-settle.ts`. LH's `seedMissingNodePositions` is not ported: settling places every node before the canvas draws. | Decision 5; the snapshot's clusters keep only hulls of three or more members, so the settle needs its own full partition. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The canvas renderer has no right-click handler and the card has no Delete button; the context menu and node deletion arrive with the delete dialogs in T4, which adds `onContext` to the renderer. | Scope: deletion is T4. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The chains table button opens a placeholder dialog ("The chains table is coming in the next update."). **Start session** is rendered only while the page's `picked` list is non-empty; T3 has no selection, so it never appears until T4 fills it. | The plan asks for both in place but inert. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** Session cluster labels follow renames without rebuilding the drawn graph: when the session list changes the page refetches the snapshot, and when the graph revision is unchanged it only updates the titles and calls the renderer's label-only channel (`setClusterLabels`). The card's Sessions links go to the session, not to a message, because the thread has no message anchors. | LH's rename-shuffle fix; deep links need anchors the lesson thread does not render. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The summary view (Graph rendering off) omits LH's "practice sessions" row; practice sessions do not exist until M10. Teaching sessions are the count of the session list. The cost pill shows when the cost summary has any source (the port's summary has per-source totals, not LH's run list). | Nothing to count yet; the data the backend serves. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** Notes imports upload one file per request (LH's queue shape) with the three-at-a-time, folder-skip, and summary rules of `notes-import-queue.ts`; a failed result shows its `error`, then `code`, `reason`, and `missing` on a second line (the port's resolution envelope replaces LH's `provider` and `slots`). | Same behavior over this backend's result fields. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T3):** The T3 verify flows switch Graph rendering and the chunk size through `PUT /api/settings` and point the cheap slot at the scripted fake model for extraction; Settings → Graph (T4) is not needed for them. The extraction flow seeds a long teacher message with a known id and sets the chunk size to 500, so the lesson's reply runs a second, empty batch. | The scripted model cannot know a live message's id. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Extraction has its own `graph/extraction_service.py`, leaving T1's `GraphService` in `graph/service.py`. Request admission is injected from the existing app-wide worker gate; graph notifications and session lifecycle functions are injected by `app.py`. | Keeps the enforced package order and one admission pool without mixing graph editing with model-run ownership. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Graph settings use `graph.enabled`, `graph.rendering`, `graph.extraction_chunk_tokens`, and `agent.graph_tools`; API run identities use `session_id`, including notes sources, and all route payloads use snake_case. Model tool schemas retain LH's `messageId`, `linkTo`, and candidate payload keys verbatim. | Continues the port's typed settings and T1 API convention; preserves the model-facing contract. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Session DELETE defaults an omitted mode to `preserve-graph`; explicit invalid modes return LH's `bad_mode` refusal. | The existing session UI sends no mode until T4. This preserves its contract while exposing both approved modes now; LH requires an explicit mode. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Manual extraction checks model readiness before returning 202, returning the existing 503 resolution envelope when unavailable. Automatic extraction skips on unavailable models or background consent, and manual extraction/imports use foreground consent. | LH's manual route accepts first and logs readiness failure later; an actionable refusal fits this port's existing setup handling. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Session deletion blocks new extraction for that source, holds its runtime lock through cancellation and trace cleanup, and waits up to ten seconds before the 503 wind-down refusal. | Python store calls yield; this replaces LH's synchronous deletion block and prevents an extraction from restarting between cleanup and session removal. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2):** Move the existing teacher-prose selection to `teaching/prose.py`, shared by side chat and extraction, and the PDFium mutex to `teaching/pdfium.py`, shared by PDF workers and imports. PDF notes use character geometry/font sizes, page-local heading thresholds, lists, title-first ordering, and image-only/empty page classification. | Avoids duplicate delivery rules and concurrent unsafe PDFium access across sibling packages. As approved, PDFium text grouping can differ from pdfjs, including column ordering. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T2 review):** `ExtractionService` is built before `SessionService`, `TurnService`, and `GraphService` and passed through their constructors (with `GraphStore` for `SessionService`); they call it directly for coverage, deletion begin/end, trace deletion (`delete_session_traces`), trigger, and prober tools. `GraphRefused` moved to `graph/errors.py` to avoid a circular import. No optional callables or `None` guards remain. | Matches the constructor-injection pattern and the package order, where `session` imports `graph` directly. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T1):** Graph API and stored payloads use snake_case, with `session_id` for LH's `chatId` (including notes source ids), `revision` for the graph revision, and LH's `from`/`to` edge keys. Source DELETE follows the actual LH request: explicit `source_ids`, `folder_ids`, and `delete_sessions`; it purges contributions with `delete-nodes`. Both trace modes are available in the backend helper for T2's session deletion. | The plan's source-route “with mode” is ambiguous; LH's source route has a conversation-deletion flag, while its session route has the two trace modes. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T1):** Store assertion payloads as validated JSON rows ordered by `seq`, splitting identity rows from link rows. Add `graph_source_placements` for session/file placements and `graph_revision` for a persistent monotonic revision. Each graph mutation rewrites only changed ledgers in one transaction, advancing revision and notifying only after commit. | Follows the entry-store payload pattern and LH's ledger semantics; placements must exist independently of imported-source records. SQLite has no ledger-file mtime revision. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T1):** Rebuild `usage` without its session foreign key, retaining its columns and rows, and replace the former session cascade with an `AFTER DELETE ON sessions` trigger. Notes-source usage is removed when that source is deleted. | Extractor/auditor usage must accept `src_…` source ids without inventing session records; existing session deletion still removes its usage. |
-| 2026-11-20 | **Orchestrator decision, for user review (M9 T1):** Cost summaries count persisted extractor/auditor calls, with stage totals and per-source totals. Claude Code is labeled `CLI`, ChatGPT account ids `ChatGPT`, following LH's plan-cost presentation. These subscription calls never accrue API dollars; unknown/fake accounts are explicitly unpriced. | Existing usage has a request id and source id, but no extraction-run grouping, duration, or emission stats. Real providers in this port are subscriptions only; no invented dollar prices or synthetic runs. |
-| 2026-11-20 | **User decision (M9 planning):** The graph canvas is a TypeScript port of LH's own Canvas 2D renderer (`components/graph-canvas.ts`, d3-zoom camera) and its d3-force layout (`src/core/layout.ts`). It replaces "Svelte Flow, d3-force, dagre" in the roadmap and architecture. | LH imports no `@xyflow`; Svelte Flow is a DOM node editor without hulls, label fading, or canvas picking. |
-| 2026-11-20 | **User decision (M9 planning):** The knowledge graph has its own page, `/graph`, opened from a **Knowledge graph** sidebar entry. `/` and `/session/new` keep the plain new-session screen. | Layout change from LH, whose home is the graph. |
-| 2026-11-20 | **User decision (M9 planning):** Session-start picks work on both screens with one shared selection: the new-session screen always shows LH's "Pick nodes" / "N nodes selected" chip with Clear, opening the chains table in pick mode; the graph page shows **Start session** once something is picked. Sending adds LH's `graph-context` marker. | LH shows the chip in teaching mode only when something is picked; the graph has its own page here. |
-| 2026-11-20 | **User decision (M9 planning):** M9 ports all of LH's graph surface: node and source deletion (and the session dialog's "Also remove its graph traces"), source organization, the full render settings panel, the cost pill, and the graph settings (extraction, rendering, chunk tokens, prober graph tools). | Scope. |
-| 2026-11-20 | **User decision (M9 planning):** The graph page settles the layout. The server only stores positions; when the snapshot has nodes without a position, the page runs the TypeScript port of LH's settle and saves it with `PUT /api/graph/positions`. | LH settles on the server after each merge; our server is Python and d3-force is JavaScript. Same deterministic layout, one physics implementation; new nodes are placed when the graph is next opened. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 review):** The verify fixture ignores an aborted GET to `/api/jobs` (matching the path without its query) like the other aborted polls during reload. | `job-recovery-reload` failed intermittently on a jobs poll the reload itself cancelled. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T3):** T3 ran on Claude **Sonnet 5.5, medium effort** (GPT-6.1 Sol still at the usage limit). (1) `side_question` is a `ContextKind`, but its updates are computed from `SideChatService.snapshot` at each model request, never queued. (2) A `steers` turn (wake) whose side updates don't fit is refused with 400 for every provider, not only subscriptions as in LH; for other inputs the markers stay out and the first model request fails with LH's budget error. (3) Turn-start markers are saved with the write-ahead input, as M7 saves its markers. A first request that then fails at dispatch still leaves them saved; a Retry replays them, so the teacher still receives them. Mid-run markers are saved only when admitted. (4) If a budget failure happens after job markers or steers were taken in the same hook, those are released back to pending, not saved. (5) `side_budget_retry_drops` lives in `session/projection.py` (sidechat cannot import session); `to_llm_messages` takes `drops=` instead of `retry=`. | Closest fit to LH within M7's write-ahead model and the import rules. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T2 review):** `side-chat-stop-retry` now waits for the retried answer to finish (full text, Send back) before its final screenshot; it previously captured mid-stream. | The screenshot showed Stop still active. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T2):** (1) Close and Escape act only when a thread or quote was opened explicitly; the default current-segment view has no Close. (2) Side chat is the fourth tab, after Plan, Jobs, and Activity; tabs got tighter padding and no wrapping to fit the 25% panel. (3) The active tab is not persisted, like the other tabs; a reload reattaches a running answer once Side chat is opened. (4) Ctrl+Enter and Cmd+Enter also send, as in LH's code. (5) A failed answer stays in the thread and a retried answer is appended after it, as in T1. (6) Selected text is built from the DOM so KaTeX formulas become `$tex$` and blocks are separated by newlines. (7) `side-chat-open-question` asserts that the POST carries `working`; the helper's use of it is covered by T1 tests (the fake model cannot echo). | Closest fit to LH and decision 4; none was specified in the plan. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T2):** T2 ran on Claude **Sonnet 5.5, medium effort**, because GPT-6.1 Sol hit the ChatGPT usage limit (the user's standing stopgap). | Keep M8 moving. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1 review):** The GPT-6.1 Sol implementer hit the ChatGPT usage limit after its checks passed but before committing; the orchestrator finished the review, reran `make check` and `make verify`, and committed. Review change: prompt-override reading is one shared `fragment_text` / `join_fragments` in `teaching/prompts.py`, used by both the teacher and the side helper (it was duplicated). | One way to do each thing. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, thread-scoped exchange ids):** Use PRIMARY KEY(thread_id, id) and UNIQUE(thread_id, seq) for side exchanges. LearnHarness sets question ids from requestId and deduplicates within a thread; reusing one on another segment must retain both questions. Usage remains keyed by each generated answer id. | See the decision text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, valid Unicode clipping):** Keep LearnHarness's UTF-16 limits and counts. When clipping would split a surrogate pair, the shared clip helper drops the incomplete character before adding the quote ellipsis (or without an ellipsis for the anchor). Python/Pydantic reject the lone surrogate LH's slice can produce; this keeps persisted and streamed text valid Unicode. | See the decision text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, side answer context reserve):** Use the known context limit minus COMPACTION_RESERVE_TOKENS (16,384), clamped at 1; skip the size check when unknown. LH uses min(reserve, maxTokens), but our model catalog has no maximum output token field. This follows M6's existing reserve without extending the catalog. | See the decision text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, backend side chat shapes):** Use snake_case API fields. SideAnchor contains `entry_id` and server-filled `block_text`; client text is ignored and part/block coordinates are omitted. Session detail's `side_segments` contains `by_entry`, `entry_points`, and `current`. Each boundary is the last visible assistant entry in its segment (prose or a displayable question), including boundaries within one run. Threads contain `id`, `anchor`, `created_at`, and `messages`; exchange fields use the same snake_case convention. LearnHarness's `c_` prefix marks client optimistic ids (`components/session-core.ts:90`). Our server projection sees saved entries only; no equivalent or prefix filter is needed. | See the decision text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, shared compaction functions):** Move the pure `session/compaction.py` module unchanged to `teaching/compaction.py`, updating all imports and documentation without a compatibility shim. Side chat reuses its cut lookup, UTF-16 counting, and reserve constant. Duplicating those functions would violate the single pattern rule; importing them from session would violate package order. | See the decision text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M8 T1, side chat dependency direction):** SideChatService stays in `sidechat/service.py`, with injected `before_ask(session_id)` (compaction wait), `announce(session_id)`, and the session lock. Its refusal type lives in `sidechat/`; API routes map it to HTTP. SessionService receives SideChatService and stops its live answers when deleting a session. This keeps dependencies within the declared layers. | See the decision text. |
-| 2026-11-20 | **User decision:** The M8 plan is approved ([plan](plans/m8-side-chat.md)), including the orchestrator's proposals (server-side segments, the unported pieces, `sideQuestion` usage rows). M7 has merged, so T1–T3 run in order on `m8-plan`. | Plan → implement. |
-| 2026-11-20 | **User decision (M8 planning):** M8 runs in two groups. Group 1 (segments, redacted lesson document, helper call, thread storage, routes, UI) starts off `main` now; group 2 (delivery through the context-update step, budget, admission, marker handling) starts after M7 T4 merges ([plan](plans/m8-side-chat.md)). | Delivery needs M7's context-update step; the rest doesn't. |
-| 2026-11-20 | **User decision (M8 planning, behavior change from LH):** The side chat is a "Side chat" tab in the right panel. With no thread open it shows the current segment's thread, and Close returns there. LH's floating, draggable, resizable window and pin-to-dock mode are not ported, and there is no thread list. | Fits our right-panel layout. |
-| 2026-11-20 | **User decision (M8 planning):** Entry points are LH's segment-boundary button and the selection toolbar's **Ask** with a plain-text quote. **Cite** is not in M8, and quotes have no source link. Ctrl+J opens the panel on the current segment's thread and focuses it; a second press closes the panel. | Cite needs citations, which are not ported yet. |
-| 2026-11-20 | **User decision (M8 planning):** A side answer streams like a turn. POST saves the question and returns the thread JSON. `GET …/side-chats/{thread}/stream` (SSE) replays the text so far, then streams live until done, and also reattaches after a reload. LH's event types and texts are kept. | One streaming pattern in the app. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T5):** Save the resolved worker account kind/model with zero usage before its first request, and announce the update. | The Jobs tab must show the ChatGPT plan label while its first request is still running; previously that identity arrived only with the first completed request. An offline test pins the early metadata. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T5):** The turn stream includes successful job dispatch acknowledgements in `message_end.results`, alongside existing teaching-tool results. | Dispatch cards must appear while the teacher continues its turn; previously only the saved record exposed these acknowledgements. An offline test pins the stream. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T5):** The fake title model serves role-tagged worker replies when used as the Cheap slot; its teacher/title behavior stays independent. | Existing fake settings use `fake-title` as Cheap, so UI worker flows need its non-streamed worker request path. An offline test covers both roles. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T5):** While busy, a typed draft shows Send and an empty draft shows Stop; Enter with text steers and empty Enter stops. | Matches LH's code (`components/composer.tsx:228-237`); LH's comment at `:33-36` says the button stays Stop, but the code is the specification. (Review note: the implementer first recorded this as a deviation from LH; it is not one.) |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** The job tools live in `teaching/job_tools.py`, not `jobs/tools.py`: the import rules ban `pydantic_ai` in `jobs` outside `jobs/workers`. They take an injected `start_job` callback and the jobs store, so `teaching` imports no `jobs` code. | Plan named `jobs/tools.py`; the enforced rule wins. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** Job marker details use snake_case keys (`job_id`, `tool_call_id`, `kind`, `result`, `aborted`, `failure`); `artifact_views` also stores the session id (for cascade delete); optional tool inputs (`context`, `image`) use an empty-string default and `""` means absent. | Follows the Python port's snake_case details and the `show_image` `caption` pattern. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** Two additions beyond the plan: a `context_update` turn event (entries injected into a live run, so the UI can clear a queued steer and show a marker at once) and `jobs-changed`/`context_update` in the generated API types. External `input` of type `steers` is rejected with 400. | T5's queued-steer indicator needs a landing signal mid-run. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** A worker refused by background consent fails with `<account label> background use is off in this app. Enable it in Providers to run this work. No API-key fallback was used.` (LH's subscription error text). A job crash ends with the kind's failure shape; a shutdown leaves the job `running` so the next sweep re-runs it. | LH `nativeSubscriptionError`; restart recovery. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** Wake triggers are `compaction-changed` (running false), every `chats-changed` (covers answers saved without a turn), a settled turn, a finished job, a settings save, and `GET /api/jobs`. A wake is also withheld while a probe handoff is owed (the handoff turn carries the markers). Account sign-in changes are picked up by the next of these events, not by their own event. | No polling and no `GRACE_MS`; avoids a wake racing the handoff. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T4):** Request cause for `continue` is a port of `reconstructRequestCause` over our entries (learner: user text, answered or recovered questions; automatic: handoff and job markers; `ambiguous` counts as background). `handoff` turns stay foreground as before. The wake's compaction gate counts the pending markers' tokens. | LH `native-messages.ts:989`; plan table. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 group 2):** Group 2 runs on `m7-jobs`, made from `main` (with M6) by cherry-picking the M7 plan and the three reviewed group 1 commits, resolving only docs and two small code conflicts (`providers/fake.py` imports, `api/client.ts` adjacent functions). The orchestrator thread's worktree switched from `m7-plan` to `m7-jobs`; T4 and T5 run sequentially in it. | T4/T5 need group 1 code and the unmerged group 1 branches could not be merged by an agent; one branch gives the user a single merge. |
-| 2026-11-20 | **User decision (M7 run):** When the GPT-6.1 Sol implementers hit the ChatGPT usage limit, group 1 was finished by Claude **Sonnet 5.5, medium effort** subagents in the same worktrees, one task at a time. | Parallel validation overloaded the shared host; the limit reset only at 1:43 PM. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T2):** The downloaded browser path is the Linux layout `chrome-headless-shell-linux64/chrome-headless-shell`; the search card's effective engine reads the Cheap slot's account (a usable ChatGPT account means native is available). | Matches the Arch laptop and decision 4's fallback rule. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T3):** The app CSP's `img-src` adds `blob:` so the image card can show the token-fetched object URL. The image route also accepts `.gif` and `.webp`, though stored images are only PNG or JPEG. | The card can't load images with a header otherwise; the extra extensions are harmless 404s. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T1):** Standalone visual annotation receives an already normalized `LearnerImage` (bytes, dimensions, path, snapshot id) alongside `VisualInput`. T3/T4 own loading and snapshot persistence; T1 preserves the `learner-image` placeholder in the result. | Mirrors LH's preloaded visual-maker input without duplicating T3's image policy or adding persistence to workers. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T1):** PDF read accounting uses actual document page numbers, and excludes pages whose headers were removed by the extraction output cap. | LH's reader parses `all` with an infinite cap and records a non-finite page instead of the pages returned. The approved plan requires only actually read pages in `pages_read`. Search-only consultation still does not count as reading. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T1):** HTML extraction uses a Python standard-library parser for visible text, headings, and links, followed by LH's Jina fallback for insufficient content. PDF text comes from PDFium's page text. | Avoids a Node runtime or new parser dependencies in the Python workers. Extraction formatting and article selection can differ from LH's Readability/Turndown and pdfjs Markdown. Names, schemas, prompts, output limits, and failure text remain ported. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T1):** The dependency self-check probes PATH browsers in the approved order, then an already installed Playwright Chromium; it skips headless execution when neither exists. Runtime browser settings/download discovery stays with T2. | Self-check must run without launch settings or creating an application data directory. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T1):** Worker requests set a task-local fake-script role; tagged replies are selected only for that role, while untagged replies retain legacy eligibility. | Allows a shared scripted model to interleave isolated worker loops without adding session-core wiring in T1. |
-| 2026-11-20 | **Orchestrator decision, for user review (M7 T3):** `show_image` display details use `path`, optional `caption`, `mime_type`, `sha256`, `width`, and `height`; the stored extension is derived from the MIME type (`png` or `jpeg`). | The plan requires M5's SHA-256 image store rather than LH's `snapshotId`; snake-case metadata follows the Python port, while the model-facing input schema and text remain verbatim. |
-| 2026-11-20 | **User decision:** The M7 plan is approved ([plan](plans/m7-jobs-and-workers.md)). Group 1 (T1–T3) starts now; group 2 waits for M6 to merge. | Plan → implement. |
-| 2026-11-20 | **User decision (M7 planning):** M7 runs in two groups. Group 1 (T1 workers, T2 Settings → Tools, T3 learner images) touches no session core and starts now off `main`, each task on its own branch and worktree. Group 2 (T4 jobs, delivery, and wakes; T5 jobs UI) starts after M6 merges into `main`, rebased on it ([plan](plans/m7-jobs-and-workers.md)). | M6 and M7 both change `session/turns.py`, the projection, the runtime, and the thread UI. |
-| 2026-11-20 | **User decision (M7 planning):** Learner images in M7 are `show_image` and the annotated-photo snapshot of `visual` with `image`, stored with M5's image store in `<data dir>/images/`. LH's composer paperclip and drag-and-drop path chips are not in M7. | In LH learners never upload image bytes; images are files referenced by path. |
-| 2026-11-20 | **User decision (M7 planning):** Tavily and Brave keys live in `<data dir>/credentials.json` (0600, never in SQLite, never returned unmasked); `TAVILY_API_KEY` / `BRAVE_API_KEY` env vars win, as in LH. Settings → Tools → Research has one masked field per engine. | Same secret handling as the ChatGPT tokens. |
-| 2026-11-20 | **User decision (M7 planning):** A "Search engine" setting (Settings → Tools → Research) picks Native, Tavily, or Brave; default Native; Tavily and Brave selectable only while keyed. With native search in use the researcher gets Pydantic AI's `WebSearch` and no `web_search`; otherwise `web_search` on the chosen engine; `web_fetch`, `web_fetch_pdf`, and the PDF tools always. Fallbacks: Native on Claude Code (no native search) uses Tavily, else Brave, else LH's "not available" text; a picked engine whose key is gone uses the other keyed engine, else native on ChatGPT, else that text, and Settings notes "key missing, using …". | Replaces the fixed 2026-11-18 order with the learner's choice. LH's pin never falls back on a missing key. |
-| 2026-11-20 | **User decision (M7 planning):** Researcher prompt variant when native search is in use: "Search with web_search using varied angles:" becomes "Search the web using varied angles:", and the paragraph "If web_search reports that search is unavailable … Never invent search results or sources." is left out. Otherwise verbatim; verbatim on Claude Code. | Native search has no tool name and can't be unconfigured. |
-| 2026-11-20 | **User decision (M7 planning):** The right panel's Jobs tab shows LH's Background agents rows (kind, activity, elapsed, cost label, inline detail, End; header total) for the open session's computing jobs only. Extractions join in M9. | Layout change from LH's app-wide sidebar section. |
-| 2026-11-20 | **User decision (M7 planning):** The demo/figure invert switch persists in an `artifact_views` table (entry id → inverted), written by a silent route, returned with the session detail, never sent to the model, deleted with the session. | LH rewrites the saved marker (`setSteerUiInverted`); our entry log is append-only. |
-| 2026-11-20 | **User decision (M7 planning):** Port LH's four job-tool switches (research, demo, visual, pdf; default on) and `WorkerAdmission` (app-wide FIFO gate on worker model requests, default 8) with LH's "Concurrent worker requests" field. Both live in a new Settings → Tools section with three cards: Background tools, Research, Demo browser. Lesson keeps Quizzing, File access, Compaction limit. | Same behavior as LH's Settings → Agent. |
-| 2026-11-20 | **User decision (M7 planning):** Demo browser search order: the setting, else on PATH `chromium`, `chromium-browser`, `google-chrome-stable`, `google-chrome`, else the downloaded copy. "Download Chromium for demos" installs Playwright's `chromium-headless-shell` into `<data dir>/browsers` through the bundled driver; the button hides once any browser is found. | Demos are tested only headless; refines the 2026-11-19 Chromium decision. |
-| 2026-11-20 | **User decision (M7 planning):** Without a browser `demo` still dispatches and fails at once, as in LH, with: "No render engine available: no Chromium-family browser was found. Set one in Settings → Tools → Demo browser, install Chromium, or use “Download Chromium for demos” there. (Verification is mandatory — demos are never delivered untested.)" | LH's text advises Chrome and `CHROME_PATH`, which don't apply. |
-| 2026-11-20 | **User decision (M7 planning):** The relaxed demo CSP adds `'unsafe-inline'` and `https:` to `script-src`, `style-src`, `img-src`, `font-src`, and `connect-src`. | LH's demo-builder prompt allows any CDN; refines the 2026-11-18 demo CSP decision. |
-| 2026-11-20 | **User decision (M7 planning):** Deleting a session removes its image files that no remaining session's entries or jobs reference, in the same step as the job cleanup. | Matches LH, which deletes a session's image snapshots with the session. |
-| 2026-11-20 | **Orchestrator decision, for user review (M6 T1 review, plan correction):** The turn-start compaction gate measures the saved entries only, as LH does without side-chat updates. The approved plan said it also counts the incoming input; that misread LH's `projectMessages` (`src/server/chat-handler.ts:405-425`), which adds the input only with side-chat cargo (M8). The summary is hoisted only when the kept entry is after the first entry (LH `kept > 0`). | LH is the specification; both were plan errors, not user decisions. |
-| 2026-11-20 | **Orchestrator decision, for user review (M6 T1 review):** At settlement an owed handoff starts before the settle kick. The handoff's own gate compacts first when needed, so the result matches LH's kick-then-gated-wake. | Starting the kick first widened the idle window in which the UI also sends `handoff`, producing a duplicate-handoff HTTP 400 in `plan-rewrite`. |
-| 2026-11-20 | **Orchestrator decision, for user review (M6 T2):** (1) After a compaction, a failed reply still shows its error, but Retry is hidden, not disabled (LH `retryable` is false). (2) "Context compacted" falls back to the marker's own position when its summarized entry is missing. (3) While compacting, the thread shows "Compacting context…" with a spinner where "Thinking..." goes, and the composer keeps accepting text but Send and Enter do nothing. (4) The limit field is a browser number input, so non-numeric text reads as empty (the default); zero and negative numbers are rejected. (5) The verify fixture's `appendEntries` passes entries through a temp file, because long history exceeded the argument size limit. | Each follows the closest LH behavior or the plan text; none was specified. |
-| 2026-11-20 | **User decision (M6 T2):** T2's implementer is **Claude Sonnet 5.5**, medium effort. | GPT-6.2 Sol hit the ChatGPT usage limit before T2 started. |
-| 2026-11-20 | **User decision (M6):** M6 builds on `main` on branch `m6-plan`: T1 backend, then T2 UI on T1. The implementer is **GPT-6.2 Sol** (`gpt-6.2-sol`), medium, default tier. | Same shape as M5. |
-| 2026-11-20 | **User decision:** The M6 plan is approved ([plan](plans/m6-compaction.md)). | Plan → implement. |
-| 2026-11-20 | **User decision (M6 planning, behavior change from LH):** The compaction marker is appended at the end of the entry log, with `details.last_summarized_entry_id` naming where the summarized transcript ended; the UI draws "Context compacted" after that entry. Code that reads the end of a session (pending question, dismissal pause, continuation, handoff, failure banner) skips compaction markers. Retry still stops at one, as in LH. | LH rewrites its record to insert the marker before entries appended during the summary (`src/server/compaction.ts:258-264`); our log is append-only. The model sees the same summary and kept tail either way. |
-| 2026-11-20 | **User decision (M6 planning):** `AssistantEntry` carries an optional `usage` (input, output, cache read, cache write, reasoning tokens) from the same `ModelResponse`. The `usage` table stays the cost record. Entries without usage use the 4-characters-per-token estimate. | LH's estimate anchors on the last reply's provider-reported usage, which LH stores on the message. |
-| 2026-11-20 | **User decision (M6 planning, behavior change from LH):** No "include reasoning" compaction setting. If ChatGPT encrypted reasoning is ever resent, the estimate always counts such a reply at least at its saved output tokens. | Verstehen does not resend encrypted reasoning today (`session/turns.py:503` drops the reasoning item id), so the switch would correct nothing. The missing resend is a separate fix after M6. |
-| 2026-11-20 | **User decision (M6 planning):** No context meter in M6. LH's stats bar (context, cost, per-turn usage) is added to M11. | Compaction works without it; the bar is a larger feature of its own. |
-| 2026-11-20 | **User decision (M6 planning):** Settings → Lesson gets a third card, "Compaction limit" (hint "Summarize older history when the lesson's context passes this many tokens"): a number field committing on blur or Enter; empty means 150,000, values below 32,000 are raised to 32,000, invalid input is not saved. `Settings.compaction_limit: int \| None`; the backend applies the same floor. | LH's threshold row and sanitizer (`components/settings/agent-section.tsx:1001-1026`, `src/core/settings.ts:842-850`). |
-| 2026-11-20 | **Orchestrator decision, for user review (M6 T1):** If a compaction names a missing kept entry, replay the full history. When its marker sits inside a pending tool exchange, replay the tool results together before the fallback summary text. | This preserves both the answer and the summary when projecting an incomplete or imported record. Pydantic AI expects the results next to their call. |
-| 2026-11-20 | **User decision:** The full test includes a real provider. `make verify-live` runs a browser flow on the app with real Claude Code and `haiku` (the server's logged-in `claude`): start a lesson, the reply ends in a question in the dock, answer it, and the reaction turn streams. Assertions check states, not exact text. It is required with full `make verify` before every merge and after shared UI or runtime changes, not while editing. It is the one standing exception to "real models only when the user asks". | The M5 laptop run failed on its first lesson (prompts missing from the package) although every fake-model check passed. |
-| 2026-11-20 | **Orchestrator decision, for user review (verify-live):** Use a separate Playwright config and artifact directory. Set Main, Cheap, and Vision to Claude Code Haiku at low thinking in the live flow's temporary settings. Use the CLI auth status exit code for the login preflight. | New Session requires all three slots. Its normal first turn can also generate a title through Cheap. The two verification commands retain their own evidence. |
-| 2026-11-20 | **Fix:** The PyInstaller spec bundles `teaching/prompts/**/*.md`, and `verstehen --self-check` fails when a prompt directory is missing. | The package shipped without prompts since M2; the packaged first turn failed with "No such file or directory … prompts/prober". |
-| 2026-11-20 | **User decision:** The M5 plan is approved ([plan](plans/m5-teaching-flow.md)). | Plan → implement. |
-| 2026-11-20 | **User decision (M5 planning):** M5 builds on `main` (all of M4): T1 backend, then T2 UI on T1. The implementer is **GPT-6.2 Sol** (`gpt-6.2-sol`), medium, default tier. | M4 is merged; same shape as M4. |
-| 2026-11-20 | **User decision (M5 planning):** The probe handoff is started by the session: after a successful `probe_done` it saves LH's `probe-handoff` marker and starts the teacher's planning turn once no turn runs and no question is pending (LH's wake conditions). No jobs table; M7 does not change it. | The "explicit phase transition" of 2026-11-18, without waiting for M7. |
-| 2026-11-20 | **User decision (improvement on LH):** The owed handoff is derived from entries: owed when `probe_done` succeeded and no `probe-handoff` marker and no learner message followed. An open, idle session starts it (like `continue`). A learner message before it starts makes it no longer owed. | LH keeps it in memory and loses it on restart. |
-| 2026-11-20 | **User decision (layout change from LH):** The live plan diagram is in the right panel's Plan tab only, with LH's zoom and fit; an inline plan block opens the panel. LH's marginalia, Plan chip, and popup are not ported. The panel opens on each successful `plan_init` while the session is watched. | Uses the right panel reserved for the plan in 2026-11-18. |
-| 2026-11-20 | **User decision (M5 planning):** The plan diagram is a Svelte port of LH's hand-built SVG (`dagre-d3-es`, `d3-shape`). AI Elements' Plan is not used; "M5: plan" is removed from the 2026-11-19 AI Elements decision. | LH uses no AI Elements plan component; its Plan is a task-list card, not a dependency map. |
-| 2026-11-20 | **User decision (M5 planning):** `send_to_user` (Claude models, prober and teacher) and the teacher's narration guard are ported in M5, exactly as LH. | A Claude model's plain text may be summarized into thinking and never reach the learner. |
-| 2026-11-20 | **User decision (M5 planning):** The learner-file tools (`read`, `ls`, `find`, `grep`) are ported in M5 for prober and teacher, with LH's protected locations (plus our credential files) and limits. File access as LH: open by default, with a typed `file_access: {restricted, folders}` setting and its row in Settings → Lesson. | The prompts reference the tools; no milestone owned them. |
-| 2026-11-20 | **User decision (M5 planning):** The current plan is derived from entries: the tree in the newest successful `plan_init` result's `details`. No sessions column. | One source of truth, like the phase and node statuses. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T2):** Include the ordered `probe_done`, `plan_init`, and `send_to_user` results and all error results in the completed SSE response. Question actions continue to use saved entries. | The learner can see assessments, plan rewrites, and LearnHarness's quiet Retrying… line during a turn. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T2):** Persist manual right-panel visibility. Opening on a new plan or clicking a snapshot opens the Plan tab for the current lesson layout. The record first loaded on mount is the baseline for new plans. | A historical plan is available without opening the panel on every reload. Closing the panel during a turn survives that plan's settlement and replay. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T2):** The settings read reports a malformed file-access policy separately from its restricted, empty fallback, and the Lesson row shows the error. | The learner can distinguish a damaged policy from an intentionally empty allowlist and repair it in place. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T2):** Fake-model replies with a delay stream tool arguments in chunks using that delay. | Browser flows can exercise partial Claude delivery with the same fixture format as streamed text. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T2):** Use longer per-chunk delays in the handoff, Claude prose, and malformed-question retry fixtures. Give the assertions that wait for those chunks enough time to see the scripted state. | Chromium has time to observe the writing and Stop states, including when verification runs concurrently. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** The new `handoff` input returns 400 with “No probe handoff is owed” or “A question is still pending”. Admission still uses the normal turn claim. | Explicit refusal texts for the new API input. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** Ordinary settings reads represent malformed file access as restricted with no folders so lessons and settings repair stay available. Every file tool reads the saved policy strictly and reports LH's configuration error. | A damaged row cannot silently grant file access or block the entire lesson. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** Protect LearnHarness credential basenames even outside known install paths. Protect Verstehen credentials and temporary files in the configured and default data directories, including canonical aliases. | Verstehen cannot know the location of every LearnHarness checkout or desktop profile. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** Use Pillow for image handling and store read attachments as content hashes under the data directory for model replay. Use Python's bounded `regex` search for `grep`, with its native invalid-pattern diagnostics. | Keeps inline image payloads out of SQLite and bounds regex work without a JavaScript runtime. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** Extend `verstehen --self-check` to round-trip a one-pixel PNG with Pillow and compile and match a `regex` pattern with a timeout. | Exercises both native file-tool dependencies offline in the frozen Arch sidecar, following the M1 packaging decision. |
-| 2026-11-20 | **Orchestrator decision, for user review (M5 T1):** Fake scripts can select `fake-claude`, supply a thinking signature, and pin tool call IDs when replaying a persisted session. | Exercises Claude delivery and restart scenarios offline while preserving existing script defaults. |
-| 2026-11-20 | **Orchestrator decision, for user review:** The question dock keeps the composer's model pill beside Submit (LH's dock has none), so the session's model can change while a question waits; LH's '↵ submits · ⇧↵ newline' hint stays. | The dock replaces the composer whenever a question is pending. |
-| 2026-11-20 | **Orchestrator decision, for user review:** The question dock preserves native Space activation on focused buttons outside the answer rows. | LH's row shortcut can intercept Space on a focused Submit button after the learner has walked the rows. |
-| 2026-11-20 | **Orchestrator decision, for user review:** T2 derives question actions from the saved response and result batch. The live stream displays every assistant response while the record catches up. | T1 emits assistant response boundaries before the adjacent tool results are available to the browser. Using those boundaries as pending-question authority could briefly offer a tool call the model has already rejected or superseded. |
-| 2026-11-19 | **Orchestrator decision, for user review (M4 T1 review):** A `continue` input when no continuation is owed (`needs_continuation` false) saves nothing, starts no turn, and returns OK. LH always runs a turn on `continue`; its client only sends it when owed. | Most cautious: a stale or duplicate continuation (two windows reloading) cannot start an unowed turn. |
-| 2026-11-19 | **Orchestrator decision, for user review:** M4 structural question-argument errors keep LearnHarness's error envelopes and received arguments, with Python JSON and Pydantic diagnostics inside. The question authoring problems, truncation error, and recovery text use LearnHarness's exact wording. | The port validates with Pydantic and preserves raw argument text for repair. |
-| 2026-11-19 | **User decision (M4 run):** M4's implementer subagent is **GPT-6.2 Sol** (`gpt-6.2-sol`), reasoning effort `medium`, default tier. | User instruction when starting M4. |
-| 2026-11-19 | **User decision (M4 planning):** M4 builds on `m3-t1-core`; its UI task waits for M3 T4. **Superseded the same day:** M3 is merged, so M4 builds on `main`, T1 (backend) first, then T2 (UI) on T1. | M4 changes the same turn, session, settings, and composer code as M3. |
-| 2026-11-19 | **User decision (M4 planning):** The M4 session agent is LH's **prober** (`system-prompt.md` → `prober/*` → `shared/*`) with `probe` (or `recall`) and `ask_user_question`. The teach `quiz`/`explain` are built and tested offline and wired with the plan tree in M5; the predict/check reveal and `readingThinking` UI come with M5. Replaces the M2 decision that the agent is the teacher composition with no tools. | The teach tools need a plan map (`nodeId`), which arrives with `plan_init` in M5; every LH session starts with the prober. |
-| 2026-11-19 | **User decision (M4 planning):** Quizzing mechanics are a typed Settings field `quizzing: "choice" \| "free"` (default `"choice"`, LH's `agent.tools.explain`), set by a Multiple choice / Free recall control in a new Settings section **Lesson**. | Same meaning as LH, clearer shape. |
-| 2026-11-19 | **User decision (M4 planning):** The pending question's dock **replaces the composer**, with LH's scroll-collapse bar; answered questions are cards in the thread. LH's **Esc ladder** is ported with its confirm dialog for both a pending question (Dismiss) and a running turn (Abort); the Stop button stays. | Faithful port; clarifies the 2026-11-18 layout decision. |
-| 2026-11-19 | **User decision (behavior change from LH):** Invalid question arguments return to the model **at most 10 times per tool per turn**; then the turn fails with Retry. LH has no limit. | A looping model cannot spin forever on a subscription. |
-| 2026-11-19 | **User decision (M4 planning):** The model reads LH's exact `compactAnswerForModel` JSON (camelCase, as the prompts say); the stored answer and the API use snake_case. | Prompts stay verbatim; our data stays consistent. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T4 verification):** Account flows intercept every `/api/accounts/**` request and the sign-in browser URL in Playwright. The sidecar still runs solely with the fake adapter and temporary data. Fixtures exercise all four Claude states, ChatGPT states/actions, background switches, and download progress/completion (**download part superseded 2026-11-21**) without credentials, the host CLI, downloads, or provider network traffic. | Show real UI states without adding a production verification seam. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T4 setup connection):** Setup opens the shared Settings → Accounts panel in a nested Settings dialog. Accounts are added there, never in the model menu. Setup remains mounted with the draft untouched, polls the catalog, and closes the Accounts dialog automatically when a provider becomes ready. | Reconcile the Settings-only account rule with LH's self-contained, automatically advancing setup stage; a new browser tab would not reliably work in Tauri. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T4 settings repair):** Whole-settings writes validate and normalize changed nonempty model picks; unchanged saved pins survive an unavailable account. Turn admission still validates every model before use. | A removed account must not prevent changing background consent or repairing another global slot. Added an offline API regression; no API schema change. |
-| 2026-11-19 | **Partly superseded** (2026-11-21: the shell may also open exactly the Claude Code setup URL). **Orchestrator decision, for user review (M3 T4 sign-in browser):** The existing Tauri shell plugin opens sign-in URLs in the system browser, restricted by configuration to HTTPS `auth.openai.com` URLs. This extends the earlier sidecar-connection-only webview permission solely for sign-in. Browser mode opens a new tab and offers an explicit reopen button while sign-in is pending. | The OAuth callback belongs to the sidecar; the desktop webview must stay in the app. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T2):** The Claude Code API is `GET /api/accounts/claude-code` for installation/version details, and `POST` (202) / `GET /api/accounts/claude-code/download` for starting/polling one process-owned download. **Superseded 2026-11-21:** the download routes were removed. Repeated starts while downloading return its progress; failures retain an existing verified install and remove the temporary file. | T2 requires progress/failure for T4 but leaves the wire shape open. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T2):** An executable whose version cannot be read or parsed fails closed as `not_installed`, with a detection-error reason; the four approved states have no version-unchecked state. Corrected in T2 review: Claude aliases and fake models use the first supported entry of LH’s `DEFAULT_THINKING_ORDER` (`src/core/settings.ts:96`: medium, low, high, minimal, xhigh, max); Claude defaults to `medium` in both its catalog and SDK options. | Keep the approved state set and follow LH’s thinking default order. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T2):** Runtime context uses LH's local initialize → `get_context_usage` summary control query (5 s timeout, no prompt), caching successful limits by binary path/version/model. Probe failures mean unknown. Fake-script mode exposes only the fake adapter, so offline lesson verification never probes the host CLI. | The SDK's public context method omits summary mode; LH avoids full-mode token-count requests. Preserve isolated fake-model runs. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T3 capabilities; corrected by orchestrator review):** ChatGPT catalog membership uses the bundled genai-prices OpenAI snapshot, the same data source Pydantic AI uses for context windows; context limits still come from the resolved model profile. Offer only the profile's explicitly pinned `openai_reasoning_efforts`, in unified order, excluding `none` (not a T1 thinking level) and `max` (the ChatGPT dialect maps it to `xhigh`). The default is the first supported entry of LearnHarness's `DEFAULT_THINKING_ORDER`: `medium`, `low`, `high`, `minimal`, `xhigh`, `max`; unspecified efforts leave thinking unset. Image support comes from `OpenAIResponsesModel`'s resolved Pydantic AI profile, including its default of true unless overridden by the provider/model profile. | Corrected by orchestrator review: use Pydantic AI's resolved capabilities as required by the plan, and follow LH's full default-thinking preference order (`src/core/settings.ts:96`). |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T3 sign-in lifecycle):** One ChatGPT sign-in may be pending, on the SDK's fixed loopback port; it expires after five minutes. Settings polls the latest attempt by opaque ID. Removal cancels any pending sign-in, preventing its completion from restoring a removed account. Failures expose fixed safe reasons. Connected accounts use T1's `ready` state; authorization failures use `needs_sign_in`, while transient catalog errors use `unavailable` without persisting expiry. | The plan specifies the flow and account states but not concurrency, timeout, or polling details. |
-| 2026-11-19 | **Orchestrator decision, for user review (M3 T3 dispatch):** A small subclass of the pinned ChatGPT provider uses its credential-validation hook to check that the account still exists, has consent, and has not been replaced before dispatch. Each account keeps its own provider/refresh lock. Sign-in replacement invalidates the old source; late failures cannot mark the new sign-in expired. A model wrapper applies the same safe authorization mapping to inference and discovery. | Retains Pydantic AI's refresh and persistence lifecycle while enforcing the architecture's account check at dispatch. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Appearance stays in the app's localStorage (mode-watcher, read before first paint); the backend Settings model has no appearance field. Corrects the M3 plan's settings list. | Removes a duplicate, unused source of truth. |
-| 2026-11-19 | **Orchestrator decision, for user review:** T1's `PUT /api/settings` replaces the typed settings document (omitted top-level fields use code defaults). Session POST/PATCH use optional `model: {account, model, thinking_level}` alongside `title`; PATCH retains the existing `{title}` response, and GET returns the saved model columns. Omitting the level on a session model patch carries its stored level before clamping to the new model's default. | Concrete API shapes were not specified in the plan; preserves M2 clients and whole-field settings semantics. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Unusable models return 503 `model_unavailable` with `reason`. Until T4, creating a session with neither a pick nor a strong slot still creates a nullable model record, which uses the documented legacy strong-slot fallback. Its input refuses without saving anything when strong is missing. | The plan permits 409 or 503; keeping M2's create-then-send flow preserves its no-model notice. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Add an explicit `title` resolution/usage role mapped to cheap, alongside LH's unchanged role map. The first accepted text input starts its one-shot foreground task; app shutdown cancels pending title tasks before closing SQLite. Failure leaves the current title untouched, including an intervening rename. | Titles are new to the port and are not an LH role; retries and restart recovery are intentionally absent. |
-| 2026-11-19 | **Orchestrator decision, for user review:** The fake account offers `fake` (the existing streamed reply queue) and `fake-title` (the first script reply's optional `title` text, independent of the teacher queue). No scripted title is a logged title failure. Verification explicitly configures all three slots via the API. Only `VERSTEHEN_FAKE_MODEL_SCRIPT` enables the account. | Isolate title calls from existing reply sequences and preserve existing title-failure fixtures while testing a successful title in its own flow. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Usage uses an app-generated UUID per dispatched request and the five token counters specified by T1; reasoning maps from `RequestUsage.output_reasoning_tokens`. Streamed partial usage is recorded on stream exit, including Stop; repeated request ids are ignored. Usage rows cascade with session deletion, as the saved LH chat's call history does. | Provides per-call accounting even when a provider omits a response id; follows T1's explicit migration columns rather than expanding the schema to every SDK modality field. |
-| 2026-11-19 | **User decision:** The M3 plan is approved ([plan](plans/m3-real-providers.md)). | Plan → implement. |
-| 2026-11-19 | **User decision (M3 planning):** Typed `Settings` (Pydantic, defaults in code, one `settings` row per top-level field, read fresh per turn): `appearance`, `models` (strong / cheap / vision, each account + model + thinking level, no defaults), `background` (per provider). Replaces the 2026-11-18 "typed settings shape is decided when planning M3". | Settings needed by M3's providers. |
-| 2026-11-19 | **User decision (behavior change from LH):** **The user never enters a model's context limit.** The limit comes from the runtime (Claude Code CLI report), then Pydantic AI's model data, else it is unknown and behaves as in LH (compaction uses the setting alone, the meter shows usage only, the side-chat size check is skipped). Replaces "then a value you enter" in the M3 milestone. | The compaction limit (M6) is the user's setting; a model's limit is not. |
-| 2026-11-19 | **User decision (behavior change from LH):** **"Allow background use" is one switch per provider, for Claude Code too**, on by default. LH has the switch only for subscriptions (one for all ChatGPT accounts) and none for the Claude Code CLI. | Treat both subscriptions alike. |
-| 2026-11-19 | **User decision (behavior change from LH):** **Accounts are first class.** Any number of ChatGPT accounts can be used at once; every pick names an account and a model. Claude Code is the one installed `claude` login. Accounts are added only in Settings; the label is the ID token's email. LH has one active ChatGPT account at a time. | Use several subscriptions side by side. |
-| 2026-11-19 | **User decision (behavior change from LH):** **One composer model menu** (model list beside thinking levels, account rail, tabs Main · Cheap · Vision, **Set as default**). Main changes the session's model; Cheap and Vision change the global slots. Only Set as default changes the strong slot: a pick on the new-session screen applies only to that session (LH writes the strong slot there). Level kept on model switch when supported, Ctrl+K and Shift+Tab as in LH. No favourites, search, per-model shortcuts, Show more, or fast toggle. | User design, modeled on T3 Code's picker. |
-| 2026-11-19 | **User decision (M3 planning):** Sessions own their model and thinking level, stamped from the strong slot (LH). The setup dialog, the unusable-model behavior (Send keeps the draft and opens the menu with the reason), and the model lists (Claude Code `opus`/`sonnet`/`haiku`; ChatGPT from the account's `/v1/models`, kept when Pydantic AI's model data knows them) follow LH. | Faithful port. |
-| 2026-11-19 | **User decision (behavior change from LH):** Model-written titles are **foreground**, the **last title to arrive wins** (it replaces a rename made before it), and a failure keeps the cut title with no retry. The prompt wording is in the [M3 plan](plans/m3-real-providers.md). Completes the 2026-11-19 titles decision. | User preference. |
-| 2026-11-19 | **User decision (M3 planning):** Thinking from another model is kept; LH's model-match filter is not ported. | User preference; closes the M3 open question. |
-| 2026-11-19 | **User decision (behavior change from the 2026-11-19 package decision):** Claude Code has a **minimum version, 2.1.259**, as in LH; below it Claude Code is unavailable ("Update Claude Code or download the tested version"). **Partly superseded 2026-11-21:** the download is removed and the too-old reason is now "Update Claude Code with claude update." The tested version's download is verified against a SHA-256 pinned in our code, from `downloads.claude.ai/claude-code-releases`. | Fail clearly instead of confusing CLI errors. |
-| 2026-11-19 | **User decision (M3 planning):** The provider-event debug switch is the environment variable `VERSTEHEN_PROVIDER_EVENTS=1`, as in LH, with no UI. | Developer tool; keeps raw lesson traffic from being switched on by accident. |
-| 2026-11-19 | **User decision (service/store naming):** Rename `Sessions` to `SessionService` and `Turns` to `TurnService`. Name store variables/fields `sessions_store`, `entries_store`, `settings_store`, and service instances `session_service`, `turn_service`, consistently across application code, dependency injection, app state, tests, and current docs. Use `SessionServiceDependency` / `TurnServiceDependency` for dependency aliases. Keep `Session` as the data model and `SessionRuntime` as live state. Preserve module files, routes, HTTP payloads, and data fields such as `entries`. | Make service responsibilities and store dependencies explicit without changing behavior. |
-| 2026-11-19 | **User decision (selective class responsibilities):** Add a useful class responsibility description when role, ownership, lifetime, or collaborators remain unclear; a short class name alone is insufficient. Small obvious classes and data wrappers may remain undocumented. Review each changed class for clarity and add a description when needed or improve naming. Function/method descriptions remain selective; short self-explanatory methods need none. Python docstrings and TypeScript/Svelte JSDoc stay at most 3 lines. No requirement for every class to have a docstring and no blanket missing-docstring rejection/check; automatic checking remains limited to existing length/syntax enforcement. | Clarifies the earlier name-and-signature rule: the problem is unclear class responsibilities, not undocumented obvious methods. |
-| 2026-11-19 | **User decision (subagent settings):** All subagents use **GPT-6.1 Sol** (`gpt-6.1-sol`) with `reasoningEffort: medium` and the default service tier. Parent model settings are unchanged. This replaces the earlier subagent effort instruction; the workflow row below reflects the current setting. | Persist the user's corrected settings consistently across agent and workflow guidance. |
-| 2026-11-19 | **User decision (validation speed):** During editing, use focused backend/frontend checks and affected UI flows, batching several selected flows per invocation. Full `make check` remains required before every commit; full `make verify` is required before merging UI work and after shared UI or runtime changes. Unrelated docs/offline tooling work does not require UI flows. Add explicit guarded `make verify-run` for unchanged SPA builds; `make verify` always builds. Review may reuse passing results only with unchanged relevant source, configuration, dependencies, and environment and no new issue; record commands, revision or dirty state, flows, and evidence, and rerun after meaningful edits, failure, or a new concern. | Shorter feedback loops without reducing checks, flow coverage, assertions, screenshots, traces, or per-flow isolation. Cheap logic permutations stay in offline tests; representative real flows check integration. Desktop builds remain relevant to packaging changes. |
-| 2026-11-19 | **Orchestrator decision, for user review (build reuse):** Fingerprint frontend source/static paths and content, explicit SPA build configuration, package/installed lockfiles, Node version, public `PUBLIC_*` / `VITE_*` environment and `NODE_ENV`, and all build output. Clear the stamp before building and compare inputs before/after. Production dotenv files and symlinked frontend inputs/configuration/output disable reuse without reading their contents or targets; full `make verify` still works. Custom config imports, `envDir`, extra environment dependencies, and manual dependency edits require a full build or extending the guard. | Keep the guard bounded and conservative, including dirty/untracked changes, failed builds, and missing/replaced outputs, without reading secrets or introducing a general cache. |
-| 2026-11-19 | **Orchestrator decision, for user review (ESLint):** Keep serial ESLint without a cache. The measured normal runs took 30.123 s and 27.264 s; `--concurrency 2` took 54.069 s, all passing. | Concurrency was slower in this checkout; caching could bypass cross-file rules. These local timings do not establish performance on other machines. |
-| 2026-11-19 | **User decision (build speed):** `make app` builds from a prepared Arch image `verstehen-build` (`packaging/Dockerfile`: the toolchain, installed once). Docker's layer cache reuses it; it only picks up newer Arch packages when the user runs **`make app-image`** (`--pull --no-cache`). Tauri's own `beforeBuildCommand` is skipped in `compile.sh`, which already builds the frontend once. | Every build reinstalled the toolchain and built the frontend twice. Refresh is explicit, not on a timer. |
-| 2026-11-19 | **User decision (package size):** **Claude Code uses the installed `claude`** (on PATH); the package no longer bundles the SDK's 356 MB CLI. Verstehen records the Claude Code version it was tested with. If the installed version differs, Claude Code still runs, and Settings and the log warn ("hasn't been tested with Verstehen"). If `claude` isn't installed, Claude Code is unavailable with a hint to install it. Settings has a **"Download the tested version"** button that fetches exactly the tested version (checksum-verified) into the data dir; Verstehen then uses that copy. Built in M3. **Partly superseded 2026-11-21:** the download button and data-dir copy were removed; the installed `claude` is the only source. | Package size. Replaces "Claude Code CLI: the one bundled in the `claude-agent-sdk` wheel". |
-| 2026-11-19 | **User decision (package size):** **Chromium is optional** (`optdepends`). The demo worker uses the browser from the setting, else a Chromium-family browser found on PATH. If none is found, demo testing is unavailable and Settings offers **"Download Chromium for demos"** (Playwright's Chromium into the data dir). Built in M7. The Playwright driver (158 MB) stays in the package. | Package size; don't force a second browser on the user. Replaces "pacman pulls Chromium" and refines "Demo browser: Chromium from Arch". |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** API and SSE payload fields use snake_case Verstehen names (sessions, session_id, entries, turn_in_flight, turn_error, message, error_text); event type values keep LH's names. | Matches Python models and generated API types while preserving LH event semantics. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** openapi-typescript 7.13.0 runs on the repo's TypeScript 6 through a targeted npm override, instead of legacy-peer-deps. Remove the override when a release supports TypeScript 6. | The generator declares a TypeScript ^5.x peer; generated-type freshness and frontend checks verify compatibility. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** T3 proves the renderer with Vitest browser screenshots; the markdown-rendering verify flow moves to T4 and runs through the real thread with a fake-model script. | Avoid a verification-only route and exercise the integrated lesson UI. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** the renderer splits replies into blocks and memoizes finished ones, as streamdown’s parseMarkdownIntoBlocks does in LH, because whole-reply re-parsing stalled long streams (isolated: 41 ms composer fill, main-thread tasks up to 289 ms; concurrent: 1,654 ms fill, 728 ms task). | Pre-approved after the isolated run exceeded the 200 ms threshold. The existing unified pipeline remains inside each block; remend repairs only the tail. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** the M2 AI Elements pieces map to today’s official registry: chat/conversation → message-scroller + message + bubble; prompt input → input-group; reasoning → trace; shimmer → the shimmer utility. The 2026-11-19 user decision’s intent (official shadcn-svelte only, adapted to our types, no AI SDK runtime) is unchanged. | Official registry uses composed patterns rather than the planned component names. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19 (T1 review round 2):** session rename and delete both return `bool`: true for an existing session, false for an unknown id. Thinking entries carry a `redacted` flag (default false) so projection retains empty redacted blocks. | The review authorizes a consistent missing-session signal and Pi's empty-thinking filter. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** entry models live in `store/entries.py` (not `session/entries.py` as the plan said), because store cannot import session; session imports them from store. | Store validates payloads on write and read without reversing the package order. |
-| 2026-11-19 | **User decision (M2 planning):** The M2 agent is the teacher composition (`system-prompt.md` → `teacher/*` → `shared/*`) with no tools. Question tools come in M4, the prober and phases in M5. | Matches the milestone; tools arrive with their own milestones. |
-| 2026-11-19 | **User decision (M2 planning):** Prompt overrides follow LearnHarness: an override applies only when its switch `agent.prompts[<segment path>]` is true and its file is readable; an enabled empty file contributes no text (`src/agent/prompts/README.md`). | Faithful port; corrects the architecture doc, which said a file wins by existing. |
-| 2026-11-19 | **User decision (M2 planning):** Retry of a failed response (`retry`, `retryDrops`) is built in M2. | It belongs to the session core; no milestone owned it. |
-| 2026-11-19 | **User decision (M2 planning):** The M2 session list has rows plus Rename and Delete. Delete removes only the session and is refused while a turn runs; its job and graph parts come in M7 and M9. | Session management from the first real UI. |
-| 2026-11-19 | **User decision (M2 planning):** Assistant markdown uses our own Svelte renderer on LearnHarness's unified/remark stack inside the official AI Elements Message, not `svelte-streamdown`. Learner messages are plain text, as in LearnHarness. | `svelte-streamdown` failed LH's line breaks, CJK emphasis, and CJK link boundaries ([spike](spikes/markdown-rendering.md)). |
-| 2026-11-19 | **User decision (M2 planning):** With no model configured, the send is refused (503 `models_not_configured`), the draft returns to the composer, and an inline notice reads "No model is set up yet." M3 replaces the notice with the setup dialog. | The setup dialog needs M3's slots. |
-| 2026-11-19 | **User decision (M2 planning):** The 5–15 node wording in `teacher/10-planning.md`: line 19 ends "…the fine unit; one reasoning step per node."; line 22 reads "- 5–15 nodes: compress to what the path genuinely needs — wrong is never fine. What keeps a map readable is correct structure: find the unconditional truths underneath and hang everything off those."; line 40 ends "Keep it to 5–15 nodes." | Wording for the 2026-11-18 "Plan map size" decision. |
-| 2026-11-19 | **User decision (behavior change from LH):** Session titles are written by the cheap model, in M3. The session is created with `titleFromPrompt`; a background call on the cheap slot, through `ProviderPolicy`, starts with the first message (in parallel with the first turn) and replaces the title. Prompt wording, a rename made before the title arrives, and failure are decided when planning M3. M2 keeps `titleFromPrompt`. | User preference; LH only cuts the first message. |
-| 2026-11-19 | **User decision:** The M2 plan is approved ([plan](plans/m2-session-core.md)). | Plan → implement. |
-| 2026-11-19 | **User decision:** The orchestrator reviews the earlier orchestrator decisions in place of the user; each one reviewed is marked "reviewed 2026-11-19". | The user delegated the review. |
-| 2026-11-19 | **User decision:** Chat UI pieces come from **shadcn-svelte's official AI Elements** (copied in with the shadcn-svelte CLI), not the community `svelte-ai-elements` registry. Add each piece only in the milestone that needs it (M2: chat/conversation, message, prompt input, reasoning, shimmer; M7: tool, task; "M5: plan" removed 2026-11-20). Adapt them to our own message types: no AI SDK chat runtime, and the `ai` package at most for types. Question cards never come from AI Elements; their behavior is ported from LH. Before M2, check that `svelte-streamdown` covers LH's markdown (code, math, Mermaid, CJK). | LH builds its chat on Vercel's AI Elements (`components/ai-elements/` at cb25c8e); the official port is maintained with the shadcn-svelte we already use. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Tauri identifier `local.verstehen.app`; window 1280×800, hidden until the sidecar is healthy. | Placeholder identity for a personal, undistributed app. |
-| 2026-11-19 | **Orchestrator decision, for user review:** The webview may call only `sidecar_connection`; the Rust shell owns sidecar spawning and the error dialog. The command refuses calls before the sidecar is ready. | Minimum webview permissions. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Readiness polls `/api/health` every 100 ms with a 1 s request timeout, bypassing proxies; on exit the shell kills the sidecar, and a crashed shell closes its stdin. | Fast, local-only startup check. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Package license `LicenseRef-Proprietary`; no stripping or debug package; depends also on `glibc` and `zlib`; `makepkg --nodeps` in the container so Chromium isn't installed there. | Cautious defaults for a private package. |
-| 2026-11-19 | **Orchestrator decision, for user review:** Icons and `Cargo.lock` are committed and used as they are; Rust builds with `--locked`; versions in `pyproject.toml`, `Cargo.toml`, and `tauri.conf.json` must match (`make check`). | One source for each build input. |
-| 2026-11-19 | **User decision (M1 task 4 planning):** Packaging proof is `verstehen --self-check`: resvg renders PNG, pypdfium2 creates and opens a PDF, the Playwright driver reports its version, and the SDK's bundled Claude CLI reports its version. `make app` runs it frozen; the user repeats it on the laptop. | Prove native dependencies offline before features depend on them. |
-| 2026-11-19 | **User decision (M1 task 4 planning):** Use PyInstaller onedir, with the executable and `_internal/` beside the Tauri binary in `/usr/lib/verstehen/`. | Keep native dependencies together without extraction on startup. |
-| 2026-11-19 | **User decision (M1 task 4 planning):** The webview reads port and token through `sidecar_connection`, used only by `src/lib/api/` inside Tauri; browser requests keep relative `/api` URLs. | One transport module for desktop and browser. |
-| 2026-11-19 | **User decision (M1 task 4 planning):** The shell waits for the port line and a 200 health response before showing the window; failure or 30 seconds shows a native error dialog naming the log, then quits. | Never show a disconnected startup window. |
-| 2026-11-19 | **User decision (M1 task 4 planning):** Package and command `verstehen`, launcher “Verstehen” in Education, placeholder icons generated from favicon.svg. | Establish the installable desktop entry for M1. |
-| 2026-11-19 | **User decision:** LearnHarness specification commit moved from `a636647` to `cb25c8e` (v0.6.1); the Part A docs were re-checked against it. | Port the current behavior, including the later compaction and graph fixes. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Serve the existing favicon from `static/` and declare it in `app.html`. | Avoid the startup `/favicon.ico` 404 before the SPA mounts; verify flows enforce no console errors. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The fake model counts requests with one counter over its lifetime. | Consume scripted replies in order across runs and streaming calls. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** fake-model script replies add `thinking` (text), `error` (provider error text, raised after any scripted partial content), and `delay_ms` (wait before each chunk, default 0). | Deterministic thinking, failure, and stop flows. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model text streams in about three chunks. | Exercise streaming deterministically offline. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Fake-model scripts live in `app/verify/scripts/` and are shared by tests and flows; static layout flows reuse the minimal `health.json` script without making model calls. | Keep one script format and retain per-flow fixture isolation. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** The API token is set with module-level `setToken()`. | Support the desktop handshake without exposing the token in URLs. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Preview readiness checks use Node HTTP. | Avoid an exception to the frontend ban on fetch outside the API client. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Use one flow per visible state, each with the fixture's one automatic final screenshot; flows take no screenshots themselves. | Give each state one screenshot and trace to review. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Vitest browser mode and verify flows both use Playwright’s bundled Chromium with `channel: chromium`. | Use the same browser in both suites, installed by make setup. |
-| 2026-11-19 | **User decision, clarified 2026-11-19:** Describe class responsibilities selectively as decided above, including unclear ownership, lifetime, and collaborators. Give a function or method a short docstring when its name and signature don’t say what it does at a glance; skip obvious descriptions. Say what, and why only when needed, never step-by-step how. Never explain weird code with a docstring; rewrite it instead. Use Python docstrings and `/** ... */` JSDoc above TypeScript/Svelte declarations, at most 3 lines. Enforce usefulness in review, not a check. | Faster reading; descriptions only where they add something. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Sidebar widths use shadcn defaults: 16rem desktop, 18rem mobile. | Keep the generated sizing. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Settings sections switch locally in-page, starting at Appearance. | No section routes are needed in M1. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Right-panel visibility uses its own localStorage key; width uses paneforge autoSaveId. | Persist visibility separately from pane sizes. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Generated hooks live in components/ui/hooks, matching the shadcn hooks alias. | Future generation respects the UI import boundary. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Keep the navigation lint override scoped to generated button.svelte. | Its generic href is resolved by app callers; UI cannot import SvelteKit paths. |
-| 2026-11-19 | **Orchestrator decision, reviewed 2026-11-19:** Keep the pre-paint mode storage write. mode-watcher 1.1.0 persists system at import before defaultMode is read. | Cold-import Chromium test fails without it on a light OS; seed the preference before library initialization. Re-check when mode-watcher moves past 1.1.0 (still the latest on 2026-11-19). |
-| 2026-11-19 | **User decision (M1 UI layout planning):** Routes: `/session/new` and `/` reuse the new-session component until M9; `/settings` is full page with its own navigation. Root layout holds CSS, theme, and favicon only. | Keep lesson and settings layouts separate. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** The lesson uses a fixed-width shadcn Sidebar with offcanvas collapse, plain Verstehen header, enabled New session link, No sessions yet empty state, Settings footer link, header toggle and Ctrl+B. Restore its cookie in the SPA. | Retain LH new-session navigation and remember sidebar state. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** The lesson header toggles both side panels. The empty state reads New session and The teacher will open by probing what you already know. The composer accepts typing with What do you want to learn?; Send is disabled and Enter cannot send until M2; no setup CTA. | Static scaffold for the approved lesson flow. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** The right panel starts closed, remembers open state in localStorage and width through paneforge persistence; default 25%, min 20%, max 40%. Plan and Activity each show Nothing yet. | Keep the lesson primary and allow a remembered panel size. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** Settings has a back link to `/` and Appearance, Models, Logins navigation. mode-watcher provides persisted Dark / Light / System, dark by default, applied before first paint, with live OS tracking. Models and Logins show Coming in a later version. | Expose appearance now and defer provider setup. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** Build the layout before `make verify`, using temporary orchestrator screenshots; the make-verify task adds the flow. | Proceed with the layout while verification infrastructure is built. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** The M1 layout is static, with no API calls or additions to `src/lib/api/`. | Backend session creation starts in M2. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** Use Vitest browser mode with the Playwright Chromium provider and vitest-browser-svelte as a second project, included in make check and make test. | Test real browser component behavior offline. |
-| 2026-11-19 | **User decision (M1 UI layout planning):** Use `/session/new` instead of LH `/chat/new` (components/sidebar.tsx:427 at a636647). | Naming difference: Verstehen calls them sessions. |
-| 2026-11-19 | **User decision (M1 task 3 planning):** Verify flows use `@playwright/test` in `app/`. | Keep browser flows with the frontend tooling. |
-| 2026-11-19 | **User decision (M1 task 3 planning):** Build the fake model now: JSON reply scripts validated by Pydantic, turned into a streaming `FunctionModel`, enabled only by `VERSTEHEN_FAKE_MODEL`. | Offline deterministic verification; routes use it starting in M2. |
-| 2026-11-19 | **User decision (M1 task 3 review):** Prove the sidecar with a flow-only `/api/health` check through the preview proxy, with no placeholder page. The static layout stays without API calls; keep the API client for M2. | Verify transport without changing the static UI. |
-| 2026-11-19 | **User decision (M1 task 3 planning):** `make verify` serves the built SPA through Vite preview, with one sidecar, temporary data directory, and fake-model script per flow. | Isolate flows and verify the shipped static output. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** `VERSTEHEN_TOKEN` without `VERSTEHEN_DESKTOP=1`, including an empty token, refuses to start; `VERSTEHEN_DESKTOP` accepts only `"1"`. | Fail closed on an incomplete or mistyped desktop launch. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** `VERSTEHEN_PORT=0` or unset chooses a free port; the bound socket is held through startup. | Report the actual port without a bind race. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** The SQLite file is `<data dir>/verstehen.db`. | One stable database path owned by the sidecar. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** A missing setting reads as `None`, and `SettingsStore.set()` refuses `None`, so `None` always means missing. The typed settings shape and its defaults are decided when planning M3. | A stored JSON `null` read the same as a missing key; refusing it removes the ambiguity without designing M3's settings now. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** One asyncio lock serializes database reads and writes, behind `Database.transaction()` and `read()`. | Keep the shared connection isolated between operations. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Malformed Host values are refused and forwarded headers are ignored. | Use the direct request authority for local access checks. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** The desktop stdin watcher is a daemon thread. | Blocking stdin reads must not prevent process exit. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** `make dev` removes its temporary data directory on exit and requires Vite’s port to be free (`--strictPort`). | Keep development isolated and the proxy URL predictable. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** `Database.transaction()` owns locking, BEGIN, commit, and rollback on any exception; its optional `script` runs before yielding. `read()` locks without committing; connection and lock are private. | One store pattern; executescript starts BEGIN inside the script so migration SQL and its history row remain atomic. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** The lifespan stores the database on `app.state`; module-level API routers receive it through `get_database` and FastAPI `Depends`. | One idiomatic route pattern with wiring in app.py and downward imports into store. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** The migration checker and runner share validation for exactly four ASCII digits, an underscore, a nonempty name, and `.sql`; duplicate numbers fail with renumbering guidance before database changes. | Catch startup failures during checks and prevent invalid files from being silently skipped. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** The desktop token is supplied in `VERSTEHEN_TOKEN` (at least 64 characters) and checked against `x-verstehen-token` in constant time. | Per-launch desktop capability; never log the token. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** Browser-only mode is selected when neither `VERSTEHEN_DESKTOP` nor `VERSTEHEN_TOKEN` is set; use LH’s Host check and cross-site write check, with `VERSTEHEN_ALLOWED_HOSTS` for extra names. | Retain LH browser-only behavior without CORS grants. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** `VERSTEHEN_DESKTOP=1` without a valid token refuses to start. | Deliberate difference: LH starts and refuses every request. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** The startup handshake is exactly one stdout JSON line `{"port": N}`, flushed once the server is listening. | Tauri learns the actual bound port; all logs go to the file. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** `make dev` uses port 8765 by default, overridden by `VERSTEHEN_PORT`, with a Vite `/api` proxy and a fresh temporary data dir. | Same-origin browser development; Ctrl-C stops both processes. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** One aiosqlite connection handles both reads and writes, owned by `store/`, using WAL and foreign keys. | Short, serialized transactions in one local database. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** The first migration is `0001_settings.sql`, creating the settings key → JSON value table. | Establish the migration runner and the reference store module. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** Logs go to `<data dir>/logs/verstehen.log`, rotating at 5 MB with 3 backups. | Deliberate difference: LH does not rotate its log. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** Only `GET /api/health` is implemented for now, with a trivial database query through the store. | Prove the sidecar-to-database path before features. |
-| 2026-11-18 | **User decision (M1 task 2 planning):** In desktop mode the sidecar exits cleanly when stdin closes, as well as on SIGTERM; browser-only mode ignores stdin. | Deliberate difference: LH relies on SIGTERM/SIGKILL. A crashed Tauri parent closes its pipe. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** The first M1 task is environment, repository scaffolding, and checks. | Establish the checks before implementing features. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** Migration immutability uses a committed SHA-256 lockfile at `backend/src/verstehen/store/migrations.lock`; `make lock-migrations` only adds new entries. | Catch edited, deleted, and unlisted migrations. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** ESLint boundaries: only `src/lib/api/` uses fetch or generated API types; `components/ui/` imports only itself, `#lib/utils`, and npm packages; `src/lib/` never imports routes. | Keep transport, reusable UI, and routes separate. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** Create all backend packages now, empty. | Make the intended dependency direction enforceable immediately. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** Custom checks are Python scripts in root `tools/`, tested in `tools/tests/`. | Use the backend uv environment and pytest. |
-| 2026-11-18 | **User decision (M1 task 1 planning):** shadcn-svelte base color is neutral. | Initialize the agreed frontend stack without building UI. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Ruff uses defaults `E4/E7/E9/F` plus `I` and `TID`; nested `ruff.toml` files per package configure banned APIs. | Keep linting small and enforce package-specific dependencies. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** `make setup` explicitly runs locked `uv sync` and `npm ci`. | Restore both development environments reproducibly. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Use the `uv_build` backend and root `pyrefly.toml` covering backend and tools. | Keep packaging and type checking in one straightforward setup. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** shadcn-svelte initialization uses Vega style, Inter font, Lucide icons, and default radius; the look remains to be designed in the UI task. | Record scaffold defaults without deciding the UI design. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Use only `#lib/*` via package imports for `src/lib`; no bare `#lib` entry or second alias. | SvelteKit 3 supports package imports; shadcn-svelte button generation and svelte-check work with them. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Comment checking is line-based: full-line `#` and `//` runs, line-start `/* … */` and `<!-- … -->` blocks, plus Python AST docstrings. Count delimiter lines; trailing comments are not counted. | Replace the script lexer with a rule a reader can understand in one pass. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Migration locks use `SHA256  filename`, only numbered `NNNN_name.sql` migrations, and refuse additions while any existing lock entry is broken. | Preserve migration history before recording new files. |
-| 2026-11-18 | **Orchestrator decision, reviewed 2026-11-19:** Vitest used `passWithNoTests: true` until real app tests existed; removed on 2026-11-19, since app tests now exist. | A suite that finds no tests must fail, not pass. |
-| 2026-11-18 | Start a clean repository (Verstehen) instead of forking LearnHarness. | Better structure and readable code; LearnHarness stays a reference checkout. |
-| 2026-11-18 | First port keeps the exact learning flow and knowledge graph. | Port current behavior first, and use the port to understand LearnHarness. |
-| 2026-11-18 | Scope: core loop, graph and imports, and subscription/CLI bridges. Plugins and flashcards are deferred. | See [port scope](port-scope.md). |
-| 2026-11-18 | **Pixal** (home server) is the development environment for the coding agents. The **app runs locally on the user's laptop as a desktop app**. | User decision; corrected 2026-11-18 (earlier notes wrongly said the app's agents run on Pixal). |
-| 2026-11-18 | Language: **Python**. | User decision. |
-| 2026-11-18 | Agent runtime: **Pydantic AI** (`pydantic-ai-slim`, 2.70.0 at time of decision). | Fits the record-is-state design; the spike confirmed deferred questions, mixed batches, and mid-run steer injection (see below). Replaces the earlier Deep Agents leaning. |
-| 2026-11-18 | Storage: **SQLite**. | Real transactions for the multi-step writes LearnHarness has to order by hand (graph merge + coverage, job result + delivery flag). One local file. |
-| 2026-11-18 | Desktop app: **Tauri + Svelte**, with the local Python server as a Tauri sidecar. | User decision (changed from React on 2026-11-18). Tauri: small and light, with first-class sidecar support. The WebKitGTK rendering risk on Linux is low here: Godspeed (a LearnHarness-style app) ran on Tauri on this laptop without UI problems. The LearnHarness React components get rewritten, not adapted. |
-| 2026-11-18 | **Plan map size: 5–15 nodes.** The `plan_init` tool description's bound wins; the planning prompt (`teacher/10-planning.md`: "No size ceiling", "a single node may take one step or five") is changed to match. | Resolves a contradiction in LearnHarness. This is a deliberate prompt change from LH. |
-| 2026-11-18 | **Quiz grading stays in the UI**, as in LearnHarness (the answer key is in the saved tool call). | Faithful port; single-user local app. |
-| 2026-11-18 | **Claude Code via the Claude Agent SDK, wrapped as a Pydantic AI `Model`** (`ClaudeCodeModel`): one SDK query per model request. Built-in tools and settings loading are disabled, and our system prompt is used. Our tools are registered as SDK tools and every call is deferred before execution and returned to Pydantic AI. The SDK keeps no session. **History replay and the implementation are superseded by the vendored `ClaudeCodeModel` (below)**: history is replayed natively, not as a text transcript. | One runtime: all turn rules (question stop, steer injection, side chat, compaction, history) behave identically for every provider, and models can be switched mid-session. Accepted trade-offs: per-query process startup, and no `max_tokens`. |
-| 2026-11-18 | **Partly superseded** (the browser is the system Chromium from Arch, below): **Demo testing: Playwright driving the installed system Chrome** (`channel="chrome"`), headless, with no bundled or downloaded browser. It collects console errors, uncaught errors, and failed requests, and runs the optional probe with `evaluate()`. The visual worker uses no browser; it rasterizes SVGs (with CairoSVG, decided below). | User decision. It matches LearnHarness's checks one for one (LH uses puppeteer-core with Electron's browser service, falling back to system Chrome). Accepted trade-off: the demo is tested in Chrome, while the learner sees it in WebKitGTK inside Tauri on Linux. |
-| 2026-11-18 | **`ClaudeCodeModel` is copied (vendored) from [h0rv/pydantic-ai-claude-code](https://github.com/h0rv/pydantic-ai-claude-code)** at commit `8a78bdd` (MIT, "Copyright (c) 2026 Armin Ronacher"), not written from scratch and not installed as a dependency. This replaces the text-transcript part of the decision above: history is replayed as **native** SDK user/assistant frames (tool ids, arguments, results, and thinking signatures stay structured). Interception is the same PreToolUse `defer` approach our spike validated. The copy keeps the LICENSE notice and records the source commit. | User decision. It already implements what our spike proved, plus native history replay, billing-limit errors, and careful cancellation. Known risks: a one-commit project; native replay relies on the undocumented `shouldQuery: false` stream-json field; by default it uses the Claude Code preset system prompt with our instructions appended (resolved by the Q10 patch below). |
-| 2026-11-18 | Session record: **Verstehen's own append-only entry log** in SQLite (LH `LhMessage` kinds), projected to Pydantic AI messages before each run. Pydantic AI types are never the stored format. | User decision (architecture Q1); see [architecture](architecture.md). |
-| 2026-11-18 | UI ↔ sidecar: **FastAPI on 127.0.0.1 with HTTP + SSE** and a per-launch token. LH's two-stream model is kept (replayable turn stream, refetch notifications). | User decision (architecture Q2); see [architecture](architecture.md). |
-| 2026-11-18 | Live state: **one `SessionRuntime` per session** replaces LH's per-chat `globalThis` registries. App-wide services (extraction/audit lock, worker admission, job runner) stay separate. | User decision (architecture Q3); see [architecture](architecture.md). |
-| 2026-11-18 | Background workers: **asyncio tasks in the sidecar**, with a SQLite `jobs` table for status, result, and delivery state. CPU-heavy steps go to a thread pool. | User decision (architecture Q4); see [architecture](architecture.md). |
-| 2026-11-18 | Database access: **stdlib `sqlite3` (via aiosqlite) and hand-written SQL**, one store module per entity, Pydantic models for rows, numbered `.sql` migrations. No ORM. | User decision (architecture Q5); see [architecture](architecture.md). |
-| 2026-11-18 | Code layout: **by feature** (`session/`, `teaching/`, `jobs/`, `sidechat/`, `graph/`, `providers/`, `store/`, `api/`), one package per Part A topic. Backend in `backend/`, app in `app/`. | User decision (architecture Q6); see [architecture](architecture.md). |
-| 2026-11-18 | Frontend setup: **SvelteKit with `adapter-static` in SPA mode.** | User decision (architecture Q7); see [architecture](architecture.md). |
-| 2026-11-18 | API types: **generated from FastAPI's OpenAPI schema** with `openapi-typescript`. | User decision (architecture Q8); see [architecture](architecture.md). |
-| 2026-11-18 | Packaging: **PyInstaller-frozen sidecar** shipped with Tauri. Development uses `uv run`. | User decision (architecture Q9); see [architecture](architecture.md). |
-| 2026-11-18 | Claude Code prompt: **patch the vendored copy** so the SDK system prompt is only our Pydantic AI instructions (no Claude Code preset). Patches are recorded in `VENDORED.md`. | User decision (architecture Q10); see [architecture](architecture.md). |
-| 2026-11-18 | Providers: **`resolve(role)` plus a `ProviderPolicy` service** that admits requests by purpose (foreground/background). One adapter module per provider kind. | User decision (architecture Q11); see [architecture](architecture.md). |
-| 2026-11-18 | Credentials: **a 0600 `credentials.json` file in the data dir**, like LH's `auth.json`. Settings go in SQLite. | User decision (architecture Q12); see [architecture](architecture.md). |
-| 2026-11-18 | Testing: **pytest with Pydantic AI `FunctionModel`**, a real temporary SQLite DB, no network. One test per Part A behavior; real-model tests opt-in. | User decision (architecture Q13); see [architecture](architecture.md). |
-| 2026-11-18 | Prompt overrides: **files in `<data dir>/prompts/<segment path>.md`**, like LH. The shipped prompts are LH's tree, copied. | User decision (architecture Q14); see [architecture](architecture.md). |
-| 2026-11-18 | Data dir: **`~/.local/share/verstehen`**, overridable with `VERSTEHEN_DATA_DIR`. | User decision (architecture Q15); see [architecture](architecture.md). |
-| 2026-11-18 | **First implementation has two providers: Claude Code** (vendored `ClaudeCodeModel`, local `claude` login) **and ChatGPT** (Pydantic AI `openai-chatgpt`, "Sign in with ChatGPT", the same OAuth flow and `chatgpt.tokens.use.direct` scope LearnHarness uses). API keys, Copilot, Grok, and the custom endpoint stay in scope for later milestones. | User decision. |
-| 2026-11-18 | **Job recovery runs when the UI polls for jobs**, as in LearnHarness. | User decision. |
-| 2026-11-18 | **JavaScript package manager: npm.** | User decision. |
-| 2026-11-18 | **Research search order: the model's native web search first, then Tavily, then Brave** (whichever keys are set). ChatGPT native search via Pydantic AI `WebSearch` (supported by the `openai-chatgpt` profile). Claude Code's built-in WebSearch was tried and not adopted (see below). LH's Exa, Firecrawl, and Ollama search are not ported for now. | User decision. |
-| 2026-11-18 | **Compaction: only Verstehen's own LH-style compaction**, no provider-native compaction. The compaction limit is a user setting (LH: default 150,000 tokens, capped at the context window minus 16,384). | User decision. |
-| 2026-11-18 | **Session search: SQLite FTS5.** | User decision. |
-| 2026-11-18 | **Python tooling: uv, ruff, and pyrefly** (type checker). | User decision. |
-| 2026-11-18 | **PDF library: pypdfium2** (BSD-3/Apache-2.0) for page rendering and text, replacing LH's `pdfjs-dist` + Skia. | User decision. |
-| 2026-11-18 | **Superseded** (resvg, below): **SVG rasterizing: CairoSVG** (LGPL-3.0-or-later; needs the system Cairo library, which the PyInstaller build must bundle), replacing LH's `@resvg/resvg-js`. | User decision. |
-| 2026-11-18 | **UI libraries: the Svelte versions of LH's React libraries** (for example Svelte Flow for `@xyflow/react`). Framework-independent ones (d3-force, dagre, KaTeX, Mermaid) are used directly. Where no Svelte version exists (LH's React-only `streamdown`), the replacement is chosen when that UI is built. | User decision. |
-| 2026-11-18 | **Python 3.14.** The chosen libraries (pydantic-ai-slim 2.70.0, claude-agent-sdk, the vendored ClaudeCodeModel, pypdfium2, cairosvg, PyInstaller 6.22) all install on 3.14.10. | User decision. |
-| 2026-11-18 | **Checks run locally through a root `Makefile`**: `make check` (pytest, ruff check, ruff format --check, pyrefly; svelte-check + TypeScript, ESLint + Prettier, Vitest), `make test`, `make fmt`. Real-model tests only with an opt-in env var. AGENTS.md requires `make check` before every commit. **No GitHub Actions for now.** | User decision. |
-| 2026-11-18 | **Logging: a log file in the data dir plus a debug switch** that records raw provider events (LH's `LH_PROVIDER_EVENTS`). Pydantic AI's banner is turned off. | User decision. |
-| 2026-11-18 | **Context window size, in order:** (1) the limit the provider or SDK reports at runtime, where available (like LH's CLI query); (2) Pydantic AI's model data (genai-prices via the model profile; Claude Code models look it up under their full Anthropic model id); (3) a value the user enters. | User decisions ("Pydantic AI's data", then "ask the provider at runtime", then "the real context window wins"), combined into one order. |
-| 2026-11-18 | **Partly superseded** (the app CSP is relaxed for demos, below; the sandbox, token, and CORS rules stand): **Demo security:** model-written demo HTML runs in an `<iframe sandbox="allow-scripts" srcdoc=…>` **without `allow-same-origin`**, so it gets an opaque origin and can't read the app's storage or the API token. The app has a strict content-security policy; network access is allowed only so demos can load their CDN scripts. The sidecar accepts only requests carrying the per-launch token and doesn't allow the `null` origin in CORS. | User decision. |
-| 2026-11-18 | **Claude Code research uses Tavily, then Brave**; Claude Code's built-in WebSearch is not used (spike below). ChatGPT keeps its native web search first. | User decision. |
-| 2026-11-18 | **SQLite tables as proposed** in [architecture](architecture.md#sqlite-tables) (approved). | User decision. |
-| 2026-11-18 | **Partly superseded** (the dependency direction is refined below; the rest stands): **Architecture proposals approved:** dependency direction (`api` → features → `teaching`/`providers` → `store`), one lock and named transition methods per `SessionRuntime`, SSE read with `fetch` (token in a header), the startup handshake (Tauri makes the token; the sidecar prints its port), and the UI session controller. | User decision; see [architecture](architecture.md). |
-| 2026-11-18 | **SQLite use:** WAL mode, one write connection owned by `store/`, short transactions (never held open across a model call). | User decision (approved proposal). |
-| 2026-11-18 | **Turn handling as named stages** (improvement 1): `handleChatInput`'s stages become separate steps (validate, gate, claim, save input, build agent, run, settle), each returning `Refused(status, reason)` or `Continue(state)`. Behavior unchanged. | User decision: structural improvements over LearnHarness; behavior unchanged. |
-| 2026-11-18 | **Event-driven delivery** (improvement 2): the `SessionRuntime` wakes the steer queue with asyncio events. LH's polling (`waitForIdle`, `POLL_MS`/`GRACE_MS`) and TTL leak guards are not ported. | User decision: structural improvements over LearnHarness; behavior unchanged. |
-| 2026-11-18 | **One question module** (improvement 3): `teaching/questions` owns pending detection, siblings, answers, dismissal, and retry (spread over 8 files in LH). | User decision: structural improvements over LearnHarness; behavior unchanged. |
-| 2026-11-18 | **One context-update step with named kinds** (improvement 4): job results, composer steers, and side-chat updates go through one step before each model call, each as its own kind. The probe handoff is an explicit phase transition. Saved entries stay as in LH. | User decision: structural improvements over LearnHarness; behavior unchanged. |
-| 2026-11-18 | **One authoritative description per concept** (improvement 6): each concept is described once, in the docs plus a test named after the behavior, with few duplicating comments. | User decision: structural improvements over LearnHarness; behavior unchanged. |
-| 2026-11-18 | **Only learner images are files**, at `<data dir>/images/<sha256>.<ext>` (LH's SHA-256 identity; no `files` table). Demo HTML and SVG stay as text in job results and entries in SQLite, as in LH. PDFs and imported notes are referenced by path, as in LH. | User decision (refines the earlier "files in the data folder" note after checking what LH stores). |
-| 2026-11-18 | **`CLAUDE.md` contains only `@AGENTS.md`**, so Claude Code and Codex read the same instructions. | User decision. |
-| 2026-11-18 | **No subscription staging.** `ProviderPolicy` is asked before automatic input is added (a wake turn before saving; the context-update step before injecting). The adapter still checks at dispatch, and steer entries are saved only if their request was dispatched. Replaces LH's staging, held events, `restoreUncommittedAutomatic`, and `resumeForeground`. In the check-to-dispatch race, the request fails and the next turn delivers the input, where LH would retry as foreground. | User decision after verifying LH's code; see [architecture](architecture.md#subscription-admission-without-staging-decided). |
-| 2026-11-18 | **AGENTS.md follows Lauren Tan's ("poteto") approach**: simple code that explains itself, few comments, the Zen of Python where it helps understanding, "the codebase is the prompt", corrections become checks, and verify every change. | User decision. |
-| 2026-11-18 | **Comments and docstrings: at most 3 lines per block**, enforced by a checker in `make check` (Python, TypeScript, Svelte). The vendored `ClaudeCodeModel` and the copied LH prompts are excluded. | User decision. |
-| 2026-11-18 | **Partly superseded** (the Pydantic AI import list is corrected below; the rest stands): **Code rules are enforced as checks**, not prose: import-linter for the dependency direction; ruff banned-API so `sqlite3`/aiosqlite are imported only in `store/` and Pydantic AI only in `teaching/`, `session/`, `providers/`; ESLint boundaries in the app; a check that applied migrations never change. | User decision. |
-| 2026-11-18 | **Verification:** a scripted fake-model provider (dev env var only); `make verify` runs the sidecar with a temporary data dir and the SvelteKit app in headless Chrome via Playwright, with scripted flows that save screenshots and traces; `docs/feature-map.md` lists every feature and how to verify it. **The Tauri shell itself is not checked by agents**; the user checks it on the laptop. | User decision. |
-| 2026-11-18 | **Agent context:** AGENTS.md holds the goal, origin, intent, and how we work; `docs/status.md` holds the current stage and what's next, updated at the end of each piece of work. | User decision. |
-| 2026-11-18 | **Actionable check messages:** every custom check fails with a message saying what to do instead (for example "move this SQL into `store/`"). | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
-| 2026-11-18 | **Verification evidence in reports:** for UI changes, agents attach the `make verify` screenshots or traces they checked. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
-| 2026-11-18 | **One reference per pattern:** `docs/patterns.md` names the one example to copy for each pattern (endpoint, tool, SQLite transaction, UI component, …). Superseded patterns are deleted. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
-| 2026-11-18 | **Verification as a skill:** `make verify` and its flows are wrapped in a coding-agent skill for Claude Code and Codex, so agents drive the app the same way every time. Built together with `make verify`; the skill locations for each agent are checked then. | User decision, from Lauren Tan's talk "All Code Is Slop (Except Mine)". |
-| 2026-11-18 | **UI look: sleek, modeled on T3 Code**, not on LH's UI. Stack: **Tailwind CSS v4 + shadcn-svelte** (components copied into the repo, built on bits-ui), tailwind-variants, and `@lucide/svelte` icons, the Svelte counterpart of T3 Code's Tailwind v4 + Base UI + cva + Lucide. | User decision. |
-| 2026-11-18 | **First UI layout (simple, expanded later):** a collapsible left sidebar with the session list and a new-session button; the main pane is the lesson as a chat thread with a bottom composer, and question tools (quiz, probe, explain, recall) render as cards in the thread; a right panel, closed by default, for the plan tree and job activity; a settings page (models and logins). Dark theme by default, light available. The graph view, side chat, practice, themes, and activity dock come in later milestones. | User decision. |
-| 2026-11-18 | **Svelte practices:** Svelte 5 runes only (no legacy syntax) and TypeScript everywhere; shared state in `.svelte.ts` modules; the project is created with the official `sv` CLI; eslint-plugin-svelte's recommended rules run in `make check`; agents use the official Svelte docs for LLMs (`svelte.dev/llms.txt`) or the Svelte MCP server. **No lint rule restricts `$effect`**, but the Svelte docs' guidance applies: derive values with `$derived`, react to user actions in event handlers, and use `$effect` only for real side effects (DOM and third-party integration). | User decision (chose guidance over a lint restriction). |
-| 2026-11-18 | **Partly superseded** (Chromium is optional, with detection and a download, 2026-11-19): **Demo browser: Chromium from Arch** (`pacman -S chromium`), driven by Playwright through `executable_path` (`/usr/bin/chromium`); a setting can point to another Chromium-family browser. No browser is bundled. | User decision (review of 2026-11-18). The laptop has no Chrome (only Zen Browser and Playwright's cached Chromium). |
-| 2026-11-18 | **Demo CSP: relaxed.** Demos stay in `<iframe sandbox="allow-scripts" srcdoc>` without `allow-same-origin`; because a `srcdoc` iframe inherits the page's CSP, the app's CSP allows inline scripts and the CDN hosts demos load from. The sandbox and the token check still protect the API. | User decision (review of 2026-11-18). User chose this over a separate demo origin. |
-| 2026-11-18 | **Pydantic AI may be imported where agents live:** `teaching/`, `session/`, `providers/`, `jobs/workers/`, `graph/`, `sidechat/`; never in `api/` or `store/`. | User decision (review of 2026-11-18). The earlier list would have failed on day one. |
-| 2026-11-18 | **Package order:** `api` → `session` → `jobs`, `sidechat`, `graph` → `teaching`, `providers` → `store`. `session` calls the feature packages directly; they reach a session only through plain functions injected at startup (for example `wake_session(session_id)`), wired once in `verstehen/app.py`. import-linter enforces the order. | User decision (review of 2026-11-18). Removes the session ↔ jobs/sidechat/graph cycles. |
-| 2026-11-18 | **LH's `GRACE_MS` answer race is closed by design:** a wake fires only from an idle runtime with no pending question; an answer is saved and its turn claimed in one runtime step; sibling answers saved without a turn keep the gate closed; if a wake and an answer collide, the answer wins and the steers go into the answer turn. A test reproduces the race. | User decision (review of 2026-11-18). `GRACE_MS` (750 ms, `jobs.ts:156-171`) guarded this race; dropping polling must not drop the guard. |
-| 2026-11-18 | **Superseded** (the installed `claude`, with a version warning and a "Download the tested version" button, 2026-11-19): **Claude Code CLI: the one bundled in the `claude-agent-sdk` wheel**, not `/usr/bin/claude`. It changes only with an SDK bump in `uv.lock`, followed by the opt-in live test. | User decision (review of 2026-11-18). Native replay depends on an undocumented CLI field; the system CLI updates itself. |
-| 2026-11-18 | **Question-card behavior is ported exactly from LH** (`buildAnswer`, confidence, siblings, dismissal, retry, continue); only the look is new. Each behavior gets a verify flow. | User decision (review of 2026-11-18). Part of the learning flow lives in LH's UI. |
-| 2026-11-18 | **Packaging is proven in milestone 1:** a minimal frozen sidecar importing every heavy dependency, built into a Tauri app, before features depend on it. | User decision (review of 2026-11-18). The PyInstaller bundle is the riskiest untested piece. |
-| 2026-11-18 | **Comment checker exclusions:** generated code (OpenAPI types), the shadcn-svelte components folder, the vendored `ClaudeCodeModel`, and the LH prompts. | User decision (review of 2026-11-18). User chose to keep shadcn components updatable with its CLI. |
-| 2026-11-18 | **SVG rasterizing: resvg via `resvg-py`** (0.5.0, MIT), replacing CairoSVG. The image check passed again with it on Python 3.14. | User decision (review of 2026-11-18). Same engine as LH, broader SVG support, permissive license, no native Cairo to bundle. |
-| 2026-11-18 | **Constraint: Claude Code login is personal use only.** Verstehen is never distributed with Claude Code login. | User decision (review of 2026-11-18). Anthropic: "Unless previously approved, Anthropic does not allow third party developers to offer claude.ai login or rate limits for their products, including agents built on the Claude Agent SDK." |
-| 2026-11-18 | **Pixal runs Ubuntu.** The desktop app is built on Pixal **inside an `archlinux` container** (Docker or Podman) by `make app`, as an Arch package from a PKGBUILD, and installed on the laptop with `sudo pacman -U` (pacman pulls WebKitGTK; Chromium is optional since 2026-11-19). | User decision. Native Arch libraries without build tools on the laptop. |
-| 2026-11-18 | **On Pixal, agents use Playwright's own Chromium** (`playwright install chromium`) for `make verify` and demo-worker tests. The installed app on the laptop still uses Arch's `/usr/bin/chromium` and bundles no browser. | User decision. Ubuntu ships Chromium only as a snap, which often breaks Playwright. |
-| 2026-11-18 | **Development workflow** ([workflow](workflow.md)): plan with the orchestrator (Claude Opus) and the user, with No guessing in full; then autonomous implementation by **GPT 6.1 Sol** as a T3 subagent (reasoning effort `medium`, default tier), with no questions to the user. The implementer asks the orchestrator, and the orchestrator decides and logs each decision as "orchestrator decision, for user review". Review loops until clean, at most 4 rounds. One report in the T3 Code chat at the end. | User decision. |
-| 2026-11-18 | **Git during runs:** one branch (and T3 worktree) per task off `main`; the implementer commits there with `make check` passing; nothing is pushed or merged during a run; the user merges. No pushing, real-model calls, real data, or credentials during a run: such steps are skipped and reported. | User decision. |
-| 2026-11-18 | **Reports:** chat only (the T3 Code thread), not committed to the repo. A **compact summary, not a log**: new, changed, decided in the user's absence, flagged, left, and the branch to merge. | User decision. |
-| 2026-11-18 | **Agents are skeptical of existing code:** it is not the standard. They review what they touch and what it builds on, flag bad design, bad choices, and errors (and search for the same problem elsewhere), and rewrite or remove old code when there is a need (it is wrong, blocks the task, or its complexity causes real problems), never only for taste. They also flag recorded decisions that look wrong; code can be rewritten freely, but a user decision is only changed by the user. | User decision. |
+**Keeping it slim.** A decision made while planning is added here. Once it is implemented and the
+area doc describes it, it is removed, unless it is a difference from LearnHarness or a standing
+constraint. A new decision replaces the one it contradicts. History lives in git.
 
-## Pydantic AI fit (desk check, 2026-11-18)
+## Waiting for your review
 
-Checked against the current Pydantic AI docs (now at `pydantic.dev/docs/ai/`), not yet in code.
+Orchestrator decisions made during implementation wait here, each with what was decided, the
+alternative, and the consequence, until the user reviews them at the end of the milestone.
 
-| LearnHarness mechanism | Pydantic AI | Fit |
-|---|---|---|
-| Question ends the run; the answer becomes the tool result next turn ([question tools](learnharness/question-tools.md)) | **Deferred tools**: a tool raises `CallDeferred`, the run ends with `DeferredToolRequests`, and the next run passes `message_history` + `deferred_tool_results` | Native. The docs example shows other calls in the same response still running before the pause (inferred from the example, not stated as a rule). |
-| Invalid question arguments → model retries in the same turn | `ModelRetry` raised from a tool | Native |
-| "The saved record is the agent state"; fresh agent per turn | Stateless runs with `message_history`; `ModelMessagesTypeAdapter` JSON round-trip | Native. App markers (steers, plan blocks, compaction) need our own record format, projected to model messages, like LH's `toLlmMessages`. |
-| Inject job results / side-chat updates / composer steers **between model calls in the same run** ([subagents](learnharness/subagents-and-background-work.md)) | History processors / `before_model_request` hook run before **every** model request, can **add** messages, and the added messages stay in the run's history | Native hook. The delivery queue itself is our code. |
-| Fire-and-forget background workers | Not provided; plain `asyncio` tasks, each running its own Pydantic AI agent | App code (also app code in LH) |
-| Streaming to the browser, replay on reattach | `run_stream_events()` / `event_stream_handler` / `agent.iter()`; custom events | Native events. The replay log and reattach are our code. |
-| Abort with partial output saved | `CancellationToken` → `RunCancelled` carries the resumable messages | Native |
-| Per-call usage incl. cache read/write, 1-hour writes, reasoning | `RequestUsage` / `RunUsage` | Native, the same fields LH logs |
-| Thinking levels | Unified `thinking` setting (`minimal` … `max`), mapped per provider | Native |
-| API-key providers, custom OpenAI-compatible endpoint | OpenAI, Anthropic, Google, Bedrock, OpenRouter, Ollama, xAI, … and `OpenAICompatibleProvider` | Native |
-| ChatGPT subscription, Copilot, Grok | `openai-chatgpt:` / `openai-codex:`, `github-copilot:`, `xai:` | ChatGPT checked: `openai-chatgpt` has the full OAuth flow (see [architecture](architecture.md#providers-q11-q12)). Copilot has a device-code flow. `xai` is API key only. |
-| Claude Code CLI | Not listed | **Gap**, closed by our own `ClaudeCodeModel` built on the Claude Agent SDK (decided; see the spike result below) |
-| Compaction, extraction pipeline, turn claim, subscription background consent | – | App code (also app code in LH) |
-| Durable execution | Optional: Temporal, DBOS, Prefect, Restate, … | Not needed for a faithful port |
+**M11a sidebar folders:**
 
-## Pydantic AI spike result (2026-11-18)
+- **Folder Delete is one server-checked operation on the folder's tree.** The menu item is enabled
+  when no session or notes source sits anywhere below the folder, and sends `delete-folder-tree`
+  with only the folder's id. Inside the graph transaction the server recomputes the current
+  subtree, and either removes all of it or answers 409 (`folder_not_empty`) and removes nothing,
+  so a child moved out, or a source moved in, after the sidebar last read cannot be lost or
+  orphaned on the same database. When a folder deletion syncs concurrently with a remote move into
+  that folder, sync reconciliation clears dangling folder and parent links targeting deleted folders
+  (tracked by folder-id tombstones) on the merged state while preserving links whose targets arrive
+  on later sync pages, so moved sessions become unfiled rather than breaking the directory. The `delete-folder` action
+  refuses any folder with a subfolder, and Chains keeps its own `DELETE /api/graph/sources` path.
+  LH also removes a session-free folder with its subfolders.
+- **Touch input gates sidebar drags both by primary pointer and per gesture.** `pointer: coarse`
+  (`layout.coarse`) disables `draggable` on touch-primary devices, and `SourceDragRow` cancels
+  touch-origin drag gestures (`pointerType === 'touch'` / `touchstart`), so a narrow desktop window
+  and mouse drags on a hybrid touchscreen laptop still work while finger drags are blocked. The
+  alternative, checking `tier !== 'desktop'` or primary pointer alone, would either block mouse
+  drags or allow touch drags on hybrid devices.
+- **The search shortcut opens the sidebar and answers to Cmd too.** Ctrl or Cmd+Shift+F opens a
+  collapsed sidebar or the closed phone drawer, then focuses the field once it exists. The
+  listener lives in the always-mounted lesson layout (`search-shortcut.svelte`), because the
+  drawer's contents are unmounted while it is closed. It does nothing while a dialog (including
+  native modal dialogs via `dialog:modal`, e.g., the external-link prompt), popover, or menu is
+  open; only the drawer itself does not block it (LH: `lh:kbd-sessions-search`, same guards). The
+  query is not remembered across reloads (LH does not either).
+- **The graph funnel sits at the top left of the graph page, not in the app header.** LH portals it
+  into the header after the sidebar toggle; here the header belongs to the lesson layout, so the
+  button is the page's first control below it. The funnel and right-hand toolbar share one wrapping
+  flex row, so a selected folder name never overlaps the toolbar on narrow screens. The alternative,
+  a header slot filled by the graph page, would couple the layout to it.
+- **Touch rows are 44 px; the checkbox itself is 20 px.** Each folder row is one label, so a tap
+  anywhere on it toggles the folder; a literal 44 px checkbox would look out of place.
+- **Session stats turns follow LH's three `appendTurnUsage` sites.** Lesson runs, each compaction
+  summary, and each side answer are turns; titles, workers, and extraction are not. The plan said
+  compaction and side answers were excluded, which is not what LH's code does (`compaction.ts:267`,
+  `side-chat.ts:215`).
+- **A lesson call's usage `request_id` is `<TurnRun.id>#<n>`.** No migration and no new column:
+  the id stays unique and opaque to sync, and it is the form the LearnHarness import already writes
+  (`<turn id>#<n>`). `UsageModel` takes the run id optionally, so worker calls keep random ids.
+  Turns order by their last completed call's timestamp to match LH's settlement order without a new
+  column; pre-change rows fall back to their call time, and a turn aborted after an earlier step
+  falls back to its last completed step's time.
+- **Usage rows saved before this change count as one-step turns each,** so an older session's turn
+  list is longer than LH would show. A migration adding a turn id column would regroup them but
+  pauses sync until both backends update.
+- **The Claude Code window comes from the adapter's runtime-limit cache** (`claude_code_limits`,
+  read only, no probe, scoped to the adapter's already-inspected binary path and version). It is
+  per server process, not the session's latest Claude Code report as in LH, and is empty until a
+  Claude Code turn has run; the stats row then shows the numerator only.
+- **A call cancelled while streaming keeps its usage row but is not a step in the stats.** LH does
+  not count an aborted message as a billed step (`teacher-agent.ts`: "a cancelled call is not a
+  billed step"). The row is still saved, for accounting and sync, with `:aborted` appended to its
+  request id (`<run id>#<n>:aborted`); `session_stats` skips such rows in turns, steps, totals, and
+  the cache hit rate. The simplest reliable link: entries carry no run id or step number, so
+  matching an aborted entry to its row would mean guessing by time and tokens. Calls with no
+  tokens are kept as recorded, as LH keeps them, and imported LH steps are preserved.
+- **`PUT /api/prompts/{path}/enabled` replies `{enabled}`, the switch as stored, not `{ok}`.**
+  LH counts a prompt switch as saved only when the write's acknowledgement shows the new state; the
+  per-prompt endpoint needed a state in its reply to do the same. The alternative was treating any
+  2xx as the acknowledgement, which cannot tell a refused or unchanged switch.
+- **A prompt delete is not guarded against a pending write.** LH declines a delete while a whole-
+  section Settings write is saving ("Settings is still saving…") because its mirror needs the
+  acknowledgements in order. Verstehen's prompt writes are separate per-prompt requests serialized
+  by the server's prompt lock, the dialog is modal over the row switches, and Edit waits while a
+  switch is saving, so there is no state to guard and no message was added.
+- **A session placed in a folder cut off from the top level is not listed.** Only a corrupt
+  organization can contain such a cycle (the backend refuses to write one); `buildSessionTree`
+  follows LH and omits it instead of filing it at the top level.
 
-Throwaway test project in `~/scratch/verstehen-pydantic-spike` (not in this repo), on
-`pydantic-ai-slim==2.70.0`. It used a scripted `FunctionModel` only, with no real provider. **7/7
-tests passed.**
+**Desktop responsiveness:**
 
-- A valid `quiz` raises `CallDeferred`, and the run ends with `DeferredToolRequests`. An invalid one
-  raises `ModelRetry`, and the model fixes it in the same run.
-- **Mixed batch:** `research` executes and its acknowledgement is saved before the run pauses on
-  `quiz`, in both orders.
-- **Key scenario:** a research result that completes while the quiz is pending arrives on the
-  **first** model request of the answer run, together with the quiz answer. It is saved exactly
-  once, and a third run does not re-inject it.
-- **Live injection:** a `before_model_request` hook with `ctx.enqueue(ModelRequest(...,
-  metadata={"steer_id": ...}))` adds the message to the next request and to the persisted history.
-- **Cancellation:** `capture_run_messages()` recovers the completed messages.
+- **A missing sidebar row returns null.** Treat deletion as an ordinary row update. Returning
+  404 would also let the sidebar remove the row but produces a browser error for an expected event.
+- **The sidebar refreshes on stream reconnection.** One summary request recovers missed events.
+  Waiting for future events could leave a deleted or renamed row stale.
+- **Compute practice badges from the entries that decide them.** LearnHarness runs
+  `activeProblemOf` over each full transcript. A SQL read returns only problem calls and results
+  and dismissal markers, and `scan_problem` runs on those rows, so the badge is identical without a
+  schema change. A stored badge projection would be cheaper still but a second source of truth.
+- **Keep model catalog metadata in a local JSON file.** A SQLite table would require a schema
+  change for data that each installation refreshes independently. An offline installation
+  shows the last usable results until account state actually changes.
+- **Refresh models through one request with lightweight reads while it runs.** An SSE event
+  could replace the polling. This route supports progress as providers finish independently,
+  including on first load, and Settings can force refresh. A refresh superseded by a newer
+  one reports the newer one's outcome, because the backend skips the older one's writes. The
+  backend still answers 204, so a refresh superseded by a different client reports success.
+  Only two remote clients of one server can hit this (each desktop sidecar has its own catalog);
+  Setup may then show "Connect a provider" until the next refresh. Accepted as is.
+- **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** At `cb25c8e`
+  LearnHarness exports only `GET /api/models`, which refreshes the subscription connection catalogs
+  on every read over static bundled metadata. v0.7.0 (commit `1cfb7ea2d`) adds persisted pi.dev
+  metadata with an explicit `POST /api/models` refresh; its `GET` still refreshes the connections.
+  Verstehen refreshes every account at launch, when Settings → Models opens, when
+  Setup opens and while it waits for a connection, and after a successful sign-in; opening the
+  picker only rereads the saved catalog.
+- **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
+  would exit the app before the learner sees the shell. The in-app panel keeps the log path
+  visible and the timing marks distinguish desktop, sidecar, and composer readiness.
+- **Return graph summary counts with the snapshot and serve titles separately.** Counting
+  through the sidebar endpoint and rebuilding the snapshot after rename duplicate work.
+  Graph cost reads also use only source metadata and usage, so they can tolerate broken
+  folder organization.
+- **Identify a graph position save by the exact revision it created.** Refetching after every
+  drag reapplies work that the page already did. Other revisions still trigger a read, even
+  when their notifications arrive during a position save.
+- **Expose prompt editing in its own Settings section.** LearnHarness 0.7.0 groups the
+  editor under Agent. Verstehen's separate section follows its Settings navigation.
+  Saving text and enabling it remain separate operations so activation can be retried
+  without rewriting the saved draft. The editor uses a textarea and Markdown preview.
+- **Only regular prompt override files are composed and edited.** Symlinks were previously
+  readable by the composer, while sync skipped them. Using the shipped default for such a path
+  keeps runtime, the editor, and sync in agreement.
 
-Lessons for the design:
-- Persist the full `Conversation` (`ConversationTypeAdapter`), not only messages, to keep the
-  pending deferred-call state.
-- Deduplicate steers by id against the **full saved history**. Don't use `new_messages()` as the
-  delivery record: history normalization can resurface an older steer there.
-- Acknowledge delivery only after the history is saved. With SQLite this can be one transaction.
+**LearnHarness import:**
 
-## Claude Agent SDK wrapper spike result (2026-11-18)
+- **Replacement requires an unpaired local data directory.** Dry runs still work. Replacing a
+  synced dataset would leave remote copies and the outbox inconsistent. The alternative needs an
+  explicit distributed replace operation with its own confirmation and recovery rules.
+- **Learner-message images are dropped**, with one warning per session. `UserEntry` has no
+  attachments. Alternative: refuse the import. Consequence: such images are lost (the user's data has none).
+- **Plan-block and probe-handoff details keep LH's camelCase keys.** Verstehen's consumers read them.
+  Alternative: the plan's snake_case, which would break plan blocks.
+- **Job delivery:** a steer/abort marker settles delivery; a real LH `pending` stays pending; a
+  terminal job with no delivery and no marker gets none. Legacy `running` jobs with a saved result
+  and no delivery or marker get pending result delivery, matching LH's `normalizeLegacyResult`.
+  Alternative: pending for all jobs, which would replay old results.
+- **Running jobs** without a result become `error` ("Interrupted by the LearnHarness import"); one
+  still `running` with a saved result is classified as `error` or `done` by `is_failure` (matching
+  LH's `normalizeLegacyResult`). Alternative: mark all with results `done` or leave `running`.
+- **ChatGPT account:** exactly one ChatGPT account sets the session's model pick; none or several
+  leave the default, with a warning. Historical usage always uses `chatgpt:learnharness-import`.
+  Alternative: pick the first account, which could bill the wrong one.
+- **Usage roles:** `prober`/`teacher` by `has_probe_done`, `sideQuestion` and `compaction` by
+  message id, `extractor`/`auditor`, one row per job call. Request ids `<owner>#<n>`.
+- **Refusals:** any wrong-shape record (including ledger lines, the plan `tree`, and times without
+  a time zone) refuses the import; only unparsable JSONL lines are skipped. LH skips both.
+- **Orphans:** jobs of skipped or missing chats are skipped; graph rows naming non-imported
+  sessions are kept; unplaceable or shared-segment side threads are imported with a warning.
 
-Throwaway project in `~/scratch/verstehen-claude-sdk-spike` (not in this repo), on
-`claude-agent-sdk==0.2.184` with `pydantic-ai-slim==2.70.0`, using the CLI `/usr/bin/claude` 2.1.327
-with `haiku` (resolved to `claude-haiku-5-5`). It authenticated through the existing local CLI login.
-There were 16 real queries, each with `max_turns=1`. **Verdict: feasible** for text plus function
-tools.
+**Mobile & Sync C:**
 
-- **Lockdown.** With `tools=[]`, `setting_sources=[]`, `strict_mcp_config=True`, and a plain-string
-  `system_prompt`, init advertised no tools at all. With our tools registered, it advertised exactly
-  those tools. `allowed_tools` is an auto-approval list. It does not control which tools are visible.
-- **Interception: a PreToolUse hook that returns `defer` for every call.** No stub ran, and the
-  query ended cleanly with `tool_deferred`. The two interrupt approaches (a permission deny with
-  `interrupt=True`, or a stub that calls `client.interrupt()`) aborted the turn. The stub approach
-  also executed the stub.
-- **Parallel calls.** Defer captured both calls in 3/3 trials. They arrived as **two separate
-  `AssistantMessage`s with the same message id**, and the first hook fired before the second block
-  arrived. Interrupting on the first call lost the second one.
-- **Transcript replay.** A fresh query given a labelled text history (user, assistant, tool call,
-  tool result) continued correctly.
-- **Latency.** The median was 1.39 s to the first text and 2.13 s in total, with a range of
-  1.23–4.39 s to the first text. Connect and init took about 0.35 s, and teardown took about 0.72 s
-  after the result. There was no direct-API baseline, so the SDK's own overhead isn't isolated.
-- **Prompt cache.** Fresh queries with the same prefix read 3,706 cached tokens. Caching survives
-  across independent SDK sessions.
-- **End to end.** A minimal `ClaudeCodeModel(pydantic_ai.models.Model)` worked. In one model
-  request it captured two calls. Pydantic AI then ran `research` and deferred `quiz`, and no SDK stub
-  ran.
-- **Surprise.** By default the CLI saves session transcripts under `~/.claude/projects/`. The later
-  queries passed `extra_args={"no-session-persistence": None}`, which turns that off.
+- **Kit 3 navigation:** the settings section updates the URL with `goto(..., { replace: true, reset: false })`,
+  the replacement for the removed `noScroll`/`keepFocus`.
+- **known_hosts matching** uses AsyncSSH. A portless entry also matches a non-default port (as the real connect
+  does). The preflight probe offers only the signature algorithms of the trusted keys for the host
+  (the real connect's behavior) and matches the host name plus every resolved peer address, so a pinned RSA
+  key does not look like a mismatch and an IP-keyed revoked entry applies. AsyncSSH does not match a
+  bracketed `[ip]:port` revoked entry, so revoke IP-keyed hosts with a portless entry. Alternative: do the trust
+  check inside the real connect with a callback (more code, one handshake fewer).
+- **`python -m verstehen`** (`__main__.py`) runs the service and mint-token, because console-script shebangs
+  break when the venv is renamed. The smoke check imports `verstehen.cli` and `verstehen.app`.
+- **Linger** is attempted (non-fatal) in the environment check before the user-manager check; a failure is a
+  warning on the systemd step. Alternative: fail the install.
+- **Connection generation:** `SyncService.connection_generation` bumps on every configure and disconnect. An
+  install or update captures URL, token and generation together under the lifecycle lock, sends the captured
+  token only to the captured URL, and refuses to change pairing or SSH state if the generation moved
+  (disconnect plus reconnect to the same URL included). Alternative: compare URLs only (misses the same-URL
+  reconnect).
+- **Update rollback** keeps `venv.prev` and `unit.prev` until the new service is healthy. On a failed start,
+  failed health check, SSH failure after the swap or cancellation it restores both, runs daemon-reload,
+  restarts and waits for health. If the SSH transport dropped, it retries (2 attempts, about 30 s each) over a
+  new connection with the same known_hosts checks and the run's in-memory password. The restore is retryable:
+  a `rollback.pending` marker is touched first, `unit.prev` is copied (not consumed), and the backups are
+  removed only after the restarted service is healthy, so a retry that finds them already restored still
+  reloads, restarts and health-checks. If rollback fails, the error says a manual restore may be needed.
+  A later install or update refuses to swap if any recovery artifact remains, rather than discarding
+  the only known-good backup or attempting an automatic recovery from a previous run.
+  A remote `install.lock` serializes staging, swaps and rollback across desktops using the same SSH
+  account. It survives an uncertain interruption or failed rollback so another install cannot race
+  lingering remote work; clear it manually only after confirming setup has stopped and recovering.
+  Alternative: restore the venv only (leaves a unit the old venv may not run).
+- **Update health checks** verify the systemd invocation and schema before removing backups.
+  An SSH disconnect triggers a fresh verification before rollback. Rollback refuses to restore
+  the old wheel if the database has applied migrations absent from it. Recovery files stay in
+  place until the restored process owns the listener and is healthy.
+- **One snapshot per server operation:** `ServerProxy` and server OAuth take URL, token, generation and SSH
+  details from `capture_connection()` (under the lifecycle lock, released before any request). The sign-in
+  tunnel, its request and its watcher use that snapshot; a stale generation before the request or the SSH
+  metadata write closes the tunnel and returns `oauth_cancelled`. The URL (SQLite) and token (credentials
+  file) cannot share a transaction, so `configure` writes both under the lifecycle and sync locks and
+  restores the previous token only if the URL did not commit (`SyncStore.configure_committed`, set from the
+  shielded transaction outcome), also on cancellation. Server OAuth keeps the last 8 issued sign-in ids with
+  their snapshot; polling an id from a replaced server returns a local `oauth_cancelled` (unknown id: 404)
+  and is never forwarded.
+- **Token checks:** only an explicit 401 or 403 means the server rejected a token and an update mints a new
+  device. A timeout, connection error or 5xx is retried with backoff; if it persists the update fails and the
+  existing pairing is left unchanged.
+- **Reset on server change:** any configure to a different URL or disconnect resets server sync metadata,
+  including `sync_prompt_state`, so the next scan re-emits the current prompt overrides to the new server.
+  `sync_tombstones` are kept. Alternative: keep cursors per server (more state).
+- **Older servers without `current_device_id`:** the status carries `device_identity_missing` and Settings shows
+  "This server can't identify this laptop; update the server to enable self-revoke on disconnect". An update
+  that verifies the existing token stores `current_device_id` when the server returns it. No name matching.
+- **Removing a server ChatGPT account** cancels a pending sign-in only when that sign-in is a re-sign-in of
+  the same account (this also applies to the local flow).
 
-Rules for the wrapper:
-- Defer every call. Drain the stream to `ResultMessage`, and never stop on the first tool call.
-- Collect tool calls from **all** completed `AssistantMessage` `ToolUseBlock`s, deduplicated by id.
-  `ResultMessage.deferred_tool_use` holds only one call. Don't count `StreamEvent` partials as calls.
-- Map MCP wire names (`mcp__<server>__<tool>`) back to our tool names, and keep the tool-use ids.
-- Always pass `--no-session-persistence`. Pydantic AI owns the history, and SDK session state is
-  never the source of truth.
-- Stub handlers fail closed. They should never run, and if one does, it raises instead of doing
-  work. Guard hooks also reject unknown tool names.
-- Take usage from `ResultMessage.usage`. Usage on assistant blocks repeats across blocks of one
-  response and must not be summed.
-- Not covered yet: multimodal parts, structured output, cancellation, context limits, escaping in
-  the transcript, and model settings.
+**Mobile & sync (Milestone A):**
 
-## Image and context-window check (2026-11-18)
+- **Revoking a device** invalidates its unredeemed pairing codes and rejects all subsequent
+  requests with 401, while already-open SSE streams stay open until they end or reconnect
+  (alternative: track per-device stream cancellation handles across `/api/events`, lesson `/stream`,
+  and side-chat `/stream`; consequence: a revoked device with an already-open stream can keep
+  receiving notifications and streamed lesson or side-chat content until that stream closes or
+  reconnects, and a separate refetch returning 401 does not close the open stream).
 
-Throwaway check in `~/scratch/verstehen-image-check` on Python 3.14.10 with the vendored
-`ClaudeCodeModel` and `claude-haiku-5-5`, two real queries.
+**Mobile & sync (Milestone D, PR 1):**
 
-- **Images work through the vendored `ClaudeCodeModel`**, both as a learner image in the user
-  message and as an image inside a tool result (the visual worker's render loop). The tool ran once,
-  in Pydantic AI, and both images (rendered with CairoSVG, and again with resvg after the switch) were described correctly.
-- **Context window data** (genai-prices 0.2.4): `claude-*-5-5` → 1,000,000 under Pydantic AI's
-  Anthropic model, but the vendored `ClaudeCodeModel` reports none (it doesn't look the data up).
-  `gpt-5.5` → 1,000,000, `gpt-5.2` and `gpt-5.1-codex` → 400,000, `gpt-5.5-mini` and `gpt-6.1` →
-  unknown. Hence the runtime fallback decided above.
+- **A native WebView guard enforces the Tailscale-only cleartext rule.** Android's
+  `network_security_config.xml` cannot express `100.64.0.0/10` (only hostnames and exact IPs), so it
+  allows cleartext and `GuardedWebViewClient` (about 30 lines of Java in `app/android`) blocks every
+  `http://` request except `localhost` (the page), `100.64.0.0/10`, and `10.0.2.2` in debug builds
+  only (`BuildConfig.DEBUG`). It only blocks: allowed requests go through Capacitor's own client, so
+  POST bodies and SSE stream as before; `https` is untouched. `/pair` also refuses addresses outside
+  that range, with a clear message (`10.0.2.2` only in the debug build's SPA, which `make
+  android-debug` builds with `PUBLIC_VERSTEHEN_EXTRA_HOSTS=10.0.2.2`); the guard stays the real
+  enforcement. Alternatives: a JS-only guard (leaves other WebView requests, such as http images,
+  unguarded) or MagicDNS names under a `ts.net` rule (contradicts the `/pair` address decision).
+  Consequence: a debug-only `10.0.2.2` and the range live in Java, checked by a JVM unit test, a
+  Python config test, and a blocked-request check on the emulator.
+  **Redirects (review round 1; the user accepted this 2026-11-23).** `shouldInterceptRequest` sees only the first
+  URL of a request, so an allowed host could redirect to an off-range `http` address. The fix does
+  not change the guard: in remote mode every API `fetch` (and the pairing `fetch`) uses
+  `redirect: 'error'`, and `plugins.CapacitorHttp.enabled = false` in `capacitor.config.ts` makes it
+  explicit that `fetch` is never patched. Residual risks, accepted for now: (1) Capacitor's native
+  HTTP bridge is still registered in the app but unused by our code, and a future change that
+  calls it would bypass the guard; (2) WebSocket is not used, and a future use would need its own
+  check; (3) subresource redirects beyond our API requests (such as images) are not re-checked.
+  Alternative: a native redirect check in the WebView client (more Java).
 
-## Claude Code WebSearch spike (2026-11-18)
+**Mobile & sync (Milestone D, PR 2):**
 
-`~/scratch/verstehen-image-check/websearch.py`, `claude-haiku-5-5`, real queries.
+- **Accounts is fully read-only on the phone**, including the background-use switches, which are
+  disabled. Only the laptop signs accounts in or out. Alternative: let the phone toggle background
+  use; consequence: one more writer to the server's account settings.
+- **No screen switch when a plan appears on the phone.** The plan stays reachable from the top bar.
+  Alternative: open the Plan screen on a new plan, which would pull the learner out of the lesson.
+- **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
+  node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
+  Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
+- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
+  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
+  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **Device type by screen size:** the device-name default is "Tablet" when
+  `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
+  query; consequence: a large foldable's inner screen reads as a tablet.
+- **Disconnect keeps the server address** (`dropToken`), revokes this device on the server when
+  it answers within 5 s, and opens `/pair`. Alternative: forget the address too; consequence: re-pairing
+  needs only a new code.
+- **Android system bars** follow the theme through `SystemBars.setStyle`; a dark native window
+  background and Capacitor's `backgroundColor` stop a white flash. On WebView below 140 the bars
+  stay dark in light mode (the old WebView pads its own area). Alternative: edge-to-edge only.
+- **Phone Settings uses push navigation:** choosing a section pushes it, back replaces it with the
+  list. Alternative: a stack of history entries.
+- **`mobile-reconnect` goes offline mid-stream:** it waits for the first chunk of the reply, takes
+  the whole browser context offline, and checks that the open stream failed, that "Reconnecting…"
+  shows while the server finishes the turn, and that going online shows the reply once from one
+  input request. Alternative: refuse the stream request before it opens, which never delivers a
+  chunk before the cut.
+- **Android Back acts as Escape** (user decision, 2026-11-23). LearnHarness dismisses a question,
+  discards a problem, or aborts a turn with Escape only. In the Android app, Back opens the same
+  confirmation when a question is pending, a problem is active, or a turn is running; with none of
+  these, Back goes back in history or leaves the app as before; with the drawer, a dialog, or a
+  menu open (on any page, including the graph's context menu), Back closes it as Escape would. It
+  shares `requestAbort` with the Escape handler. Alternative: a dismiss button on the
+  card on coarse pointers (not built); other phones and the browser have no Back button.
 
-- **A. Pydantic AI's native `WebSearch` through the vendored `ClaudeCodeModel`:** refused by design
-  (`Only Pydantic AI function and output tools may execute.`).
-- **B. Claude Code's built-in WebSearch enabled inside the adapter:** fails
-  (`SDK proposed an undeclared tool.`). The adapter accepts exactly one model response that uses only
-  our tools.
-- **C. Our own `web_search` tool that runs a separate SDK query with only WebSearch enabled:** works
-  (2 turns, 11.6 s).
-- **Decision:** not adopted. Claude Code research uses Tavily, then Brave.
+## Constraints
 
-Also learned:
-- **Passing `sdk_options` replaces the adapter's lockdown defaults** (`tools=[]`, `max_turns=1`,
-  `setting_sources=[]`, `skills=[]`, `strict_mcp_config=True`, `no-session-persistence`). Our provider
-  code must always set all of them itself.
-- **The system-prompt conflict is real:** setting both an SDK `system_prompt` and Pydantic AI
-  instructions raised `UserError`, which confirms the patch decided in Q10.
+- **The Claude Code login is for personal use only.** Verstehen is never distributed with it.
+- **Compaction is always Verstehen's own**, never provider-native.
 
-## Open questions
+## Decided, not yet implemented
 
-See [architecture → open questions](architecture.md#open-questions).
+**Mobile app and two-way sync ([plan](plans/mobile-and-sync.md)):**
 
-## Milestones
+- **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
+  offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
+  to the server.
+- **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
+  connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
+  `tailscale serve`), with cleartext HTTP limited to `100.64.0.0/10` by a native WebView guard.
+- **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
+  SHA-256 hashed on the server and individually revocable.
+- **Server SSH install & ChatGPT OAuth from laptop UI only (v1).** SSH password is used once in
+  memory and never stored; server ChatGPT OAuth runs through a temporary SSH tunnel on port 1455;
+  Claude Code is installed and signed in separately on the server.
+- **Sync semantics:** immediate delete propagation via `sync_tombstones` (no trash); fork on
+  offline same-session conflict; defer incoming remote entries while a session's `SessionRuntime`
+  has an active turn or compaction; sync prompt overrides (`prompts/`); leave raw laptop PDF paths
+  laptop-only for v1; never sync `credentials.json`, Claude Code login, `file_access`, or
+  `demo_browser`.
 
-> Status: **approved** (2026-11-18). The user moved real providers to M3, right after the session core.
+## Deliberate differences from LearnHarness
 
-Every milestone is done only when `make check` passes, its behaviors have tests named after them,
-everything the learner sees has a `make verify` flow and a [feature map](feature-map.md) entry, and
-[status](status.md) is updated. Milestones that touch the desktop shell end with the user checking
-the app on the laptop. Agents use the fake model for tests and verify flows; real models only in opt-in live tests.
+### Session and turns
 
-### M1. Walking skeleton
+- **Event-driven delivery.** No polling (`waitForIdle`, `POLL_MS`, `GRACE_MS`) and no TTL guards.
+  LH's answer race is closed by design: a wake fires only from an idle runtime with no pending
+  question, an answer is saved and claimed in one step, and if a wake and an answer collide the
+  answer wins and carries the queued input.
+- **No subscription staging.** Background consent is asked before automatic input is added. Automatic
+  input is saved before dispatch; if the request fails, a Retry delivers it once. LH stages and
+  retries as foreground instead.
+- **Wakes** are triggered by events (settled turn, finished job, any session change, finished
+  compaction, settings save, jobs poll), never while a probe handoff is owed. Signing in is not a
+  trigger.
+- **The compaction marker is appended** at the end of the log, with `last_summarized_entry_id`;
+  readers of a session's tail skip it (Retry still stops at it). LH inserts it in place.
+- **No "include reasoning" compaction switch.** Same-model ChatGPT replies with signed thinking,
+  a non-failed/non-aborted stop, and positive output usage always count at least their saved
+  output tokens.
+- **A `continue` that isn't owed does nothing** and returns success. LH always runs a turn.
+- **Titles** are written by the cheap model, as a foreground call started with the first message.
+  The last title to arrive wins, even over a rename; a failure keeps the current title, no retry.
+  LH only cuts the first message.
+- **The owed handoff is derived** from the entries, so a restart doesn't lose it, and a learner
+  message sent before it starts cancels it.
+- **The sidecar refuses to start** in desktop mode without a valid token (LH starts and refuses every
+  request), exits when stdin closes, and rotates its log (5 MiB, three backups).
 
-The whole path from the desktop window to SQLite exists and is proven, with almost no features.
-- **Repo:** `backend/` (uv, Python 3.14, ruff, pyrefly, pytest) and `app/` (created with `sv`:
-  SvelteKit static SPA, TypeScript, Tailwind v4, shadcn-svelte, ESLint, Prettier, Vitest).
-- **Checks:** the root `Makefile` (`check`, `test`, `fmt`, `verify`), the comment checker,
-  import-linter for the package order, ruff banned-API, ESLint boundaries, and the migration check.
-  Every check message says what to do instead.
-- **Sidecar:** FastAPI on `127.0.0.1` with the per-launch token, the startup handshake, and
-  `verstehen/app.py` wiring. The store layer: SQLite in WAL mode, one write connection, and the
-  migration runner. The data dir and `VERSTEHEN_DATA_DIR`. The log file.
-- **Verification:** the fake-model provider, `make verify` (sidecar plus app in headless Chromium,
-  screenshots and traces), and the verify skill for Claude Code and Codex.
-- **Packaging proof:** a frozen PyInstaller sidecar that imports every heavy dependency (Playwright,
-  pypdfium2, resvg-py, the SDK; the Claude CLI is no longer bundled), started by a Tauri build. `make app` builds it
-  in an `archlinux` container on Pixal as an Arch package; the user installs it on the laptop with
-  `pacman -U` and opens it.
-- **UI:** the empty layout (sidebar, thread, composer, closed right panel, settings page), dark and
-  light.
+### Teaching and questions
 
-### M2. Session core
+- **Plans have 5–15 nodes.** The planning prompt (`teacher/10-planning.md`) is changed to match
+  `plan_init`'s bound; it is the one deliberate prompt change.
+- **Invalid question arguments go back to the model at most 10 times per tool per turn**, then the
+  turn fails with Retry. LH has no limit.
+- **The question dock keeps the model menu** beside Submit; LH's dock has none.
+- **Space on a focused button** outside the answer rows presses that button.
+- **The plan diagram lives only in the right panel's Plan tab**, opening on each new plan. LH's
+  marginalia, Plan chip, and popup are not ported.
+- **Quiz confidence starts at 90%** (the fifth of LH's stops 0, 30, 50, 70, 90, 100); LH starts
+  at 50% (`DEFAULT_CONFIDENCE_INDEX = 2`).
 
-A conversation with the fake model, saved and replayable.
-- The entry log and `session/projection.py`; sessions and entries tables.
-- `SessionRuntime` (claim, run handle, event log) and the named turn stages: write-ahead input,
-  settlement order, one turn per session, refusals save nothing. Retry of a failed response.
-- The teacher agent with LH's prompt tree copied, prompt composition, and override files.
-- The SSE turn stream with replay on reattach, `/api/events`, and abort with partial output saved.
-- **UI:** the session list with Rename and Delete, a new session, the streamed thread with Stop
-  and Retry, and the session controller. The thread
-  and composer use shadcn-svelte AI Elements (see the decision above).
+### Background jobs
 
-### M3. Real providers
+- **Search engine setting:** Native, Tavily, or Brave, with fallbacks (Claude Code has no native
+  search, so Native means Tavily, then Brave). LH has no native search, and its pinned engine never
+  falls back. With native search the researcher prompt drops its `web_search` wording.
+- **The Jobs tab** shows the open session's jobs only; LH's Background agents section is app-wide.
+- **The invert switch** for figures and demos is saved in `artifact_views`; LH rewrites the marker.
+- **The no-browser demo failure text** points to Settings → Tools instead of Chrome and
+  `CHROME_PATH`. A wrong configured browser path falls back to PATH, then the downloaded browser.
+- **Web pages are read with a Python parser** plus LH's Jina fallback, and PDF text comes from
+  PDFium, not Readability, Turndown, and pdfjs. Planned: PyMuPDF for PDF text.
+- **"Pages read" counts the pages actually returned.**
 
-Claude Code and ChatGPT in the app early, so the user sees real behavior from here on.
-- Slots and roles, `resolve(role)`, and `ProviderPolicy` (background consent, admission before
-  automatic input).
-- **Claude Code:** the vendored `ClaudeCodeModel` with `VENDORED.md`, the system-prompt patch, full
-  lockdown options, the installed `claude` with the untested-version warning and the "Download the
-  tested version" button (**button superseded 2026-11-21: removed**), and the personal-use constraint.
-- **ChatGPT:** `openai-chatgpt`, the browser login, and `credentials.json` behind a credential source.
-- Context-window lookup (runtime, then model data, then a value you enter), usage logging, and the
-  provider-event debug switch.
-- Session titles written by the cheap model in the background (decided 2026-11-19).
-- **UI:** settings for models, slots, and logins. Opt-in live tests for both providers.
+### Side chat
 
-### M4. Question tools
+- **A right-panel tab**, not LH's floating, docked window; no thread list. Entry points are the
+  segment button and selection **Ask**; no Cite.
+- **Segments are computed on the server.**
+- **A wake whose side-chat updates don't fit is refused for every provider** (LH: subscriptions only).
+- **The size check reserves a fixed 16,384 tokens**; LH uses the smaller of that and the model's
+  maximum output, which our catalog doesn't have.
 
-The question contract, exactly as in LH.
-- quiz, probe, explain, recall, and ask_user_question via `CallDeferred`, in `teaching/questions`:
-  pending detection, siblings, the mixed-batch rule, answers, dismissal, retry, and `continue`.
-- The answer race closed by design (atomic answer save and claim).
-- **UI:** question cards with LH's exact behavior (`buildAnswer`, confidence, siblings, dismissal,
-  retry), and grading in the UI.
+### Knowledge graph
 
-### M5. Teaching flow
+- **The graph has its own page**, `/graph`, from the sidebar; LH's home is the graph. Picks work on
+  both the new-session screen and the graph page, with one selection.
+- **The page settles the layout**, not the server after each merge.
+- **Refreshes come from events**, not LH's 2-second polls.
+- **Extract now** refuses up front when no model is usable (LH accepts with `202` and logs a
+  later refusal), and is the button text in both the popover and the session menu.
+- **Notes imports** check model readiness before registering the source or folders (LH registers
+  the folder and source first, then returns a per-file configuration refusal).
+- **Deleting a session** waits up to ten seconds for its extraction to stop, then asks you to try
+  again; without a `mode` it keeps the graph.
+- **Nodes can also be deleted from the detail card**, besides right-click.
+- **Smaller differences:** the chains table is an overlay under the app header, without LH's guide
+  lines, drag preview, or find shortcut; card session links open the session, not the message
+  (planned: message anchors); two texts that point to LH features we don't have are reworded.
 
-Probe, plan, teach, as in LH.
-- The prober and the teacher, with the phase derived from `probe_done` and the probe handoff as an
-  explicit phase transition.
-- `plan_init` (5–15 nodes; LH has no other plan tools), the plan tree, and plan blocks.
-- `send_to_user` with the narration guard, and the learner-file tools with File access settings.
-- **UI:** the plan tree in the right panel, and plan blocks in the thread.
+### Practice sessions
 
-### M6. Compaction
+- **Creation UI:** the sidebar has `+ Teaching` and `Practice`, `/session/new` adds a
+  `Teach | Practice` toggle (preserving draft and picked nodes), and `/graph` offers both
+  `Start teaching` and `Start practice` when nodes are picked. LH uses `/chat/new?kind=practice` and
+  only `Start practicing` on `/graph`.
+- **Context menu & Delete dialog:** practice session context menus omit `CoverageMenuBlock`, and
+  `DeleteSessionDialog` hides the graph-traces option and sends `mode=preserve-graph`. LH leaves the
+  delete dialog unchanged.
+- **The `Teach | Practice` toggle sits above the composer** on `/session/new` (LH puts it in the
+  stats bar under the composer); the mode lives in the URL (`?mode=practice`).
+- **The practice dock's submit waits for the agent's reply** to the previous thinking (LH only
+  blocks it during compaction); a window-level Enter with an empty draft focuses the field instead
+  of doing nothing.
+- **A dismissed problem pauses job wakes** like a dismissed question: LH's wake pipeline checks
+  `endsInDismissal`, which misses the `problem-dismissed` marker, so a job result can wake the
+  practitioner and pose a new problem before the dismissal's `conclude` pair is saved. Verstehen
+  holds the delivered results until the learner's next input, which carries the pair and the results.
 
-- LH's compaction between runs: threshold, cut, the four-section summary prompt, the marker, and
-  the projection. The limit is a user setting ([plan](plans/m6-compaction.md)).
+### Providers and models
 
-### M7. Background jobs and workers
+- **Accounts are first class:** any number of ChatGPT accounts at once; every pick names an account
+  and a model. LH has one active ChatGPT account.
+- **One composer model menu** with Main, Cheap, and Vision; only **Set as default** writes the strong
+  slot. LH writes it when you pick on the new-session screen.
+- **Background use is one switch per provider, Claude Code included.**
+- **The user never enters a model's context limit.**
+- **ChatGPT model lists are cached** per account for the sidecar's lifetime; LH refreshes every turn.
+- **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
 
-- The jobs table, the job runner, the context-update step (job results and composer steers), idle
-  wakes through the injected `wake_session`, and recovery when the UI polls for jobs.
-- The workers:
-  - **research:** native search, then Tavily, then Brave, plus fetch;
-  - **pdf:** pypdfium2;
-  - **visual:** resvg, with the render-and-look loop;
-  - **demo:** Playwright with Chromium (the setting, else one found on PATH, else "Download Chromium
-    for demos"), shown in the sandboxed iframe under the relaxed app CSP.
-- Learner images as files in `<data dir>/images/`.
-- **UI:** job cards and artifacts in the thread, and job activity in the right panel.
+### Frontend
 
-### M8. Side chat
-
-- Segments, side threads, the helper call over the redacted lesson (answer keys removed), budget
-  and admission, and delivery through the context-update step.
-- **UI:** side chat on a teaching segment.
-
-### M9. Knowledge graph
-
-- Propositions, chains, coverage, sources, and checkpoints. Extractor, then auditor (BM25
-  candidates), then a deterministic merge in one transaction. Notes imports.
-- **UI:** the graph view (a port of LH's Canvas 2D renderer with d3-zoom and d3-force; decided 2026-11-20).
-
-### M10. Practice sessions
-
-- The practitioner agent with `problem` and `conclude`, and practice sessions.
-
-### M11. Smaller features and later providers
-
-- LH's stats bar below the composer: context in use against the model's limit, session cost,
-  and per-turn usage (moved from M6, 2026-11-20).
-- Session search (SQLite FTS5), the activity dock, themes (redefined as shadcn theme variables), and
-  a prompt-override UI if needed.
-- Later providers: API keys, the custom endpoint, Copilot, and Grok.
-
-
-## M7 T2 implementation decisions (2026-11-20)
-
-- **Orchestrator decision, for user review:** an unusable configured browser path (missing or not
-  executable) falls through to PATH, then the downloaded browser, matching discovery's executable
-  checks. The path remains saved and editable.
-- **Orchestrator decision, for user review:** environment keys of four characters or fewer show
-  only bullets. LH's suffix mask would expose an entire short environment value; the approved
-  requirement that responses never return a key takes precedence.
-- **Orchestrator decision, for user review:** browser download progress exposes the bundled
-  driver's latest output line (bounded to 500 characters) and its percentage when available,
-  rather than inventing byte counts the driver does not report.
-
-## Faster checks and linked environments (2026-11-21)
-
-- **User decision:** Makefile pytest commands use pytest-xdist `-n auto`; pytest `addopts` stays
-  unchanged so single-file runs do not spawn workers. ESLint uses its content cache and Prettier
-  uses its cache under `app/node_modules/.cache`. Pixal measurements: pytest 141s → 73s (757 tests,
-  all passing in parallel), ESLint ~90s → ~2s, and Prettier ~10s → ~2s for unchanged files.
-  Trade-off: type-aware ESLint rules (`svelte/no-unused-props`,
-  `svelte/require-store-reactive-access`) can miss a new error in an unchanged file caused by a
-  type change elsewhere. CI runs without a restored lint cache and is the backstop; deleting
-  `app/node_modules/.cache/eslint` forces a full lint.
-- **User decision:** Agents may run on the user's Arch laptop through a T3 linked environment
-  when Pixal is busy. The laptop's `~/.local/share/verstehen` holds real user data, so
-  `VERSTEHEN_DATA_DIR` must always point elsewhere.
+- **`/session/new`** instead of LH's `/chat/new`.
+- **Touch on `/graph`:** a tap opens the card, a press and hold the menu, any drag pans, and a pinch
+  zooms; touch never drags a node. Mouse input is LH's.
+- **The look is new** (sleek, T3 Code style); behavior is LH's.
+- **Sidebar folders without delete-with-contents:** the sidebar folder menu's Delete works only
+  when no session or notes source sits anywhere in the folder's subtree, as in Chains. LH
+  (`0f6c47d0`, `7c65e370`) deletes the folder with its sessions after a scoped confirmation.
+- **No compact sidebar setting:** LH's Appearance → compact session sidebar (`530cc9f0`) is not
+  ported; the sidebar has one row density.
+- **Touch layouts browse folders only:** phones and tablets open, close, search, and use the folder
+  menu, but cannot move sessions or folders (LH's moves are HTML5 drags, desktop only).

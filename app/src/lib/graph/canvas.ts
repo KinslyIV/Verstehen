@@ -84,6 +84,8 @@ const HOVER_FADE_MS = 180;
 const ZOOM_EASE_MS = 45;
 const PICKING_PAD = 10;
 const CLICK_SLOP = 4;
+const TOUCH_SLOP = 8;
+const LONG_PRESS_MS = 500;
 const LIVE_ALPHA_DECAY = 0.05;
 const DRAG_ALPHA_TARGET = 0.3;
 const SIM_SETTLE_ALPHA = 0.005;
@@ -300,16 +302,24 @@ export function arrowGeometry(
 	};
 }
 
-export function pickNearest<T extends { id: string; x: number; y: number }>(
-	nodes: T[],
+type Camera = { k: number; x: number; y: number };
+
+/** The node nearest the pointer within `maxDist` screen px; hidden and implication nodes never match. */
+export function pickNode(
+	nodes: readonly CanvasNode[],
+	visible: ReadonlySet<string> | null,
+	camera: Camera,
 	px: number,
 	py: number,
 	maxDist: number
-): T | null {
-	let best: T | null = null;
+): CanvasNode | null {
+	let best: CanvasNode | null = null;
 	let bestDistance = maxDist * maxDist;
 	for (const node of nodes) {
-		const distance = (node.x - px) ** 2 + (node.y - py) ** 2;
+		if ((visible && !visible.has(node.id)) || isImpNodeId(node.id)) continue;
+		const dx = node.x * camera.k + camera.x - px;
+		const dy = node.y * camera.k + camera.y - py;
+		const distance = dx * dx + dy * dy;
 		if (distance < bestDistance) {
 			bestDistance = distance;
 			best = node;
@@ -372,7 +382,14 @@ function drawNameLines(
 	);
 }
 
-type Camera = { k: number; x: number; y: number };
+/** One finger down on the canvas: a tap, a long press, or the start of a pan or pinch. */
+interface TouchPress {
+	pointerId: number;
+	pos: Pt;
+	timer: ReturnType<typeof setTimeout> | null;
+	/** A second finger, movement past the slop, or the long press already fired. */
+	spent: boolean;
+}
 
 /** One canvas, one animation-frame loop; draws plain data and keeps its camera across updates. */
 export class GraphCanvasRenderer {
@@ -414,6 +431,8 @@ export class GraphCanvasRenderer {
 
 	private resizeObserver: ResizeObserver;
 	private downPos: Pt | null = null;
+	private touch: TouchPress | null = null;
+	private lastPointerType = 'mouse';
 
 	private geoVersion = 0;
 	private builtVersion = -1;
@@ -455,6 +474,7 @@ export class GraphCanvasRenderer {
 		canvas.addEventListener('pointermove', this.onPointerMove);
 		canvas.addEventListener('pointerdown', this.onPointerDown);
 		canvas.addEventListener('pointerup', this.onPointerUp);
+		canvas.addEventListener('pointercancel', this.onPointerCancel);
 		canvas.addEventListener('pointerleave', this.onPointerLeave);
 		canvas.addEventListener('contextmenu', this.onContextMenu);
 
@@ -509,7 +529,8 @@ export class GraphCanvasRenderer {
 		this.dragId = null;
 		this.simMoved = false;
 		this.simCenter = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
-		this.buildSim();
+		this.sim = null;
+		this.simById = new Map();
 		this.geoVersion++;
 		this.markDirty();
 	}
@@ -530,7 +551,7 @@ export class GraphCanvasRenderer {
 		this.markDirty();
 	}
 
-	/** Rebuilds the live sim from the current positions and re-anneals the layout. */
+	/** Builds the live sim from the current positions and re-anneals the layout. */
 	setPhysicsTuning(tuning: PhysicsTuning): void {
 		this.physicsTuning = tuning;
 		this.buildSim();
@@ -605,6 +626,7 @@ export class GraphCanvasRenderer {
 	destroy(): void {
 		if (this.frameId !== null) cancelAnimationFrame(this.frameId);
 		if (this.commitTimer) clearTimeout(this.commitTimer);
+		this.endTouch();
 		this.sim = null;
 		this.simActive = false;
 		this.dragId = null;
@@ -614,6 +636,7 @@ export class GraphCanvasRenderer {
 		this.canvas.removeEventListener('pointermove', this.onPointerMove);
 		this.canvas.removeEventListener('pointerdown', this.onPointerDown);
 		this.canvas.removeEventListener('pointerup', this.onPointerUp);
+		this.canvas.removeEventListener('pointercancel', this.onPointerCancel);
 		this.canvas.removeEventListener('pointerleave', this.onPointerLeave);
 		this.canvas.removeEventListener('contextmenu', this.onContextMenu);
 		this.canvas.style.cursor = '';
@@ -630,7 +653,65 @@ export class GraphCanvasRenderer {
 		this.markDirty();
 	};
 
+	/** Touch never drags a node: one finger pans and two pinch (d3-zoom); a tap selects, a hold opens the menu. */
+	private pressTouch(event: PointerEvent): void {
+		this.zoomTarget = null;
+		if (this.touch) {
+			this.touch.spent = true;
+			this.clearTouchTimer();
+			return;
+		}
+		const pos = this.eventPos(event);
+		const press: TouchPress = { pointerId: event.pointerId, pos, timer: null, spent: false };
+		press.timer = setTimeout(() => {
+			press.timer = null;
+			if (press.spent) return;
+			press.spent = true;
+			this.callbacks.onContext(this.pickAt(pos.x, pos.y)?.id ?? null, pos);
+		}, LONG_PRESS_MS);
+		this.touch = press;
+	}
+
+	private moveTouch(event: PointerEvent): void {
+		const press = this.touch;
+		if (!press || press.pointerId !== event.pointerId) return;
+		const pos = this.eventPos(event);
+		if (Math.hypot(pos.x - press.pos.x, pos.y - press.pos.y) > TOUCH_SLOP) {
+			press.spent = true;
+			this.clearTouchTimer();
+		}
+	}
+
+	private releaseTouch(event: PointerEvent): void {
+		const press = this.touch;
+		if (!press) return;
+		if (press.pointerId !== event.pointerId) return;
+		const tapped = !press.spent;
+		this.endTouch();
+		if (!tapped) return;
+		const pos = this.eventPos(event);
+		const node = this.pickAt(pos.x, pos.y);
+		if (node) this.callbacks.onSelect(node.id, pos);
+		else this.callbacks.onStageClick();
+	}
+
+	private clearTouchTimer(): void {
+		if (this.touch?.timer) clearTimeout(this.touch.timer);
+		if (this.touch) this.touch.timer = null;
+	}
+
+	private endTouch(): void {
+		this.clearTouchTimer();
+		this.touch = null;
+	}
+
+	private onPointerCancel = () => this.endTouch();
+
 	private onPointerMove = (event: PointerEvent) => {
+		if (event.pointerType === 'touch') {
+			this.moveTouch(event);
+			return;
+		}
 		const pos = this.eventPos(event);
 		if (this.dragId) {
 			const node = this.simById.get(this.dragId);
@@ -656,9 +737,15 @@ export class GraphCanvasRenderer {
 	};
 
 	private onPointerDown = (event: PointerEvent) => {
+		this.lastPointerType = event.pointerType;
+		if (event.pointerType === 'touch') {
+			this.pressTouch(event);
+			return;
+		}
 		if (event.button !== 0) return;
 		const pos = this.eventPos(event);
 		const node = this.pickAt(pos.x, pos.y);
+		if (node && !this.sim) this.buildSim();
 		if (node && this.sim) {
 			event.preventDefault();
 			try {
@@ -682,6 +769,10 @@ export class GraphCanvasRenderer {
 	};
 
 	private onPointerUp = (event: PointerEvent) => {
+		if (event.pointerType === 'touch') {
+			this.releaseTouch(event);
+			return;
+		}
 		if (event.button !== 0) return;
 		if (this.dragId) {
 			const id = this.dragId;
@@ -718,6 +809,7 @@ export class GraphCanvasRenderer {
 
 	private onContextMenu = (event: MouseEvent) => {
 		event.preventDefault();
+		if (this.lastPointerType === 'touch') return;
 		const pos = this.eventPos(event);
 		this.callbacks.onContext(this.pickAt(pos.x, pos.y)?.id ?? null, pos);
 	};
@@ -735,15 +827,8 @@ export class GraphCanvasRenderer {
 
 	private pickAt(px: number, py: number): CanvasNode | null {
 		if (!this.data || !this.settings) return null;
-		const { x: tx, y: ty, k } = this.transform;
-		const maxDist = this.settings.node_size * k + PICKING_PAD;
-		const projected: { id: string; x: number; y: number }[] = [];
-		for (const node of this.data.nodes) {
-			if ((this.visible && !this.visible.has(node.id)) || isImpNodeId(node.id)) continue;
-			projected.push({ id: node.id, x: node.x * k + tx, y: node.y * k + ty });
-		}
-		const hit = pickNearest(projected, px, py, maxDist);
-		return hit ? (this.nodeById.get(hit.id) ?? null) : null;
+		const maxDist = this.settings.node_size * this.transform.k + PICKING_PAD;
+		return pickNode(this.data.nodes, this.visible, this.transform, px, py, maxDist);
 	}
 
 	private setHover(nodeId: string | null): void {

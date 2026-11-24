@@ -1,7 +1,16 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { SessionController } from './controller.svelte';
 import * as api from '#lib/api/client.js';
+import { live } from '#lib/api/live.svelte.js';
 import { questionBatch, questionResult } from '#lib/questions/question-fixtures.js';
+import {
+	ack,
+	call,
+	conclude,
+	dismissed,
+	pose,
+	problemArguments
+} from '#lib/practice/practice-fixtures.js';
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof api>()),
 	dismissQuestion: vi.fn(),
@@ -10,15 +19,20 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getSettings: async () => ({}),
 	steerSession: vi.fn(),
 	setArtifactView: vi.fn(),
+	abortSession: vi.fn(),
 	getSession: vi.fn(),
 	postInput: vi.fn(),
 	streamTurn: vi.fn()
 }));
-const record = (entries: api.Entry[] = [], busy = false): api.SessionDetail => ({
+const record = (
+	entries: api.Entry[] = [],
+	busy = false,
+	kind: api.SessionKind = 'teach'
+): api.SessionDetail => ({
 	side_segments: { by_entry: {}, entry_points: {}, current: null },
 	id: 'one',
 	title: 'Lesson',
-	kind: 'teach',
+	kind,
 	entries,
 	turn_in_flight: busy,
 	turn_error: null
@@ -79,6 +93,49 @@ test('early_stream_end_recovers_once_without_resending_input', async () => {
 	expect(api.streamTurn).toHaveBeenCalledTimes(2);
 	expect(api.postInput).not.toHaveBeenCalled();
 	expect(controller.error).toBe('The connection dropped before the turn completed.');
+});
+test('a_dropped_network_waits_and_reattaches_without_failing_the_turn', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockResolvedValue();
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn)
+		.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+		.mockRejectedValueOnce(new TypeError('Failed to fetch'))
+		.mockImplementationOnce(async () => {
+			vi.mocked(api.getSession).mockResolvedValue(record([], false));
+			return true;
+		});
+	await controller.attach();
+	expect(api.streamTurn).toHaveBeenCalledTimes(3);
+	expect(wait.mock.calls.map(([attempt]) => attempt)).toEqual([0, 1]);
+	expect(controller.error).toBeNull();
+	expect(controller.busy).toBe(false);
+	wait.mockRestore();
+});
+test('leaving_the_lesson_while_reconnecting_opens_no_new_stream', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockImplementation(async () => controller.dispose());
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.attach();
+	expect(api.streamTurn).toHaveBeenCalledOnce();
+	wait.mockRestore();
+});
+test('a_refetch_that_hits_a_dropped_network_shows_no_error', async () => {
+	await controller.load();
+	vi.mocked(api.getSession).mockRejectedValue(new TypeError('Failed to fetch'));
+	await controller.synchronize();
+	expect(controller.error).toBeNull();
+});
+test('a_server_error_still_fails_the_turn_instead_of_waiting', async () => {
+	await controller.load();
+	const wait = vi.spyOn(live, 'wait').mockResolvedValue();
+	vi.mocked(api.getSession).mockResolvedValue(record([], true));
+	vi.mocked(api.streamTurn).mockRejectedValue(new api.ApiError(500, undefined, 'boom'));
+	await controller.attach();
+	expect(wait).not.toHaveBeenCalled();
+	expect(controller.error).toBe('boom');
+	wait.mockRestore();
 });
 test('conflict_polls_and_retries_the_same_input', async () => {
 	controller.dispose();
@@ -141,6 +198,28 @@ test('unusable_model_opens_menu_with_reason_and_keeps_the_draft', async () => {
 	expect(controller.notice).toBe('Sign in again.');
 	expect(controller.error).toBeNull();
 	expect(controller.entries).toEqual([]);
+});
+
+test('refused_retry_keeps_the_saved_failure_visible_and_opens_the_model_menu', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([
+			{
+				kind: 'assistant',
+				entry_id: 'a',
+				parts: [],
+				stop_reason: 'error',
+				error_text: 'Provider failed'
+			}
+		])
+	);
+	await controller.load();
+	vi.mocked(api.postInput).mockRejectedValue(
+		new api.ApiError(503, 'model_unavailable', 'unavailable', 'Sign in again.')
+	);
+	await controller.send('retry');
+	expect(controller.error).toBe('Provider failed');
+	expect(controller.modelMenuOpen).toBe(true);
+	expect(controller.notice).toBe('Sign in again.');
 });
 
 test('mount_continues_an_answer_saved_without_its_reaction_once', async () => {
@@ -460,4 +539,142 @@ test('invert_switch_writes_the_silent_view_and_survives_record_reload', async ()
 	});
 	await controller.synchronize();
 	expect(controller.record?.artifact_views?.steer_demo).toBe(true);
+});
+
+test('reloading_an_open_problem_shows_it_without_a_continue_turn', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	expect(api.postInput).not.toHaveBeenCalled();
+	expect(controller.activeProblem?.toolCallId).toBe('p1');
+	expect(controller.nextReady).toBe(false);
+});
+
+test('thinking_targets_the_active_problem_and_a_refusal_restores_the_draft', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	controller.thinkingDraft = '  2x, by the power rule  ';
+	vi.mocked(api.postInput).mockRejectedValueOnce(new api.ApiError(400, undefined, 'refused'));
+	await controller.sendThinking();
+	expect(api.postInput).toHaveBeenCalledWith(
+		'one',
+		{ type: 'thinking', text: '2x, by the power rule', problem_call_id: 'p1' },
+		expect.anything()
+	);
+	expect(controller.thinkingDraft).toBe('  2x, by the power rule  ');
+});
+
+test('refused_thinking_preserves_edits_made_while_sending', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	controller.thinkingDraft = '2x';
+	vi.mocked(api.postInput).mockImplementationOnce(async () => {
+		controller.thinkingDraft += ' by the power rule';
+		throw new api.ApiError(400, undefined, 'refused');
+	});
+	await controller.sendThinking();
+	expect(controller.thinkingDraft).toBe('2x by the power rule');
+});
+
+test('accepted_thinking_clears_the_submitted_draft', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	await controller.load();
+	controller.thinkingDraft = '2x';
+	await controller.sendThinking();
+	expect(controller.thinkingDraft).toBe('');
+});
+
+test('next_is_offered_between_problems_and_sends_the_next_input', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([...pose(), ...conclude()], false, 'practice')
+	);
+	await controller.load();
+	expect(controller.activeProblem).toBeUndefined();
+	expect(controller.nextReady).toBe(true);
+	await controller.sendNext();
+	expect(api.postInput).toHaveBeenCalledWith('one', { type: 'next' }, expect.anything());
+});
+
+test('a_fresh_practice_session_and_a_teaching_session_never_offer_next', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record([], false, 'practice'));
+	await controller.load();
+	expect(controller.nextReady).toBe(false);
+	controller.adoptRecord(record([...pose(), ...conclude()], false, 'teach'));
+	expect(controller.nextReady).toBe(false);
+	expect(controller.activeProblem).toBeUndefined();
+});
+
+test('a_failed_first_pose_still_offers_the_next_problem', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([pose()[0], ack('p1', 'problem', { is_error: true })], false, 'practice')
+	);
+	await controller.load();
+	expect(controller.activeProblem).toBeUndefined();
+	expect(controller.nextReady).toBe(true);
+});
+
+test('discarding_a_problem_sends_its_call_id_and_aborts_a_parked_turn', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	vi.mocked(api.dismissQuestion).mockResolvedValue(true);
+	vi.mocked(api.abortSession).mockResolvedValue();
+	await controller.load();
+	controller.thinkingDraft = 'half done';
+	await controller.dismissProblem(controller.activeProblem!);
+	expect(api.dismissQuestion).toHaveBeenCalledWith(
+		'one',
+		{ problem_call_id: 'p1' },
+		expect.anything()
+	);
+	expect(api.abortSession).toHaveBeenCalledWith('one');
+	expect(controller.thinkingDraft).toBe('');
+	vi.mocked(api.getSession).mockResolvedValue(record([...pose(), dismissed()], false, 'practice'));
+	await controller.refresh();
+	expect(controller.activeProblem).toBeUndefined();
+	expect(controller.nextReady).toBe(true);
+});
+
+test('a_refused_problem_discard_keeps_the_draft', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+	vi.mocked(api.dismissQuestion).mockRejectedValueOnce(new api.ApiError(400, undefined, 'refused'));
+	await controller.load();
+	controller.thinkingDraft = 'half done';
+	await controller.dismissProblem(controller.activeProblem!);
+	expect(controller.thinkingDraft).toBe('half done');
+});
+
+test('a_streamed_pose_is_the_active_problem_before_it_is_saved', async () => {
+	let liveCallId: string | undefined;
+	vi.mocked(api.getSession).mockResolvedValue(
+		record([{ kind: 'user', entry_id: 'u', text: 'Practice' }], true, 'practice')
+	);
+	vi.mocked(api.streamTurn).mockImplementation(async (_, receive) => {
+		receive({
+			type: 'message_end',
+			message: call('p1', 'problem', problemArguments),
+			results: [ack('p1', 'problem')]
+		});
+		receive({
+			type: 'message_update',
+			message: { kind: 'assistant', entry_id: 'next', parts: [], stop_reason: 'stop' }
+		});
+		liveCallId = controller.activeProblem?.toolCallId;
+		vi.mocked(api.getSession).mockResolvedValue(record(pose(), false, 'practice'));
+		return true;
+	});
+	await controller.load();
+	await expect.poll(() => controller.busy).toBe(false);
+	expect(liveCallId).toBe('p1');
+});
+test('a_replacement_problem_is_not_discarded_by_a_dismissal_confirmed_for_the_old_one', async () => {
+	vi.mocked(api.getSession).mockResolvedValue(record(pose('p1'), false, 'practice'));
+	await controller.load();
+	const opened = controller.activeProblem!;
+	controller.thinkingDraft = 'about p1';
+	controller.adoptRecord(
+		record([...pose('p1'), ...conclude('c1'), ...pose('p2')], false, 'practice')
+	);
+	expect(controller.activeProblem?.toolCallId).toBe('p2');
+	expect(controller.thinkingDraft).toBe('');
+	await controller.dismissProblem(opened);
+	expect(api.dismissQuestion).not.toHaveBeenCalled();
+	expect(controller.activeProblem?.toolCallId).toBe('p2');
 });

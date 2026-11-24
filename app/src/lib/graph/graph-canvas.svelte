@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { mode } from 'mode-watcher';
-	import { putGraphPositions } from '#lib/api/client.js';
 	import { CLUSTER_LIGHTNESS, GraphCanvasRenderer, type Pt } from './canvas.js';
 	import type { LaidOutGraph } from './controller.svelte.js';
+	import type { Position } from './layout.js';
 	import {
 		DEFAULT_PHYSICS_TUNING,
 		type GraphRenderSettings,
@@ -20,7 +20,8 @@
 		clusterLabels,
 		onselect,
 		oncontext,
-		onclear
+		onclear,
+		oncommit
 	}: {
 		graph: LaidOutGraph;
 		settings: GraphRenderSettings;
@@ -31,6 +32,8 @@
 		oncontext: (nodeId: string | null, anchor: Pt) => void;
 		/** The stage was clicked or the camera moved: anything anchored to a node is stale. */
 		onclear: () => void;
+		/** The live sim settled after a drag: save the new layout. */
+		oncommit: (positions: Record<string, Position>) => void;
 	} = $props();
 	let canvas = $state<HTMLCanvasElement>();
 	let renderer = $state.raw<GraphCanvasRenderer>();
@@ -68,7 +71,7 @@
 					clearTimeout(timer);
 					timer = setTimeout(save, 250);
 				},
-				onCommit: (positions) => void putGraphPositions(positions).catch(() => {})
+				onCommit: (positions) => oncommit(positions)
 			},
 			storedCamera()
 		);

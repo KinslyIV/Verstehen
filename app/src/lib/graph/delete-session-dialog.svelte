@@ -20,7 +20,7 @@
 	/** The mode follows the checkbox, so Try again is Delete pressed again. */
 	export async function run() {
 		if (busy) return;
-		const mode: DeleteMode = traces ? 'delete-nodes' : 'preserve-graph';
+		const mode: DeleteMode = traces && session.kind === 'teach' ? 'delete-nodes' : 'preserve-graph';
 		busy = true;
 		failure = undefined;
 		try {
@@ -52,26 +52,29 @@
 				{session.title}
 			</Dialog.Description>
 		</Dialog.Header>
-		<p class="text-sm text-muted-foreground">
-			This permanently removes the session — its messages, background jobs, and extraction records.
-			Everything it added to the graph stays unless you check below. This cannot be undone.
-		</p>
-		<label
-			data-testid={TRACES_COPY.testid}
-			class="flex cursor-pointer items-start gap-2.5 rounded-lg border px-4 py-3"
-		>
-			<input
-				type="checkbox"
-				data-testid={TRACES_COPY.checkbox}
-				class="mt-0.5 size-4 shrink-0 accent-primary"
-				bind:checked={traces}
-				disabled={busy}
-			/>
-			<span class="min-w-0">
-				<span class="block text-sm">{TRACES_COPY.title}</span>
-				<span class="mt-1 block text-xs text-muted-foreground">{TRACES_COPY.body}</span>
-			</span>
-		</label>
+		{#if session.kind === 'practice'}<p class="text-sm text-muted-foreground">
+				This permanently removes the session and its background jobs. This cannot be undone.
+			</p>{:else}<p class="text-sm text-muted-foreground">
+				This permanently removes the session — its messages, background jobs, and extraction
+				records. Everything it added to the graph stays unless you check below. This cannot be
+				undone.
+			</p>
+			<label
+				data-testid={TRACES_COPY.testid}
+				class="flex cursor-pointer items-start gap-2.5 rounded-lg border px-4 py-3"
+			>
+				<input
+					type="checkbox"
+					data-testid={TRACES_COPY.checkbox}
+					class="mt-0.5 size-4 shrink-0 accent-primary"
+					bind:checked={traces}
+					disabled={busy}
+				/>
+				<span class="min-w-0">
+					<span class="block text-sm">{TRACES_COPY.title}</span>
+					<span class="mt-1 block text-xs text-muted-foreground">{TRACES_COPY.body}</span>
+				</span>
+			</label>{/if}
 		{#if failure}
 			<div
 				role="alert"

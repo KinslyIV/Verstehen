@@ -9,10 +9,11 @@ from tools.verify_build import BuildError, build, check
 BUILD = (
     sys.executable,
     "-c",
-    "from pathlib import Path; "
-    "Path('build').mkdir(exist_ok=True); "
-    "Path('build/index.html').write_text('<html>built app</html>'); "
-    "Path('build/asset.js').write_text('console.log(1)')",
+    "import os; from pathlib import Path; "
+    "out = Path('build-remote' if os.environ.get('PUBLIC_VERSTEHEN_CLIENT') == 'remote' else 'build'); "
+    "out.mkdir(exist_ok=True); "
+    "(out / 'index.html').write_text('<html>built app</html>'); "
+    "(out / 'asset.js').write_text('console.log(1)')",
 )
 
 
@@ -99,7 +100,15 @@ def test_added_configuration_requires_a_build(app: Path):
         check(app)
 
 
-@pytest.mark.parametrize("name", ["build/index.html", "build/asset.js"])
+@pytest.mark.parametrize(
+    "name",
+    [
+        "build/index.html",
+        "build/asset.js",
+        "build-remote/index.html",
+        "build-remote/asset.js",
+    ],
+)
 @pytest.mark.parametrize("change", ["edit", "delete"])
 def test_altered_or_missing_output_requires_a_build(app: Path, name: str, change: str):
     if change == "edit":
@@ -180,7 +189,9 @@ def test_symlinked_directory_target_edits_allow_build_but_not_reuse(
     build(app, BUILD)
 
 
-@pytest.mark.parametrize("name", ["vite.config.ts", "build/asset.js"])
+@pytest.mark.parametrize(
+    "name", ["vite.config.ts", "build/asset.js", "build-remote/asset.js"]
+)
 def test_symlinked_config_or_output_requires_full_build(app: Path, name: str):
     target = app.parent / "shared.txt"
     target.write_text("shared")

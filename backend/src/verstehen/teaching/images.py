@@ -5,11 +5,11 @@ from io import BytesIO
 from pathlib import Path
 from typing import Annotated, Literal
 
-from PIL import Image, ImageOps, UnidentifiedImageError
 from pydantic import BaseModel, Field
 from pydantic_ai import Tool
 from pydantic_ai.exceptions import ToolFailed
 from pydantic_ai.tools import ToolReturn
+lazy from PIL import Image, ImageOps, UnidentifiedImageError
 
 from verstehen.store.settings import SettingsStore
 from verstehen.teaching.files.access import SourceAccess, regular_file

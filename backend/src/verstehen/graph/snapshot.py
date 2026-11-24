@@ -23,6 +23,14 @@ class GraphSnapshot(GraphView):
     clusters: list[Cluster]
     positions: dict[str, Position]
     revision: int
+    teach_sessions: int
+    practice_sessions: int
+
+
+class GraphTitles(BaseModel):
+    """Every session's current title, for retitling a drawn graph without refetching it."""
+
+    sessions: dict[str, str]
 
 
 class GraphSessionEntry(BaseModel):
@@ -32,11 +40,6 @@ class GraphSessionEntry(BaseModel):
     created_at: str | None
     updated_at: str | None
     propositions: int
-
-
-class GraphSessionProposition(BaseModel):
-    node_id: str
-    name: str
 
 
 def birth_session(node: GraphNode) -> str | None:
@@ -133,7 +136,13 @@ def graph_snapshot(ledger: GraphLedger, sessions: list[Session]) -> GraphSnapsho
         clusters=clusters,
         positions=ledger.positions,
         revision=ledger.revision,
+        teach_sessions=sum(session.kind == "teach" for session in sessions),
+        practice_sessions=sum(session.kind == "practice" for session in sessions),
     )
+
+
+def graph_titles(sessions: list[Session]) -> GraphTitles:
+    return GraphTitles(sessions={session.id: session.title for session in sessions})
 
 
 def graph_session_index(
@@ -169,11 +178,46 @@ def graph_session_index(
     return entries
 
 
-def graph_session_propositions(
-    ledger: GraphLedger, session_id: str
-) -> list[GraphSessionProposition]:
-    return [
-        GraphSessionProposition(node_id=node.id, name=node.name)
+def format_graph_sessions(
+    ledger: GraphLedger, sessions: list[Session], *, auditor: bool = False
+) -> str:
+    entries = graph_session_index(ledger, sessions)
+    if not entries:
+        return "The knowledge graph is empty — no session has contributed propositions yet."
+    lines = []
+    for i, s in enumerate(entries):
+        dates = (
+            ""
+            if auditor
+            else f", born {s.created_at or 'unknown date'}"
+            + (f", last active {s.updated_at}" if s.updated_at else "")
+        )
+        lines.append(
+            f"{i + 1}. {s.name} ({s.kind}, {s.propositions} proposition{'' if s.propositions == 1 else 's'}{dates}) — id: {s.id}"
+        )
+    head = f"{len(entries)} session(s)" + (
+        ":" if auditor else " in the knowledge graph, most recent first:"
+    )
+    return head + "\n" + "\n".join(lines)
+
+
+def format_graph_propositions(
+    ledger: GraphLedger, session: str, *, auditor: bool = False
+) -> str:
+    nodes = [
+        node
         for node in sorted(get_graph(ledger).nodes, key=lambda n: n.id)
-        if birth_session(node) == session_id
+        if birth_session(node) == session
     ]
+    if not nodes:
+        return f'No propositions born in session "{session}". Call list_sessions for the current ids.'
+    lines = [
+        f"- {node.id} :: {node.name}\n  statement: {node.statement}"
+        if auditor
+        else f"- {node.name}"
+        for node in nodes
+    ]
+    return (
+        f"{len(nodes)} proposition(s) {'born in' if auditor else 'covered in'} this session:\n"
+        + "\n".join(lines)
+    )

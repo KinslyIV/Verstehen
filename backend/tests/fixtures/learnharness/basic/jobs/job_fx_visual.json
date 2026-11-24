@@ -1,0 +1,23 @@
+{
+ "id": "job_fx_visual",
+ "kind": "visual",
+ "chatId": "chat_fx_teach",
+ "toolCallId": "call_visual",
+ "status": "done",
+ "createdAt": "2026-09-21T14:23:20.000Z",
+ "updatedAt": "2026-09-21T14:28:20.000Z",
+ "activity": "delivered",
+ "result": {
+  "svg": "<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10'/>",
+  "notes": "A square."
+ },
+ "usage": {
+  "model": "openai:gpt-6.1-sol",
+  "inputTokens": 70,
+  "outputTokens": 9,
+  "cacheReadTokens": 4,
+  "cacheWriteTokens": 0,
+  "reasoningTokens": 0,
+  "steps": 3
+ }
+}

@@ -5,6 +5,7 @@ from typing import Literal
 from pydantic import ValidationError
 
 from verstehen.store.entries import Entry, MarkerEntry
+from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.side_chats import SideExchange, SideThread
 from verstehen.teaching.compaction import (
     COMPACTION_RESERVE_TOKENS,
@@ -158,6 +159,7 @@ def side_context_fits(
     system_prompt: str,
     context_limit: int | None,
     compaction_limit: int | None,
+    model: ModelIdentity | None = None,
 ) -> bool:
     """Whether the whole request fits: the model's limit minus the reserve, else the compaction threshold."""
     budget = (
@@ -165,4 +167,4 @@ def side_context_fits(
         if context_limit is None
         else max(1, context_limit - COMPACTION_RESERVE_TOKENS)
     )
-    return projected_context_tokens(entries, system_prompt) <= budget
+    return projected_context_tokens(entries, system_prompt, model) <= budget

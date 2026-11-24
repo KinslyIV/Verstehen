@@ -1,12 +1,32 @@
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { page, userEvent, server } from 'vitest/browser';
 import Root from './(lesson)/+page.svelte';
 import Lesson from './lesson-test-harness.svelte';
 import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
+import type { Notification } from '#lib/api/client.js';
 import appHtml from '../app.html?raw';
 
+const { sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
+	sessionRequests: vi.fn(async () => []),
+	itemRequests: vi.fn(async (id: string) => ({
+		id,
+		title: 'Algebra',
+		kind: 'teach',
+		updated_at: '2026-01-01T00:00:00Z',
+		busy: false
+	})),
+	subscribers: new Set<(event: Notification) => void>(),
+	navigated: new Set<(navigation: unknown) => void>()
+}));
+
+vi.mock('$app/navigation', () => ({
+	goto: async () => {},
+	afterNavigate: (callback: (navigation: unknown) => void) => {
+		navigated.add(callback);
+	}
+}));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
 	getSession: async () => ({
@@ -29,12 +49,50 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getExtractionStatus: async () => [],
 	getSideChats: async () => ({ threads: [], answering: {} }),
 	getModels: async () => ({ accounts: [], slots: {} }),
+	refreshModels: async () => {},
 	listChatGPTAccounts: async () => [],
 	getClaudeCode: async () => ({ state: 'not_installed', tested_version: '2.1.327' }),
 	getSettings: async () => ({ models: {}, background: { chatgpt: true, claude_code: true } }),
-	listSessions: async () => [],
-	streamNotifications: (_receive: unknown, signal: AbortSignal) =>
-		new Promise<void>((resolve) => signal.addEventListener('abort', () => resolve()))
+	getSyncStatus: async () => ({
+		enabled: false,
+		device_id: 'dev-1',
+		server_url: null,
+		status: 'disabled',
+		last_pushed_seq: 0,
+		last_pulled_seq: 0,
+		last_error: null,
+		last_sync_at: null,
+		pending_changes: 0,
+		deferred_sessions: [],
+		ssh_user: null,
+		ssh_port: null,
+		server_device_id: null,
+		device_identity_missing: false
+	}),
+	getServerInstallStatus: async () => ({
+		state: 'idle',
+		mode: 'install',
+		steps: [],
+		logs: [],
+		host_key: null,
+		error: null,
+		error_code: null
+	}),
+	listSessions: sessionRequests,
+	getSessionItem: itemRequests,
+	streamNotifications: (
+		receive: (event: Notification) => void,
+		signal: AbortSignal,
+		opened?: () => void
+	) =>
+		new Promise<void>((resolve) => {
+			subscribers.add(receive);
+			opened?.();
+			signal.addEventListener('abort', () => {
+				subscribers.delete(receive);
+				resolve();
+			});
+		})
 }));
 
 declare module 'vitest/browser' {
@@ -43,17 +101,64 @@ declare module 'vitest/browser' {
 	}
 }
 
+afterEach(async () => {
+	await page.viewport(1280, 800);
+});
+
 beforeEach(() => {
+	sessionRequests.mockClear();
+	itemRequests.mockClear();
+	navigated.clear();
 	localStorage.clear();
 	document.cookie = 'sidebar_state=; path=/; max-age=0';
 });
 
-test('new_session_button_opens_new_session_screen', async () => {
+test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 	const screen = await render(Lesson);
 	await expect
-		.element(screen.getByRole('link', { name: 'New session' }))
+		.element(screen.getByRole('link', { name: 'Teaching', exact: true }))
 		.toHaveAttribute('href', '/session/new');
+	await expect
+		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
+		.toHaveAttribute('href', '/session/new?mode=practice');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
+});
+
+test('navigating_to_another_lesson_leaves_the_phone_panel_screen', async () => {
+	await page.viewport(360, 780);
+	const screen = await render(Lesson, { page: SessionThreadPage });
+	await screen.getByRole('button', { name: 'Plan', exact: true }).click();
+	await expect.element(screen.getByTestId('phone-tab-screen')).toBeVisible();
+	const go = (from: string, to: string) =>
+		navigated.forEach((callback) =>
+			callback({
+				from: { url: new URL(from, location.href) },
+				to: { url: new URL(to, location.href) }
+			})
+		);
+	go('/session/one', '/session/one');
+	await expect.element(screen.getByTestId('phone-tab-screen')).toBeVisible();
+	go('/session/one', '/session/two');
+	await expect.element(screen.getByTestId('phone-tab-screen')).not.toBeInTheDocument();
+	await screen.getByRole('button', { name: 'Jobs', exact: true }).click();
+	go('/session/two', '/session/new');
+	await expect.element(screen.getByTestId('phone-tab-screen')).not.toBeInTheDocument();
+});
+
+test('a_session_event_reads_one_sidebar_row_and_other_events_read_none', async () => {
+	await render(Lesson);
+	await expect.poll(() => sessionRequests.mock.calls.length).toBeGreaterThan(0);
+	await new Promise((resolve) => setTimeout(resolve, 50));
+	const fullReads = sessionRequests.mock.calls.length;
+
+	for (const receive of subscribers) receive({ type: 'sync-status-changed', session_id: '' });
+	expect(sessionRequests).toHaveBeenCalledTimes(fullReads);
+	expect(itemRequests).not.toHaveBeenCalled();
+
+	for (const receive of subscribers) receive({ type: 'chats-changed', session_id: 'one' });
+	await expect.poll(() => itemRequests.mock.calls.length).toBe(1);
+	expect(itemRequests).toHaveBeenCalledWith('one', expect.any(AbortSignal));
+	expect(sessionRequests).toHaveBeenCalledTimes(fullReads);
 });
 
 test('root_shows_new_session_screen', async () => {
@@ -72,6 +177,16 @@ test('right_panel_starts_closed', async () => {
 	await expect.element(screen.getByRole('complementary')).not.toBeInTheDocument();
 });
 
+/** Paneforge saves the layout 100 ms after the last drag or key; true once the save caught up. */
+function savedLayoutMatchesPanel(panel: HTMLElement): boolean {
+	const saved = JSON.parse(localStorage.getItem('paneforge:verstehen-lesson') ?? '{}');
+	const layout = Object.values<{ layout: number[] }>(saved).find(
+		(value) => value.layout.length === 2
+	);
+	const live = (panel.getBoundingClientRect().width / panel.parentElement!.clientWidth) * 100;
+	return !!layout && layout.layout[1]! > 25 && Math.abs(layout.layout[1]! - live) < 1.5;
+}
+
 test('right_panel_open_state_and_width_are_remembered', async () => {
 	let screen = await render(Lesson);
 	await screen.getByRole('button', { name: 'Toggle right panel' }).click();
@@ -83,12 +198,7 @@ test('right_panel_open_state_and_width_are_remembered', async () => {
 	await userEvent.keyboard('{ArrowLeft}{ArrowLeft}{ArrowLeft}');
 	await expect.poll(() => panel().getBoundingClientRect().width).toBeGreaterThan(initialWidth);
 	const resizedWidth = panel().getBoundingClientRect().width;
-	await expect
-		.poll(() => {
-			const saved = JSON.parse(localStorage.getItem('paneforge:verstehen-lesson') ?? '{}');
-			return Object.values(saved).some((value) => (value as { layout: number[] }).layout[1] > 25);
-		})
-		.toBe(true);
+	await expect.poll(() => savedLayoutMatchesPanel(panel())).toBe(true);
 	await screen.unmount();
 	screen = await render(Lesson);
 	await expect

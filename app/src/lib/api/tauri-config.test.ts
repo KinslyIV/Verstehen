@@ -19,3 +19,8 @@ test.each([
 ])('the desktop shell refuses %s', (url) => {
 	expect(allowed.test(url)).toBe(false);
 });
+
+test('the desktop build still bundles the sidecar', () => {
+	expect(config.bundle.externalBin).toEqual(['binaries/verstehen-sidecar']);
+	expect(config.identifier).toBe('local.verstehen.app');
+});

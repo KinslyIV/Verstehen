@@ -294,5 +294,8 @@ class FakeAccountAdapter:
                 self.models_by_id[pick.model] = fake_model(self.script_path)
         return self.models_by_id[pick.model]
 
+    def forget_models(self) -> None:
+        pass
+
     async def context_limit(self, account: Account, model: str) -> int | None:
         return None

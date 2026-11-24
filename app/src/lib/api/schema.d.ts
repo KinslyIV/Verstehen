@@ -4,6 +4,348 @@
  */
 
 export interface paths {
+	'/api/auth/pairing-code': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Create Pairing Code */
+		post: operations['create_pairing_code_api_auth_pairing_code_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/pair': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Pair Device */
+		post: operations['pair_device_api_auth_pair_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/devices': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Devices */
+		get: operations['list_devices_api_auth_devices_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/auth/devices/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Revoke Device */
+		delete: operations['revoke_device_api_auth_devices__id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/push': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Sync Push */
+		post: operations['sync_push_api_sync_push_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/pull': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Sync Pull */
+		get: operations['sync_pull_api_sync_pull_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/images/{sha256}.{ext}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Sync Upload Image */
+		post: operations['sync_upload_image_api_sync_images__sha256___ext__post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/status': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Sync Status */
+		get: operations['get_sync_status_api_sync_status_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sync/now': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Trigger Sync Now */
+		post: operations['trigger_sync_now_api_sync_now_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/install': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Server Install Status */
+		get: operations['get_server_install_status_api_server_install_get'];
+		put?: never;
+		/** Start Server Install */
+		post: operations['start_server_install_api_server_install_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/trust-host': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Trust Server Host */
+		post: operations['trust_server_host_api_server_trust_host_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/connect': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Connect Existing Server */
+		post: operations['connect_existing_server_api_server_connect_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/disconnect': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Disconnect Server */
+		post: operations['disconnect_server_api_server_disconnect_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/accounts/claude-code': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Server Claude Code */
+		get: operations['get_server_claude_code_api_server_accounts_claude_code_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/accounts/chatgpt': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Server Chatgpt Accounts */
+		get: operations['list_server_chatgpt_accounts_api_server_accounts_chatgpt_get'];
+		put?: never;
+		/** Start Server Chatgpt Sign In */
+		post: operations['start_server_chatgpt_sign_in_api_server_accounts_chatgpt_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/accounts/chatgpt/sign-in/{sign_in_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Server Chatgpt Sign In Status */
+		get: operations['get_server_chatgpt_sign_in_status_api_server_accounts_chatgpt_sign_in__sign_in_id__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/accounts/chatgpt/{account_id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Remove Server Chatgpt Account */
+		delete: operations['remove_server_chatgpt_account_api_server_accounts_chatgpt__account_id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/devices': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Server Devices */
+		get: operations['list_server_devices_api_server_devices_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/pairing-code': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Create Server Pairing Code */
+		post: operations['create_server_pairing_code_api_server_pairing_code_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/server/devices/{id}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		post?: never;
+		/** Revoke Server Device */
+		delete: operations['revoke_server_device_api_server_devices__id__delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/graph': {
 		parameters: {
 			query?: never;
@@ -13,6 +355,23 @@ export interface paths {
 		};
 		/** Get Graph */
 		get: operations['get_graph_api_graph_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/graph/titles': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Titles */
+		get: operations['get_titles_api_graph_titles_get'];
 		put?: never;
 		post?: never;
 		delete?: never;
@@ -282,6 +641,57 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/sessions/{session_id}/item': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Session Item */
+		get: operations['get_session_item_api_sessions__session_id__item_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sessions/{session_id}/stats': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Session Stats */
+		get: operations['get_session_stats_api_sessions__session_id__stats_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/sessions/{session_id}/coverage': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Session Coverage */
+		get: operations['get_session_coverage_api_sessions__session_id__coverage_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/sessions/{session_id}': {
 		parameters: {
 			query?: never;
@@ -523,6 +933,58 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/prompts': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Prompts */
+		get: operations['get_prompts_api_prompts_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/prompts/{path}/override': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Prompt Override */
+		put: operations['put_prompt_override_api_prompts__path__override_put'];
+		post?: never;
+		/** Delete Prompt Override */
+		delete: operations['delete_prompt_override_api_prompts__path__override_delete'];
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/prompts/{path}/enabled': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Prompt Enabled */
+		put: operations['put_prompt_enabled_api_prompts__path__enabled_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/settings': {
 		parameters: {
 			query?: never;
@@ -532,13 +994,14 @@ export interface paths {
 		};
 		/** Get Settings */
 		get: operations['get_settings_api_settings_get'];
-		/** Put Settings */
-		put: operations['put_settings_api_settings_put'];
+		/** Write Settings */
+		put: operations['write_settings_api_settings_put'];
 		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
-		patch?: never;
+		/** Write Settings */
+		patch: operations['write_settings_api_settings_patch'];
 		trace?: never;
 	};
 	'/api/models': {
@@ -548,10 +1011,33 @@ export interface paths {
 			path?: never;
 			cookie?: never;
 		};
-		/** Get Models */
+		/**
+		 * Get Models
+		 * @description The saved catalog: no account is contacted.
+		 */
 		get: operations['get_models_api_models_get'];
 		put?: never;
 		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/models/refresh': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/**
+		 * Refresh Models
+		 * @description Contact every account and save its models; `force` drops cached lists first.
+		 */
+		post: operations['refresh_models_api_models_refresh_post'];
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -569,6 +1055,23 @@ export interface paths {
 		put?: never;
 		/** Set Default Model */
 		post: operations['set_default_model_api_settings_default_model_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/settings/models/{slot}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Put Model Slot */
+		put: operations['put_model_slot_api_settings_models__slot__put'];
+		post?: never;
 		delete?: never;
 		options?: never;
 		head?: never;
@@ -665,6 +1168,13 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
 	schemas: {
+		/** AcceptedChange */
+		AcceptedChange: {
+			/** Origin Seq */
+			origin_seq: number;
+			/** Server Seq */
+			server_seq: number;
+		};
 		/** Account */
 		Account: {
 			/** Id */
@@ -684,11 +1194,18 @@ export interface components {
 			/** Reason */
 			reason?: string | null;
 		};
-		/** AccountCatalog */
+		/**
+		 * AccountCatalog
+		 * @description One account's safe model list as last refreshed; `refresh_error` marks a stale list.
+		 */
 		AccountCatalog: {
 			account: components['schemas']['Account'];
 			/** Models */
 			models: components['schemas']['CatalogModel'][];
+			/** Refreshed At */
+			refreshed_at?: string | null;
+			/** Refresh Error */
+			refresh_error?: string | null;
 		};
 		/** AgentSettings */
 		AgentSettings: {
@@ -869,11 +1386,39 @@ export interface components {
 			/** Source */
 			source?: ('setting' | 'path' | 'downloaded') | null;
 		};
-		/** DismissInput */
+		/** Device */
+		Device: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/**
+			 * Created At
+			 * Format: date-time
+			 */
+			created_at: string;
+			/** Last Seen At */
+			last_seen_at?: string | null;
+			/** Revoked At */
+			revoked_at?: string | null;
+		};
+		/** DeviceList */
+		DeviceList: {
+			/** Devices */
+			devices: components['schemas']['Device'][];
+			/** Current Device Id */
+			current_device_id?: string | null;
+		};
+		/**
+		 * DismissInput
+		 * @description A question dismissal (tool_call_id + answer) or a practice problem dismissal (problem_call_id).
+		 */
 		DismissInput: {
 			/** Tool Call Id */
-			tool_call_id: string;
-			answer: components['schemas']['QuestionAnswer'];
+			tool_call_id?: string | null;
+			answer?: components['schemas']['QuestionAnswer'] | null;
+			/** Problem Call Id */
+			problem_call_id?: string | null;
 		};
 		/** EmissionStats */
 		EmissionStats: {
@@ -1128,11 +1673,36 @@ export interface components {
 			};
 			/** Revision */
 			revision: number;
+			/** Teach Sessions */
+			teach_sessions: number;
+			/** Practice Sessions */
+			practice_sessions: number;
+		};
+		/**
+		 * GraphTitles
+		 * @description Every session's current title, for retitling a drawn graph without refetching it.
+		 */
+		GraphTitles: {
+			/** Sessions */
+			sessions: {
+				[key: string]: string;
+			};
 		};
 		/** HTTPValidationError */
 		HTTPValidationError: {
 			/** Detail */
 			detail?: components['schemas']['ValidationError'][];
+		};
+		/** HostKeyChallenge */
+		HostKeyChallenge: {
+			/** Host */
+			host: string;
+			/** Ssh Port */
+			ssh_port: number;
+			/** Key Type */
+			key_type: string;
+			/** Fingerprint Sha256 */
+			fingerprint_sha256: string;
 		};
 		/** ImplicationLink */
 		ImplicationLink: {
@@ -1172,6 +1742,43 @@ export interface components {
 			reason?: string | null;
 			/** Notice */
 			notice?: string | null;
+		};
+		/** InstallStep */
+		InstallStep: {
+			/**
+			 * Id
+			 * @enum {string}
+			 */
+			id:
+				| 'ssh_connect'
+				| 'check_env'
+				| 'install_uv'
+				| 'upload_bundle'
+				| 'install_venv'
+				| 'configure_systemd'
+				| 'health_check'
+				| 'pair_device';
+			/** Label */
+			label: string;
+			/**
+			 * Status
+			 * @default pending
+			 * @enum {string}
+			 */
+			status: 'pending' | 'running' | 'done' | 'warning' | 'failed';
+			/** Detail */
+			detail?: string | null;
+		};
+		/** InvalidSyncPayloadResponse */
+		InvalidSyncPayloadResponse: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default invalid_sync_payload
+			 * @constant
+			 */
+			code: 'invalid_sync_payload';
 		};
 		/** JobDelivery */
 		JobDelivery: {
@@ -1248,6 +1855,8 @@ export interface components {
 			 * Format: date-time
 			 */
 			updated_at?: string;
+			/** Owner Device Id */
+			owner_device_id?: string | null;
 		};
 		/**
 		 * JobUsage
@@ -1342,6 +1951,19 @@ export interface components {
 			 */
 			display: boolean;
 		};
+		/** MissingImagesError */
+		MissingImagesError: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default missing_images
+			 * @constant
+			 */
+			code: 'missing_images';
+			/** Missing */
+			missing: string[];
+		};
 		/** ModelCatalog */
 		ModelCatalog: {
 			/** Accounts */
@@ -1429,7 +2051,9 @@ export interface components {
 				| 'jobs-changed'
 				| 'side-chats-changed'
 				| 'graph-changed'
-				| 'extractions-changed';
+				| 'extractions-changed'
+				| 'sync-changed'
+				| 'sync-status-changed';
 			/**
 			 * Session Id
 			 * @default
@@ -1463,6 +2087,40 @@ export interface components {
 			index: number;
 			/** Label */
 			label: string;
+		};
+		/** OverrideSwitch */
+		OverrideSwitch: {
+			/** Enabled */
+			enabled: boolean;
+		};
+		/** OverrideText */
+		OverrideText: {
+			/** Text */
+			text: string;
+		};
+		/** PairInput */
+		PairInput: {
+			/** Code */
+			code: string;
+			/** Device Name */
+			device_name: string;
+		};
+		/** PairResponse */
+		PairResponse: {
+			/** Device Id */
+			device_id: string;
+			/** Token */
+			token: string;
+		};
+		/** PairingCodeResponse */
+		PairingCodeResponse: {
+			/** Code */
+			code: string;
+			/**
+			 * Expires At
+			 * Format: date-time
+			 */
+			expires_at: string;
 		};
 		/** ParkedDismissal */
 		ParkedDismissal: {
@@ -1545,6 +2203,35 @@ export interface components {
 			positions: {
 				[key: string]: components['schemas']['Position'];
 			};
+			/** Revision */
+			revision: number | null;
+		};
+		/** PromptSegment */
+		PromptSegment: {
+			/** Path */
+			path: string;
+			/** Source Text */
+			source_text: string;
+			/** Override Text */
+			override_text: string | null;
+			/** Enabled */
+			enabled: boolean;
+			/** Shared */
+			shared: boolean;
+		};
+		/** PromptSegments */
+		PromptSegments: {
+			/** Prober */
+			prober: components['schemas']['PromptSegment'][];
+			/** Teacher */
+			teacher: components['schemas']['PromptSegment'][];
+			/** Practice */
+			practice: components['schemas']['PromptSegment'][];
+		};
+		/** PromptSwitched */
+		PromptSwitched: {
+			/** Enabled */
+			enabled: boolean;
 		};
 		/** ProvenancePoint */
 		ProvenancePoint: {
@@ -1555,6 +2242,41 @@ export interface components {
 			 * @default
 			 */
 			message_id: string;
+		};
+		/** PullResponse */
+		PullResponse: {
+			/** Changes */
+			changes: components['schemas']['SyncChange'][];
+			/** Latest Seq */
+			latest_seq: number;
+			/** Schema Version */
+			schema_version: number;
+			/** Has More */
+			has_more: boolean;
+		};
+		/** PushRequest */
+		PushRequest: {
+			/** Device Id */
+			device_id: string;
+			/** Schema Version */
+			schema_version: number;
+			/** Changes */
+			changes: components['schemas']['SyncChange'][];
+		};
+		/** PushResponse */
+		PushResponse: {
+			/** Accepted */
+			accepted: number;
+			/** Skipped */
+			skipped: number;
+			/** Server Seq */
+			server_seq: number;
+			/** Schema Version */
+			schema_version: number;
+			/** Deferred Session Ids */
+			deferred_session_ids?: string[];
+			/** Accepted Changes */
+			accepted_changes?: components['schemas']['AcceptedChange'][];
 		};
 		/** QuestionAnswer */
 		QuestionAnswer: {
@@ -1660,6 +2382,21 @@ export interface components {
 				[key: string]: components['schemas']['StageUsage'];
 			};
 		};
+		/** SchemaMismatchError */
+		SchemaMismatchError: {
+			/** Error */
+			error: string;
+			/**
+			 * Code
+			 * @default schema_mismatch
+			 * @constant
+			 */
+			code: 'schema_mismatch';
+			/** Server Schema Version */
+			server_schema_version: number;
+			/** Client Schema Version */
+			client_schema_version: number;
+		};
 		/** SearchKeyBody */
 		SearchKeyBody: {
 			/** Value */
@@ -1684,6 +2421,141 @@ export interface components {
 			/** Effective Engine */
 			effective_engine?: ('native' | 'tavily' | 'brave') | null;
 		};
+		/** ServerChatGPTSignInInput */
+		ServerChatGPTSignInInput: {
+			/** Account Id */
+			account_id?: string | null;
+			/** Ssh User */
+			ssh_user?: string | null;
+			/** Ssh Port */
+			ssh_port?: number | null;
+			/** Ssh Password */
+			ssh_password?: string | null;
+		};
+		/** ServerConnectInput */
+		ServerConnectInput: {
+			/** Host */
+			host: string;
+			/**
+			 * Server Port
+			 * @default 8420
+			 */
+			server_port: number;
+			/** Pairing Code */
+			pairing_code?: string | null;
+			/** Token */
+			token?: string | null;
+			/**
+			 * Device Name
+			 * @default Laptop
+			 */
+			device_name: string;
+			/** Ssh User */
+			ssh_user?: string | null;
+			/** Ssh Port */
+			ssh_port?: number | null;
+		};
+		/** ServerInstallInput */
+		ServerInstallInput: {
+			/** Host */
+			host: string;
+			/**
+			 * Server Port
+			 * @default 8420
+			 */
+			server_port: number;
+			/** Ssh User */
+			ssh_user: string;
+			/**
+			 * Ssh Port
+			 * @default 22
+			 */
+			ssh_port: number;
+			/** Ssh Password */
+			ssh_password?: string | null;
+			/**
+			 * Device Name
+			 * @default Laptop
+			 */
+			device_name: string;
+			/**
+			 * Mode
+			 * @default install
+			 * @enum {string}
+			 */
+			mode: 'install' | 'update';
+		};
+		/** ServerInstallStatus */
+		ServerInstallStatus: {
+			/**
+			 * State
+			 * @default idle
+			 * @enum {string}
+			 */
+			state: 'idle' | 'running' | 'host_key_required' | 'complete' | 'failed';
+			/**
+			 * Mode
+			 * @default install
+			 * @enum {string}
+			 */
+			mode: 'install' | 'update';
+			/** Steps */
+			steps?: components['schemas']['InstallStep'][];
+			/** Logs */
+			logs?: string[];
+			host_key?: components['schemas']['HostKeyChallenge'] | null;
+			/** Error */
+			error?: string | null;
+			/** Error Code */
+			error_code?:
+				| (
+						| 'host_key_mismatch'
+						| 'ssh_auth_failed'
+						| 'ssh_password_required'
+						| 'ssh_unreachable'
+						| 'unsupported_env'
+						| 'install_failed'
+				  )
+				| null;
+		};
+		/** ServerSignInHostKeyRequired */
+		ServerSignInHostKeyRequired: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			state: 'host_key_required';
+			host_key: components['schemas']['HostKeyChallenge'];
+			/** Ssh User */
+			ssh_user: string;
+			/** Ssh Port */
+			ssh_port: number;
+		};
+		/** ServerSignInPasswordRequired */
+		ServerSignInPasswordRequired: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			state: 'ssh_password_required';
+			/** Ssh User */
+			ssh_user?: string | null;
+			/** Ssh Port */
+			ssh_port: number;
+		};
+		/** ServerSignInStarted */
+		ServerSignInStarted: {
+			/**
+			 * @description discriminator enum property added by openapi-typescript
+			 * @enum {string}
+			 */
+			state: 'started';
+			sign_in: components['schemas']['SignInStarted'];
+			/** Ssh User */
+			ssh_user: string;
+			/** Ssh Port */
+			ssh_port: number;
+		};
 		/** SessionCoverage */
 		SessionCoverage: {
 			/** Total Messages */
@@ -1700,6 +2572,8 @@ export interface components {
 			running: boolean;
 			/** Last Folded At */
 			last_folded_at: string | null;
+			/** Failure Reason */
+			failure_reason?: string | null;
 		};
 		/** SessionDetail */
 		SessionDetail: {
@@ -1710,9 +2584,9 @@ export interface components {
 			/**
 			 * Kind
 			 * @default teach
-			 * @constant
+			 * @enum {string}
 			 */
-			kind: 'teach';
+			kind: 'teach' | 'practice';
 			/**
 			 * Created At
 			 * Format: date-time
@@ -1756,6 +2630,12 @@ export interface components {
 			 * @default
 			 */
 			title: string | null;
+			/**
+			 * Kind
+			 * @default teach
+			 * @enum {string}
+			 */
+			kind: 'teach' | 'practice';
 			model?: components['schemas']['ModelPick'] | null;
 			graph_context?: components['schemas']['GraphContext'] | null;
 		};
@@ -1767,9 +2647,9 @@ export interface components {
 			title: string;
 			/**
 			 * Kind
-			 * @constant
+			 * @enum {string}
 			 */
-			kind: 'teach';
+			kind: 'teach' | 'practice';
 			/**
 			 * Updated At
 			 * Format: date-time
@@ -1779,11 +2659,29 @@ export interface components {
 			busy: boolean;
 			/** Compacting */
 			compacting?: boolean;
+			/** Pending Question */
+			pending_question?: boolean;
+			/** Pending Problem */
+			pending_problem?: boolean;
 		};
 		/** SessionList */
 		SessionList: {
 			/** Sessions */
 			sessions: components['schemas']['SessionItem'][];
+		};
+		/** SessionStats */
+		SessionStats: {
+			/** Context Tokens */
+			context_tokens: number | null;
+			/** Cache Hit Rate */
+			cache_hit_rate: number | null;
+			/** Claude Code Limits */
+			claude_code_limits: {
+				[key: string]: number;
+			};
+			totals: components['schemas']['CostTotals'];
+			/** Turns */
+			turns: components['schemas']['TurnStats'][];
 		};
 		/** Settings */
 		Settings: {
@@ -2041,6 +2939,69 @@ export interface components {
 			/** Text */
 			text: string;
 		};
+		/** SyncChange */
+		SyncChange: {
+			/** Change Seq */
+			change_seq: number;
+			/** Entity */
+			entity: string;
+			/**
+			 * Op
+			 * @enum {string}
+			 */
+			op: 'upsert' | 'delete';
+			/** Entity Id */
+			entity_id: string;
+			/** Session Id */
+			session_id?: string | null;
+			/** Payload */
+			payload: {
+				[key: string]: unknown;
+			};
+			/** Origin Device Id */
+			origin_device_id: string;
+			/** Origin Seq */
+			origin_seq: number;
+			/** Created At */
+			created_at: string;
+		};
+		/** SyncStatusResponse */
+		SyncStatusResponse: {
+			/** Enabled */
+			enabled: boolean;
+			/** Device Id */
+			device_id: string;
+			/** Server Url */
+			server_url: string | null;
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status: 'disabled' | 'idle' | 'syncing' | 'offline' | 'update_required' | 'error';
+			/** Last Pushed Seq */
+			last_pushed_seq: number;
+			/** Last Pulled Seq */
+			last_pulled_seq: number;
+			/** Last Error */
+			last_error: string | null;
+			/** Last Sync At */
+			last_sync_at: string | null;
+			/** Pending Changes */
+			pending_changes: number;
+			/** Deferred Sessions */
+			deferred_sessions: string[];
+			/** Ssh User */
+			ssh_user?: string | null;
+			/** Ssh Port */
+			ssh_port?: number | null;
+			/** Server Device Id */
+			server_device_id?: string | null;
+			/**
+			 * Device Identity Missing
+			 * @default false
+			 */
+			device_identity_missing: boolean;
+		};
 		/** TextPart */
 		TextPart: {
 			/**
@@ -2060,6 +3021,8 @@ export interface components {
 			type: 'thinking';
 			/** Thinking */
 			thinking: string;
+			/** Id */
+			id?: string | null;
 			/** Signature */
 			signature?: string | null;
 			/**
@@ -2131,6 +3094,18 @@ export interface components {
 			 */
 			pdf: boolean;
 		};
+		/** TrustHostInput */
+		TrustHostInput: {
+			/** Host */
+			host: string;
+			/**
+			 * Ssh Port
+			 * @default 22
+			 */
+			ssh_port: number;
+			/** Fingerprint Sha256 */
+			fingerprint_sha256: string;
+		};
 		/** TurnEvent */
 		TurnEvent: {
 			/**
@@ -2170,7 +3145,16 @@ export interface components {
 			 * Type
 			 * @enum {string}
 			 */
-			type: 'text' | 'retry' | 'answer' | 'continue' | 'retry-question' | 'handoff' | 'steers';
+			type:
+				| 'text'
+				| 'retry'
+				| 'answer'
+				| 'continue'
+				| 'retry-question'
+				| 'handoff'
+				| 'steers'
+				| 'thinking'
+				| 'next';
 			/** Text */
 			text?: string | null;
 			/** Tool Call Id */
@@ -2180,6 +3164,28 @@ export interface components {
 			message_id?: string | null;
 			/** Content Index */
 			content_index?: number | null;
+			/** Problem Call Id */
+			problem_call_id?: string | null;
+		};
+		/** TurnStats */
+		TurnStats: {
+			/** Id */
+			id: string;
+			/**
+			 * At
+			 * Format: date-time
+			 */
+			at: string;
+			/** Role */
+			role: string;
+			/** Account */
+			account: string;
+			/** Model */
+			model: string;
+			/** Steps */
+			steps: number;
+			/** Cost Label */
+			cost_label: string | null;
 		};
 		/** UserEntry */
 		UserEntry: {
@@ -2220,6 +3226,1388 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+	create_pairing_code_api_auth_pairing_code_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PairingCodeResponse'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	pair_device_api_auth_pair_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['PairInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PairResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Too Many Requests */
+			429: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	list_devices_api_auth_devices_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DeviceList'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	revoke_device_api_auth_devices__id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_push_api_sync_push_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['PushRequest'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PushResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['InvalidSyncPayloadResponse'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json':
+						| components['schemas']['SchemaMismatchError']
+						| components['schemas']['MissingImagesError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_pull_api_sync_pull_get: {
+		parameters: {
+			query: {
+				schema_version: number;
+				since?: number;
+				limit?: number;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PullResponse'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SchemaMismatchError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	sync_upload_image_api_sync_images__sha256___ext__post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				sha256: string;
+				ext: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_sync_status_api_sync_status_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	trigger_sync_now_api_sync_now_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_server_install_status_api_server_install_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ServerInstallStatus'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	start_server_install_api_server_install_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ServerInstallInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			202: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ServerInstallStatus'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	trust_server_host_api_server_trust_host_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['TrustHostInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	connect_existing_server_api_server_connect_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ServerConnectInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	disconnect_server_api_server_disconnect_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SyncStatusResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_server_claude_code_api_server_accounts_claude_code_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['BinaryStatus'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	list_server_chatgpt_accounts_api_server_accounts_chatgpt_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Account'][];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	start_server_chatgpt_sign_in_api_server_accounts_chatgpt_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				'application/json': components['schemas']['ServerChatGPTSignInInput'] | null;
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json':
+						| components['schemas']['ServerSignInStarted']
+						| components['schemas']['ServerSignInHostKeyRequired']
+						| components['schemas']['ServerSignInPasswordRequired'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_server_chatgpt_sign_in_status_api_server_accounts_chatgpt_sign_in__sign_in_id__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				sign_in_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SignInStatus'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	remove_server_chatgpt_account_api_server_accounts_chatgpt__account_id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				account_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	list_server_devices_api_server_devices_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['DeviceList'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	create_server_pairing_code_api_server_pairing_code_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PairingCodeResponse'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	revoke_server_device_api_server_devices__id__delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unauthorized */
+			401: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Bad Gateway */
+			502: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	get_graph_api_graph_get: {
 		parameters: {
 			query?: never;
@@ -2236,6 +4624,53 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['GraphSnapshot'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_titles_api_graph_titles_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['GraphTitles'];
 				};
 			};
 			/** @description Bad Request */
@@ -3146,6 +5581,153 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	get_session_item_api_sessions__session_id__item_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SessionItem'] | null;
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_session_stats_api_sessions__session_id__stats_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SessionStats'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+		};
+	};
+	get_session_coverage_api_sessions__session_id__coverage_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				session_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['SessionCoverage'] | null;
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};
@@ -4105,6 +6687,199 @@ export interface operations {
 			};
 		};
 	};
+	get_prompts_api_prompts_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PromptSegments'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_prompt_override_api_prompts__path__override_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OverrideText'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	delete_prompt_override_api_prompts__path__override_delete: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Ok'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	put_prompt_enabled_api_prompts__path__enabled_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['OverrideSwitch'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PromptSwitched'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
 	get_settings_api_settings_get: {
 		parameters: {
 			query?: never;
@@ -4143,7 +6918,58 @@ export interface operations {
 			};
 		};
 	};
-	put_settings_api_settings_put: {
+	write_settings_api_settings_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['Settings'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['Settings'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	write_settings_api_settings_patch: {
 		parameters: {
 			query?: never;
 			header?: never;
@@ -4232,11 +7058,111 @@ export interface operations {
 			};
 		};
 	};
+	refresh_models_api_models_refresh_post: {
+		parameters: {
+			query?: {
+				force?: boolean;
+			};
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			204: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
 	set_default_model_api_settings_default_model_post: {
 		parameters: {
 			query?: never;
 			header?: never;
 			path?: never;
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['ModelPick'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelPick'];
+				};
+			};
+			/** @description Bad Request */
+			400: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Service Unavailable */
+			503: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ModelUnavailable'];
+				};
+			};
+		};
+	};
+	put_model_slot_api_settings_models__slot__put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				slot: 'strong' | 'cheap' | 'vision';
+			};
 			cookie?: never;
 		};
 		requestBody: {

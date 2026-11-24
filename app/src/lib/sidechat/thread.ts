@@ -2,7 +2,6 @@ import type { SideExchange, SideThread } from '#lib/api/client.js';
 
 export const SIDE_QUESTION_MAX_CHARS = 8_000;
 export const SIDE_QUOTE_MAX_CHARS = 4_000;
-export const DISCONNECTED = 'The side answer disconnected. Reopen the conversation to reconnect.';
 
 export function placeholder(hasQuote: boolean, messageCount: number): string {
 	if (hasQuote) return 'Ask about this passage…';

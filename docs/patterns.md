@@ -8,9 +8,10 @@ is updated in the same commit.
 |---|---|
 | Function docstring | [`request_refusal`](../backend/src/verstehen/api/access.py) |
 | Class responsibility description | [`SessionService`](../backend/src/verstehen/session/sessions.py) (role and API/store/runtime boundary; add only when needed) |
+| Architecture area doc | [`architecture/session.md`](architecture/session.md): what the area owns, a code map, how it works, data and events, collaborators, traps |
 | Custom check | [`tools/check_migrations.py`](../tools/check_migrations.py) |
 | Test | [`test_edited_migration_fails`](../tools/tests/test_check_migrations.py) |
-| Account adapter | [`providers/accounts.py`](../backend/src/verstehen/providers/accounts.py) (`AccountAdapter`; app-owned adapters discover safe account data, refresh their catalog, build a model, and report runtime context limits; unavailable refresh/build raises `AccountUnavailable(reason, state)`, mapped to `ResolutionError` by resolution or account state/reason by catalog) |
+| Account adapter | [`providers/accounts.py`](../backend/src/verstehen/providers/accounts.py) (`AccountAdapter`; app-owned adapters discover safe account data, refresh their catalog (`forget_models()` drops any cached catalog; a no-op for uncached adapters), build a model, and report runtime context limits; unavailable refresh/build raises `AccountUnavailable(reason, state)`, mapped to `ResolutionError` by resolution or account state/reason by catalog) |
 | Default thinking level | [`providers/catalog.py`](../backend/src/verstehen/providers/catalog.py) (`default_thinking_level`; first supported entry in LearnHarness’s preference order, shared by account adapters and SDK defaults) |
 | Model resolution | [`providers/resolve.py`](../backend/src/verstehen/providers/resolve.py) (`ResolverService`; resolve fresh slots/session picks, normalize supported thinking levels, no fallback) |
 | Extraction service | [`graph/extraction_service.py`](../backend/src/verstehen/graph/extraction_service.py) (`ExtractionService`; source single flight, serial batches, FIFO audit/merge, injected admission and notifications) |
@@ -26,12 +27,12 @@ is updated in the same commit.
 | SSE route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`stream_session`, `turn_frames`) |
 | API route | [`api/sessions.py`](../backend/src/verstehen/api/sessions.py) (`get_session`: one service call, map typed result to HTTP; operations live in `SessionService` in `session/sessions.py`) |
 | Migration | [`0001_settings.sql`](../backend/src/verstehen/store/migrations/0001_settings.sql) |
-| Backend test | [`test_health_ok_with_token`](../backend/tests/test_api.py) |
+| Backend test | [`test_health_ok_with_token`](../backend/tests/shell/test_api.py) |
 | Component test (Vitest browser mode) | [`enter_sends_but_shift_enter_keeps_a_newline`](../app/src/lib/components/composer.svelte.test.ts) |
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
-| Verify flow | [`app-reaches-sidecar.flow.ts`](../app/verify/app-reaches-sidecar.flow.ts) |
-| Fake-model script | [`model-title.json`](../app/verify/scripts/model-title.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
+| Verify flow | [`shell-layout.flow.ts`](../app/verify/shell/shell-layout.flow.ts) |
+| Fake-model script | [`session-new-and-stream.json`](../app/verify/scripts/session-new-and-stream.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
 | API client function | [`getSession`](../app/src/lib/api/client.ts) (generated types stay behind the client; JSON and SSE use token headers) |
 | Assistant markdown | [`assistant-message.svelte`](../app/src/lib/markdown/assistant-message.svelte): Streamdown top-level blocks with stable child props; each block uses the unified pipeline, sanitized HAST nodes, and app-owned controls inside official Message. |
 | Renderer browser evidence | [`markdown.svelte.test.ts`](../app/src/routes/markdown.svelte.test.ts): complete and streaming fixtures, dark/light screenshots in `app/markdown-output/`; T4 adds real-thread verification. |
@@ -42,3 +43,4 @@ is updated in the same commit.
 | Account settings UI | [`settings-accounts.svelte`](../app/src/lib/components/settings-accounts.svelte) owns account actions and process-status polling; reused in Settings and setup's nested Settings dialog. Polling timers are disposed on unmount. |
 | Live teaching tool display | [`response-prose.ts`](../app/src/lib/teaching/response-prose.ts) pairs assistant parts with the ordered results on response completion. The controller adopts the saved record over the live entries. |
 | Model-authored question content | [`tool-content.svelte`](../app/src/lib/questions/tool-content.svelte): recover source escapes at presentation and render with the shared Markdown pipeline. |
+| Lazy heavy import | [`providers/chatgpt/adapter.py`](../backend/src/verstehen/providers/chatgpt/adapter.py): module-scope PEP 810 `lazy` imports (`lazy import` / `lazy from`), isolating subclass definitions into a lazily imported helper module like `client.py`; `ruff` `TID255` catches immediately resolved lazy imports in supported cases (e.g. class bases), while runtime import boundaries are guarded by [`test_startup_imports.py`](../backend/tests/shell/test_startup_imports.py). |

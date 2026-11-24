@@ -4,9 +4,9 @@ from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
 
-import pypdfium2 as pdfium
-import pypdfium2.raw as raw
 from pydantic import BaseModel
+lazy import pypdfium2 as pdfium
+lazy import pypdfium2.raw as raw
 
 from verstehen.teaching.pdfium import PDFIUM_LOCK
 

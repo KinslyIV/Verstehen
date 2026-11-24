@@ -3,8 +3,46 @@ import ipaddress
 from urllib.parse import urlsplit
 
 from starlette.requests import Request
+from starlette.responses import JSONResponse
 
 from verstehen.config import Settings
+from verstehen.store.devices import DevicesStore
+
+SERVER_EXEMPT_PATHS = {"/api/health", "/api/auth/pair"}
+
+
+def extract_bearer_token(request: Request) -> str | None:
+    """Extract a bearer token from Authorization or x-verstehen-token."""
+    authorization = request.headers.get("authorization")
+    if authorization is not None:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer" and value.strip():
+            return value.strip()
+        return None
+    token = request.headers.get("x-verstehen-token", "").strip()
+    return token or None
+
+
+async def authenticate_server_request(
+    request: Request, devices_store: DevicesStore
+) -> JSONResponse | None:
+    """Verify a server-mode bearer token, recording the device on the request."""
+    if request.url.path in SERVER_EXEMPT_PATHS:
+        return None
+    token = extract_bearer_token(request)
+    device = await devices_store.verify(token) if token else None
+    if device is None:
+        return JSONResponse(
+            {"error": "Server API access requires a valid device bearer token."},
+            status_code=401,
+            headers={
+                "WWW-Authenticate": "Bearer",
+                "Cache-Control": "no-store",
+            },
+        )
+    request.state.device_id = device.id
+    await devices_store.touch_last_seen(device.id)
+    return None
 
 
 def addressed_origin(request: Request) -> tuple[str, str] | None:

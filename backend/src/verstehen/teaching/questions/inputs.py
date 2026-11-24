@@ -6,6 +6,10 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from verstehen.store.entries import Entry, ToolResultEntry
+from verstehen.teaching.practice.state import (
+    active_problem_of,
+    new_problem_dismissed_marker,
+)
 from verstehen.teaching.questions.pending import (
     QuestionCall,
     dangling_question_of,
@@ -57,8 +61,11 @@ class QuestionAnswer(BaseModel):
 
 
 class DismissInput(BaseModel):
-    tool_call_id: str
-    answer: QuestionAnswer
+    """A question dismissal (tool_call_id + answer) or a practice problem dismissal (problem_call_id)."""
+
+    tool_call_id: str | None = None
+    answer: QuestionAnswer | None = None
+    problem_call_id: str | None = None
 
 
 def dismissed_answer(kind: QuestionKind, question_text: str) -> QuestionAnswer:
@@ -128,13 +135,27 @@ def answer_appends(
 
 
 def validate_dismissal(input: DismissInput) -> None:
+    if input.problem_call_id is not None:
+        if input.tool_call_id is not None or input.answer is not None:
+            raise ValueError("dismiss-problem input carries only problemCallId")
+        if not input.problem_call_id:
+            raise ValueError("dismiss-problem input requires problemCallId")
+        return
     if not input.tool_call_id:
         raise ValueError("dismiss input requires toolCallId")
+    if input.answer is None:
+        raise ValueError("dismiss input requires the dismissal answer object")
     if input.answer.dismissed is not True:
         raise ValueError("dismiss input's answer must be a dismissal (dismissed: true)")
 
 
 def dismiss_appends(entries: Sequence[Entry], input: DismissInput) -> list[Entry]:
+    if input.problem_call_id is not None:
+        active = active_problem_of(entries)
+        if active is None or active.tool_call_id != input.problem_call_id:
+            raise ValueError("dismiss-problem input targets no active problem")
+        return [new_problem_dismissed_marker(input.problem_call_id)]
+    assert input.tool_call_id is not None and input.answer is not None
     pending = dangling_question_of(entries)
     if pending is None or pending.part.tool_call_id != input.tool_call_id:
         raise ValueError("dismiss input targets no pending question call")

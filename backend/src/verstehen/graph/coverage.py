@@ -45,6 +45,7 @@ class SessionCoverage(BaseModel):
     uncovered_tokens: int
     running: bool
     last_folded_at: str | None
+    failure_reason: str | None = None
 
 
 def coverage_of(
@@ -99,7 +100,3 @@ def batch_runs(
     if current:
         runs.append(current)
     return runs
-
-
-def batch_tag(batch: list[CoverageSlot]) -> str:
-    return hashlib.sha256("".join(s.fp for s in batch).encode()).hexdigest()[:12]

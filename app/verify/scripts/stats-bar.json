@@ -1,0 +1,11 @@
+[
+	{
+		"text": "A derivative describes how quickly a quantity changes. What do you already know about slope?",
+		"title": "Derivatives",
+		"usage": { "input_tokens": 30000, "output_tokens": 1000, "cache_read_tokens": 10000 }
+	},
+	{
+		"text": "Good. Slope is rise over run; now think about a curve.",
+		"usage": { "input_tokens": 41000, "output_tokens": 2000, "cache_read_tokens": 30000 }
+	}
+]

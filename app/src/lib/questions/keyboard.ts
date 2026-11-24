@@ -51,22 +51,50 @@ export function questionShortcut(
 	}
 }
 
+/** A bare Enter pressed outside any text field, button, link, or open overlay. */
+export function isPlainEnterOutsideFields(event: KeyboardEvent): boolean {
+	const target = event.target as HTMLElement | null;
+	return (
+		event.key === 'Enter' &&
+		!event.defaultPrevented &&
+		!event.isComposing &&
+		!event.altKey &&
+		!event.shiftKey &&
+		!event.ctrlKey &&
+		!event.metaKey &&
+		!isTypingSurface(target) &&
+		!target?.closest('button, a') &&
+		!hasOpenOverlay()
+	);
+}
+
 export function escAbortTarget({
 	overlay,
 	pending,
+	problem,
 	busy
 }: {
 	overlay: boolean;
 	pending: boolean;
+	problem: boolean;
 	busy: boolean;
-}): 'question' | 'turn' | null {
+}): 'question' | 'problem' | 'turn' | null {
 	if (overlay) return null;
 	if (pending) return 'question';
+	if (problem) return 'problem';
 	return busy ? 'turn' : null;
 }
 
-export function hasOpenOverlay(): boolean {
-	return !!document.querySelector(
-		'[data-slot="dialog-content"]:not([data-state="closed"]), [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"], [data-mermaid-focus]'
-	);
+const OVERLAYS = [
+	'[data-slot="dialog-content"]:not([data-state="closed"])',
+	'dialog:modal',
+	'[data-popover-content][data-state="open"]',
+	'[data-context-menu-content][data-state="open"]',
+	'[data-mermaid-focus]'
+];
+const DRAWER = '[data-slot="sidebar"][data-mobile="true"]:not([data-state="closed"])';
+
+/** True while a dialog, menu, popover, or the phone drawer covers the page; `ignoreDrawer` leaves the drawer out. */
+export function hasOpenOverlay({ ignoreDrawer = false } = {}): boolean {
+	return !!document.querySelector((ignoreDrawer ? OVERLAYS : [...OVERLAYS, DRAWER]).join(', '));
 }

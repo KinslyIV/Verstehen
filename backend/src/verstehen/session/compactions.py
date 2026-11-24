@@ -32,7 +32,7 @@ from verstehen.teaching.prompts import compose_instructions
 
 logger = logging.getLogger(__name__)
 
-TurnRole = Literal["teacher", "prober"]
+TurnRole = Literal["teacher", "prober", "practice"]
 
 
 class CompactionService:
@@ -51,7 +51,9 @@ class CompactionService:
         runtimes: RuntimeRegistry,
         notifications: Notifications,
         provider_events: bool,
+        prompt_edit_lock: asyncio.Lock,
     ):
+        self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.settings_store = settings_store
@@ -86,7 +88,7 @@ class CompactionService:
     async def kick(self, session_id: str, role: TurnRole) -> None:
         runtime = self.runtimes.get(session_id)
         async with runtime.lock:
-            if runtime.compaction is None:
+            if runtime.compaction is None and not runtime.turn_in_flight:
                 await self.start_if_needed(session_id, runtime, role)
 
     async def start_if_needed(
@@ -105,24 +107,26 @@ class CompactionService:
             entries = await self.entries_store.list(session_id)
             settings = await self.settings_store.read()
             instructions = await compose_instructions(
-                self.settings_store, self.data_dir, role
-            )
-            tokens = projected_context_tokens(
-                [e for e in [*entries, *pending] if e.entry_id not in omitted],
-                instructions,
+                self.settings_store, self.data_dir, role, self.prompt_edit_lock
             )
             if resolved is None:
                 session = await self.sessions_store.get(session_id)
                 if session is None:
                     return None
                 resolved = await self.resolver_service.resolve(role, session)
+            model = resolved.identity
+            tokens = projected_context_tokens(
+                [e for e in [*entries, *pending] if e.entry_id not in omitted],
+                instructions,
+                model,
+            )
             if tokens <= effective_limit(
                 settings.compaction_limit, resolved.context_limit
             ):
                 return None
             if not await self.provider_policy.admit("background", resolved.account):
                 return None
-            cut = compaction_cut_index(entries)
+            cut = compaction_cut_index(entries, model)
             previous = active_compaction(entries)
             start = kept_index(entries, previous)
             if start >= 0 and cut <= start:

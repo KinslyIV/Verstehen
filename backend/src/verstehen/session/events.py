@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from verstehen.store.entries import (
     AssistantEntry,
@@ -37,10 +37,13 @@ class Notification(BaseModel):
         "side-chats-changed",
         "graph-changed",
         "extractions-changed",
+        "sync-changed",
+        "sync-status-changed",
     ]
     session_id: str = ""
     revision: int | None = None
     running: bool | None = None
+    from_sync: bool = Field(default=False, exclude=True)
 
 
 class Notifications:
@@ -56,9 +59,11 @@ class Notifications:
             queue.put_nowait(event)
 
     async def subscribe(self) -> AsyncGenerator[Notification | None]:
+        """Yields None once subscribed and every 25 s without a notification."""
         queue: asyncio.Queue[Notification] = asyncio.Queue()
         self.subscribers.add(queue)
         try:
+            yield None
             while True:
                 try:
                     yield await asyncio.wait_for(queue.get(), timeout=25)

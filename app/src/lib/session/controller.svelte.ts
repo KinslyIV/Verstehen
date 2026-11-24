@@ -4,11 +4,13 @@ import {
 	dismissQuestion,
 	ApiError,
 	getSession,
+	getSessionCoverage,
 	postInput,
 	setArtifactView,
 	steerSession,
 	streamTurn,
 	type Entry,
+	type DismissInput,
 	type QuestionAnswer,
 	type SessionDetail,
 	type TurnEvent,
@@ -22,6 +24,8 @@ import {
 	type PendingQuestion,
 	type QuestionOccurrence
 } from '#lib/questions/pending.js';
+import { activeProblemOf, hasProblemCall, type ActiveProblem } from '#lib/practice/state.js';
+import { isNetworkFailure, live } from '#lib/api/live.svelte.js';
 import { JobsFeed } from '#lib/jobs/feed.svelte.js';
 import { SideChatFeed } from '#lib/sidechat/feed.svelte.js';
 import { failedResponseAtEnd } from './compaction.js';
@@ -57,6 +61,28 @@ export class SessionController {
 		return pending?.key === this.submittingQuestion ? undefined : pending;
 	});
 	compacting = $derived(this.record?.compacting ?? false);
+	isPractice = $derived(this.record?.kind === 'practice');
+	/** The posed problem awaiting the learner; its dock replaces the composer. */
+	activeProblem = $derived(this.isPractice ? activeProblemOf(this.entries) : undefined);
+	/** Between problems: the composer offers `Next problem →` (LearnHarness `nextReady`). */
+	nextReady = $derived(
+		this.isPractice &&
+			!this.pendingQuestion &&
+			!this.activeProblem &&
+			!this.compacting &&
+			!this.busy &&
+			hasProblemCall(this.entries)
+	);
+	private thinkingDrafts = new SvelteMap<string, string>();
+	/** The active problem's unsent thinking, kept per problem and restored when its send is refused. */
+	get thinkingDraft(): string {
+		const id = this.activeProblem?.toolCallId;
+		return (id && this.thinkingDrafts.get(id)) || '';
+	}
+	set thinkingDraft(text: string) {
+		const id = this.activeProblem?.toolCallId;
+		if (id) this.thinkingDrafts.set(id, text);
+	}
 	/** A failed reply behind a compaction cannot be retried (LearnHarness `failedTail`). */
 	retryBlocked = $derived(
 		failedResponseAtEnd(this.record?.entries ?? [])?.afterCompaction ?? false
@@ -149,7 +175,7 @@ export class SessionController {
 			if (record.turn_in_flight) void this.attach();
 			else await this.sendAutomaticInput();
 		} catch (error) {
-			this.fail(error);
+			if (!isNetworkFailure(error)) this.fail(error);
 		}
 	}
 
@@ -216,37 +242,74 @@ export class SessionController {
 		this.entries = [...this.saved, ...this.live];
 	}
 
+	/** Follows the running turn's stream; after a network failure it waits, then reattaches. */
 	async attach(): Promise<void> {
 		if (this.consuming || this.lifetime.signal.aborted) return;
 		this.consuming = true;
 		this.busy = true;
 		try {
-			for (let attempt = 0; attempt < 2;) {
+			let strikes = 0;
+			let outages = 0;
+			while (strikes < 2) {
+				if (this.lifetime.signal.aborted) return;
 				this.live = [];
 				this.streamingEntryId = undefined;
 				this.entries = [...this.saved];
+				const stream = new AbortController();
+				const stopStream = () => stream.abort();
+				const stopOnResume = live.onResume(stopStream);
+				this.lifetime.signal.addEventListener('abort', stopStream);
 				let done = false;
 				try {
-					done = await streamTurn(this.id, (event) => this.apply(event), this.lifetime.signal);
+					done = await streamTurn(
+						this.id,
+						(event) => this.apply(event),
+						stream.signal,
+						() => live.markDown(this, false)
+					);
 				} catch (error) {
-					if (this.lifetime.signal.aborted || attempt === 1) throw error;
+					if (this.lifetime.signal.aborted) throw error;
+					if (stream.signal.aborted) continue;
+					if (isNetworkFailure(error)) {
+						await this.awaitNetwork(outages++);
+						continue;
+					}
+					if (strikes === 1) throw error;
+				} finally {
+					stopOnResume();
+					this.lifetime.signal.removeEventListener('abort', stopStream);
 				}
-				const record = await this.refresh();
+				let record: SessionDetail;
+				try {
+					record = await this.refresh();
+				} catch (error) {
+					if (this.lifetime.signal.aborted || !isNetworkFailure(error)) throw error;
+					await this.awaitNetwork(outages++);
+					continue;
+				}
+				live.markDown(this, false);
+				outages = 0;
 				if (!record.turn_in_flight) {
 					this.error = record.turn_error ?? this.savedFailure(record);
 					this.busy = false;
 					return;
 				}
-				attempt = done ? 0 : attempt + 1;
+				strikes = done ? 0 : strikes + 1;
 			}
 			throw new Error('The connection dropped before the turn completed.');
 		} catch (error) {
 			this.fail(error);
 			this.busy = false;
 		} finally {
+			live.markDown(this, false);
 			this.streamingEntryId = undefined;
 			this.consuming = false;
 		}
+	}
+
+	private async awaitNetwork(attempt: number): Promise<void> {
+		live.markDown(this, true);
+		await live.wait(attempt, this.lifetime.signal);
 	}
 
 	async send(type: 'text' | 'retry' = 'text'): Promise<void> {
@@ -313,18 +376,39 @@ export class SessionController {
 	async dismissPending(pending: PendingQuestion): Promise<void> {
 		if (pending.key !== this.pendingQuestion?.key) return;
 		this.submittingQuestion = pending.key;
+		try {
+			await this.dismiss({
+				tool_call_id: pending.toolCallId,
+				answer: dismissedAnswer(pending.question.kind, pending.question.question)
+			});
+		} finally {
+			this.submittingQuestion = undefined;
+		}
+	}
+
+	async dismissProblem(problem: ActiveProblem): Promise<void> {
+		if (problem.toolCallId !== this.activeProblem?.toolCallId) return;
+		await this.dismiss({ problem_call_id: problem.toolCallId });
+	}
+
+	async sendThinking(): Promise<void> {
+		const problem = this.activeProblem;
+		const text = this.thinkingDraft.trim();
+		if (!problem || !text || this.loading || this.busy || this.compacting) return;
+		await this.submit({ type: 'thinking', text, problem_call_id: problem.toolCallId });
+	}
+
+	async sendNext(): Promise<void> {
+		if (this.nextReady && !this.loading) await this.submit({ type: 'next' });
+	}
+
+	private async dismiss(input: DismissInput): Promise<void> {
 		const wasBusy = this.busy;
 		this.busy = true;
 		this.error = null;
 		try {
-			const parked = await dismissQuestion(
-				this.id,
-				{
-					tool_call_id: pending.toolCallId,
-					answer: dismissedAnswer(pending.question.kind, pending.question.question)
-				},
-				this.lifetime.signal
-			);
+			const parked = await dismissQuestion(this.id, input, this.lifetime.signal);
+			if (input.problem_call_id) this.thinkingDrafts.delete(input.problem_call_id);
 			if (parked) {
 				try {
 					await abortSession(this.id);
@@ -337,7 +421,6 @@ export class SessionController {
 		} catch (error) {
 			this.fail(error);
 		} finally {
-			this.submittingQuestion = undefined;
 			if (!this.consuming && (!wasBusy || !this.record?.turn_in_flight)) this.busy = false;
 		}
 	}
@@ -346,7 +429,10 @@ export class SessionController {
 		if (input.type !== 'continue' && input.type !== 'handoff')
 			this.automaticContinuationBlocked = false;
 		const text = this.draft;
+		const thinkingId = input.type === 'thinking' ? input.problem_call_id : undefined;
+		const thinking = thinkingId ? this.thinkingDrafts.get(thinkingId) : undefined;
 		if (input.type === 'text') this.draft = '';
+		const failureBeforeRetry = input.type === 'retry' ? this.error : null;
 		this.error = null;
 		this.notice = null;
 		this.busy = true;
@@ -373,6 +459,8 @@ export class SessionController {
 				}
 			}
 			accepted = true;
+			if (thinkingId && this.thinkingDrafts.get(thinkingId) === thinking)
+				this.thinkingDrafts.delete(thinkingId);
 			try {
 				sessionStorage.removeItem(`verstehen.opening.${this.id}`);
 			} catch {
@@ -387,9 +475,11 @@ export class SessionController {
 		} catch (error) {
 			if (!accepted && input.type === 'text') this.draft = text;
 			this.automaticContinuationBlocked = true;
-			if (error instanceof ApiError && error.code === 'models_not_configured')
+			if (error instanceof ApiError && error.code === 'models_not_configured') {
 				this.setupOpen = true;
-			else if (error instanceof ApiError && error.code === 'model_unavailable') {
+				this.error = failureBeforeRetry;
+			} else if (error instanceof ApiError && error.code === 'model_unavailable') {
+				this.error = failureBeforeRetry;
 				this.notice = error.reason ?? error.message;
 				this.modelMenuOpen = true;
 			} else this.fail(error);
@@ -415,7 +505,7 @@ export class SessionController {
 		clearTimeout(this.coverageTimer);
 		this.coverageTimer = setTimeout(async () => {
 			try {
-				const { coverage } = await getSession(this.id, this.lifetime.signal);
+				const coverage = await getSessionCoverage(this.id, this.lifetime.signal);
 				if (this.record) this.record.coverage = coverage;
 			} catch {
 				/* The next refresh carries the coverage. */

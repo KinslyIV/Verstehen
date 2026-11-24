@@ -1,0 +1,61 @@
+{
+ "id": "chat_fx_practice",
+ "title": "Practice fixture",
+ "kind": "practice",
+ "createdAt": "2026-09-21T14:13:20.000Z",
+ "updatedAt": "2026-09-21T14:14:20.000Z",
+ "messages": [
+  {
+   "id": "practice_user",
+   "role": "user",
+   "content": "Practice the power rule.",
+   "timestamp": 1790000000000
+  },
+  {
+   "id": "practice_pose",
+   "role": "assistant",
+   "provider": "chatgpt",
+   "model": "gpt-5.4",
+   "stopReason": "toolUse",
+   "timestamp": 1790000001000,
+   "content": [{"type": "toolCall", "id": "practice_problem", "name": "problem", "arguments": {"mode": "recall", "statement": "Differentiate x squared."}}]
+  },
+  {
+   "id": "practice_pose_ack",
+   "role": "toolResult",
+   "toolCallId": "practice_problem",
+   "toolName": "problem",
+   "content": [{"type": "text", "text": "Problem posed."}],
+   "isError": false,
+   "timestamp": 1790000002000
+  },
+  {
+   "id": "practice_conclusion",
+   "role": "assistant",
+   "provider": "chatgpt",
+   "model": "gpt-5.4",
+   "stopReason": "toolUse",
+   "timestamp": 1790000003000,
+   "content": [{"type": "toolCall", "id": "practice_conclude", "name": "conclude", "arguments": {"outcome": "solved", "verdict": "Correct.", "solutionReveal": "The power rule gives twice x."}}]
+  },
+  {
+   "id": "practice_conclusion_ack",
+   "role": "toolResult",
+   "toolCallId": "practice_conclude",
+   "toolName": "conclude",
+   "content": [{"type": "text", "text": "Problem concluded."}],
+   "isError": false,
+   "timestamp": 1790000004000
+  },
+  {
+   "id": "practice_feedback",
+   "role": "assistant",
+   "provider": "chatgpt",
+   "model": "gpt-5.4",
+   "stopReason": "stop",
+   "timestamp": 1790000005000,
+   "content": [{"type": "text", "text": "You applied the power rule correctly."}]
+  }
+ ],
+ "version": 2
+}

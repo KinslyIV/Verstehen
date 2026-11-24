@@ -184,3 +184,78 @@ export async function sessionIds(request: APIRequestContext): Promise<Record<str
 	const { sessions } = await (await request.get('/api/sessions')).json();
 	return Object.fromEntries(sessions.map((s: { id: string; title: string }) => [s.title, s.id]));
 }
+
+export interface LargeGraph {
+	seed: GraphSeed;
+	positions: Record<string, { x: number; y: number }>;
+	nodeIds: string[];
+}
+
+function seededRandom(seed: number): () => number {
+	let state = seed;
+	return () => {
+		state = (state + 0x6d2b79f5) | 0;
+		let t = Math.imul(state ^ (state >>> 15), 1 | state);
+		t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+		return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+	};
+}
+
+/** A realistic large graph: session clusters on a grid, mostly within-cluster chains, laid out. */
+export async function largeGraph(
+	request: APIRequestContext,
+	{ clusters, perCluster }: { clusters: number; perCluster: number }
+): Promise<LargeGraph> {
+	const random = seededRandom(7);
+	const sessions = await Promise.all(
+		Array.from({ length: clusters }, (_, i) => createSession(request, `Synthetic session ${i + 1}`))
+	);
+	const columns = Math.ceil(Math.sqrt(clusters));
+	const nodes: GraphSeed['nodes'] = [];
+	const chains: GraphSeed['chains'] = [];
+	const positions: LargeGraph['positions'] = {};
+	const members: string[][] = [];
+	sessions.forEach((session, c) => {
+		const centerX = (c % columns) * 520 + random() * 80;
+		const centerY = Math.floor(c / columns) * 520 + random() * 80;
+		const ids: string[] = [];
+		for (let i = 0; i < perCluster; i++) {
+			const id = `n_${c}_${i}`;
+			nodes.push({
+				id,
+				name: `Concept ${c}.${i} of the synthetic topic`,
+				statement: `Statement ${c}.${i}: a proposition about the synthetic topic ${c}.`,
+				session
+			});
+			const angle = random() * Math.PI * 2;
+			const radius = 190 * Math.sqrt(random());
+			positions[id] = {
+				x: centerX + Math.cos(angle) * radius,
+				y: centerY + Math.sin(angle) * radius
+			};
+			ids.push(id);
+		}
+		members.push(ids);
+	});
+	const pick = (ids: string[]) => ids[Math.floor(random() * ids.length)];
+	let chainCount = 0;
+	members.forEach((ids, c) => {
+		for (let i = 1; i < ids.length; i++) {
+			const premises = [ids[Math.floor(random() * i)]];
+			if (random() < 0.4) premises.push(pick(ids.slice(0, i)));
+			if (random() < 0.08) premises.push(pick(members[Math.floor(random() * members.length)]));
+			const unique = [...new Set(premises)].filter((id) => id !== ids[i]);
+			if (unique.length === 0) continue;
+			const id = `arg_${chainCount++}`;
+			chains.push({ id, premises: unique, conclusion: ids[i], session: sessions[c] });
+			if (unique.length > 1) {
+				const around = [...unique, ids[i]].map((member) => positions[member]);
+				positions[id] = {
+					x: around.reduce((sum, p) => sum + p.x, 0) / around.length,
+					y: around.reduce((sum, p) => sum + p.y, 0) / around.length
+				};
+			}
+		}
+	});
+	return { seed: { nodes, chains }, positions, nodeIds: nodes.map((node) => node.id) };
+}

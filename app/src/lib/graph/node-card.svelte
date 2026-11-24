@@ -49,7 +49,7 @@
 	bind:this={card}
 	data-testid="node-card"
 	style="visibility: hidden; left: 0; top: 0"
-	class="absolute z-10 w-80 max-w-[calc(100%-1rem)] rounded-xl border bg-card p-4 text-left shadow-lg"
+	class="absolute z-20 max-h-[calc(100%-1rem)] w-80 max-w-[calc(100%-1rem)] overflow-y-auto rounded-xl border bg-card p-4 text-left shadow-lg"
 >
 	<ToolContent content={name} class="text-sm leading-snug font-medium" />
 	<ToolContent content={statement} class="mt-1 text-xs leading-relaxed text-muted-foreground" />

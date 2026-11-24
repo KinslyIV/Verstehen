@@ -1,96 +1,112 @@
-# Development workflow
+# Workflow
 
-How work goes from an idea to merged code. Agents usually run on Pixal, or on the user's Arch
-laptop through a T3 linked environment when Pixal is busy; the user works in T3 Code. Always point
-`VERSTEHEN_DATA_DIR` elsewhere: the laptop's `~/.local/share/verstehen` holds real user data.
+How work goes from an idea to merged code: plan → implement → review → report. This is the one
+place that names the roles and models; AGENTS.md and plans link here.
 
 ## Roles
 
 | Role | Who | Does |
 |---|---|---|
-| **User** | the human | decides the design during planning, merges branches |
-| **Orchestrator** | Claude Opus, the main agent in the T3 Code thread | plans with the user, delegates, answers the implementer's questions, reviews, reports |
-| **Implementer** | GPT 6.1 Sol, a T3 subagent of the orchestrator (Codex, reasoning effort `medium`, default tier) | writes the code, tests, and verify flows, and fixes review findings |
+| **User** | the human | decides every design question, approves plans, reviews orchestrator decisions, merges |
+| **Orchestrator** | Claude Opus 5.5, the main agent in the T3 Code thread | plans with the user, delegates, answers the implementer, decides during implementation, reviews, reports |
+| **Implementer** | **Claude Sonnet 5.5**, high thinking, on the Claude subscription (on Antigravity only when the user says), **or an Antigravity model the user names for the task**, with its thinking level | writes the code, tests, and verify flows, and fixes review findings |
+| **Reviewer** | **GPT-6.2 Sol** (Codex), medium effort, default tier; a fresh delegate each round | reviews the branch and reports findings |
 
-All subagents use **GPT-6.1 Sol** (`gpt-6.1-sol`), `reasoningEffort: medium`, and the default
-service tier. The parent model settings are unchanged.
+- The implementer runs as a T3 delegate (or the orchestrator's own subagent for Sonnet on the
+  Claude subscription) in the task's worktree. It asks the orchestrator, never the user.
+- **Docs-only work:** the orchestrator may write the docs itself; the reviewer still reviews.
 
 ## 1. Plan (with the user)
 
 - **No guessing applies fully.** The orchestrator investigates, then asks the user every design
   question, one at a time, until nothing is open.
-- The result is a written plan the user approves. It names the tasks, the files they touch, the
+- **Start with an overview.** Before any detail, the plan opens with a short, plain-language
+  overview, and nothing is implemented until the user approves it:
+  - **what changes:** the parts of the system it touches, what is new, what is removed or rewritten;
+  - **the structure afterwards:** the main pieces and how they connect, as a sketch or a few lines;
+  - **what the user will notice** in the app;
+  - **non-obvious effects:** other features, saved data and migrations, tests.
+- **Explain every option.** When there is a choice, each option says what it means concretely, its
+  consequences, what it rules out or makes harder later, how reversible it is, and what
+  LearnHarness does, followed by a recommendation with its reason. Ask whether anything is unclear
+  before the user chooses; if the user picks quickly and an implication was not covered, say so.
+- The approved plan goes in `docs/plans/<milestone>.md`: the tasks, the files they touch, the
   behavior with its LearnHarness references, the tests, the verify flows, and the feature-map
-  entries. Each design decision goes into [decisions](decisions.md).
-- Implementation starts only after the user approves the plan.
+  entries. User decisions go into [decisions](decisions.md) until they are implemented and the
+  area docs describe them; differences from LearnHarness stay there.
 
 ## 2. Implement (autonomous, no questions to the user)
 
-- **Each task runs on its own branch** off `main`, in its own T3 worktree. The implementer commits
-  as it goes, and `make check` must pass before every commit.
-- While editing, run `make check-backend` or `make check-frontend` for the affected area and batch
-  affected UI flows with `make verify FLOW='flow-a flow-b'`. `make verify-run FLOW='flow-a flow-b'`
-  reuses an unchanged frontend build with a stale-build guard; see the
-  [verify skill](../.agents/skills/verify/SKILL.md). Full `make check` remains required before each
-  commit. Full `make verify` and `make verify-live` (real Claude Code, `haiku`) are required
-  before every merge; also run them after shared UI or runtime changes. Unrelated documentation or offline tooling work does not require UI flows.
-- Keep cheap logic permutations in offline tests and use representative real UI flows for
-  integration. This keeps iteration focused as coverage grows; the full suite still checks the
-  integrated app. Each flow retains its own sidecar, preview, temporary data, assertions,
-  screenshot, and always-on trace. Maintain the feature map; do not save time by dropping coverage.
-- Run `make app` when packaging changes need proof, not for unrelated changes.
-- **The implementer never asks the user.** It asks the orchestrator.
-- **The orchestrator never asks the user either.** It decides, choosing what fits the approved plan
-  and the docs most closely, and the most cautious option when unsure. Each decision goes into
-  [decisions](decisions.md) marked **"orchestrator decision, for user review"**, and into the final
-  report.
-- Agents may push the task branch and open a PR against `main`. Never commit or push to `main`,
-  force-push, or merge; the user merges. No real-model calls (the user's subscriptions) except
-  `make verify-live`, no touching the user's real data, no credentials. Anything that would need
-  one of these is skipped and reported.
+- **Branches.** One branch per milestone, off `dev`, with its tasks stacked on it in order.
+  Concurrent independent tasks each get their own branch and T3-bound worktree. Delete a branch
+  after it merges.
+- **Worktrees.** Bind threads through T3: `t3_thread_launch` with an explicit `workspaceStrategy`
+  for a new thread, or `t3_worktree_handoff` to move the current thread. `git worktree add` or `cd`
+  alone does not update T3's binding. Never switch a shared checkout's branch for another task.
+  Before editing, check that the T3 binding, the working directory, and the branch agree.
+- **Commits.** `make check AREA='...'` for the touched areas passes before every commit; full
+  `make check` and `make verify` pass before opening a PR into `dev`. Which checks and flows to
+  run while editing and before merge, and when earlier results may be reused, is in the verify
+  skill (`.claude/skills/verify/SKILL.md`).
+- **The orchestrator decides** what the implementer asks: what fits the plan and the docs most
+  closely, and the most cautious option when unsure. Each decision goes into the review queue in
+  [decisions](decisions.md) with **what was decided, the alternative, and the consequence**.
+- **A flake is a bug.** A test or flow that fails and then passes on rerun is recorded in the
+  [roadmap](roadmap.md#known-gaps) and fixed before merge. Never pass a change on a rerun, and
+  never weaken an assertion or timeout to make it pass.
+- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging, real-model calls other
+  than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
+  and reported.
 
-## 3. Review (orchestrator and implementer, until clean)
+- **User decisions (2026-11-22), 9-area test separation and 49-flow verification suite:**
+  backend pytest files (`backend/tests/<area>/`), frontend Vitest globs, and Playwright verify
+  flows (`app/verify/<area>/`) are separated into the 9 architecture areas (`session`, `teaching`,
+  `jobs`, `sidechat`, `graph`, `providers`, `store`, `sync`, `shell`), enforced by
+  `tools/test_areas.py --check`. `AREA='...'` scopes `make check`, `make test`, `make verify`, and
+  `make verify-run` to one or more areas. Area-scoped pytest runs skip `@pytest.mark.slow` (real
+  CLI subprocess and headless Chromium tests) unless `SLOW=1` is passed; full `make check` runs
+  all areas including `slow`. The Playwright suite is trimmed from 72 to 49 flows: flows run once
+  in the default dark theme (only `shell-layout` and `settings` check themes), redundant layout
+  and settings flows are consolidated into `shell-layout` and `settings` while component and error
+  permutations live in Vitest, and `session-performance*` flows are removed from the suite. Milestone C and M10 add three flows, bringing the total to 52, and Milestone D adds `mobile-pair` and six phone flows for 59.
+- **User decision (2026-11-21), workers:** locally, Playwright uses 1 worker on machines with
+  4 or fewer CPU threads (Pixal), and at most 3 elsewhere; CI uses Playwright's default.
+  Six local workers on the laptop made `composer-steer`, `session-rename-delete`, and
+  `question-ask` fail; each passes alone, pointing to a timing bug.
 
-- The orchestrator reviews the branch against the plan, [AGENTS.md](../AGENTS.md), the
-  [architecture](architecture.md), and LearnHarness's behavior. It also checks that `make check`
-  passes and, for UI or shared runtime changes, looks at the `make verify` screenshots.
-- Assess each changed class's clarity: can a reader understand its role, ownership, lifetime,
-  and collaborators? Add a useful responsibility description when needed, or improve naming.
-  Small obvious classes and data wrappers can remain undocumented; do not check for docstrings
-  indiscriminately. Review function/method descriptions separately, skipping self-explanatory
-  methods. Automatic comment checks remain limited to existing length and syntax enforcement.
-- A reviewer may reuse passing results only when relevant source, configuration, dependencies,
-  and environment are unchanged and no new issue has appeared. Record the command, revision or
-  dirty state, selected flows, and screenshot/trace evidence. Rerun after meaningful edits, a
-  failure, or a new concern. The SPA build guard checks build reuse, not whether earlier test
-  results still cover the reviewed change.
-- **The review is skeptical of existing code too**, not just the new diff. Code the change builds
-  on is reviewed as well. Bad design, bad choices, and errors are fixed (the same problem is
-  searched for elsewhere), and old code is rewritten or removed on the branch when there is a need
-  (it is wrong, it blocks the task, or its complexity causes real problems), never only for taste. A recorded decision that looks wrong is flagged in the report; only the user
-  changes it.
-- Findings go back to the implementer, who fixes them on the branch. This repeats until a review
-  finds nothing.
-- **At most 4 rounds.** If the work still hasn't converged, the orchestrator fixes small leftovers
-  itself or lists the open issues in the report. A run never loops forever.
+## 3. Review (until clean, at most 4 rounds)
 
-## 4. Report (in the T3 Code thread)
+- Each round is a fresh reviewer delegate with the plan, the diff, and the earlier findings. It
+  reviews against the plan, [AGENTS.md](../AGENTS.md), the [architecture](architecture.md), and
+  LearnHarness's code (the specification).
+- **Skeptical of existing code too.** Code the change builds on is reviewed as well; bad design,
+  bad choices, and errors are fixed (and searched for elsewhere). A recorded decision that looks
+  wrong is flagged; only the user changes it.
+- **Class and function clarity.** Ask whether a reader can understand each changed class's role,
+  ownership, lifetime, and collaborators; add a short responsibility description or better names
+  where not. Skip self-explanatory methods. There is no docstring-presence check.
+- The implementer fixes the findings; the orchestrator fixes small leftovers itself. After round 4
+  the remaining issues go in the report.
 
-Push the task branch and open a PR against `main`, linking it in the report. The `ci` check
-(`make check` and `make verify` on GitHub-hosted runners) must be green before the user merges.
-`make verify-live` still runs locally before every merge because it needs the user's Claude login.
+## 4. Report and merge
 
-When the run ends, the orchestrator posts one report in the thread. It is a **compact, meaningful
-summary of what the user needs to know, not a log** of what the agents did:
-- **New:** what can be used now, and whether it works (one line of evidence: checks, tests, the
-  verify screenshots looked at);
-- **Changed:** existing code that was rewritten or removed, and why;
-- **Decided in your absence:** each orchestrator decision in one line (also in
-  [decisions](decisions.md) for review);
-- **Flagged:** bad decisions or problems found that need the user;
-- **Left:** open issues and anything skipped;
-- **The branch to merge.**
-
-Problems that were hit and solved appear only when they matter to the user.
-
-[status](status.md) is updated on the branch as part of the work.
+- Push the branch and open a PR into `dev`. **Evidence goes in the PR**: the commands, the
+  revision, the flows, and the screenshots and traces looked at. Docs hold only the current state.
+- PRs into `dev` are for the user's review and questions; `dev` has no CI, so the local checks are
+  the evidence. The user merges into `dev`, and later opens `dev` → `main`, where the `ci` check
+  (`make check` and `make verify` on GitHub) must be green. `make verify-live`, when the verify
+  skill requires it, runs locally because it needs the user's Claude login.
+- **The user reviews the milestone's orchestrator decisions before merging**, from the review
+  queue in [decisions](decisions.md#waiting-for-your-review).
+- The report in the T3 thread is a compact summary, not a log:
+  - **New:** what can be used now, with one line of evidence;
+  - **Changed:** existing code rewritten or removed, and why;
+  - **Decided in your absence:** each orchestrator decision in one line;
+  - **Flagged:** bad decisions or problems that need the user;
+  - **Left:** open issues and anything skipped;
+  - **The PR to merge.**
+- On the branch, before the PR: update [status](status.md), the area docs in
+  [architecture](architecture/) you changed, the [feature map](feature-map.md), and
+  [decisions](decisions.md): add any difference from LearnHarness, and remove decisions that are
+  now implemented and documented. When the milestone merges, its plan's lasting content is in the
+  area docs and the plan is deleted.

@@ -8,21 +8,23 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, StreamingResponse
 
-from verstehen.api.deps import get_session_service, get_turn_service
+from verstehen.api.deps import get_session_service, get_stats_service, get_turn_service
 from verstehen.graph.context import GraphContext
 from verstehen.graph.coverage import SessionCoverage
 from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
-from verstehen.session.sessions import SessionService
+from verstehen.session.sessions import ListedSession, SessionService
+from verstehen.session.stats import SessionStats, StatsService
 from verstehen.session.turns import TurnInput, TurnService
 from verstehen.sidechat.segments import SideSegments
 from verstehen.store.entries import Entry
-from verstehen.store.sessions import Session
+from verstehen.store.sessions import Session, SessionKind
 from verstehen.store.settings import ModelPick, SlotName
 from verstehen.teaching.questions.inputs import DismissInput
 
 SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
 TurnServiceDependency = Annotated[TurnService, Depends(get_turn_service)]
+StatsServiceDependency = Annotated[StatsService, Depends(get_stats_service)]
 HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -62,6 +64,7 @@ class TitleInput(BaseModel):
 
 
 class SessionInput(TitleInput):
+    kind: SessionKind = "teach"
     model: ModelPick | None = None
     graph_context: GraphContext | None = None
 
@@ -69,10 +72,12 @@ class SessionInput(TitleInput):
 class SessionItem(BaseModel):
     id: str
     title: str
-    kind: Literal["teach"]
+    kind: SessionKind
     updated_at: datetime
     busy: bool
     compacting: bool = Field(default_factory=lambda: False)
+    pending_question: bool = Field(default_factory=lambda: False)
+    pending_problem: bool = Field(default_factory=lambda: False)
 
 
 class SessionList(BaseModel):
@@ -114,17 +119,49 @@ class ParkedDismissal(Ok):
     parked: Literal[True] = True
 
 
+def session_item(listed: ListedSession) -> SessionItem:
+    return SessionItem(
+        **listed.session.model_dump(),
+        busy=listed.busy,
+        compacting=listed.compacting,
+        pending_question=listed.pending_question,
+        pending_problem=listed.pending_problem,
+    )
+
+
 @router.get("/api/sessions", response_model=SessionList)
 async def list_sessions(session_service: SessionServiceDependency) -> SessionList:
-    result = await session_service.list()
     return SessionList(
-        sessions=[
-            SessionItem(
-                **item.session.model_dump(), busy=item.busy, compacting=item.compacting
-            )
-            for item in result
-        ]
+        sessions=[session_item(listed) for listed in await session_service.list()]
     )
+
+
+@router.get("/api/sessions/{session_id}/item", response_model=SessionItem | None)
+async def get_session_item(
+    session_id: str, session_service: SessionServiceDependency
+) -> SessionItem | None:
+    result = await session_service.item(session_id)
+    return None if result is None else session_item(result)
+
+
+@router.get("/api/sessions/{session_id}/stats", response_model=SessionStats)
+async def get_session_stats(session_id: str, stats_service: StatsServiceDependency):
+    result = await stats_service.stats(session_id)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return result
+
+
+@router.get(
+    "/api/sessions/{session_id}/coverage", response_model=SessionCoverage | None
+)
+async def get_session_coverage(
+    session_id: str, session_service: SessionServiceDependency
+):
+    result = await session_service.coverage(session_id)
+    if isinstance(result, Refused):
+        return JSONResponse(result.reason, status_code=result.status)
+    return result
 
 
 @router.post(
@@ -133,7 +170,9 @@ async def list_sessions(session_service: SessionServiceDependency) -> SessionLis
     responses={503: {"model": ModelUnavailable}},
 )
 async def create_session(body: SessionInput, session_service: SessionServiceDependency):
-    session = await session_service.create(body.title, body.model, body.graph_context)
+    session = await session_service.create(
+        body.title, body.model, body.graph_context, kind=body.kind
+    )
     if isinstance(session, Refused):
         return JSONResponse(session.reason, status_code=session.status)
     return Created(id=session.id)

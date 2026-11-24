@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Android project (generated builds and copied web assets)
+/android/

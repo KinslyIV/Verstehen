@@ -8,6 +8,7 @@ from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import source_file_label
 from verstehen.store.graph import (
     GraphLedger,
+    NotesSource,
     SourceFolder,
     SourceOrganization,
     SourcePlacement,
@@ -32,6 +33,25 @@ class SourceDirectory(BaseModel):
     revision: int = 0
 
 
+def notes_label(source: NotesSource, placement: SourcePlacement | None) -> str:
+    if placement and placement.name is not None:
+        return placement.name
+    return source_file_label(source.file_path)
+
+
+def known_source_ids(ledger: GraphLedger, session_ids: set[str]) -> set[str]:
+    """Every session, imported notes source, or provenance source known inside a transaction."""
+    return (
+        session_ids
+        | {source.id for source in ledger.sources}
+        | {
+            point.session_id
+            for node in get_graph(ledger).nodes
+            for point in node.provenance
+        }
+    )
+
+
 def source_directory(ledger: GraphLedger, sessions: list[Session]) -> SourceDirectory:
     entries = {
         session.id: SourceEntry(
@@ -48,9 +68,7 @@ def source_directory(ledger: GraphLedger, sessions: list[Session]) -> SourceDire
         entries[source.id] = SourceEntry(
             id=source.id,
             kind="notes",
-            label=placement.name
-            if placement and placement.name is not None
-            else source_file_label(source.file_path),
+            label=notes_label(source, placement),
             file_path=source.file_path,
             created_at=source.imported_at,
         )
@@ -86,6 +104,7 @@ def parse_organization_action(raw: object) -> OrganizationAction:
         "rename-folder",
         "rename-source",
         "delete-folder",
+        "delete-folder-tree",
         "move",
     ):
         raise ValueError("Unknown source organization action.")
@@ -125,6 +144,23 @@ def can_move_folder(state: SourceOrganization, id: str, parent_id: str | None) -
         seen.add(parent_id)
         parent_id = folders[parent_id].parent_id
     return True
+
+
+class FolderHoldsSources(ValueError):
+    """A folder tree cannot be removed while a session or notes source sits in it."""
+
+
+def folder_subtree(state: SourceOrganization, id: str) -> set[str]:
+    """The folder and every folder below it, as the organization stands now."""
+    found = {id}
+    pending = [id]
+    while pending:
+        parent = pending.pop()
+        for folder in state.folders:
+            if folder.parent_id == parent and folder.id not in found:
+                found.add(folder.id)
+                pending.append(folder.id)
+    return found
 
 
 def folder_is_empty(state: SourceOrganization, id: str, source_ids: set[str]) -> bool:
@@ -188,6 +224,19 @@ def apply_organization_action(
         if not can_move_folder(state, action.id, action.parent_id):
             raise ValueError("A folder cannot be moved into itself or its descendants.")
         folder.parent_id = action.parent_id
+    elif action.action == "delete-folder-tree":
+        subtree = folder_subtree(state, action.id)
+        if any(
+            placement.folder_id in subtree and source_id in source_ids
+            for source_id, placement in state.placements.items()
+        ):
+            raise FolderHoldsSources(
+                "Only folders without sessions or notes can be removed. Move them out first."
+            )
+        state.folders = [f for f in state.folders if f.id not in subtree]
+        for placement in state.placements.values():
+            if placement.folder_id in subtree:
+                placement.folder_id = None
     else:
         if not folder_is_empty(state, action.id, source_ids):
             raise ValueError(

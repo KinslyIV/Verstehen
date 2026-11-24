@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncGenerator
 from typing import List
+from uuid import uuid4
 
 from verstehen.session.context_updates import SessionDelivery
 from verstehen.session.events import TurnEvent
@@ -13,6 +14,7 @@ class TurnRun:
     """
 
     def __init__(self):
+        self.id = uuid4().hex
         self.task: asyncio.Task[None] | None = None
         self.aborted = False
         self.started = False
@@ -92,13 +94,35 @@ class SessionRuntime:
         self.compaction: asyncio.Task[None] | None = None
         self.failure: str | None = None
         self.deleted = False
+        self.handoff_starting = False
+        self.handoff_ready = asyncio.Event()
+        self.handoff_ready.set()
         self.delivery = SessionDelivery()
 
-    def claim_turn(self) -> TurnRun | None:
-        if self.run is not None or self.compaction is not None or self.deleted:
+    @property
+    def turn_in_flight(self) -> bool:
+        return self.run is not None or self.handoff_starting
+
+    def begin_handoff(self) -> None:
+        self.handoff_starting = True
+        self.handoff_ready.clear()
+
+    def end_handoff(self) -> None:
+        self.handoff_starting = False
+        self.handoff_ready.set()
+
+    def claim_turn(self, *, for_handoff: bool = False) -> TurnRun | None:
+        if (
+            self.run is not None
+            or self.compaction is not None
+            or self.deleted
+            or (self.handoff_starting and not for_handoff)
+        ):
             return None
         self.failure = None
         self.run = TurnRun()
+        if for_handoff:
+            self.end_handoff()
         return self.run
 
     def release_turn(self, run: TurnRun) -> None:

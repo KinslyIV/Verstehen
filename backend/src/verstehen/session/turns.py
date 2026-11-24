@@ -10,6 +10,8 @@ from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
 from verstehen.graph.extraction_service import ExtractionService
+from verstehen.graph.model import get_graph
+from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
@@ -44,9 +46,11 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
-from verstehen.store.sessions import SessionsStore
-from verstehen.store.settings import SettingsStore
+from verstehen.store.model_identity import ModelIdentity
+from verstehen.store.sessions import SessionKind, SessionsStore
+from verstehen.store.settings import SettingsStore, ToolSettings
 from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
@@ -59,6 +63,18 @@ from verstehen.teaching.phases import handoff_owed, has_probe_done
 from verstehen.teaching.plan.history import current_plan, plan_blocks_for
 from verstehen.teaching.plan.tool import plan_tool
 from verstehen.teaching.plan.tree import PlanTree
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
+from verstehen.teaching.practice.state import (
+    active_problem_of,
+    concluded_by_dismissal_pair,
+    new_next_message,
+    new_thinking_message,
+    pending_problem_dismissal_of,
+)
+from verstehen.teaching.practice.tools import build_practitioner, create_practice_gate
 from verstehen.teaching.prober import build_prober
 from verstehen.teaching.prompts import compose_instructions
 from verstehen.teaching.questions.inputs import (
@@ -83,6 +99,8 @@ STREAMED_RESULT_TOOLS = (
     "probe_done",
     "plan_init",
     "send_to_user",
+    PRACTICE_PROBLEM_TOOL,
+    PRACTICE_CONCLUDE_TOOL,
     *ACKNOWLEDGEMENTS,
 )
 logger = logging.getLogger(__name__)
@@ -90,13 +108,22 @@ logger = logging.getLogger(__name__)
 
 class TurnInput(BaseModel):
     type: Literal[
-        "text", "retry", "answer", "continue", "retry-question", "handoff", "steers"
+        "text",
+        "retry",
+        "answer",
+        "continue",
+        "retry-question",
+        "handoff",
+        "steers",
+        "thinking",
+        "next",
     ]
     text: str | None = None
     tool_call_id: str | None = None
     answer: QuestionAnswer | None = None
     message_id: str | None = None
     content_index: int | None = None
+    problem_call_id: str | None = None
 
 
 @dataclass
@@ -109,6 +136,7 @@ class TurnState:
     input: TurnInput
     runtime: SessionRuntime
     entries: list[Entry]
+    session_kind: SessionKind = "teach"
     resolved: ResolvedModel | None = None
     run: TurnRun | None = None
     agent: QuestionAgent | None = None
@@ -117,9 +145,12 @@ class TurnState:
     saved: list[Entry] = field(default_factory=list)
     before_compaction: list[Entry] | None = None
     dropped: set[str] = field(default_factory=set)
+    for_handoff: bool = False
 
     @property
-    def role(self) -> Literal["teacher", "prober"]:
+    def role(self) -> Literal["teacher", "prober", "practice"]:
+        if self.session_kind == "practice":
+            return "practice"
         return "teacher" if has_probe_done(self.entries) else "prober"
 
 
@@ -167,8 +198,11 @@ class TurnService:
         job_runner: JobRunner,
         side_threads: Callable[[str], Awaitable[list[SideThread]]],
         extraction_service: ExtractionService,
+        graph_store: GraphStore,
+        prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
     ):
+        self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
         self.settings_store = settings_store
@@ -184,6 +218,7 @@ class TurnService:
         self.job_runner = job_runner
         self.side_threads = side_threads
         self.extraction_service = extraction_service
+        self.graph_store = graph_store
         self.delivery_service = DeliveryService(
             sessions_store,
             entries_store,
@@ -202,16 +237,41 @@ class TurnService:
             runtimes,
             notifications,
             provider_events,
+            prompt_edit_lock,
         )
 
     @staticmethod
     def input_appends(state: TurnState) -> list[Entry]:
         input = state.input
+        dismissed_id = pending_problem_dismissal_of(state.entries)
+        dismissal: list[Entry] = []
+        if dismissed_id:
+            dismissal.extend(concluded_by_dismissal_pair(dismissed_id))
         match input.type:
             case "text":
                 if not input.text or not input.text.strip():
                     raise ValueError("text input requires non-empty text")
-                return [UserEntry(text=input.text)]
+                return [*dismissal, UserEntry(text=input.text)]
+            case "continue":
+                return dismissal
+            case "thinking":
+                if not input.problem_call_id or not input.problem_call_id.strip():
+                    raise ValueError("thinking input requires problemCallId")
+                if not input.text or not input.text.strip():
+                    raise ValueError("thinking input requires non-empty text")
+                active = active_problem_of(state.entries)
+                if active is None or active.tool_call_id != input.problem_call_id:
+                    raise ValueError("thinking input targets no active problem")
+                return [
+                    *dismissal,
+                    new_thinking_message(input.problem_call_id, input.text),
+                ]
+            case "next":
+                if state.session_kind != "practice":
+                    raise ValueError("next input is a practice-session affordance")
+                if active_problem_of(state.entries) is not None:
+                    raise ValueError("next input requires no active problem")
+                return [*dismissal, new_next_message()]
             case "handoff":
                 if not handoff_owed(state.entries):
                     raise ValueError("No probe handoff is owed")
@@ -232,6 +292,7 @@ class TurnService:
                 if (
                     has_unresolved_question(state.entries)
                     or ends_in_dismissal(state.entries)
+                    or dismissed_id is not None
                     or ends_in_question_recovery(state.entries)
                 ):
                     raise ValueError("The session is waiting for the learner")
@@ -259,7 +320,7 @@ class TurnService:
     async def save_without_turn(
         self, state: TurnState, appends: list[Entry]
     ) -> Continue:
-        if appends:
+        if appends and state.input.type != "continue":
             await self.entries_store.append(state.session_id, appends)
             self.notify_changed(state.session_id)
         state.saved_without_turn = True
@@ -267,8 +328,14 @@ class TurnService:
 
     async def validate(self, state: TurnState) -> Refused | Continue:
         async with state.runtime.lock:
-            if await self.sessions_store.get(state.session_id) is None:
+            session = await self.sessions_store.get(state.session_id)
+            if session is None:
                 return Refused(404, {"error": "Unknown session"})
+            if state.runtime.handoff_starting and not state.for_handoff:
+                return Refused(
+                    409, {"error": "A turn is already running for this session"}
+                )
+            state.session_kind = session.kind
             state.entries = await self.entries_store.list(state.session_id)
             try:
                 appends = self.input_appends(state)
@@ -348,7 +415,7 @@ class TurnService:
     async def fits_side_context(self, state: TurnState, entries: list[Entry]) -> bool:
         assert state.resolved is not None
         instructions = await compose_instructions(
-            self.settings_store, self.data_dir, state.role
+            self.settings_store, self.data_dir, state.role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
         request = [entry for entry in entries if entry.entry_id not in state.dropped]
@@ -357,6 +424,7 @@ class TurnService:
             instructions,
             state.resolved.context_limit,
             settings.compaction_limit,
+            state.resolved.identity,
         )
 
     async def side_appends(
@@ -373,7 +441,7 @@ class TurnService:
         return appends
 
     async def claim(self, state: TurnState) -> Refused | Continue:
-        state.run = state.runtime.claim_turn()
+        state.run = state.runtime.claim_turn(for_handoff=state.for_handoff)
         if state.run is None:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
@@ -400,7 +468,11 @@ class TurnService:
         async with state.runtime.lock:
             if state.runtime.deleted:
                 return Refused(404, {"error": "Not found"})
-            if state.runtime.run is not None or state.runtime.compaction is not None:
+            if (
+                state.runtime.run is not None
+                or state.runtime.compaction is not None
+                or (state.runtime.handoff_starting and not state.for_handoff)
+            ):
                 return Refused(
                     409, {"error": "A turn is already running for this session"}
                 )
@@ -430,7 +502,7 @@ class TurnService:
         assert state.resolved is not None
         role = state.role
         instructions = await compose_instructions(
-            self.settings_store, self.data_dir, role
+            self.settings_store, self.data_dir, role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
         quizzing = settings.quizzing
@@ -440,6 +512,7 @@ class TurnService:
             state.session_id,
             role,
             self.provider_events,
+            turn_id=state.run.id if state.run else None,
         )
         deliver = needs_send_to_user(state.resolved.kind, state.resolved.pick.model)
         files = file_tools(
@@ -455,13 +528,51 @@ class TurnService:
             self.data_dir,
         )
         updates = ContextUpdates(lambda: self.take_context_updates(state))
-        if role == "prober":
+        if role == "practice":
+
+            async def list_sessions() -> str:
+                return format_graph_sessions(
+                    await self.graph_store.read(), await self.sessions_store.list()
+                )
+
+            async def list_propositions(session: str) -> str:
+                return format_graph_propositions(await self.graph_store.read(), session)
+
+            async def graph_nodes():
+                return get_graph(await self.graph_store.read()).nodes
+
+            state.agent = build_practitioner(
+                model,
+                instructions,
+                state.resolved.settings,
+                gate=create_practice_gate(state.entries),
+                graph_nodes=graph_nodes,
+                extra_tools=(
+                    *files,
+                    *(
+                        prober_graph_tools(list_sessions, list_propositions)
+                        if settings.graph.enabled and settings.agent.graph_tools
+                        else ()
+                    ),
+                    *job_tools(dispatcher, ToolSettings(), prober=True),
+                ),
+                extra_capabilities=(updates,),
+            )
+        elif role == "prober":
 
             def question_pending() -> bool:
                 return has_unresolved_question(state.entries) or (
                     state.response is not None
                     and has_unresolved_question([state.response])
                 )
+
+            async def list_sessions() -> str:
+                return format_graph_sessions(
+                    await self.graph_store.read(), await self.sessions_store.list()
+                )
+
+            async def list_propositions(session: str) -> str:
+                return format_graph_propositions(await self.graph_store.read(), session)
 
             state.agent = build_prober(
                 model,
@@ -472,10 +583,7 @@ class TurnService:
                 extra_tools=(
                     *files,
                     *(
-                        prober_graph_tools(
-                            self.extraction_service.readers.sessions,
-                            self.extraction_service.readers.propositions,
-                        )
+                        prober_graph_tools(list_sessions, list_propositions)
                         if settings.graph.enabled and settings.agent.graph_tools
                         else ()
                     ),
@@ -540,8 +648,16 @@ class TurnService:
         state.run.task = asyncio.create_task(self.run(state))
         return Continue(state)
 
-    async def start(self, session_id: str, input: TurnInput) -> Refused | Continue:
-        state = TurnState(session_id, input, self.runtimes.get(session_id), [])
+    async def start(
+        self, session_id: str, input: TurnInput, *, for_handoff: bool = False
+    ) -> Refused | Continue:
+        state = TurnState(
+            session_id,
+            input,
+            self.runtimes.get(session_id),
+            [],
+            for_handoff=for_handoff,
+        )
         for stage in (
             self.validate,
             self.model_gate,
@@ -575,8 +691,13 @@ class TurnService:
         try:
             if run.aborted:
                 raise asyncio.CancelledError
+            assert state.resolved is not None
+            model = state.resolved.identity
             history = to_llm_messages(
-                state.entries, drops=state.dropped, data_dir=self.data_dir
+                state.entries,
+                model=model,
+                drops=state.dropped,
+                data_dir=self.data_dir,
             )
             async with state.agent.iter(message_history=history) as agent_run:
                 async for node in agent_run:
@@ -589,23 +710,24 @@ class TurnService:
                         async with node.stream(agent_run.ctx) as stream:
                             async for event in stream:
                                 log_provider_event(self.provider_events, event)
-                                update_response(reply, stream.response)
+                                update_response(reply, stream.response, model)
                                 run.publish(
                                     TurnEvent(
                                         type="message_update",
                                         message=reply.model_copy(deep=True),
                                     )
                                 )
-                            update_response(reply, stream.response)
+                            update_response(reply, stream.response, model)
                     elif Agent.is_call_tools_node(node):
                         assert reply is not None
-                        update_response(reply, node.model_response)
+                        update_response(reply, node.model_response, model)
                         async with node.stream(agent_run.ctx) as events:
                             async for event in events:
                                 if isinstance(event, FunctionToolResultEvent):
                                     result = saved_tool_result(event.part)
                                     if result is not None:
                                         results.append(result)
+                        update_response(reply, node.model_response, model)
         except asyncio.CancelledError:
             task = asyncio.current_task()
             if task is not None:
@@ -704,13 +826,56 @@ class TurnService:
         await self.entries_store.append(state.session_id, [*entries, *markers])
         state.runtime.delivery.discard(entry.entry_id for entry in entries)
         self.notify_changed(state.session_id)
-        await self.finish(state)
-        if not self.runtimes.closing and handoff_owed([*state.entries, *entries]):
-            await self.start(state.session_id, TurnInput(type="handoff"))
+        reserve_handoff = not self.runtimes.closing and handoff_owed(
+            [*state.entries, *entries]
+        )
+        if reserve_handoff:
+            await self.finish(state, reserve_handoff=True)
+            await self.start_reserved_handoff(state)
+        else:
+            await self.finish(state)
         await self.compaction_service.kick(state.session_id, state.role)
         await self.pump_deliveries(state.session_id)
         if not self.runtimes.closing:
             await self.extraction_service.trigger(state.session_id)
+
+    async def start_reserved_handoff(self, state: TurnState) -> None:
+        assert state.run is not None
+        error_text: str | None = None
+        try:
+            result = await self.start(
+                state.session_id, TurnInput(type="handoff"), for_handoff=True
+            )
+            if isinstance(result, Refused):
+                error_text = (
+                    str(result.reason.get("error", "")) or "Probe handoff failed"
+                )
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            error_text = str(error)
+        finally:
+            await self.release_handoff_reservation(
+                state.runtime, state.session_id, state.run, error_text
+            )
+
+    async def release_handoff_reservation(
+        self,
+        runtime: SessionRuntime,
+        session_id: str,
+        probe_run: TurnRun,
+        error_text: str | None = None,
+    ) -> None:
+        async with runtime.lock:
+            if not runtime.handoff_starting:
+                return
+            if error_text is not None:
+                runtime.remember_failure(error_text)
+                probe_run.publish(TurnEvent(type="error", error_text=error_text))
+            runtime.end_handoff()
+        self.notifications.publish(
+            Notification(type="turn-settled", session_id=session_id)
+        )
 
     async def pump_deliveries(self, session_id: str) -> None:
         try:
@@ -718,25 +883,40 @@ class TurnService:
         except Exception:
             logger.exception("Delivery pump failed for session %s", session_id)
 
-    async def finish(self, state: TurnState, *, apply_dismissal: bool = True) -> None:
+    async def finish(
+        self,
+        state: TurnState,
+        *,
+        apply_dismissal: bool = True,
+        reserve_handoff: bool = False,
+    ) -> None:
         assert state.run is not None
         async with state.runtime.lock:
             if apply_dismissal and state.run.parked_dismissal is not None:
                 await self.apply_parked_dismissal(state, state.run.parked_dismissal)
             state.runtime.delivery.release(state.run)
             state.runtime.release_turn(state.run)
-        self.notifications.publish(
-            Notification(type="turn-settled", session_id=state.session_id)
-        )
+            if reserve_handoff:
+                state.runtime.begin_handoff()
+        if not reserve_handoff:
+            self.notifications.publish(
+                Notification(type="turn-settled", session_id=state.session_id)
+            )
 
 
-def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
+def update_response(
+    reply: AssistantEntry, response: ModelResponse, model: ModelIdentity
+) -> None:
     parts: list[TextPart | ThinkingPart | ToolCallPart] = []
     for part in response.parts:
         if part.part_kind == "text":
             parts.append(TextPart(text=part.content))
         elif part.part_kind == "thinking":
-            parts.append(ThinkingPart(thinking=part.content, signature=part.signature))
+            parts.append(
+                ThinkingPart(
+                    thinking=part.content, id=part.id, signature=part.signature
+                )
+            )
         elif part.part_kind == "tool-call":
             parts.append(
                 ToolCallPart(
@@ -746,8 +926,8 @@ def update_response(reply: AssistantEntry, response: ModelResponse) -> None:
                 )
             )
     reply.parts = parts
-    reply.provider = response.provider_name
-    reply.model = response.model_name
+    reply.provider = model.provider
+    reply.model = model.model
     reply.usage = response_usage(response)
     if response.finish_reason == "length":
         reply.stop_reason = "length"

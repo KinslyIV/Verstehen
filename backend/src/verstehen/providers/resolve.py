@@ -11,12 +11,14 @@ from verstehen.providers.accounts import (
     AccountUnavailable,
 )
 from verstehen.providers.catalog import CatalogModel, context_limit
+from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import Session
 from verstehen.store.settings import ModelPick, SettingsStore, SlotName
 
 ModelRole = Literal[
     "prober",
     "teacher",
+    "practice",
     "sideQuestion",
     "researcher",
     "demoBuilder",
@@ -29,6 +31,7 @@ ModelRole = Literal[
 ROLE_SLOT: dict[ModelRole, SlotName] = {
     "prober": "strong",
     "teacher": "strong",
+    "practice": "strong",
     "sideQuestion": "strong",
     "researcher": "cheap",
     "demoBuilder": "cheap",
@@ -71,6 +74,10 @@ class ResolvedModel:
     @property
     def kind(self) -> str:
         return self.account.kind
+
+    @property
+    def identity(self) -> ModelIdentity:
+        return ModelIdentity(self.model.system, self.model.model_name)
 
     @property
     def settings(self) -> ModelSettings:

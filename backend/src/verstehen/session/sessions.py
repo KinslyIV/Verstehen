@@ -7,7 +7,7 @@ from typing import List
 
 from verstehen.graph.context import GraphContext, graph_context_message
 from verstehen.graph.coverage import SessionCoverage
-from verstehen.graph.deletion import DeleteMode
+from verstehen.graph.deletion import DeleteMode, delete_sources_traces
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.providers.resolve import ResolutionError, ResolverService
 from verstehen.session.events import Notification, Notifications, TurnEvent
@@ -19,10 +19,16 @@ from verstehen.sidechat.segments import SideSegments, side_segments
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
-from verstehen.store.graph import GraphStore
+from verstehen.store.graph import GraphLedger, GraphStore
 from verstehen.store.jobs import JobsStore
-from verstehen.store.sessions import Session, SessionsStore
+from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
+from verstehen.teaching.practice.schemas import (
+    PRACTICE_CONCLUDE_TOOL,
+    PRACTICE_PROBLEM_TOOL,
+)
+from verstehen.teaching.practice.state import scan_problem
+from verstehen.teaching.questions.pending import dangling_question_of
 
 
 @dataclass
@@ -30,6 +36,8 @@ class ListedSession:
     session: Session
     busy: bool
     compacting: bool
+    pending_question: bool = False
+    pending_problem: bool = False
 
 
 @dataclass
@@ -76,21 +84,45 @@ class SessionService:
         self.graph_store = graph_store
 
     async def list(self) -> List[ListedSession]:
-        listed = []
-        for session in await self.sessions_store.list():
-            runtime = self.runtimes.get(session.id)
-            listed.append(
-                ListedSession(
-                    session, runtime.run is not None, runtime.compaction is not None
-                )
-            )
-        return listed
+        sessions = await self.sessions_store.list()
+        windows = await self.entries_store.since_last_assistant(
+            [session.id for session in sessions]
+        )
+        return [await self.listed(session, windows[session.id]) for session in sessions]
+
+    async def item(self, session_id: str) -> ListedSession | None:
+        """One sidebar row, built exactly as `list` builds it; None once the session is gone."""
+        session = await self.sessions_store.get(session_id)
+        if session is None:
+            return None
+        windows = await self.entries_store.since_last_assistant([session_id])
+        return await self.listed(session, windows[session_id])
+
+    async def listed(self, session: Session, window: List[Entry]) -> ListedSession:
+        """`window` runs from the newest assistant entry, which decides the pending question."""
+        runtime = self.runtimes.get(session.id)
+        return ListedSession(
+            session,
+            runtime.turn_in_flight,
+            runtime.compaction is not None,
+            pending_question=dangling_question_of(window) is not None,
+            pending_problem=session.kind == "practice"
+            and await self.has_active_problem(session.id),
+        )
+
+    async def has_active_problem(self, session_id: str) -> bool:
+        """Scan only the entries that can decide the problem state, not the transcript."""
+        entries = await self.entries_store.problem_entries(
+            session_id, (PRACTICE_PROBLEM_TOOL, PRACTICE_CONCLUDE_TOOL)
+        )
+        return scan_problem(entries).problem is not None
 
     async def create(
         self,
         title: str | None,
         pick: ModelPick | None = None,
         graph_context: GraphContext | None = None,
+        kind: SessionKind = "teach",
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -100,7 +132,7 @@ class SessionService:
         else:
             pick = (await self.resolver_service.settings_store.read()).models.strong
         session = await self.sessions_store.create(
-            title_from_prompt(title or "Untitled session"), pick
+            title_from_prompt(title or "Untitled session"), pick, kind=kind
         )
         if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
@@ -119,17 +151,30 @@ class SessionService:
             if session is None:
                 return Refused(404, {"error": "Not found"})
             entries = await self.entries_store.list(session_id)
-            failed = failed_response_at_end(entries) if runtime.run is None else None
+            failed = (
+                failed_response_at_end(entries) if not runtime.turn_in_flight else None
+            )
             return SessionSnapshot(
                 session,
                 entries,
-                runtime.run is not None,
+                runtime.turn_in_flight,
                 runtime.failure or (failed.error_text if failed else None),
                 runtime.compaction is not None,
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
-                await self.extraction_service.coverage(session_id),
+                None
+                if session.kind == "practice"
+                else await self.extraction_service.coverage(session_id, entries),
             )
+
+    async def coverage(self, session_id: str) -> SessionCoverage | None | Refused:
+        """Coverage alone, for refreshes that need no transcript; practice sessions have none."""
+        session = await self.sessions_store.get(session_id)
+        if session is None:
+            return Refused(404, {"error": "Not found"})
+        if session.kind == "practice":
+            return None
+        return await self.extraction_service.coverage(session_id)
 
     async def set_artifact_view(
         self, session_id: str, entry_id: str, inverted: bool
@@ -204,7 +249,7 @@ class SessionService:
         async with runtime.lock:
             if await self.sessions_store.get(session_id) is None:
                 return Refused(404, {"error": "Not found"})
-            if runtime.run is not None:
+            if runtime.turn_in_flight:
                 return Refused(
                     409,
                     {
@@ -221,8 +266,10 @@ class SessionService:
                         "job_ids": [job.id for job in running],
                     },
                 )
-            try:
-                if not await self.extraction_service.begin_deletion(session_id):
+            async with self.extraction_service.deleting_source(
+                session_id
+            ) as wound_down:
+                if not wound_down:
                     return Refused(
                         503,
                         {
@@ -230,18 +277,20 @@ class SessionService:
                             "code": "extraction_winding_down",
                         },
                     )
-                await self.extraction_service.delete_session_traces(session_id, mode)
+
+                def mutate_graph(ledger: GraphLedger) -> None:
+                    delete_sources_traces(ledger, {session_id}, mode)
+                    ledger.organization.placements.pop(session_id, None)
+
+                orphaned = await self.sessions_store.delete_with_graph(
+                    session_id, self.graph_store, mutate_graph
+                )
                 if self.side_chat_service is not None:
                     self.side_chat_service.stop_all(session_id)
-                orphaned = await self.sessions_store.unreferenced_image_hashes(
-                    session_id
-                )
-                await self.sessions_store.delete(session_id)
+                self.extraction_service.forget_failure(session_id)
                 runtime.mark_deleted()
                 runtime.delivery.clear()
                 await asyncio.to_thread(remove_images, self.data_dir, orphaned)
-            finally:
-                self.extraction_service.end_deletion(session_id)
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session_id)
         )
@@ -263,6 +312,8 @@ class SessionService:
 
     async def turn_events(self, session_id: str) -> AsyncGenerator[TurnEvent]:
         runtime = self.runtimes.get(session_id)
+        if runtime.run is None and runtime.handoff_starting:
+            await runtime.handoff_ready.wait()
         run = runtime.run
         if run is None:
             if runtime.failure is not None:

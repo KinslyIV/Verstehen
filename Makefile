@@ -1,4 +1,4 @@
-.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image
+.PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image android-setup android-debug android android-key
 
 setup:
 	uv sync --project backend --locked
@@ -18,17 +18,19 @@ check-backend:
 	uv run --project backend python tools/check_comments.py
 	uv run --project backend python tools/check_migrations.py
 	uv run --project backend python tools/check_versions.py
-	uv run --project backend pytest -c backend/pyproject.toml -n auto
+	uv run --project backend python tools/check_feature_map.py
+	uv run --project backend python tools/test_areas.py --check
+	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(filter 1,$(SLOW)),--slow)
 
 check-frontend:
 	npm run check --prefix app
 	cd app && npx eslint . --cache --cache-strategy content --cache-location node_modules/.cache/eslint/
 	cd app && npx prettier --check . --cache
-	npm run test --prefix app
+	uv run --project backend python tools/test_areas.py vitest $(if $(AREA),--area "$(AREA)")
 
 test:
-	uv run --project backend pytest -c backend/pyproject.toml -n auto
-	npm run test --prefix app
+	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(filter 1,$(SLOW)),--slow)
+	uv run --project backend python tools/test_areas.py vitest $(if $(AREA),--area "$(AREA)")
 
 fmt:
 	uv run --project backend ruff check --fix .
@@ -41,13 +43,15 @@ lock-migrations:
 dev:
 	uv run --project backend python tools/dev.py
 
+verify verify-run: export VERIFY_FLOW = $(value FLOW)
+
 verify:
 	uv run --project backend python tools/verify_build.py build
-	cd app && npx playwright test $(FLOW)
+	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(value FLOW),--flow="$$VERIFY_FLOW")
 
 verify-run:
 	uv run --project backend python tools/verify_build.py check
-	cd app && npx playwright test $(FLOW)
+	uv run --project backend python tools/test_areas.py verify $(if $(AREA),--area "$(AREA)") $(if $(value FLOW),--flow="$$VERIFY_FLOW")
 
 verify-live:
 	@command -v claude >/dev/null 2>&1 || { echo "make verify-live requires Claude Code (claude) on PATH." >&2; exit 1; }
@@ -63,3 +67,15 @@ app-image:
 
 api-types:
 	uv run --project backend python tools/api_types.py
+
+android-setup:
+	bash packaging/android.sh setup
+
+android-debug:
+	bash packaging/android.sh debug
+
+android:
+	bash packaging/android.sh release
+
+android-key:
+	bash packaging/android.sh key

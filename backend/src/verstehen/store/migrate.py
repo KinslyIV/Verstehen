@@ -20,7 +20,11 @@ async def migrate(database: Database, directory: Path = MIGRATIONS) -> None:
         number = int(path.name[:4])
         if number in applied:
             continue
-        async with database.transaction(script=path.read_text()) as connection:
+        script = path.read_text()
+        foreign_keys = not script.lstrip().startswith("-- foreign_keys: off")
+        async with database.transaction(
+            script=script, foreign_keys=foreign_keys
+        ) as connection:
             await connection.execute(
                 "INSERT INTO schema_migrations VALUES (?, ?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
                 (number, path.name),

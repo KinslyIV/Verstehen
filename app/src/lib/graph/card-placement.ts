@@ -16,3 +16,15 @@ export function placeNodeCard(
 		top = Math.max(anchor.y - GAP - card.height, MARGIN);
 	return { left, top };
 }
+
+/** At the pointer, pulled back inside the container when it would overflow the right or bottom edge. */
+export function placeContextMenu(
+	anchor: { x: number; y: number },
+	menu: { width: number; height: number },
+	container: { width: number; height: number }
+): { left: number; top: number } {
+	return {
+		left: Math.max(Math.min(anchor.x, container.width - menu.width - MARGIN), MARGIN),
+		top: Math.max(Math.min(anchor.y, container.height - menu.height - MARGIN), MARGIN)
+	};
+}
