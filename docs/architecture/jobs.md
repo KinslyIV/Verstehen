@@ -54,6 +54,10 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
   `allow-same-origin`. The app CSP is relaxed (`'unsafe-inline'` and `https:`) so demos can load
   their CDN scripts; the sandbox and the API token still protect the app. Demos are never
   delivered untested.
+- **Wheel.** WebKitGTK does not chain the wheel out of the sandboxed frame, so scrolling stalls
+  over a demo. The shell script cancels a wheel turn nothing inside the demo can scroll and posts
+  `{type: 'demo-wheel', x, y}` (`demoWheel`); the card scrolls its dialog when zoomed, else the
+  nearest scrolling ancestor (the transcript).
 - **Zoom.** `demo-card.svelte` zooms in place: its own `<dialog>` is opened with `showModal()` and
   a spacer (`demo-spacer`) holds the card's height in the transcript, so the iframe is never
   remounted and its live state survives. The sandboxed demo cannot hand Escape to the page, so the

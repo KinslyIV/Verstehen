@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import {
 	demoSrcDoc,
+	demoWheel,
 	isDemoEscape,
 	embedLearnerImage,
 	formatElapsed,
@@ -33,6 +34,13 @@ test('demo_bridge_bounds_height_and_reports_errors', () => {
 	expect(isDemoEscape({ type: 'demo-escape' })).toBe(true);
 	expect(isDemoEscape({ type: 'demo-resize' })).toBe(false);
 	expect(isDemoEscape('demo-escape')).toBe(false);
+});
+
+test('demo_bridge_forwards_wheel_turns_nothing_inside_can_scroll', () => {
+	expect(demoSrcDoc('<body>demo</body>')).toContain('"demo-wheel"');
+	expect(demoWheel({ type: 'demo-wheel', x: 0, y: -120 })).toEqual({ x: 0, y: -120 });
+	expect(demoWheel({ type: 'demo-wheel', x: 0, y: NaN })).toBeNull();
+	expect(demoWheel({ type: 'demo-resize', height: 10 })).toBeNull();
 });
 
 test('annotation_embeds_only_the_image_placeholder_and_svg_is_an_image', () => {

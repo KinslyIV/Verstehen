@@ -174,6 +174,15 @@ export function isDemoEscape(data: unknown): boolean {
 	return asObject(data)?.type === 'demo-escape';
 }
 
+/** A wheel turn the frame forwarded because nothing inside the demo could scroll, in pixels. */
+export function demoWheel(data: unknown): { x: number; y: number } | null {
+	const message = asObject(data);
+	if (message?.type !== 'demo-wheel') return null;
+	const { x, y } = message;
+	if (typeof x !== 'number' || typeof y !== 'number') return null;
+	return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
 export const DEMO_BRIDGE_SCRIPT = `<script>(function(){
 var send=function(m){try{parent.postMessage(m,"*")}catch(e){}};
 var post=function(){
@@ -188,6 +197,8 @@ if(typeof ResizeObserver!=="undefined"){new ResizeObserver(post).observe(documen
 window.addEventListener("resize",post);
 window.addEventListener("load",post);
 window.addEventListener("keydown",function(e){if(e.key==="Escape")send({type:"demo-escape"})});
+var scrolls=function(n,dy){for(;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentNode){var o=getComputedStyle(n).overflowY;if((o==="auto"||o==="scroll")&&(dy<0?n.scrollTop>0:n.scrollTop+n.clientHeight<n.scrollHeight))return true}return false};
+window.addEventListener("wheel",function(e){if(e.defaultPrevented||e.ctrlKey||scrolls(e.target,e.deltaY))return;e.preventDefault();var k=e.deltaMode===1?16:e.deltaMode===2?innerHeight:1;send({type:"demo-wheel",x:e.deltaX*k,y:e.deltaY*k})},{passive:false});
 window.addEventListener("error",function(e){send({type:"demo-error",message:e.message||String(e)})});
 setTimeout(post,50);
 setTimeout(post,400);
