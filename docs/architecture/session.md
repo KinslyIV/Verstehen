@@ -48,6 +48,9 @@ Frontend, `app/src/`:
   prober and teacher. A pending problem dismissal is turned into a synthetic `conclude` pair ahead
   of the next input, projection renders `practice-thinking` and `practice-next` as learner
   messages and skips `problem-dismissed`, and settlement skips extraction.
+- **Create.** `POST /api/sessions` takes `kind`, and optionally `folder_id` (`NewSessionInput`):
+  the new session is placed in that folder in the same call, and an unknown folder answers 400
+  "Folder no longer exists." before anything is created.
 - **Write-ahead.** The input is saved before inference, so a crash never loses what the learner
   sent. A refusal from `validate`, `model_gate`, or the claim saves nothing; an exception in a
   later stage (for example `build_agent`) returns 500 after the input is already saved.
@@ -88,6 +91,14 @@ Frontend, `app/src/`:
 - **Titles.** The first accepted text input starts a foreground cheap-slot call in parallel with
   the turn. A successful title replaces the current one, including a rename made before it
   arrived; a failure keeps whatever title the session has, with no retry.
+
+## Turn minimap
+
+`lib/session/turn-minimap.ts` derives one tick per typed learner message, answered question (not a
+skipped one), and practice problem, each anchored by `messageId` so a click scrolls that item to
+the top of the thread. `turn-minimap.svelte` draws the ticks evenly spaced at the left edge with a
+fisheye on hover and a preview card, and highlights the last item in view. It renders only on a
+fine pointer at 768 px and wider, and with at least two ticks.
 
 ## Session stats
 

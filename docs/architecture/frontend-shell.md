@@ -51,11 +51,30 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   snapshot; a failed read keeps the last directory, and with none the list is flat and offers no
   folder controls. Folder rows (`sidebar-folder-row.svelte`) only open or close on click; the open
   set is saved in `localStorage` (`verstehen-sidebar-open-folders`). Right-click or long-press opens
-  Rename, New subfolder, and Delete, which is enabled only when `folderHoldsNoSources` and then
+  Rename, New subfolder, New teaching here, New practice here, and Delete, which is enabled only when `folderHoldsNoSources` and then
   sends `delete-folder-tree` for that folder; the server recomputes the subtree in its transaction
   and removes all of it or answers 409. Drag payload and drop
   rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` turns `draggable`
   off on touch-primary layouts and `SourceDragRow` cancels touch-origin drags on hybrid devices.
+  The Tauri window sets `dragDropEnabled: false` (`tauri.conf.json`, pinned by `tauri-config.test.ts`),
+  because WebKitGTK otherwise swallows HTML5 drops. The drag carries `text/plain` besides the app
+  type, and `SourceDrop` keeps the dragged item in memory as a fallback when the engine hides
+  custom types during dragover; session rows set `draggable={false}` on their `<a href>`.
+- **Session menu and folder starts:** a session's context menu has **Move to folder** (a submenu of
+  `folderChoices`: No folder, then the tree indented; the current parent is disabled), which sends
+  the same `move` operation as a drop, so touch can move sessions too. **New teaching here** and
+  **New practice here** open `/session/new?folder=<id>` (`newSessionQuery`); `new-session.svelte`
+  sends it as `folder_id` on `POST /api/sessions` ([session](session.md#how-it-works)).
+- **Transcript width:** Settings → Appearance → **Transcript width** is a slider from 46 to 120 rem
+  in 2 rem steps, with **Full** (no cap) as the default. `TranscriptWidth`
+  (`layout/transcript-width.svelte.ts`) keeps it per device in `localStorage`
+  (`verstehen-transcript-width`) and sets `--verstehen-transcript-max` on `<html>`; a script in
+  `app.html` sets it before first paint. The lesson thread, composer, question and practice docks,
+  stats bar, and new-session screen cap their column with it (`layout.css`). A missing or invalid
+  stored value means Full.
+- **Scroll to bottom:** the thread's `<Scroller.Button>` is always mounted (also while a turn or a
+  question is pending) and shows only while scrolled away from the end; the turn minimap rail is
+  documented in [session](session.md#turn-minimap).
 - **Stats bar:** `stats-bar.svelte` sits under the composer or dock on `/session/{id}` once stats
   load (`41k / 200k · CLI`, `? · —` before a completed reply, absent on `/` or `/session/new`):
   `—` for an unpriced model, never a dollar zero. Its popover is Session stats (see [session](session.md#session-stats)); outside

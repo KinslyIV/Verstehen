@@ -429,5 +429,14 @@ alternative, and the consequence, until the user reviews them at the end of the 
   (`0f6c47d0`, `7c65e370`) deletes the folder with its sessions after a scoped confirmation.
 - **No compact sidebar setting:** LH's Appearance → compact session sidebar (`530cc9f0`) is not
   ported; the sidebar has one row density.
-- **Touch layouts browse folders only:** phones and tablets open, close, search, and use the folder
-  menu, but cannot move sessions or folders (LH's moves are HTML5 drags, desktop only).
+- **Touch layouts cannot drag, but can move sessions:** phones and tablets open, close, search, and
+  use the folder menu, and move a session with **Move to folder**; folders move only by drag on
+  desktop (LH's moves are HTML5 drags, desktop only).
+- **Folder and session menu additions:** **Move to folder** on sessions and **New teaching here** /
+  **New practice here** on folders (a `folder_id` on `POST /api/sessions`) have no LH counterpart.
+- **Transcript width is per device:** the slider and its range are LH's, but the value lives in
+  `localStorage`, not in the saved settings, so a phone and a laptop on one server can differ.
+- **Turn minimap rail:** a fine-pointer tick rail at the lesson's left edge with previews and
+  click-to-jump; LH has no turn navigation beyond its scroll-to-bottom button.
+- **Demos zoom in place:** LH opens images and figures fullscreen but not demos; Verstehen zooms a
+  demo in a dialog without remounting its iframe, so its state survives.

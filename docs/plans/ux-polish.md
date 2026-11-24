@@ -22,22 +22,22 @@
 
 ## Tasks (commit order)
 
-### 0. Workflow docs and approved plan (orchestrator)
+### 0. Workflow docs and approved plan (orchestrator) — done (`35fc960`)
 - `AGENTS.md`, `docs/workflow.md`, `.claude/skills/verify/SKILL.md`, `.agents/skills/verify/SKILL.md`, `docs/plans/ux-polish.md`.
 
-### 1. Folders — DnD fix, Move to folder, New teaching/practice here
+### 1. Folders — DnD fix, Move to folder, New teaching/practice here — done (`386889d`)
 - Files: `app/src-tauri/tauri.conf.json`, `app/src/lib/api/tauri-config.test.ts`, `app/src/lib/components/session-list.svelte`, `app/src/lib/components/sidebar-folder-row.svelte`, `app/src/lib/components/new-session.svelte`, `app/src/lib/graph/source-drag-row.svelte`, `app/src/lib/graph/source-drop.svelte.ts`, `app/src/lib/graph/source-organization.ts`, `app/src/lib/graph/source-organization.test.ts`, `app/src/lib/graph/source-drop.svelte.test.ts`, `backend/src/verstehen/api/sessions.py`, `backend/src/verstehen/session/sessions.py`, `app/src/lib/api/client.ts`, `app/src/lib/api/schema.d.ts`, `backend/tests/session/test_session_list.py`, `app/verify/shell/sidebar-folders.flow.ts`, `app/verify/shell/mobile-sidebar-folders.flow.ts`.
 - Scoped check: `make check AREA='session graph shell'` and `make verify FLOW='sidebar-folders mobile-sidebar-folders'`.
 
-### 2. Desktop chat width (Settings → Appearance → Transcript width)
+### 2. Desktop chat width (Settings → Appearance → Transcript width) — done (`80905a0`)
 - Files: `app/src/lib/layout/transcript-width.svelte.ts`, `app/src/lib/layout/transcript-width.test.ts`, `app/src/app.html`, `app/src/routes/layout.css`, `app/src/lib/components/settings.svelte`, `app/src/lib/components/settings.svelte.test.ts`, `app/src/lib/components/session-thread.svelte`, `app/src/lib/components/composer.svelte`, `app/src/lib/questions/question-dock.svelte`, `app/src/lib/practice/practice-dock.svelte`, `app/src/lib/components/stats-bar.svelte`, `app/src/lib/components/new-session.svelte`, `app/verify/shell/settings.flow.ts`.
 - Scoped check: `make check AREA='shell session'` and `make verify FLOW='settings shell-layout'`.
 
-### 3. Zoom popups (demos, SVG figures, learner images)
+### 3. Zoom popups (demos, SVG figures, learner images) — done (`381409e`)
 - Files: `app/src/lib/jobs/jobs.ts`, `app/src/lib/jobs/jobs.test.ts`, `app/src/lib/jobs/demo-card.svelte`, `app/src/lib/jobs/visual-card.svelte`, `app/src/lib/jobs/cards.svelte.test.ts`, `app/src/lib/teaching/image-card.svelte`, `app/src/lib/teaching/image-card.svelte.test.ts`, `app/verify/jobs/job-demo.flow.ts`, `app/verify/jobs/job-visual-annotate.flow.ts`, `app/verify/teaching/show-image.flow.ts`.
 - Scoped check: `make check AREA='jobs teaching'` and `make verify FLOW='job-demo job-visual-annotate show-image'`.
 
-### 4. Side turn-minimap rail & scroll-to-bottom button
+### 4. Side turn-minimap rail & scroll-to-bottom button — done (`75736d8`)
 - Files: `app/src/lib/session/turn-minimap.ts`, `app/src/lib/session/turn-minimap.test.ts`, `app/src/lib/session/turn-minimap.svelte`, `app/src/lib/session/turn-minimap.svelte.test.ts`, `app/src/lib/components/session-thread.svelte`, `app/verify/session/thread-navigation.flow.ts`, `docs/feature-map.md`.
 - Scoped check: `make check AREA='session shell'` and `make verify FLOW='thread-navigation question-collapse mobile-question-dock'`.
 

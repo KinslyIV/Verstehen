@@ -54,6 +54,12 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
   `allow-same-origin`. The app CSP is relaxed (`'unsafe-inline'` and `https:`) so demos can load
   their CDN scripts; the sandbox and the API token still protect the app. Demos are never
   delivered untested.
+- **Zoom.** `demo-card.svelte` zooms in place: its own `<dialog>` is opened with `showModal()` and
+  a spacer (`demo-spacer`) holds the card's height in the transcript, so the iframe is never
+  remounted and its live state survives. The sandboxed demo cannot hand Escape to the page, so the
+  demo shell script posts `{type: 'demo-escape'}` (`isDemoEscape` in `jobs.ts`) and the card closes.
+  `visual-card.svelte` (figures) and `teaching/image-card.svelte` open their picture in the shared
+  `components/zoom-dialog.svelte`, which renders its content only while open.
 - **Artifact views.** The invert switch of figures and demos is saved in `artifact_views`, never
   sent to the model.
 
