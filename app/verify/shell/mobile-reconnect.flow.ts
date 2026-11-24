@@ -28,7 +28,7 @@ test('mobile-reconnect', async ({ page, context }) => {
 			cutStreams.push(request.url());
 	});
 	await page.goto('/');
-	await page.getByRole('textbox').fill('Derivatives');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).tap();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
 	await expect(page.getByText(firstChunk, { exact: false })).toBeVisible();

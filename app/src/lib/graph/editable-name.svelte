@@ -21,10 +21,10 @@
 	let failure = $state('');
 	let input = $state<HTMLInputElement>();
 	let submitting = false;
-	let cancelled = false;
+	let finished = false;
 
 	export async function edit() {
-		cancelled = false;
+		finished = false;
 		draft = name;
 		editing = true;
 		await tick();
@@ -37,7 +37,7 @@
 	});
 
 	async function commit() {
-		if (cancelled || submitting) return;
+		if (finished || submitting) return;
 		const value = draft.trim();
 		if (!value) {
 			editing = false;
@@ -51,6 +51,7 @@
 		submitting = true;
 		try {
 			await onsave(value);
+			finished = true;
 			editing = false;
 			failure = '';
 		} catch (cause) {
@@ -62,7 +63,7 @@
 	}
 
 	function cancel() {
-		cancelled = true;
+		finished = true;
 		editing = false;
 		failure = '';
 		oncancel?.();

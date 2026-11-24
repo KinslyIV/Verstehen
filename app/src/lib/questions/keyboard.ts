@@ -85,8 +85,16 @@ export function escAbortTarget({
 	return busy ? 'turn' : null;
 }
 
-export function hasOpenOverlay(): boolean {
-	return !!document.querySelector(
-		'[data-slot="dialog-content"]:not([data-state="closed"]), [data-slot="sidebar"][data-mobile="true"]:not([data-state="closed"]), [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"], [data-mermaid-focus]'
-	);
+const OVERLAYS = [
+	'[data-slot="dialog-content"]:not([data-state="closed"])',
+	'dialog:modal',
+	'[data-popover-content][data-state="open"]',
+	'[data-context-menu-content][data-state="open"]',
+	'[data-mermaid-focus]'
+];
+const DRAWER = '[data-slot="sidebar"][data-mobile="true"]:not([data-state="closed"])';
+
+/** True while a dialog, menu, popover, or the phone drawer covers the page; `ignoreDrawer` leaves the drawer out. */
+export function hasOpenOverlay({ ignoreDrawer = false } = {}): boolean {
+	return !!document.querySelector((ignoreDrawer ? OVERLAYS : [...OVERLAYS, DRAWER]).join(', '));
 }

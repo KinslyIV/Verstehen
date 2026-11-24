@@ -8,12 +8,13 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, StreamingResponse
 
-from verstehen.api.deps import get_session_service, get_turn_service
+from verstehen.api.deps import get_session_service, get_stats_service, get_turn_service
 from verstehen.graph.context import GraphContext
 from verstehen.graph.coverage import SessionCoverage
 from verstehen.session.events import Notification, TurnEvent
 from verstehen.session.results import Refused
 from verstehen.session.sessions import ListedSession, SessionService
+from verstehen.session.stats import SessionStats, StatsService
 from verstehen.session.turns import TurnInput, TurnService
 from verstehen.sidechat.segments import SideSegments
 from verstehen.store.entries import Entry
@@ -23,6 +24,7 @@ from verstehen.teaching.questions.inputs import DismissInput
 
 SessionServiceDependency = Annotated[SessionService, Depends(get_session_service)]
 TurnServiceDependency = Annotated[TurnService, Depends(get_turn_service)]
+StatsServiceDependency = Annotated[StatsService, Depends(get_stats_service)]
 HEADERS = {"Cache-Control": "no-cache, no-transform", "X-Accel-Buffering": "no"}
 
 
@@ -140,6 +142,14 @@ async def get_session_item(
 ) -> SessionItem | None:
     result = await session_service.item(session_id)
     return None if result is None else session_item(result)
+
+
+@router.get("/api/sessions/{session_id}/stats", response_model=SessionStats)
+async def get_session_stats(session_id: str, stats_service: StatsServiceDependency):
+    result = await stats_service.stats(session_id)
+    if result is None:
+        return JSONResponse({"error": "Not found"}, status_code=404)
+    return result
 
 
 @router.get(

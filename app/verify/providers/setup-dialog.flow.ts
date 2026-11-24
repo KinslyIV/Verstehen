@@ -29,7 +29,9 @@ test('setup-dialog', async ({ page }) => {
 		else if (connected) await route.continue();
 		else await route.fulfill({ json: { accounts: [], slots: {} } });
 	});
-	await page.getByRole('textbox').fill('Understanding derivatives');
+	await page
+		.getByRole('textbox', { name: 'What do you want to learn?' })
+		.fill('Understanding derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByRole('heading', { name: 'Connect a provider' })).toBeVisible();
 	await expect(
@@ -66,13 +68,17 @@ test('setup-dialog', async ({ page }) => {
 	await page.getByRole('button', { name: 'Scripted teacher', exact: true }).click();
 	await page.getByRole('button', { name: 'Save models', exact: true }).click();
 	await expect(page.getByRole('dialog')).toHaveCount(0);
-	await expect(page.getByRole('textbox')).toHaveValue('Understanding derivatives');
+	await expect(page.getByRole('textbox', { name: 'What do you want to learn?' })).toHaveValue(
+		'Understanding derivatives'
+	);
 	expect((await (await page.request.get('/api/sessions')).json()).sessions).toHaveLength(0);
 	await page.request.put('/api/settings', { data: { models: {} } });
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page.getByRole('dialog')).toBeVisible();
 	await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-	await expect(page.getByRole('textbox')).toHaveValue('Understanding derivatives');
+	await expect(page.getByRole('textbox', { name: 'What do you want to learn?' })).toHaveValue(
+		'Understanding derivatives'
+	);
 	connected = false;
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(

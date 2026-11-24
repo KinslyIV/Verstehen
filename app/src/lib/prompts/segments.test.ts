@@ -16,6 +16,13 @@ test('segment_names_drop_the_number_prefix_and_extension', () => {
 	expect(segmentName('shared/16-mental-model.md')).toBe('Mental model');
 });
 
+test('segment_names_drop_leading_digits_and_dashes_and_turn_dashes_into_spaces', () => {
+	expect(segmentName('practice/00-base.md')).toBe('Base');
+	expect(segmentName('x/05-a-b--c.md')).toBe('A b c');
+	expect(segmentName('prober/10-probe-doctrine.md')).toBe('Probe doctrine');
+	expect(segmentName('plain.md')).toBe('Plain');
+});
+
 test('sections_list_each_agent_then_shared_fragments_once_with_their_users', () => {
 	const view: PromptSegments = {
 		teacher: [

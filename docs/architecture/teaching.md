@@ -53,7 +53,9 @@ Frontend, `app/src/lib/`:
   files and its prompt lock) lists each agent's fragments (`GET /api/prompts`: shipped text, saved
   override, in use, shared). Saving writes only the file and keeps the switch, so a failed write
   changes nothing; the UI then switches the override on (**Save and activate**), and a failed
-  switch becomes **Retry activation** without rewriting the file. Switching on needs a readable
+  switch becomes **Retry activation** without rewriting the file. `PUT …/enabled` replies with
+  the switch as stored, and the page counts a switch (and an activation) as done only when that
+  reply shows the requested state; reads of the list are aborted when a newer one starts. Switching on needs a readable
   override. Deleting clears the switch and records the file as deleted in one transaction, then unlinks it
   (LearnHarness's order), so a failed record changes nothing and a failed unlink leaves the file with
   the switch off. An edit holds an

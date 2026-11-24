@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-23 (desktop responsiveness, merged with `dev` after Milestone D PR 2).
+> PRs. Last update: 2026-11-23 (M11a built and verified; PR into `dev` ready for review).
 
 ## Where we are
 
@@ -51,11 +51,17 @@ by `backend/tests/shell/test_startup_imports.py`.
 
 ## Next
 
-1. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
-2. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
+1. **M11a** ([plan](plans/m11-folders-search-stats.md)) on `m11-folders-search-stats`: sidebar
+   folders, title search, graph folder filter, stats bar, 90% quiz confidence, and the prompt
+   editor follow-ups (built and verified across four review rounds; adds six flows for 69 total;
+   PR into `dev` ready alongside [implementation decisions](decisions.md#waiting-for-your-review)).
+   The specification is now LH `069a6a11`; the other changes since `cb25c8e` are the
+   [LH catch-up list](roadmap.md#lh-catch-up).
+2. Review the desktop responsiveness changes and [implementation decisions](decisions.md#waiting-for-your-review).
+3. Mobile & sync Milestone D ([plan](plans/mobile-sync-d.md)): PR #15 (the Capacitor Android app,
    remote mode, `/pair`, and Android build tooling) and PR #16 (the phone and tablet layouts,
    `/graph` touch, phone Settings, and stream recovery) are merged into `dev`. Next is M11.
-3. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
+4. Merge `dev` into `main` after addressing the [known gaps](roadmap.md#known-gaps) that affect CI.
 
 ## Open questions
 

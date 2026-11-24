@@ -19,6 +19,7 @@ from verstehen.providers.claude_code.adapter import (
     ClaudeCodeAccountAdapter,
     lockdown_options,
 )
+from verstehen.providers.claude_code.binary import BinaryStatus
 from verstehen.providers.claude_code.context import context_window
 from verstehen.providers.claude_code.model import ClaudeCodeModel
 from verstehen.store.settings import ModelPick
@@ -421,3 +422,23 @@ def test_status_and_catalog_use_safe_metadata(tmp_path: Path, monkeypatch):
         catalog = client.get("/api/models").json()
         assert catalog["accounts"][0]["account"]["state"] == "not_installed"
         assert catalog["accounts"][0]["models"] == []
+
+
+def test_seen_limits_cover_only_the_binary_already_inspected():
+    adapter = ClaudeCodeAccountAdapter()
+    adapter.runtime_limits = {
+        ("/a/claude", "1.0", "haiku"): 100,
+        ("/a/claude", "0.9", "opus"): 200,
+        ("/b/claude", "1.0", "sonnet"): 300,
+    }
+    assert adapter.seen_limits() == {}
+    adapter.binary_status = BinaryStatus(
+        state="tested", path=Path("/a/claude"), version="1.0"
+    )
+    assert adapter.seen_limits() == {"haiku": 100}
+    adapter.binary_status = BinaryStatus(
+        state="too_old", path=Path("/a/claude"), version="1.0"
+    )
+    assert adapter.seen_limits() == {}
+    adapter.binary_status = BinaryStatus(state="not_installed")
+    assert adapter.seen_limits() == {}

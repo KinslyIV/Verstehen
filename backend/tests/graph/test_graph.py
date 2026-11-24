@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,7 @@ from verstehen.graph.candidates import (
 )
 from verstehen.graph.costs import graph_cost_summary
 from verstehen.graph.deletion import delete_node_traces, delete_sources_traces
+from verstehen.graph.errors import GraphRefused
 from verstehen.graph.merge import (
     AuditVerdicts,
     Chain,
@@ -852,7 +854,9 @@ def test_source_deletion_blocks_new_extractions_until_finished(
 
         client.portal.call(finish_blocker)
 
-        original_delete = app.state.graph_service.graph_store.transaction
+        original_delete = (
+            app.state.graph_service.graph_store.transaction_with_session_ids
+        )
 
         def probe_launch():
             with pytest.raises(GraphRefused) as err:
@@ -860,7 +864,7 @@ def test_source_deletion_blocks_new_extractions_until_finished(
             launched_during_delete.append((err.value.status, err.value.code))
             return original_delete()
 
-        app.state.graph_service.graph_store.transaction = probe_launch
+        app.state.graph_service.graph_store.transaction_with_session_ids = probe_launch
         response = client.request(
             "DELETE",
             "/api/graph/sources",
@@ -911,3 +915,137 @@ def test_graph_formatters_separate_prober_and_auditor_views():
     assert 'No propositions born in session "s2"' in format_graph_propositions(
         ledger, "s2", auditor=True
     )
+
+
+def folder_client(tmp_path: Path):
+    return TestClient(create_app(Settings(tmp_path)), headers={"host": "localhost"})
+
+
+def organize(client: TestClient, **action):
+    return client.post("/api/graph/sources", json=action)
+
+
+def new_folder(client: TestClient, name: str, parent_id: str | None = None) -> str:
+    result = organize(
+        client, action="create-folder", name=name, parent_id=parent_id
+    ).json()
+    return result["created_folder_id"]
+
+
+def folder_names(client: TestClient) -> set[str]:
+    folders = client.get("/api/graph/sources").json()["organization"]["folders"]
+    return {folder["name"] for folder in folders}
+
+
+def test_deleting_a_folder_tree_removes_the_parent_with_its_empty_children(
+    tmp_path: Path,
+):
+    with folder_client(tmp_path) as client:
+        parent = new_folder(client, "A")
+        child = new_folder(client, "B", parent)
+        new_folder(client, "C", child)
+        new_folder(client, "Other")
+        result = organize(client, action="delete-folder-tree", id=parent)
+        assert result.status_code == 200
+        assert folder_names(client) == {"Other"}
+
+
+def test_a_child_moved_out_before_the_tree_delete_survives(tmp_path: Path):
+    with folder_client(tmp_path) as client:
+        parent = new_folder(client, "A")
+        child = new_folder(client, "B", parent)
+        moved = organize(client, action="move", kind="folder", id=child, parent_id=None)
+        assert moved.status_code == 200
+        assert (
+            organize(client, action="delete-folder-tree", id=parent).status_code == 200
+        )
+        assert folder_names(client) == {"B"}
+
+
+def test_a_source_added_before_the_tree_delete_refuses_it_and_deletes_nothing(
+    tmp_path: Path,
+):
+    with folder_client(tmp_path) as client:
+        session_id = client.post("/api/sessions", json={}).json()["id"]
+        parent = new_folder(client, "A")
+        child = new_folder(client, "B", parent)
+        placed = organize(
+            client, action="move", kind="source", id=session_id, parent_id=child
+        )
+        assert placed.status_code == 200
+        refused = organize(client, action="delete-folder-tree", id=parent)
+        assert refused.status_code == 409
+        assert refused.json()["code"] == "folder_not_empty"
+        assert folder_names(client) == {"A", "B"}
+        placements = client.get("/api/graph/sources").json()["organization"][
+            "placements"
+        ]
+        assert placements[session_id]["folder_id"] == child
+
+
+def test_deleting_an_unknown_folder_tree_is_refused(tmp_path: Path):
+    with folder_client(tmp_path) as client:
+        assert (
+            organize(client, action="delete-folder-tree", id="nope").status_code == 400
+        )
+
+
+def test_a_session_created_and_placed_while_delete_waits_for_the_lock_refuses_the_delete(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        assert client.portal is not None
+
+        async def scenario():
+            graph_service = app.state.graph_service
+            sessions_store = SessionsStore(app.state.database)
+            parent = (
+                await graph_service.organize(
+                    {"action": "create-folder", "name": "A", "parent_id": None}
+                )
+            ).created_folder_id
+            assert parent is not None
+            child = (
+                await graph_service.organize(
+                    {"action": "create-folder", "name": "B", "parent_id": parent}
+                )
+            ).created_folder_id
+            assert child is not None
+
+            created_id: str | None = None
+            original_transaction = app.state.database.transaction
+
+            @asynccontextmanager
+            async def race_before_delete_transaction(*args, **kwargs):
+                nonlocal created_id
+                app.state.database.transaction = original_transaction
+                session = await sessions_store.create("Concurrent")
+                created_id = session.id
+                await graph_service.organize(
+                    {
+                        "action": "move",
+                        "kind": "source",
+                        "id": session.id,
+                        "parent_id": child,
+                    }
+                )
+                async with original_transaction(*args, **kwargs) as connection:
+                    yield connection
+
+            app.state.database.transaction = race_before_delete_transaction
+            with pytest.raises(GraphRefused) as error:
+                await graph_service.organize(
+                    {"action": "delete-folder-tree", "id": parent}
+                )
+            assert error.value.status == 409
+            assert error.value.code == "folder_not_empty"
+            directory = await graph_service.directory()
+            assert {folder.name for folder in directory.organization.folders} == {
+                "A",
+                "B",
+            }
+            assert created_id is not None
+            assert directory.organization.placements[created_id].folder_id == child
+
+        client.portal.call(scenario)

@@ -36,7 +36,8 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
   the pieces fit, approved before any implementation. Every option offered to the user says what it
   means, its consequences, what it rules out, how reversible it is, and what LearnHarness does,
   with a recommendation; check the user understood before they choose.
-- **LearnHarness's code is the specification** (commit `cb25c8e`). When a Part A doc and the code
+- **LearnHarness's code is the specification** (commit `069a6a11`; changes since the earlier
+  pin `cb25c8e` are the [LH catch-up list](docs/roadmap.md#lh-catch-up)). When a Part A doc and the code
   disagree, the code is right: report the mismatch, don't fix the doc yourself. A behavior change
   from LearnHarness needs a decision in `docs/decisions.md`, in the same commit as the code.
 - **Decided is what the docs say**: the area docs describe the decided design, and

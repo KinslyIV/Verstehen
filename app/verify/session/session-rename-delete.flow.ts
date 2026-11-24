@@ -2,7 +2,7 @@ import { test, expect } from '../fixtures';
 test.use({ script: 'verify/scripts/session.json' });
 test('session-rename-delete', async ({ page }) => {
 	await page.goto('/');
-	await page.getByRole('textbox').fill('Derivatives');
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Derivatives');
 	await page.getByRole('button', { name: 'Send', exact: true }).click();
 	await expect(page).toHaveURL(/\/session\/[^/]+$/);
 	await expect(page.getByRole('button', { name: "AGENT'S THINKING", exact: true })).toBeVisible();

@@ -15,6 +15,7 @@ import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
 export type SessionItem = components['schemas']['SessionItem'];
+export type SessionStats = components['schemas']['SessionStats'];
 export type SessionKind = SessionItem['kind'];
 export type Entry = SessionDetail['entries'][number];
 export type ToolResult = components['schemas']['ToolResultEntry'];
@@ -202,6 +203,9 @@ const sessionPath = (id: string) => `/api/sessions/${encodeURIComponent(id)}`;
 export async function getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {
 	return (await request(sessionPath(id), { signal })).json();
 }
+export async function getSessionStats(id: string, signal?: AbortSignal): Promise<SessionStats> {
+	return (await request(`${sessionPath(id)}/stats`, { signal })).json();
+}
 export async function getSessionItem(
 	id: string,
 	signal?: AbortSignal
@@ -334,11 +338,13 @@ export async function savePromptOverride(path: string, text: string): Promise<vo
 export async function deletePromptOverride(path: string): Promise<void> {
 	await request(`${promptPath(path)}/override`, { method: 'DELETE' });
 }
-export async function setPromptEnabled(path: string, enabled: boolean): Promise<void> {
-	await request(`${promptPath(path)}/enabled`, {
+/** Resolves with the switch as the server stored it. */
+export async function setPromptEnabled(path: string, enabled: boolean): Promise<boolean> {
+	const reply = await request(`${promptPath(path)}/enabled`, {
 		method: 'PUT',
 		body: JSON.stringify({ enabled })
 	});
+	return (await reply.json()).enabled;
 }
 export async function setDefaultModel(pick: ModelPick): Promise<ModelPick> {
 	return (
@@ -525,7 +531,8 @@ export type OrganizationAction =
 	| { action: 'rename-folder'; id: string; name: string }
 	| { action: 'rename-source'; id: string; name: string }
 	| { action: 'move'; kind: 'source' | 'folder'; id: string; parent_id: string | null }
-	| { action: 'delete-folder'; id: string };
+	| { action: 'delete-folder'; id: string }
+	| { action: 'delete-folder-tree'; id: string };
 export async function getSourceDirectory(signal?: AbortSignal): Promise<SourceDirectory> {
 	return (await request('/api/graph/sources', { signal })).json();
 }
