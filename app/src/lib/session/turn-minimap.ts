@@ -10,8 +10,8 @@ export type TurnTick = {
 	excerpt: string;
 };
 
-export const TICK_SPACING = 14;
-const FISHEYE_RADIUS = 56;
+export const TICK_SPACING = 8;
+const FISHEYE_RADIUS = 32;
 const FISHEYE_MAX = 2.5;
 const EXCERPT_LENGTH = 160;
 
