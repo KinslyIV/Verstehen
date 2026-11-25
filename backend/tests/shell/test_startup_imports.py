@@ -286,3 +286,21 @@ def test_the_desktop_module_refuses_server_mode(tmp_path: Path):
     )
     assert result.returncode != 0
     assert "cannot be combined with server mode" in result.stderr
+
+
+def test_the_desktop_module_runs_the_command_it_parsed_like_verstehen_desktop(
+    tmp_path: Path,
+):
+    code = """
+import runpy
+import sys
+import types
+
+sys.argv = ["verstehen.desktop", "--self-check", "--port", "0"]
+seen = []
+sys.modules["verstehen.cli"] = types.SimpleNamespace(main=seen.append)
+runpy.run_module("verstehen.desktop", run_name="__main__")
+(arguments,) = seen
+assert (arguments.command, arguments.self_check, arguments.port) == ("desktop", True, "0")
+"""
+    _run_python(code, tmp_path)
