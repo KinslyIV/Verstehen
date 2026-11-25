@@ -31,6 +31,33 @@ alternative, and the consequence, until the user reviews them at the end of the 
   Packaging sets the bundled path.
 - **The Brave/Tavily "Get a key" links stay refused by the two-URL allowlist, now silently.**
   Tauri refused them with an error message; adding them to the allowlist is the alternative.
+- **The desktop process imports eagerly.** Importing PySide6 (shiboken6) leaves lazy names read
+  across modules as unresolved proxies, so `desktop/eager.py` sets a lazy-imports filter that
+  refuses every lazy import before anything else loads; server mode stays lazy. The cost is
+  every heavy SDK loading at desktop startup, behind the already painted window. No pytest
+  process imports PySide6; Qt tests run in subprocess probes.
+- **The desktop bundle keeps Playwright's Python package without its 158 MB driver.** Eager
+  imports load `headless.py`; the alternative is moving the Playwright import out of the shared
+  module. No desktop code path launches Playwright.
+- **`/api/health` adds `"desktop": true` in desktop mode only;** Settings → Tools hides Demo
+  browser from it. The alternative, treating a 404 on the demo-browser routes as the signal, is
+  brittle.
+- **Desktop demo-check messages match Playwright except where Qt reports differently:** resource
+  failures read `net::ERR_FAILED`, a load timeout `Timeout 30000ms exceeded.`, a probe error has
+  no stack; failed `fetch()` calls are not reported, and an error-level console line starting with
+  `Uncaught` counts as a page error. The contract fixtures compare failed requests by URL.
+- **Each desktop demo check gets its own off-the-record profile and page,** deleted after it;
+  isolation over a small cost per check.
+- **The self-check picks `qt-demo` when PySide6 is importable** (desktop bundle, dev), and
+  `playwright`/`headless` otherwise (server bundle).
+- **`tools/check_versions.py` is removed;** `backend/pyproject.toml` is the only version and the
+  release workflow checks the tag against it.
+- **The package smoke test proves the cookie from the app's access log** (the window's API calls
+  return 200, `/api/health` without the cookie 403) instead of adding a token hook to the app;
+  it ignores zombie `QtWebEngineProcess` children the build container's PID 1 never reaps, and
+  sets `--no-sandbox --disable-gpu` only for itself.
+- **PKGBUILD `depends` is a superset** of the Qt/Chromium runtime libraries (`ldd` found only
+  optional plugins missing); trimming waits for the laptop install.
 - **The `desktop` extra is `PySide6-Essentials` + `PySide6-WebEngine`** (6.12 split WebEngine into
   its own wheel); `PySide6-Addons` is not needed.
 
