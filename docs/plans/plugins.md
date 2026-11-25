@@ -1,7 +1,7 @@
 # Plugins: a plugin system for Verstehen
 
-> Status: **overview approved by the user (2026-11-25); steps drafted.** Branch: `plugins` off
-> `dev` (not created yet).
+> Status: **built on branch `plugins` (steps 1–6), awaiting review.** Overview approved by the
+> user 2026-11-25.
 
 ## Overview
 

@@ -1,7 +1,7 @@
 import { test as base, expect, type Frame, type Request } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
@@ -196,6 +196,8 @@ async def main():
 asyncio.run(main())
 `;
 
+const pluginFixtures = resolve(appDirectory, '../backend/tests/fixtures/plugins');
+
 export const learnHarnessFixture = resolve(
 	appDirectory,
 	'../backend/tests/fixtures/learnharness/basic'
@@ -241,6 +243,8 @@ export interface GraphSeed {
 export const test = base.extend<{
 	script: string;
 	learnHarnessFolder: string;
+	/** Fixture plugins (`backend/tests/fixtures/plugins/<name>`) copied into the data directory. */
+	plugins: string[];
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
@@ -263,6 +267,7 @@ export const test = base.extend<{
 }>({
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
+	plugins: [[], { option: true }],
 	expectedStatuses: [[], { option: true }],
 	goesOffline: [false, { option: true }],
 	client: ['sidecar', { option: true }],
@@ -301,11 +306,15 @@ export const test = base.extend<{
 			}
 		});
 	},
-	dataDirectory: async ({ script, learnHarnessFolder }, use) => {
+	dataDirectory: async ({ script, learnHarnessFolder, plugins }, use) => {
 		if (!script) throw new Error('Declare a fake-model script with test.use({ script: ... })');
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		try {
 			if (learnHarnessFolder) await importLearnHarness(learnHarnessFolder, directory);
+			for (const name of plugins)
+				await cp(resolve(pluginFixtures, name), resolve(directory, 'plugins', name), {
+					recursive: true
+				});
 			await use(directory);
 		} finally {
 			await rm(directory, { recursive: true, force: true });

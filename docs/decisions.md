@@ -14,6 +14,21 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Plugins (implementation):**
+
+- **MCP toolsets use `pydantic_ai.mcp.MCPToolset`** over `fastmcp-slim[client]` (the `mcp` extra),
+  because Pydantic AI 2.70 no longer has `MCPServerStdio`. Consequence: PyInstaller collects
+  `fastmcp` and `mcp` explicitly, and in the packaged app a stdio server must be an external
+  command, not a Python script (`sys.executable` is the `verstehen` binary). `make app` was not run.
+- **A toolset's tool names are read with `get_tools` and a minimal `RunContext`** once per turn, to
+  find collisions. Alternative: skip the check for toolsets; consequence: a clash would fail the
+  turn instead of dropping the plugin's contribution.
+- **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
+  desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
+  run plugin code on a device that has no plugin folder.
+- **Plugin warnings reuse `PluginInfo.warnings`** (an agent-turn refusal or failing factory), cleared
+  by the next clean turn.
+
 **Qt shell (implementation):**
 
 - **The desktop server prefers port 28420 and falls back to a random free port.** The page origin
@@ -484,6 +499,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **The user never enters a model's context limit.**
 - **ChatGPT model lists are cached** per account for the process's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
+
+### Plugins
+
+- **`@ctx.expose` and `ctx.backend.<name>(input)`** replace LH's `ctx.handle` and `ctx.call`: a
+  backend function is exposed by decorator, and the frontend calls it through a Proxy over one
+  host route, so plugin authors write no endpoints.
+- **A toolset hook** (`register_toolset`, for MCP servers over Pydantic AI's `MCPToolset`) beside
+  `register_tools`; LH has no MCP or toolset hook.
+- **A Python backend and a JS frontend.** LH's backend is JS; here it is a Python package in
+  `dist/backend/` with optional pure-Python `vendor/`, and the host installs nothing.
+- **Desktop only.** Server mode discovers no plugins, paired remote devices run none, and
+  `plugins/` and `plugins-state.json` are not synced. LH has no server or phone mode.
+- **Plugin tool factories are synchronous:** `register_tools(agents, factory)` calls the factory
+  once per turn and takes the tools it returns without awaiting.
+- **Not ported yet from LH's plugin API:** action keyboard shortcuts, the action context's `view`
+  (a session snapshot), and the parts listed as deferred in the [roadmap](roadmap.md).
+- **MCP servers in the packaged app** should be external commands: `sys.executable` is the
+  `verstehen` binary there, so a Python-script server does not start.
 
 ### Frontend
 

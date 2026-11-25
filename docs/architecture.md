@@ -47,7 +47,7 @@ The backend is `backend/src/verstehen/`, one package per LearnHarness topic. The
 by import-linter (`backend/pyproject.toml`):
 
 ```
-desktop  →  api | lh_import  →  sync  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
+desktop  →  api | lh_import  →  sync  →  session  →  jobs | sidechat | graph | plugins  →  teaching | providers  →  store
 ```
 
 `lh_import` is the one-off LearnHarness import ([store](architecture/store.md#importing-from-learnharness)),
@@ -56,7 +56,7 @@ imports PySide6 (a ruff rule enforces it), and it starts `api` through `create_a
 
 - A package imports only packages to its right. `session` calls `jobs`, `sidechat`, and `graph`
   directly; they reach a session only through plain functions injected at startup (for example
-  `wake_session`, `before_side_ask`, `graph_changed`).
+  `wake_session`, `before_side_ask`, `graph_changed`, and `plugins`' notification callbacks).
 - **All wiring happens once**, in `create_app` in [`app.py`](../backend/src/verstehen/app.py). Read
   it to see which service gets which store, callback, and collaborator.
 - ruff's banned-API rules keep `sqlite3`/`aiosqlite` in `store/` only, and keep Pydantic AI out of
@@ -126,6 +126,7 @@ settles. Details: [session and turns](architecture/session.md).
 | Background jobs | [jobs](architecture/jobs.md) | `jobs/`, `desktop/demo_runner.py`, `session/delivery.py`, `teaching/job_tools.py` | `lib/jobs/` | [subagents and background work](learnharness/subagents-and-background-work.md) |
 | Side chat | [side chat](architecture/sidechat.md) | `sidechat/` | `lib/sidechat/` | [side chat](learnharness/side-chat.md) |
 | Knowledge graph | [graph](architecture/graph.md) | `graph/` | `lib/graph/`, `/graph` | [knowledge graph](learnharness/knowledge-graph.md) |
+| Plugins | [plugins](architecture/plugins.md) | `plugins/`, `store/plugins.py`, `api/plugins.py` | `lib/plugins/`, Settings → Plugins, `/plugin/{id}/{view}` | LH's plugin API v1 (`docs/plugin-authoring.md`, no Part A doc) |
 | Providers and models | [providers](architecture/providers.md) | `providers/` | `lib/models/`, model menu, Accounts, setup | [providers](learnharness/providers.md) |
 | Storage | [store](architecture/store.md) | `store/`, migrations, `lh_import/` | — | [storage and events](learnharness/storage-and-events.md) |
 | API and events | [API and events](architecture/api-and-events.md) | `api/`, `session/events.py` | `lib/api/` | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |

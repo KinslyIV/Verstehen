@@ -13,8 +13,11 @@ step and its open questions are in [status](status.md); how each area works is i
   background workers, practice sessions, the activity dock, session search, themes, prompt
   overrides, and the subscription and CLI bridges (Claude Code, ChatGPT, later API keys, a custom
   endpoint, Copilot, Grok).
-- **Deferred:** the plugin API (plugin questions, problems, workers, jobs, the knowledge picker) and
-  flashcards.
+- **Plugins** (branch `plugins`, [plan](plans/plugins.md)): the first version is built: discovery,
+  backend and frontend activation, the bridge, agent hooks, views, actions, settings, and `ctx.ui`.
+- **Deferred:** the rest of the plugin API (plugin questions, problems, workers, jobs, the knowledge
+  picker, code-block and tool renderers, submission interceptors, learning-data reads, inference,
+  managed agents, documents, action keyboard shortcuts, the action context's session snapshot, more `ctx.ui` widgets, core plugins, server and Android) and flashcards.
 - **Excluded:** dictation (speech to text).
 - **LearnHarness data import** is a one-way command-line replace; see [store](architecture/store.md#importing-from-learnharness).
 
@@ -111,7 +114,7 @@ milestone ports them or a decision records the difference.
 | Startup announcements (`7f8ac6b3`, `93133de6`, `ecff87ca`, `710d10d8`, `dd773e4b`) | not ported (LH's own release channel) |
 | Activity task card stop button (`c0291f4b`) | with the activity dock |
 | Drawing pad (`f2cb91b0` and its fixes) | not ported (not in scope) |
-| Flashcards, plugin inference routing (`e5343132`, `4dfcbd4c`) | deferred with flashcards and plugins |
+| Flashcards, plugin inference routing (`e5343132`, `4dfcbd4c`) | flashcards deferred; plugin inference routing is in the deferred plugin API |
 | OpenCode side-chat routing, custom-model nested token limits (`7aee3722`, `90535c9c`) | with those providers |
 | Releases, website, dependencies, CI, Pi libraries, Next.js, IPC hardening (`0292b85b`, `069a6a11`, `fcad626f`, `2c580d91`, `9cf2a2f0`, `d3b5ddb9`, …) | not applicable |
 
