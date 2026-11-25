@@ -1,4 +1,5 @@
 import asyncio
+import importlib.metadata
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -39,6 +40,7 @@ from verstehen.jobs.workers.browser import (
     playwright_runner_provider,
 )
 from verstehen.jobs.workers.headless import DemoRunner
+from verstehen.plugins.service import PluginService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -66,6 +68,7 @@ from verstehen.store.entries import EntriesStore
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
+from verstehen.store.plugins import PluginsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
@@ -358,10 +361,19 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
             else:
                 database.on_sync_write = sync_service.notify_local_change
                 sync_service.start()
+            plugin_service = PluginService(
+                PluginsStore(settings.data_dir),
+                settings.data_dir / "plugins",
+                importlib.metadata.version("verstehen"),
+                available=not settings.server,
+            )
+            app.state.plugin_service = plugin_service
             turn_service.delivery_service.start_watching()
             try:
+                await plugin_service.discover()
                 yield
             finally:
+                await plugin_service.close()
                 await server_oauth_service.close()
                 await server_install_service.close()
                 await sync_service.close()
