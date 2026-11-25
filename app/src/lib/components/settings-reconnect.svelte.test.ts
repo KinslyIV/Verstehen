@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import * as api from '#lib/api/client.js';
 import { live } from '#lib/api/live.svelte.js';
@@ -55,6 +55,8 @@ async function connectionReturns() {
 }
 
 beforeEach(() => {
+	// The reconnect backoff must wait for resume, however slow the test runs.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	mode.current = 'remote';
 	streamFailsOnce();
 	vi.mocked(api.getSettings).mockReset().mockResolvedValue(stored);
@@ -77,6 +79,8 @@ beforeEach(() => {
 	vi.mocked(api.getDemoBrowser).mockReset().mockResolvedValue({ path: null, source: null });
 	vi.mocked(api.browserDownload).mockReset().mockResolvedValue({ state: 'idle' });
 });
+
+afterEach(() => vi.useRealTimers());
 
 test('lesson_loads_once_the_connection_returns_after_a_failed_first_read', async () => {
 	vi.mocked(api.getSettings).mockRejectedValueOnce(offline());
