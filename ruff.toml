@@ -11,3 +11,4 @@ select = ["E4", "E7", "E9", "F", "I", "TID"]
 
 [lint.per-file-ignores]
 "backend/tests/shell/desktop_probe.py" = ["TID251"]
+"backend/tests/jobs/desktop_demo_cancel_probe.py" = ["TID251"]

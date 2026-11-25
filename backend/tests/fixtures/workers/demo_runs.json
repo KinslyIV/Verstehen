@@ -3,55 +3,181 @@
     "name": "a clean demo",
     "html": "<!doctype html><title>t</title><p>hello</p>",
     "probe": null,
-    "expect": {"console_errors": [], "page_errors": [], "failed_request_urls": [], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "a console error",
     "html": "<script>console.error('boom'); console.log('fine')</script>",
     "probe": null,
-    "expect": {"console_errors": ["boom"], "page_errors": [], "failed_request_urls": [], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [
+        "boom"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "an uncaught error",
     "html": "<script>throw new Error('uncaught')</script>",
     "probe": null,
-    "expect": {"console_errors": [], "page_errors": ["uncaught"], "failed_request_urls": [], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [],
+      "page_errors": [
+        "uncaught"
+      ],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "a blocked scheme",
     "html": "<img src=\"ftp://example.invalid/x.png\">",
     "probe": null,
-    "expect": {"console_errors": ["Failed to load resource: net::ERR_ACCESS_DENIED"], "page_errors": [], "failed_request_urls": ["ftp://example.invalid/x.png"], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "ftp://example.invalid/x.png"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "a failed request",
     "html": "<img src=\"blob:null/00000000-0000-0000-0000-000000000000\">",
     "probe": null,
-    "expect": {"console_errors": ["Not allowed to load local resource: blob:null/00000000-0000-0000-0000-000000000000"], "page_errors": [], "failed_request_urls": ["blob:null/00000000-0000-0000-0000-000000000000"], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [
+        "Not allowed to load local resource: blob:null/00000000-0000-0000-0000-000000000000"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "blob:null/00000000-0000-0000-0000-000000000000"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "a local file",
     "html": "<img src=\"file:///nonexistent-verstehen-test.png\">",
     "probe": null,
-    "expect": {"console_errors": ["Not allowed to load local resource: file:///nonexistent-verstehen-test.png"], "page_errors": [], "failed_request_urls": ["file:///nonexistent-verstehen-test.png"], "probe_result": null, "probed": false}
+    "expect": {
+      "console_errors": [
+        "Not allowed to load local resource: file:///nonexistent-verstehen-test.png"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "file:///nonexistent-verstehen-test.png"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
   },
   {
     "name": "a probe value",
     "html": "<p>ok é</p>",
     "probe": "document.querySelector('p').textContent",
-    "expect": {"console_errors": [], "page_errors": [], "failed_request_urls": [], "probe_result": "ok é", "probed": true}
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "ok é",
+      "probed": true
+    }
   },
   {
     "name": "refused storage",
     "html": "<script>try { localStorage.getItem('k') } catch (e) { window.refused = true }</script>",
     "probe": "window.refused === true",
-    "expect": {"console_errors": [], "page_errors": [], "failed_request_urls": [], "probe_result": true, "probed": true}
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
   },
   {
     "name": "a demo over 2 MB",
     "html": "<p>big</p>",
     "padding": 2300000,
     "probe": "document.querySelector('p').textContent",
-    "expect": {"console_errors": [], "page_errors": [], "failed_request_urls": [], "probe_result": "big", "probed": true}
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "big",
+      "probed": true
+    }
+  },
+  {
+    "name": "an opaque page origin",
+    "html": "<p>x</p>",
+    "probe": "self.origin",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "null",
+      "probed": true
+    }
+  },
+  {
+    "name": "a function probe",
+    "html": "<p>fn</p>",
+    "probe": "async () => { await new Promise((resolve) => setTimeout(resolve, 50)); return document.querySelector('p').textContent }",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "fn",
+      "probed": true
+    }
+  },
+  {
+    "name": "an image from the app origin",
+    "html": "<img src=\"{origin}/image.png\">",
+    "probe": null,
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "{origin}/image.png"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a fetch to the app origin",
+    "html": "<script>fetch('{origin}/api/health').catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "{origin}/api/health"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
   }
 ]

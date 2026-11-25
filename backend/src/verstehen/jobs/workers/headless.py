@@ -1,14 +1,38 @@
 import asyncio
+import ipaddress
 import json
 from collections.abc import Callable
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, JsonValue
 
 ALLOWED_SCHEMES = frozenset({"http", "https", "data", "blob", "about"})
 SETTLE_SECONDS = 2
 LOAD_TIMEOUT_SECONDS = 30
+LOOPBACK_SUFFIX = ".localhost"
 NO_BROWSER = "No render engine available: no Chromium-family browser was found. Set one in Settings → Tools → Demo browser, install Chromium, or use “Download Chromium for demos” there. (Verification is mandatory — demos are never delivered untested.)"
+
+
+def is_loopback_host(host: str | None) -> bool:
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(LOOPBACK_SUFFIX):
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    return address.is_loopback or address.is_unspecified
+
+
+def request_allowed(url: str) -> bool:
+    """Whether a demo may load `url`: an allowed scheme and no loopback host, which is where the app listens."""
+    try:
+        parts = urlsplit(url)
+        return parts.scheme in ALLOWED_SCHEMES and not is_loopback_host(parts.hostname)
+    except ValueError:
+        return False
 
 
 class DemoRunResult(BaseModel):
@@ -73,8 +97,7 @@ async def run_demo(
             )
 
             async def guard(route):
-                scheme = route.request.url.split(":", 1)[0]
-                if scheme in ALLOWED_SCHEMES:
+                if request_allowed(route.request.url):
                     await route.continue_()
                 else:
                     await route.abort("accessdenied")

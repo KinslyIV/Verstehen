@@ -174,6 +174,7 @@ class DesktopShell(QObject):
     def close(self) -> None:
         """Stop the server once; called when the window closes."""
         self._closing = True
+        self.demo_runner.abort_all()
         self.server.stop()
 
     def dispose(self) -> None:

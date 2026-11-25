@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import re
 import sys
@@ -32,10 +33,10 @@ from PySide6.QtWebEngineCore import (
 from PySide6.QtWidgets import QApplication
 
 from verstehen.jobs.workers.headless import (
-    ALLOWED_SCHEMES,
     LOAD_TIMEOUT_SECONDS,
     SETTLE_SECONDS,
     DemoRunResult,
+    request_allowed,
 )
 
 SCHEME = b"verstehen-demo"
@@ -53,7 +54,10 @@ window.addEventListener('error', (event) => {{
 
 RUN_PROBE = """
 window.__verstehenProbe = undefined;
-(async () => (0, eval)({probe}))().then(
+(async () => {{
+  const value = (0, eval)({probe});
+  return typeof value === 'function' ? value() : value;
+}})().then(
   (value) => {{ window.__verstehenProbe = {{ value: JSON.stringify(value) ?? null }}; }},
   (error) => {{ window.__verstehenProbe = {{ error: String(error) }}; }}
 );
@@ -64,6 +68,7 @@ def register_demo_scheme() -> None:
     """Register the demo page scheme; Qt requires this before the QApplication exists."""
     scheme = QWebEngineUrlScheme(SCHEME)
     scheme.setSyntax(QWebEngineUrlScheme.Syntax.Path)
+    scheme.setFlags(QWebEngineUrlScheme.Flag.NoAccessAllowed)
     QWebEngineUrlScheme.registerScheme(scheme)
 
 
@@ -84,8 +89,8 @@ class DemoPageHandler(QWebEngineUrlSchemeHandler):
         job.reply(b"text/html; charset=utf-8", body)
 
 
-class SchemeGuard(QWebEngineUrlRequestInterceptor):
-    """Blocks every request whose scheme the demo check does not allow and reports it as failed."""
+class RequestGuard(QWebEngineUrlRequestInterceptor):
+    """Blocks every request the demo check does not allow, such as the app on loopback, and reports it as failed."""
 
     def __init__(self, result: DemoRunResult, parent: QObject) -> None:
         super().__init__(parent)
@@ -93,7 +98,7 @@ class SchemeGuard(QWebEngineUrlRequestInterceptor):
 
     def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:
         url = info.requestUrl()
-        if url == DEMO_URL or url.scheme() in ALLOWED_SCHEMES:
+        if url == DEMO_URL or request_allowed(url.toString()):
             return
         info.block(True)
         self._result.failed_requests.append(
@@ -145,28 +150,28 @@ class DemoCheck(QObject):
         self.result = DemoRunResult(probed=bool(probe))
         self._done = False
         self._probing = False
-        self._profile = QWebEngineProfile()
-        self._profile.installUrlSchemeHandler(
-            SCHEME, DemoPageHandler(html, self._profile)
+        self.profile = QWebEngineProfile()
+        self.profile.installUrlSchemeHandler(
+            SCHEME, DemoPageHandler(html, self.profile)
         )
-        self._guard = SchemeGuard(self.result, self._profile)
-        self._profile.setUrlRequestInterceptor(self._guard)
-        self._page = DemoPage(self._profile, self.result)
-        self._page.setAudioMuted(True)
-        self._page.settings().setAttribute(
+        self._guard = RequestGuard(self.result, self.profile)
+        self.profile.setUrlRequestInterceptor(self._guard)
+        self.page = DemoPage(self.profile, self.result)
+        self.page.setAudioMuted(True)
+        self.page.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalStorageEnabled, False
         )
         script = QWebEngineScript()
         script.setSourceCode(REPORT_FAILED_RESOURCES)
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
-        self._page.scripts().insert(script)
+        self.page.scripts().insert(script)
         self._timeout = QTimer(self)
         self._timeout.setSingleShot(True)
         self._timeout.timeout.connect(self._timed_out)
-        self._page.loadFinished.connect(self._loaded)
+        self.page.loadFinished.connect(self._loaded)
         self._timeout.start(LOAD_TIMEOUT_SECONDS * 1000)
-        self._page.load(DEMO_URL)
+        self.page.load(DEMO_URL)
 
     @Slot()
     def _timed_out(self) -> None:
@@ -193,21 +198,21 @@ class DemoCheck(QObject):
         if not self._probe:
             self._finish()
             return
-        self._page.runJavaScript(RUN_PROBE.format(probe=json.dumps(self._probe)))
+        self.page.runJavaScript(RUN_PROBE.format(probe=json.dumps(self._probe)))
         self._probing = True
         self._timeout.start(LOAD_TIMEOUT_SECONDS * 1000)
         self._poll_probe()
 
     def _poll_probe(self) -> None:
         if not self._done:
-            self._page.runJavaScript(
+            self.page.runJavaScript(
                 "JSON.stringify(window.__verstehenProbe)", self._probe_polled
             )
 
-    def _probe_polled(self, encoded: str | None) -> None:
+    def _probe_polled(self, encoded: str) -> None:
         if self._done:
             return
-        if encoded is None:
+        if not encoded:
             QTimer.singleShot(PROBE_POLL_MILLISECONDS, self._poll_probe)
             return
         outcome = json.loads(encoded)
@@ -217,14 +222,23 @@ class DemoCheck(QObject):
             self.result.probe_result = json.loads(outcome["value"])
         self._finish()
 
+    def abort(self) -> None:
+        """Stop the check without a result and dispose its page, then its profile."""
+        if not self._done:
+            self._done = True
+            self._dispose()
+
     def _finish(self) -> None:
         if self._done:
             return
         self._done = True
-        self._timeout.stop()
         self._finished(self.result)
-        self._page.deleteLater()
-        self._profile.deleteLater()
+        self._dispose()
+
+    def _dispose(self) -> None:
+        self._timeout.stop()
+        self.page.deleteLater()
+        self.profile.deleteLater()
         self.deleteLater()
 
 
@@ -232,33 +246,69 @@ class DesktopDemoRunner(QObject):
     """Runs demo checks in hidden QtWebEngine pages; await it from the server thread."""
 
     _requested = Signal(str, object, object)
+    _cancelled = Signal(object)
 
     def __init__(self) -> None:
         super().__init__()
-        self._checks: set[DemoCheck] = set()
+        self.checks: dict[asyncio.Future[DemoRunResult], DemoCheck] = {}
+        self._closed = False
         self._requested.connect(self._start, Qt.ConnectionType.QueuedConnection)
+        self._cancelled.connect(self._cancel, Qt.ConnectionType.QueuedConnection)
 
     async def __call__(self, html: str, probe: str | None = None) -> DemoRunResult:
-        loop = asyncio.get_running_loop()
-        outcome: asyncio.Future[DemoRunResult] = loop.create_future()
-        self._requested.emit(html, probe, (loop, outcome))
-        return await outcome
+        outcome: asyncio.Future[DemoRunResult] = (
+            asyncio.get_running_loop().create_future()
+        )
+        self._requested.emit(html, probe, outcome)
+        try:
+            return await outcome
+        except asyncio.CancelledError:
+            self._cancelled.emit(outcome)
+            raise
 
     @Slot(str, object, object)
-    def _start(self, html: str, probe: str | None, outcome: tuple) -> None:
-        loop, future = outcome
-        check: DemoCheck
+    def _start(
+        self, html: str, probe: str | None, outcome: asyncio.Future[DemoRunResult]
+    ) -> None:
+        if self._closed:
+            call_in_loop(outcome, outcome.cancel)
+            return
+        self.checks[outcome] = DemoCheck(
+            html, probe, lambda result: self._finished(outcome, result)
+        )
 
-        def finished(result: DemoRunResult) -> None:
-            self._checks.discard(check)
-            loop.call_soon_threadsafe(resolve, result)
+    @Slot(object)
+    def _cancel(self, outcome: asyncio.Future[DemoRunResult]) -> None:
+        if check := self.checks.pop(outcome, None):
+            check.abort()
 
-        def resolve(result: DemoRunResult) -> None:
-            if not future.done():
-                future.set_result(result)
+    def _finished(
+        self, outcome: asyncio.Future[DemoRunResult], result: DemoRunResult
+    ) -> None:
+        self.checks.pop(outcome, None)
+        call_in_loop(outcome, resolve, outcome, result)
 
-        check = DemoCheck(html, probe, finished)
-        self._checks.add(check)
+    @Slot()
+    def abort_all(self) -> None:
+        """On the Qt thread when the app closes: abort every check, cancel its waiter, take no more."""
+        self._closed = True
+        for outcome, check in self.checks.items():
+            check.abort()
+            call_in_loop(outcome, outcome.cancel)
+        self.checks.clear()
+
+
+def call_in_loop(
+    outcome: asyncio.Future[DemoRunResult], callback: Callable[..., object], *args
+) -> None:
+    """Run `callback` on the waiter's event loop unless that loop has already closed."""
+    with contextlib.suppress(RuntimeError):
+        outcome.get_loop().call_soon_threadsafe(callback, *args)
+
+
+def resolve(outcome: asyncio.Future[DemoRunResult], result: DemoRunResult) -> None:
+    if not outcome.done():
+        outcome.set_result(result)
 
 
 def run_with_demo_runner[T](use: Callable[[DesktopDemoRunner], Awaitable[T]]) -> T:
