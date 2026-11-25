@@ -86,9 +86,14 @@ def test_a_server_that_is_not_healthy_in_time_reports_the_wait(
         server.stop()
 
 
-def run_probe(script: Path, tmp_path: Path, spa_dir: Path, *args: str) -> dict:
+def run_probe(
+    script: Path, tmp_path: Path, spa_dir: Path, *args: str, **extra_env: str
+) -> dict:
+    (tmp_path / "saved").mkdir(exist_ok=True)
     env = {
         **os.environ,
+        "PROBE_SAVE_DIR": str(tmp_path / "saved"),
+        **extra_env,
         "VERSTEHEN_DATA_DIR": str(tmp_path / "data"),
         "VERSTEHEN_SPA_DIR": str(spa_dir),
         "QT_QPA_PLATFORM": "offscreen",
@@ -116,6 +121,13 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
         "document.body.innerText = 'health ' + s);"
         "window.open('https://code.claude.com/docs/en/setup', '_blank', 'noopener,noreferrer');"
         "window.open('https://example.com/', '_blank');"
+        "function save(name, content) {"
+        "  const url = URL.createObjectURL(new Blob([content], { type: 'text/html' }));"
+        "  const link = document.createElement('a');"
+        "  link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);"
+        "}"
+        "save('first-demo.html', '<p>first</p>');"
+        "setTimeout(() => save('second-demo.html', '<p>second</p>'), 500);"
         "setTimeout(() => { location.href = 'https://example.com/' }, 500);"
         "</script></body>"
     )
@@ -125,6 +137,22 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
     assert result["has_icon"] is True
     assert result["opened"] == ["https://code.claude.com/docs/en/setup"]
     assert result["url"] == result["origin"] + "/"
+    assert result["asked"] == ["first-demo.html", "second-demo.html"]
+    assert result["saved"] == {"first-demo.html": "<p>first</p>"}
+    assert "devtools_url" not in result
+
+
+@pytest.mark.slow
+def test_f12_opens_devtools_only_when_enabled_and_they_close_with_the_window(
+    tmp_path: Path,
+):
+    spa = tmp_path / "spa"
+    spa.mkdir()
+    (spa / "index.html").write_text("<body>app</body>")
+    result = run_probe(PROBE, tmp_path, spa, "6", VERSTEHEN_DEVTOOLS="1")
+    assert result["devtools_shown"] is True
+    assert result["devtools_url"].startswith("devtools://")
+    assert result["devtools_closed_with_window"] is True
 
 
 @pytest.mark.slow

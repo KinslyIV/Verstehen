@@ -8,6 +8,7 @@ from PySide6.QtCore import (
     QCoreApplication,
     QEvent,
     QObject,
+    QStandardPaths,
     Qt,
     QTimer,
     QUrl,
@@ -16,9 +17,14 @@ from PySide6.QtCore import (
 )
 from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkCookie
-from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
+from PySide6.QtWebEngineCore import (
+    QWebEngineDownloadRequest,
+    QWebEngineNewWindowRequest,
+    QWebEnginePage,
+    QWebEngineProfile,
+)
 from PySide6.QtWebEngineWidgets import QWebEngineView
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QWidget
 
 from verstehen.api.access import TOKEN_COOKIE
 from verstehen.config import resolve_data_dir
@@ -44,16 +50,10 @@ def open_externally(url: QUrl) -> None:
     QDesktopServices.openUrl(url)
 
 
-class LinkPage(QWebEnginePage):
-    """A throwaway page for window.open: it hands an allowed URL to the desktop and loads nothing."""
-
-    def acceptNavigationRequest(self, url, type, isMainFrame) -> bool:
-        if (
-            navigation_for(url.toString(), None, is_main_frame=True)
-            == "open-externally"
-        ):
-            open_externally(url)
-        return False
+def choose_save_path(parent: QWidget, suggested: Path) -> str:
+    """Ask where to save a download; an empty string means the user cancelled."""
+    path, _ = QFileDialog.getSaveFileName(parent, "Save file", str(suggested))
+    return path
 
 
 class ShellPage(QWebEnginePage):
@@ -63,6 +63,7 @@ class ShellPage(QWebEnginePage):
         super().__init__(profile, parent)
         self.origin: str | None = None
         self._showing_html = False
+        self.newWindowRequested.connect(self._open_requested_window)
 
     def show_html(self, content: str) -> None:
         """Show a page of our own; only the navigation this starts may load a data: URL."""
@@ -82,8 +83,14 @@ class ShellPage(QWebEnginePage):
                 pass
         return False
 
-    def createWindow(self, type) -> QWebEnginePage:
-        return LinkPage(self.profile(), self)
+    @Slot(QWebEngineNewWindowRequest)
+    def _open_requested_window(self, request: QWebEngineNewWindowRequest) -> None:
+        url = request.requestedUrl()
+        if (
+            navigation_for(url.toString(), None, is_main_frame=True)
+            == "open-externally"
+        ):
+            open_externally(url)
 
 
 class ShellView(QWebEngineView):
@@ -124,8 +131,10 @@ class DesktopShell(QObject):
         self.view.setWindowTitle("Verstehen")
         self.view.setWindowIcon(window_icon())
         self.view.resize(*WINDOW_SIZE)
+        self.devtools: QWebEngineView | None = None
         if os.environ.get("VERSTEHEN_DEVTOOLS") == "1":
             self._enable_devtools()
+        self.profile.downloadRequested.connect(self._save_download)
         self.server_started.connect(self._load_app)
         self.server_failed.connect(self._show_failure)
         self.server_exited.connect(self._server_exited)
@@ -171,21 +180,42 @@ class DesktopShell(QObject):
         if self._serving and not self._closing:
             self._app.quit()
 
+    @Slot(QWebEngineDownloadRequest)
+    def _save_download(self, download: QWebEngineDownloadRequest) -> None:
+        """Save a download where the user chooses, starting in their Downloads folder."""
+        downloads = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.DownloadLocation
+        )
+        path = choose_save_path(
+            self.view, Path(downloads) / download.downloadFileName()
+        )
+        if not path:
+            download.cancel()
+            return
+        chosen = Path(path)
+        download.setDownloadDirectory(str(chosen.parent))
+        download.setDownloadFileName(chosen.name)
+        download.accept()
+
     def close(self) -> None:
-        """Stop the server once; called when the window closes."""
+        """Close DevTools and stop the server once; called when the window closes."""
+        if self.devtools is not None:
+            self.devtools.close()
         self._closing = True
         self.demo_runner.abort_all()
         self.server.stop()
 
     def dispose(self) -> None:
-        """Delete the page before the profile, as Qt requires."""
+        """Delete the pages before the profile, as Qt requires."""
+        if self.devtools is not None:
+            self.devtools.deleteLater()
         self.page.deleteLater()
         QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 
     def _enable_devtools(self) -> None:
-        devtools = QWebEngineView()
-        self.page.setDevToolsPage(devtools.page())
-        QShortcut(QKeySequence("F12"), self.view, devtools.show)
+        self.devtools = QWebEngineView()
+        self.page.setDevToolsPage(self.devtools.page())
+        QShortcut(QKeySequence("F12"), self.view, self.devtools.show)
 
 
 def quit_on_signals(app: QApplication) -> None:
