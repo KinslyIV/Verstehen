@@ -36,9 +36,19 @@ alternative, and the consequence, until the user reviews them at the end of the 
   refuses every lazy import before anything else loads; server mode stays lazy. The cost is
   every heavy SDK loading at desktop startup, behind the already painted window. No pytest
   process imports PySide6; Qt tests run in subprocess probes.
-- **The desktop bundle keeps Playwright's Python package without its 158 MB driver.** Eager
-  imports load `headless.py`; the alternative is moving the Playwright import out of the shared
-  module. No desktop code path launches Playwright.
+- **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
+  has no Playwright, and server mode runs from the server bundle. Source and dev modes are
+  unchanged. The alternative was a server mode without demo checks.
+- **`--self-check` also imports eagerly,** since the desktop bundle's self-check runs a Qt demo
+  check; the server bundle's self-check gets slower.
+- **Demo checks block loopback hosts in both runners,** so a checked demo can't reach the app's own
+  origin; server-mode Playwright demos can no longer reach localhost either. A hostname that only
+  resolves to loopback is not caught. The alternative was Qt-only blocking.
+- **Each desktop demo check runs in a shown `QWebEngineView` that never reaches the screen**
+  (1280×720, Playwright's viewport), so `requestAnimationFrame`, timers, and `visibilityState`
+  behave as in Playwright; a hidden page never fires rAF.
+- **A remounted demo frame starts without the old error;** the measured height is kept, so the
+  transcript does not shift.
 - **`/api/health` adds `"desktop": true` in desktop mode only;** Settings → Tools hides Demo
   browser from it. The alternative, treating a 404 on the demo-browser routes as the signal, is
   brittle.
