@@ -47,9 +47,15 @@ def app_of(client: TestClient) -> FastAPI:
 
 
 def enable(client: TestClient, enabled: bool = True) -> dict:
+    """Save the choice and wait until the plugin has finished starting."""
     response = client.put("/api/plugins/bridge/enabled", json={"enabled": enabled})
     assert response.status_code == 200
-    return response.json()
+    info = response.json()
+    while info["status"] == "activating":
+        time.sleep(0.02)
+        listed = client.get("/api/plugins").json()["plugins"]
+        info = next(plugin for plugin in listed if plugin["id"] == "bridge")
+    return info
 
 
 def call(client: TestClient, name: str, body=None):
@@ -64,6 +70,8 @@ def test_the_list_shows_the_plugin_and_the_enable_route_activates_it(tmp_path: P
         assert [(p["id"], p["status"]) for p in listed["plugins"]] == [
             ("bridge", "disabled")
         ]
+        started = client.put("/api/plugins/bridge/enabled", json={"enabled": True})
+        assert started.json()["status"] == "activating"
         assert enable(client)["status"] == "active"
         assert client.post("/api/plugins/refresh").json()["plugins"][0]["enabled"]
         assert enable(client, False)["status"] == "disabled"
@@ -158,6 +166,8 @@ def test_emit_reaches_the_event_stream_and_enabling_announces_a_change(tmp_path:
             seen = [await anext(frames)]
             await app.state.plugin_service.set_enabled("bridge", True)
             seen.append(await anext(frames))
+            await app.state.plugin_service.settled()
+            assert (await anext(frames)).startswith("event: plugins-changed\n")
             await app.state.plugin_service.call("bridge", "announce", "board-updated")
             seen.append(await anext(frames))
             await frames.aclose()

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import re
@@ -97,6 +98,20 @@ def check_backend_unlinked(dist: Path, backend: str) -> None:
                 raise PluginInvalid(
                     f"Unsafe plugin entry: {link.relative_to(dist)} is a symlink"
                 )
+
+
+def package_revision(dist: Path) -> str:
+    """A hash of every file under `dist/` but bytecode caches (path, size, bytes), read in chunks."""
+    digest = hashlib.sha256()
+    for directory, names, files in os.walk(dist):
+        names[:] = sorted(name for name in names if name != "__pycache__")
+        for name in sorted(files):
+            path = Path(directory, name)
+            digest.update(f"{path.relative_to(dist)}:{path.stat().st_size}:".encode())
+            with path.open("rb") as stream:
+                while chunk := stream.read(1 << 20):
+                    digest.update(chunk)
+    return digest.hexdigest()
 
 
 def validate_package(root: Path, app_version: str) -> PluginManifest:

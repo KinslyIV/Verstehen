@@ -4,7 +4,7 @@ import logging
 import mimetypes
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
 from typing import Literal
@@ -18,6 +18,7 @@ from verstehen.plugins.context import (
     AgentName,
     PluginContext,
     PluginTurnContext,
+    Stopped,
     failure_text,
 )
 from verstehen.plugins.loader import add_vendor, forget_backend, load_backend
@@ -25,6 +26,7 @@ from verstehen.plugins.manifest import (
     PluginInvalid,
     PluginManifest,
     check_backend_unlinked,
+    package_revision,
     validate_package,
 )
 from verstehen.plugins.toolsets import PluginToolset, PluginToolsets, PluginTurn
@@ -65,6 +67,10 @@ class InstalledPlugin:
     manifest: PluginManifest | None = None
     module: ModuleType | None = None
     context: PluginContext | None = None
+    queued: int = 0
+    revision: str | None = None
+    restart: str | None = None
+    turn_warnings: list[str] = field(default_factory=list)
 
 
 class PluginService:
@@ -121,25 +127,54 @@ class PluginService:
             self.plugins_changed()
             return self.installed()
         for plugin_id in [name for name in self.plugins if name not in folders]:
-            if (
-                self.plugins[plugin_id].context is None
-                and not self.lock_for(plugin_id).locked()
-            ):
+            plugin = self.plugins[plugin_id]
+            if plugin.context is None and not plugin.queued:
                 del self.plugins[plugin_id]
+            else:
+                self.require_restart(plugin, "removed")
         for plugin_id, root in folders.items():
             plugin = self.rescan(plugin_id, root)
             if plugin and plugin.info.enabled and plugin.manifest:
                 self.begin(plugin)
+            elif plugin is None:
+                await self.check_unchanged(self.plugins[plugin_id])
         self.plugins_changed()
         return self.installed()
 
+    async def check_unchanged(self, plugin: InstalledPlugin) -> None:
+        """Warn that a restart is needed when the files of a running plugin differ from what it admitted."""
+        if plugin.revision is None or plugin.context is None:
+            return
+        try:
+            current = await asyncio.to_thread(package_revision, plugin.root / "dist")
+        except OSError:
+            current = None
+        if current != plugin.revision:
+            self.require_restart(plugin, "changed")
+
+    def require_restart(self, plugin: InstalledPlugin, what: str) -> None:
+        plugin.restart = f"Restart required: plugin package {what}"
+        self.sync_warnings(plugin)
+
+    def sync_warnings(self, plugin: InstalledPlugin) -> None:
+        warnings = [
+            *([plugin.restart] if plugin.restart else []),
+            *plugin.turn_warnings,
+        ]
+        if plugin.info.warnings != warnings:
+            plugin.info.warnings = warnings
+            self.plugins_changed()
+
     def rescan(self, plugin_id: str, root: Path) -> InstalledPlugin | None:
-        """Replace a folder's package with a fresh read, unless it is mid-lifecycle or already running.
-        The enable choice is read when the lock is free and nothing awaits before it is used.
+        """Replace a folder's package with a fresh read, unless work is queued for it or it already runs.
+        The enable choice is read here and nothing awaits before it is used.
         """
         known = self.plugins.get(plugin_id)
-        if self.lock_for(plugin_id).locked() or (
-            known and (known.module or known.context or known.info.status == "failed")
+        if known and (
+            known.queued
+            or known.module
+            or known.context
+            or known.info.status == "failed"
         ):
             return None
         try:
@@ -154,8 +189,8 @@ class PluginService:
     async def set_enabled(
         self, plugin_id: str, enabled: bool
     ) -> PluginInfo | PluginRefused:
-        """Save the choice, then start or stop the plugin once earlier changes to it have finished.
-        Disabling ends a running activation. An invalid package only records the choice.
+        """Save the choice. Enabling starts the plugin in the background (`activating`); disabling
+        waits until it has stopped and ends a running activation. An invalid package only records it.
         """
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
@@ -168,8 +203,15 @@ class PluginService:
         running = self.activations.get(plugin_id)
         if not enabled and running:
             running.cancel()
-        await asyncio.wait({self.begin(plugin)})
+        started = self.begin(plugin)
+        if not enabled:
+            await asyncio.wait({started})
         return plugin.info
+
+    async def settled(self) -> None:
+        """Wait until every queued start and stop has finished."""
+        while self.tasks:
+            await asyncio.wait(list(self.tasks))
 
     async def call(
         self, plugin_id: str, name: str, value: JsonValue
@@ -178,17 +220,23 @@ class PluginService:
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
             return unknown_plugin(plugin_id)
-        if plugin.context is None:
+        context = plugin.context
+        if context is None:
             return PluginRefused(409, f"Plugin {plugin_id} is not active")
-        exposed = plugin.context.exposed.get(name)
+        exposed = context.exposed.get(name)
         if exposed is None:
             return PluginRefused(404, f"Unknown plugin function: {name}")
-        try:
+
+        async def invoke():
             result = (
                 exposed.function(value) if exposed.takes_input else exposed.function()
             )
-            if inspect.isawaitable(result):
-                result = await result
+            return await result if inspect.isawaitable(result) else result
+
+        try:
+            result = await context.operate(invoke)
+        except Stopped:
+            return PluginRefused(409, f"Plugin {plugin_id} is not active")
         except Exception as error:
             logger.exception("Plugin %s function %s failed", plugin_id, name)
             return PluginRefused(500, failure_text(error))
@@ -279,9 +327,9 @@ class PluginService:
 
     def set_warnings(self, plugin_id: str, warnings: list[str]) -> None:
         plugin = self.plugins.get(plugin_id)
-        if plugin and plugin.info.warnings != warnings:
-            plugin.info.warnings = warnings
-            self.plugins_changed()
+        if plugin:
+            plugin.turn_warnings = warnings
+            self.sync_warnings(plugin)
 
     async def close(self) -> None:
         """End pending starts and stops, stop every running plugin, and forget the imported code."""
@@ -322,9 +370,13 @@ class PluginService:
         return InstalledPlugin(root, info, manifest)
 
     def begin(self, plugin: InstalledPlugin) -> asyncio.Task[None]:
-        """Bring the plugin to its saved choice in a task the service owns; it ends with a plugins-changed."""
+        """Bring the plugin to its saved choice in a task the service owns, after earlier ones for it.
+        Queued work keeps `discover` from replacing the package; each ends with a plugins-changed.
+        """
         if plugin.info.enabled and plugin.manifest and plugin.context is None:
             plugin.info.status = "activating"
+            self.plugins_changed()
+        plugin.queued += 1
         task = asyncio.create_task(self.reconcile_locked(plugin))
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -333,8 +385,10 @@ class PluginService:
     async def reconcile_locked(self, plugin: InstalledPlugin) -> None:
         try:
             async with self.lock_for(plugin.info.id):
-                await self.reconcile(plugin)
+                if self.plugins.get(plugin.info.id) is plugin:
+                    await self.reconcile(plugin)
         finally:
+            plugin.queued -= 1
             self.plugins_changed()
 
     def lock_for(self, plugin_id: str) -> asyncio.Lock:
@@ -355,26 +409,26 @@ class PluginService:
         assert manifest is not None
         dist = plugin.root / "dist"
         context = PluginContext(
-            manifest.id, dist, plugin.root / "data", self.plugin_message
+            manifest.id,
+            dist,
+            plugin.root / "data",
+            self.plugin_message,
+            asyncio.get_running_loop(),
         )
         task = asyncio.current_task()
         if task:
             self.activations[manifest.id] = task
         try:
+            plugin.revision = await asyncio.to_thread(package_revision, dist)
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
                 add_vendor(manifest, dist, context)
                 if plugin.module is None:
                     check_backend_unlinked(dist, manifest.backend)
-                    plugin.module = load_backend(manifest, dist)
-                activate = getattr(plugin.module, "activate", None)
-                if not callable(activate):
-                    raise TypeError("Plugin backend must export activate(ctx)")
-                returned = activate(context)
-                if inspect.isawaitable(returned):
-                    returned = await returned
-                if returned is not None:
-                    context.cleanup(returned)
+                    plugin.module = await asyncio.to_thread(
+                        load_backend, manifest, dist
+                    )
+                await run_activate(plugin.module, context)
                 await context.start_toolsets()
         except asyncio.CancelledError:
             self.mark_stopped(plugin, await context.close())
@@ -393,14 +447,19 @@ class PluginService:
             self.mark_stopped(plugin, failures)
             return
         plugin.context = context
+        plugin.restart = None
+        self.sync_warnings(plugin)
         plugin.info.status = "active"
         plugin.info.error = None
 
     async def deactivate(self, plugin: InstalledPlugin) -> None:
-        """Run the plugin's cleanups; a failing cleanup marks it failed."""
+        """Run the plugin's cleanups; a failing cleanup marks it failed, and stays until its next activation."""
         context, plugin.context = plugin.context, None
-        failures = await context.close() if context else []
-        self.mark_stopped(plugin, failures)
+        if context is None:
+            if plugin.info.status == "activating":
+                plugin.info.status = "disabled"
+            return
+        self.mark_stopped(plugin, await context.close())
 
     def mark_stopped(self, plugin: InstalledPlugin, failures: list[str]) -> None:
         if plugin.manifest is None:
@@ -430,6 +489,21 @@ def build_contributions(
         if item.toolset is not None:
             toolsets.append(item.toolset)
     return instructions, [FunctionToolset(tools), *toolsets]
+
+
+async def run_activate(module: ModuleType, context: PluginContext) -> None:
+    """Call the backend's `activate(ctx)`: a synchronous one in a worker thread, so it cannot block the app."""
+    activate = getattr(module, "activate", None)
+    if not callable(activate):
+        raise TypeError("Plugin backend must export activate(ctx)")
+    if inspect.iscoroutinefunction(activate):
+        returned = await activate(context)
+    else:
+        returned = await asyncio.to_thread(activate, context)
+        if inspect.isawaitable(returned):
+            returned = await returned
+    if returned is not None:
+        context.cleanup(returned)
 
 
 def unknown_plugin(plugin_id: str) -> PluginRefused:

@@ -48,18 +48,23 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
 - **Discovery** (`PluginService.discover`, at startup and on **Refresh**): validate each manifest
   without importing anything; a package that cannot run is listed `invalid` with the reason. New
   plugins start disabled. A plugin whose code is imported or running is not rescanned: changed
-  code needs an app restart.
+  code needs an app restart, and Refresh marks a running plugin whose package changed or was
+  removed (a hash of `dist/` taken at activation, ignoring `__pycache__`) with `Restart required`.
+  The queued work of a plugin (`InstalledPlugin.queued`) owns its registry entry: Refresh neither
+  replaces nor deletes it, and a queued task acts only if its plugin is still the registered one.
 - **Enable state** is `plugins-state.json` (`enabled: {id: bool}`, literal booleans only; a file
   that is unreadable, not UTF-8, or invalid is reported on the Plugins page and never rewritten).
-  Enabling activates the backend;
-  disabling runs its cleanups (newest first) and keeps `data/`. Starts and stops of one plugin are
+  Enabling saves the choice and returns at once with status `activating` (`plugins-changed` is
+  published then and again when the activation settles); the switch stays usable, so disabling
+  cancels a pending activation. Disabling runs the cleanups (newest first) and keeps `data/`. Starts and stops of one plugin are
   serialized by a per-plugin lock and converge on the latest saved choice: an activation that finds
   the plugin disabled meanwhile closes its own context instead of publishing it. A failing `activate` or cleanup
   marks only that plugin `failed` with the error.
 - **Backend activation:** a plugin being started is `activating`. `load_backend` re-checks the
   backend path for symlinks and imports the package once per process, `vendor/` goes on
-  `sys.path` while the plugin runs, then `activate(ctx)` runs (sync or async; a returned function is
-  a cleanup). MCP toolsets are started right after `activate`, so one that cannot start fails the
+  `sys.path` while the plugin runs, then `activate(ctx)` runs: the import and a synchronous
+  `activate` in a worker thread (`ctx.emit` hops back to the loop), an `async` one on the loop (it
+  must not block); a returned function is a cleanup. MCP toolsets are started right after `activate`, so one that cannot start fails the
   plugin.
 - **The bridge.** `@ctx.expose` functions are called by `POST /api/plugins/{id}/call/{name}`: JSON
   in (the function's one parameter), JSON out; an error is a 500 `{error}`, a non-JSON result a
@@ -77,7 +82,8 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   order. `for_run` and `for_run_step` reach every plugin's toolsets, and the turn lists and calls
   the ones they resolve. **Instructions** are not part of the prompt text: `PluginToolsets.get_instructions`
   returns each admitted plugin's `register_instructions` text, and Pydantic AI sends them with the
-  agent's own (the Claude Code transport sends them in its system prompt like any other).
+  agent's own (the Claude Code transport sends them in its system prompt like any other). Each text
+  gets the `---` section separator in front, as the composed prompt sections have.
 - **Admission.** As in LearnHarness, a plugin is admitted whole or not at all. At the turn's first
   tool listing (`PluginToolsets.admit`, shared by every copy of the toolset through a `PluginTurn`)
   each plugin in id order is listed once; one whose factory raised, whose listing raised, or that has
@@ -90,7 +96,15 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   cancels the operations in flight and waits for them before running cleanups, so an MCP process is
   gone when disable returns. A listing or call that begins after the plugin stopped, or whose
   result arrives after, is dropped: no tools are offered and the call is a failed tool result
-  (`Plugin <id> is no longer running`). A turn never enters a plugin's MCP toolset (the context owns it).
+  (`Plugin <id> is no longer running`). Exposed bridge calls are operations of the context the call
+  captured, so disabling cancels them first and a call that finishes after the plugin stopped is a 409.
+  `PluginToolset.for_run` and `for_run_step` also run inside the boundary: a failure drops the
+  plugin from the rest of the turn with a warning. A run enters only the toolsets `for_run` made
+  new, not the plugin's own (the context owns those, so an MCP process stops with disable).
+  Synchronous tools run in a worker thread and are not interrupted by disable: the late result is
+  discarded, and the plugin should keep them quick (LearnHarness is cooperative only too).
+  Teardown is shielded: cancelling `close` again does not cut the cleanups short, and a cleanup's
+  error stays on the plugin until its next activation.
 - **Tool boundary.** A plugin tool that raises is logged on the plugin and returned to the model as a
   failed tool result (`Tool <name> failed: …`, also shown as a plugin warning); the turn goes on.
   `ModelRetry`, `ToolFailed`, deferral and cancellation pass through.
@@ -150,6 +164,8 @@ after its plugin is removed.
 
 ## Traps
 
+- **The files route serves the disk,** not the bytes seen at activation; a changed `main.js` is
+  served as changed, and Refresh only warns that a restart is needed.
 - **Changed plugin code needs a restart** (the backend module is cached; `main.js` is imported
   once per window and cached by the browser until reload).
 - **MCP servers in the packaged app.** `sys.executable` there is the `verstehen` binary, so an MCP

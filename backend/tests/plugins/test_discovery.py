@@ -181,9 +181,9 @@ def test_a_backend_swapped_for_a_link_before_import_is_not_imported(tmp_path: Pa
     (dist / "backend").symlink_to(outside, target_is_directory=True)
 
     async def run():
-        info = await service.set_enabled("greeter", True)
-        assert isinstance(info, PluginInfo)
-        return info
+        await service.set_enabled("greeter", True)
+        await service.settled()
+        return service.plugins["greeter"].info
 
     info = asyncio.run(run())
     assert info.status == "failed" and "symlink" in str(info.error)

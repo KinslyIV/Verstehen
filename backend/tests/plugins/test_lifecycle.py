@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings, load_settings
+from verstehen.plugins.context import PluginContext
 from verstehen.plugins.service import PluginInfo, PluginRefused, PluginService
 from verstehen.store.plugins import PluginsStore
 
@@ -35,8 +36,10 @@ def new_service(data_dir: Path) -> PluginService:
 
 
 async def toggle(service: PluginService, plugin_id: str, enabled: bool) -> PluginInfo:
+    """Save the choice and wait for the start or stop to finish; returns the plugin's info."""
     info = await service.set_enabled(plugin_id, enabled)
     assert isinstance(info, PluginInfo)
+    await service.settled()
     return info
 
 
@@ -245,6 +248,11 @@ def test_the_app_starts_enabled_plugins_and_stops_them_on_shutdown(tmp_path: Pat
     root = install(tmp_path, "lifecycle")
     PluginsStore(tmp_path).set_enabled("lifecycle", True)
     with TestClient(create_app(Settings(tmp_path, plugins=True))):
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and not (
+            (root / "data" / "events.txt").exists() and events(root)
+        ):
+            time.sleep(0.02)
         assert events(root) == ["activate"]
     assert events(root)[-1] == "cleanup first"
 
@@ -362,7 +370,7 @@ def test_disabling_a_plugin_that_a_refresh_is_starting_ends_disabled(tmp_path: P
         await until(lambda: (slow / "data" / "events.txt").exists())
         assert service.plugins["lifecycle"].info.status in ("activating", "active")
         refreshing = asyncio.create_task(service.discover())
-        await toggle(service, "lifecycle", False)
+        await service.set_enabled("lifecycle", False)
         await refreshing
         (slow / "data" / "release").write_text("")
         await asyncio.wait(service.tasks)
@@ -386,6 +394,7 @@ def test_concurrent_enables_start_one_activation(tmp_path: Path):
         await asyncio.gather(
             service.set_enabled("slow", True), service.set_enabled("slow", True)
         )
+        await service.settled()
         assert events(root) == ["activating", "activated"]
         assert service.plugins["slow"].info.status == "active"
         await service.close()
@@ -407,6 +416,7 @@ def test_enabling_again_after_a_pending_disable_leaves_it_running(tmp_path: Path
         await asyncio.sleep(0.05)
         (root / "data" / "release").write_text("")
         await asyncio.gather(first, off, on)
+        await service.settled()
         assert service.plugins["slow"].info.status == "active"
         assert service.plugins["slow"].context is not None
         await service.close()
@@ -498,3 +508,219 @@ def test_shutdown_ends_running_turns_before_plugins_are_stopped(tmp_path: Path):
                 break
             time.sleep(0.01)
     assert events(root) == ["tool started", "tool ended", "cleanup"]
+
+
+def test_a_synchronous_activate_that_blocks_does_not_delay_the_apps_health(
+    tmp_path: Path,
+):
+    install(tmp_path, "blocking-activate")
+    PluginsStore(tmp_path).set_enabled("blocking-activate", True)
+    with TestClient(
+        create_app(Settings(tmp_path, plugins=True)), base_url="http://localhost"
+    ) as client:
+        started = time.monotonic()
+        assert client.get("/api/health").status_code == 200
+        assert client.get("/api/plugins").status_code == 200
+        assert time.monotonic() - started < 0.5
+        deadline = time.monotonic() + 10
+        status = "activating"
+        while status == "activating" and time.monotonic() < deadline:
+            time.sleep(0.05)
+            (info,) = client.get("/api/plugins").json()["plugins"]
+            status = info["status"]
+        assert status == "active"
+
+
+def test_a_synchronous_activate_runs_off_the_loop_and_its_emit_is_delivered(
+    tmp_path: Path,
+):
+    install(tmp_path, "blocking-activate")
+    PluginsStore(tmp_path).set_enabled("blocking-activate", True)
+    messages: list[tuple[str, str, object]] = []
+    service = PluginService(
+        PluginsStore(tmp_path),
+        tmp_path / "plugins",
+        "0.2.0",
+        True,
+        lambda: None,
+        lambda plugin_id, topic, data: messages.append((plugin_id, topic, data)),
+    )
+
+    async def run():
+        await service.discover()
+        ticks = 0
+        while service.tasks:
+            await asyncio.sleep(0.05)
+            ticks += 1
+        await service.close()
+        return ticks
+
+    assert asyncio.run(run()) >= 10
+    assert messages == [("blocking-activate", "ready", "from the thread")]
+
+
+def test_two_refreshes_queued_before_a_start_activate_once_on_the_same_package(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "slow")
+    PluginsStore(tmp_path).set_enabled("slow", True)
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        package = service.plugins["slow"]
+        await asyncio.gather(service.discover(), service.discover())
+        assert service.plugins["slow"] is package
+        await until(lambda: (root / "data" / "events.txt").exists())
+        (root / "data" / "release").write_text("")
+        await service.settled()
+        assert service.plugins["slow"] is package
+        assert package.info.status == "active"
+        await service.close()
+
+    asyncio.run(run())
+    assert events(root) == ["activating", "activated", "cleanup"]
+
+
+def test_a_refresh_overlapping_a_toggle_never_activates_a_replaced_package(
+    tmp_path: Path,
+):
+    install(tmp_path, "lifecycle")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        enabling = asyncio.create_task(service.set_enabled("lifecycle", True))
+        refreshing = asyncio.create_task(service.discover())
+        disabling = asyncio.create_task(service.set_enabled("lifecycle", False))
+        await asyncio.gather(enabling, refreshing, disabling)
+        await service.settled()
+        plugin = service.plugins["lifecycle"]
+        assert (plugin.info.status, plugin.context) == ("disabled", None)
+        assert plugin.queued == 0
+        await service.close()
+
+    asyncio.run(run())
+    assert PluginsStore(tmp_path).read().enabled["lifecycle"] is False
+
+
+def test_enabling_returns_at_once_and_disabling_cancels_the_pending_activation(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "slow")
+    changes: list[str] = []
+
+    async def run():
+        service = new_service(tmp_path)
+        service.plugins_changed = lambda: changes.append(
+            service.plugins["slow"].info.status
+        )
+        await service.discover()
+        changes.clear()
+        info = await service.set_enabled("slow", True)
+        assert isinstance(info, PluginInfo)
+        assert (info.enabled, info.status) == (True, "activating")
+        assert changes[0] == "activating"
+        await until(lambda: (root / "data" / "events.txt").exists())
+        await service.set_enabled("slow", False)
+        assert service.plugins["slow"].info.status == "disabled"
+        await service.close()
+
+    asyncio.run(run())
+    assert events(root) == ["activating", "cleanup"]
+
+
+def test_a_second_cancellation_does_not_cut_teardown_short():
+    ran: list[str] = []
+
+    async def run():
+        context = PluginContext("p", Path("."), Path("."), lambda *args: None)
+
+        async def slow_cleanup():
+            await asyncio.sleep(0.1)
+            ran.append("slow")
+
+        context.cleanup(slow_cleanup)
+        context.cleanup(lambda: ran.append("fast"))
+        closing = asyncio.create_task(context.close())
+        await asyncio.sleep(0.02)
+        closing.cancel()
+        await asyncio.sleep(0.02)
+        closing.cancel()
+        assert await closing == []
+
+    asyncio.run(run())
+    assert ran == ["fast", "slow"]
+
+
+def test_a_cleanup_failure_stays_on_the_plugin_when_it_is_disabled_again(
+    tmp_path: Path,
+):
+    install(tmp_path, "failing-cleanup")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "failing-cleanup", True)
+        first = await toggle(service, "failing-cleanup", False)
+        assert first.status == "failed" and first.error
+        again = await toggle(service, "failing-cleanup", False)
+        assert (again.status, again.error) == (first.status, first.error)
+        await service.close()
+
+    asyncio.run(run())
+
+
+def test_a_call_in_flight_when_the_plugin_is_disabled_is_cancelled_and_answers_409(
+    tmp_path: Path,
+):
+    install(tmp_path, "lifecycle")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        context = service.plugins["lifecycle"].context
+        assert context is not None
+        ended: list[str] = []
+
+        @context.expose
+        async def wait_forever():
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                ended.append("ended")
+
+        calling = asyncio.create_task(service.call("lifecycle", "wait_forever", None))
+        await asyncio.sleep(0.05)
+        await toggle(service, "lifecycle", False)
+        assert ended == ["ended"] and not context.operations
+        result = await calling
+        assert isinstance(result, PluginRefused) and result.status == 409
+        await service.close()
+
+    asyncio.run(run())
+
+
+def test_refresh_marks_a_running_plugin_whose_files_changed_or_vanished(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "lifecycle")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        await service.discover()
+        plugin = service.plugins["lifecycle"]
+        assert plugin.info.warnings == []
+        (root / "dist" / "backend" / "extra.py").write_text("changed = True\n")
+        await service.discover()
+        assert plugin.info.warnings == ["Restart required: plugin package changed"]
+        shutil.rmtree(root)
+        await service.discover()
+        assert plugin.info.warnings == ["Restart required: plugin package removed"]
+        assert plugin.info.status == "active"
+        await service.close()
+
+    asyncio.run(run())

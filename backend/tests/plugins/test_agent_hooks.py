@@ -3,6 +3,7 @@ import json
 import logging
 import re
 import shutil
+import time
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
@@ -56,8 +57,11 @@ def service_with(data_dir: Path, *names: str) -> PluginService:
 async def enabled(service: PluginService, *names: str) -> None:
     await service.discover()
     for name in names:
-        info = await service.set_enabled(name, True)
-        assert isinstance(info, PluginInfo) and info.status == "active", info
+        await service.set_enabled(name, True)
+    await service.settled()
+    for name in names:
+        info = service.plugins[name].info
+        assert info.status == "active", info
 
 
 def warnings_of(service: PluginService, plugin_id: str) -> list[str]:
@@ -76,7 +80,7 @@ async def offered(plugins: PluginToolsets | None) -> list[str]:
 async def instructions_of(plugins: PluginToolsets | None) -> list[str]:
     assert plugins is not None
     parts = await plugins.get_instructions(run_context()) or []
-    return [part.content for part in parts]
+    return [part.content.removeprefix("---\n\n") for part in parts]
 
 
 def test_instructions_and_tools_reach_only_the_chosen_agents(tmp_path: Path):
@@ -133,8 +137,7 @@ def test_a_plugin_tool_is_offered_called_and_its_instructions_reach_the_model(
         await service.close()
 
     asyncio.run(scenario())
-    assert "Built-in prompt." in seen[0][0]
-    assert "Plugin rule: greet by name." in seen[0][0]
+    assert seen[0][0].endswith("Built-in prompt.\n\n---\n\nPlugin rule: greet by name.")
     assert "lookup" in seen[0][1]
 
 
@@ -221,6 +224,7 @@ def test_a_tool_kept_by_a_stopped_plugin_refuses_instead_of_running(tmp_path: Pa
         with pytest.raises(ToolFailed, match="no longer running"):
             await plugins.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
         await service.set_enabled("agent-hooks", True)
+        await service.settled()
         with pytest.raises(ToolFailed, match="no longer running"):
             await plugins.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
         fresh = await service.toolset_for("prober", "s1")
@@ -445,8 +449,10 @@ def test_a_toolset_that_cannot_start_marks_the_plugin_failed(tmp_path: Path):
         server = tmp_path / "plugins" / "mcp-tools" / "dist" / "backend" / "server.py"
         server.write_text("raise SystemExit(3)\n")
         await service.discover()
-        info = await service.set_enabled("mcp-tools", True)
-        assert isinstance(info, PluginInfo) and info.status == "failed"
+        await service.set_enabled("mcp-tools", True)
+        await service.settled()
+        info = service.plugins["mcp-tools"].info
+        assert info.status == "failed"
         assert info.error
         await service.close()
 
@@ -767,6 +773,113 @@ def test_a_run_lists_and_calls_the_toolsets_a_plugin_resolved_for_it(tmp_path: P
     assert returned == ["harmless"]
 
 
+class Tracked(FunctionToolset[None]):
+    """The toolset a plugin's `for_run` makes for each run; records whether a run entered and left it."""
+
+    def __init__(self):
+        super().__init__([harmless])
+        self.events: list[str] = []
+
+    async def __aenter__(self):
+        self.events.append("entered")
+        return self
+
+    async def __aexit__(self, *args):
+        self.events.append("left")
+
+
+class ResolvesPerRun(AbstractToolset[None]):
+    def __init__(self, resolved: AbstractToolset[None] | Exception):
+        self.resolved = resolved
+
+    @property
+    def id(self) -> str | None:
+        return None
+
+    async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+        if isinstance(self.resolved, Exception):
+            raise self.resolved
+        return self.resolved
+
+    async def get_tools(self, ctx: RunContext[None]):
+        return {}
+
+    async def call_tool(self, name, tool_args, ctx, tool):
+        raise AssertionError("called the unresolved toolset")
+
+
+async def run_prober_with(service: PluginService, toolset: AbstractToolset[None]):
+    context = service.plugins["agent-hooks"].context
+    assert context is not None
+    context.contributions.clear()
+    context.register_instructions(["prober"], "Stays.")
+    context.register_toolset(["prober"], toolset)
+    plugins = await service.toolset_for("prober", "s1")
+    assert plugins is not None
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        yield "done"
+
+    agent = build_prober(
+        FunctionModel(stream_function=respond), "", extra_toolsets=(plugins,)
+    )
+    return await agent.run("hi")
+
+
+def test_a_toolset_that_fails_to_resolve_for_a_run_drops_the_plugin_with_a_warning(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        result = await run_prober_with(service, ResolvesPerRun(RuntimeError("no run")))
+        assert result.output == "done"
+        assert warnings_of(service, "agent-hooks") == [
+            "Added nothing to a prober turn: no run"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_run_enters_and_leaves_the_toolset_a_plugin_resolved_for_it(tmp_path: Path):
+    tracked = Tracked()
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        await run_prober_with(service, ResolvesPerRun(tracked))
+        await service.close()
+
+    asyncio.run(scenario())
+    assert tracked.events == ["entered", "left"]
+
+
+def test_a_toolset_resolved_after_the_plugin_stopped_is_not_entered(tmp_path: Path):
+    tracked = Tracked()
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        context.register_toolset(["prober"], ResolvesPerRun(tracked))
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        run = run_context()
+        resolved = await plugins.for_run(run)
+        await service.set_enabled("agent-hooks", False)
+        async with resolved:
+            pass
+        await service.close()
+
+    asyncio.run(scenario())
+    assert tracked.events == []
+
+
 @contextmanager
 def client_for(
     tmp_path: Path, plugin: str, replies: list[dict]
@@ -806,7 +919,14 @@ def test_a_turn_calls_a_plugin_tool_and_saves_its_result(
         {"text": "All done"},
     ]
     with client_for(tmp_path, plugin, replies) as client:
-        client.put(f"/api/plugins/{plugin}/enabled", json={"enabled": True})
+        info = client.put(
+            f"/api/plugins/{plugin}/enabled", json={"enabled": True}
+        ).json()
+        while info["status"] == "activating":
+            time.sleep(0.05)
+            listed = client.get("/api/plugins").json()["plugins"]
+            info = next(item for item in listed if item["id"] == plugin)
+        assert info["status"] == "active"
         session_id = client.post("/api/sessions", json={}).json()["id"]
         url = f"/api/sessions/{session_id}"
         client.post(url + "/input", json={"type": "text", "text": "hello"})

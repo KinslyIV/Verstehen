@@ -1,28 +1,26 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass, field
-from typing import Any, Self, TypeVar
+from contextlib import AsyncExitStack
+from dataclasses import dataclass, field, replace
+from functools import partial
+from typing import Any, Self
 
 from pydantic_ai import ModelRetry, RunContext
 from pydantic_ai.exceptions import ApprovalRequired, CallDeferred, ToolFailed
 from pydantic_ai.messages import InstructionPart
-from pydantic_ai.toolsets import CombinedToolset, WrapperToolset
+from pydantic_ai.toolsets import AbstractToolset, CombinedToolset, WrapperToolset
 from pydantic_ai.toolsets.abstract import ToolsetTool
 
-from verstehen.plugins.context import AgentName, PluginContext, failure_text
+from verstehen.plugins.context import AgentName, PluginContext, Stopped, failure_text
 from verstehen.plugins.reserved import RESERVED_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
 PASSED_ON = (ModelRetry, ToolFailed, CallDeferred, ApprovalRequired)
-Result = TypeVar("Result")
+SECTION_SEPARATOR = "---"
 
 ReportWarnings = Callable[[str, list[str]], None]
 Tools = dict[str, ToolsetTool[None]]
-
-
-class Stopped(Exception):
-    """The plugin was disabled or restarted while the turn was using it."""
 
 
 @dataclass
@@ -37,6 +35,13 @@ class PluginTurn:
     owned: dict[str, frozenset[str]] | None = None
     first_listing: dict[str, Tools] = field(default_factory=dict)
     failures: dict[str, str] = field(default_factory=dict)
+    dropped: dict[str, str] = field(default_factory=dict)
+
+    def drop(self, plugin_id: str, error: Exception) -> None:
+        """Take the plugin out of the rest of the turn, with a warning, because its setup failed."""
+        problem = failure_text(error)
+        self.dropped[plugin_id] = problem
+        self.report(plugin_id, [f"Added nothing to a {self.agent} turn: {problem}"])
 
 
 @dataclass
@@ -50,33 +55,59 @@ class PluginToolset(WrapperToolset[None]):
     turn: PluginTurn
     instructions: list[str] = field(default_factory=list)
     problem: str | None = None
+    resolved_here: list[AbstractToolset[None]] = field(default_factory=list)
+    entered: AsyncExitStack | None = field(init=False, default=None)
+
+    async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+        resolved = await self.resolving(lambda: self.wrapped.for_run(ctx))
+        if resolved is self:
+            return self
+        assert isinstance(resolved, PluginToolset)
+        return replace(
+            resolved, resolved_here=new_toolsets(self.wrapped, resolved.wrapped)
+        )
+
+    async def for_run_step(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+        return await self.resolving(lambda: self.wrapped.for_run_step(ctx))
+
+    async def resolving(
+        self, resolve: Callable[[], Awaitable[AbstractToolset[None]]]
+    ) -> AbstractToolset[None]:
+        """This toolset with what `resolve` returns, inside the plugin's boundary: if it fails or the
+        plugin stopped, the toolset stays as it was and a failure drops the plugin from the turn.
+        """
+        try:
+            wrapped = await self.context.operate(resolve)
+        except Stopped:
+            return self
+        except Exception as error:
+            self.turn.drop(self.plugin_id, error)
+            return self
+        return self if wrapped is self.wrapped else replace(self, wrapped=wrapped)
 
     async def __aenter__(self) -> Self:
+        """Enter only the toolsets this run's `for_run` made new; the plugin's own are entered by its context."""
+        try:
+            async with AsyncExitStack() as stack:
+                for toolset in self.resolved_here:
+                    await self.context.operate(
+                        partial(stack.enter_async_context, toolset)
+                    )
+                self.entered = stack.pop_all()
+        except Stopped:
+            pass
+        except Exception as error:
+            self.turn.drop(self.plugin_id, error)
         return self
 
     async def __aexit__(self, *args: Any) -> bool | None:
-        return None
-
-    async def operate(self, run: Callable[[], Awaitable[Result]]) -> Result:
-        """Run `run` as an operation of the plugin's context; raises `Stopped` if the plugin stops."""
-        if self.context.closed:
-            raise Stopped
-        operation = asyncio.ensure_future(run())
-        self.context.operations.add(operation)
-        operation.add_done_callback(self.context.operations.discard)
-        try:
-            result = await operation
-        except asyncio.CancelledError:
-            current = asyncio.current_task()
-            if self.context.closed and current and not current.cancelling():
-                raise Stopped from None
-            raise
-        if self.context.closed:
-            raise Stopped
-        return result
+        stack, self.entered = self.entered, None
+        return await stack.__aexit__(*args) if stack else None
 
     async def get_tools(self, ctx: RunContext[None]) -> Tools:
-        return await self.operate(lambda: super(PluginToolset, self).get_tools(ctx))
+        return await self.context.operate(
+            lambda: super(PluginToolset, self).get_tools(ctx)
+        )
 
     async def call_tool(
         self,
@@ -86,7 +117,7 @@ class PluginToolset(WrapperToolset[None]):
         tool: ToolsetTool[None],
     ) -> Any:
         try:
-            return await self.operate(
+            return await self.context.operate(
                 lambda: super(PluginToolset, self).call_tool(name, tool_args, ctx, tool)
             )
         except Stopped:
@@ -139,8 +170,9 @@ class PluginToolsets(CombinedToolset[None]):
     async def list_for_admission(
         self, member: PluginToolset, taken: set[str], ctx: RunContext[None]
     ) -> tuple[Tools | None, str | None]:
-        if member.problem:
-            return None, member.problem
+        problem = member.problem or self.turn.dropped.get(member.plugin_id)
+        if problem:
+            return None, problem
         try:
             tools = await member.get_tools(ctx)
         except Stopped:
@@ -164,7 +196,7 @@ class PluginToolsets(CombinedToolset[None]):
         tools: Tools = {}
         for member in self.members():
             names = self.turn.owned.get(member.plugin_id)
-            if names is None:
+            if names is None or member.plugin_id in self.turn.dropped:
                 continue
             tools.update(await self.listed(member, names, ctx))
         return tools
@@ -207,9 +239,22 @@ class PluginToolsets(CombinedToolset[None]):
         await self.admit(ctx)
         owned = self.turn.owned or {}
         return [
-            InstructionPart(text.strip())
+            InstructionPart(f"{SECTION_SEPARATOR}\n\n{text.strip()}")
             for member in self.members()
-            if member.plugin_id in owned and not member.context.closed
+            if member.plugin_id in owned
+            and member.plugin_id not in self.turn.dropped
+            and not member.context.closed
             for text in member.instructions
             if text.strip()
         ] or None
+
+
+def new_toolsets(
+    old: AbstractToolset[None], resolved: AbstractToolset[None]
+) -> list[AbstractToolset[None]]:
+    """The toolsets of `resolved` that are not the ones `old` held: what `for_run` made for this run."""
+    if isinstance(old, CombinedToolset) and isinstance(resolved, CombinedToolset):
+        return [
+            new for new, was in zip(resolved.toolsets, old.toolsets) if new is not was
+        ]
+    return []

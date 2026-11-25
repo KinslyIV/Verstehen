@@ -22,6 +22,11 @@ Function = TypeVar("Function", bound=Callable[..., Any])
 EXPOSED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TOPIC = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 JSON = TypeAdapter(JsonValue)
+Result = TypeVar("Result")
+
+
+class Stopped(Exception):
+    """The plugin was disabled or restarted while something was using it."""
 
 
 def failure_text(error: Exception) -> str:
@@ -72,11 +77,14 @@ class PluginContext:
         directory: Path,
         data_directory: Path,
         publish: Publish,
+        loop: asyncio.AbstractEventLoop | None = None,
     ):
         self.id = plugin_id
         self.directory = directory
         self.data_directory = data_directory
         self.publish = publish
+        self.loop = loop
+        self.teardown: asyncio.Future[list[str]] | None = None
         self.cleanups: list[Cleanup] = []
         self.exposed: dict[str, Exposed] = {}
         self.observers: dict[AppEvent, list[Observer]] = {}
@@ -122,7 +130,16 @@ class PluginContext:
             data = JSON.validate_python(data)
         except ValidationError as error:
             raise ValueError("Plugin notification data must be JSON") from error
-        self.publish(self.id, topic, data)
+        if self.loop is None or self.in_loop():
+            self.publish(self.id, topic, data)
+        else:
+            self.loop.call_soon_threadsafe(self.publish, self.id, topic, data)
+
+    def in_loop(self) -> bool:
+        try:
+            return asyncio.get_running_loop() is self.loop
+        except RuntimeError:
+            return False
 
     def on(self, event: AppEvent, observer: Observer) -> Callable[[], None]:
         """Call `observer(session_id)` after each `event`; returns the function that stops it."""
@@ -185,11 +202,39 @@ class PluginContext:
         if self.closed:
             raise RuntimeError("Plugin activation is no longer active")
 
+    async def operate(self, run: Callable[[], Awaitable[Result]]) -> Result:
+        """Run `run` as an operation of this context, so `close` cancels it; raises `Stopped` once closed."""
+        if self.closed:
+            raise Stopped
+        operation = asyncio.ensure_future(run())
+        self.operations.add(operation)
+        operation.add_done_callback(self.operations.discard)
+        try:
+            result = await operation
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if self.closed and current and not current.cancelling():
+                raise Stopped from None
+            raise
+        if self.closed:
+            raise Stopped
+        return result
+
     async def close(self) -> list[str]:
         """Drop every registration, end the operations in flight, and run the cleanups, newest first;
-        returns the failure messages.
+        returns the failure messages. Teardown is not interrupted: later cancellations are dropped.
         """
         self.closed = True
+        if self.teardown is None:
+            self.teardown = asyncio.ensure_future(self.tear_down())
+        while not self.teardown.done():
+            try:
+                await asyncio.shield(self.teardown)
+            except asyncio.CancelledError:
+                continue
+        return self.teardown.result()
+
+    async def tear_down(self) -> list[str]:
         self.exposed.clear()
         self.observers.clear()
         self.contributions.clear()
