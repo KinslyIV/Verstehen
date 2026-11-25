@@ -165,6 +165,14 @@ def test_the_window_shows_why_the_server_did_not_start(tmp_path: Path):
 
 
 @pytest.mark.slow
+def test_the_window_shows_the_failure_when_the_data_dir_is_a_file(tmp_path: Path):
+    (tmp_path / "data").write_text("not a directory")
+    result = run_probe(PROBE, tmp_path, tmp_path / "spa", "4")
+    assert "Verstehen couldn't start" in result["text"]
+    assert "data" in result["text"]
+
+
+@pytest.mark.slow
 def test_lazy_names_resolve_in_the_desktop_process_after_qt_loads(tmp_path: Path):
     spa = tmp_path / "spa"
     spa.mkdir()

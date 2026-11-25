@@ -114,7 +114,7 @@ class DesktopShell(QObject):
     def __init__(self, app: QApplication) -> None:
         super().__init__()
         self._app = app
-        self._data_dir = resolve_data_dir()
+        self._data_dir = resolve_data_dir(create=False)
         self._serving = False
         self._closing = False
         self.demo_runner = DesktopDemoRunner()
