@@ -1,6 +1,7 @@
 import json
 import os
 import selectors
+import signal
 import subprocess
 import sys
 import urllib.request
@@ -72,13 +73,10 @@ assert resolve_model is not None
 
 
 def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
-    token = "test-token-" * 8
     stderr_log = tmp_path / "importtime.log"
     env = {
         **os.environ,
         "VERSTEHEN_DATA_DIR": str(tmp_path),
-        "VERSTEHEN_DESKTOP": "1",
-        "VERSTEHEN_TOKEN": token,
     }
     err_file = stderr_log.open("wb")
     proc = subprocess.Popen(
@@ -109,16 +107,12 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
         line = proc.stdout.readline().strip()
         assert line, stderr_log.read_text(encoding="utf-8", errors="replace")
         port = json.loads(line)["port"]
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/health",
-            headers={"x-verstehen-token": token},
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
+        url = f"http://127.0.0.1:{port}/api/health"
+        with urllib.request.urlopen(url, timeout=10) as response:
             assert response.status == 200
             assert json.loads(response.read().decode("utf-8")) == {"status": "ok"}
     finally:
-        if proc.stdin is not None and not proc.stdin.closed:
-            proc.stdin.close()
+        proc.terminate()
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -130,8 +124,8 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
                 stream.close()
         err_file.close()
 
-    assert not shutdown_timed_out, "sidecar did not shut down within 15s on stdin EOF"
-    assert proc.returncode == 0, stderr_log.read_text(
+    assert not shutdown_timed_out, "sidecar did not shut down within 15s on SIGTERM"
+    assert proc.returncode in (0, -signal.SIGTERM), stderr_log.read_text(
         encoding="utf-8", errors="replace"
     )
     imported_roots = set()

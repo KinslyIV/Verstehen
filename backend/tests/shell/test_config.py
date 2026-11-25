@@ -8,7 +8,6 @@ from verstehen.config import load_settings
 @pytest.fixture(autouse=True)
 def environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     for name in (
-        "DESKTOP",
         "SERVER",
         "HOST",
         "TOKEN",
@@ -20,23 +19,20 @@ def environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
     monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path / "data"))
 
 
-def test_desktop_flag_without_token_refuses_to_start(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("VERSTEHEN_DESKTOP", "1")
+def test_desktop_token_must_have_at_least_64_characters():
     with pytest.raises(ValueError, match="at least 64"):
-        load_settings()
+        load_settings(desktop_token="x" * 63)
+    settings = load_settings(desktop_token="x" * 64)
+    assert settings.desktop is True
+    assert settings.token == "x" * 64
 
 
-def test_short_token_refuses_to_start(monkeypatch: pytest.MonkeyPatch):
+def test_desktop_environment_variables_no_longer_exist(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("VERSTEHEN_DESKTOP", "1")
-    monkeypatch.setenv("VERSTEHEN_TOKEN", "x" * 63)
-    with pytest.raises(ValueError, match="at least 64"):
-        load_settings()
-
-
-def test_token_without_desktop_flag_refuses_to_start(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("VERSTEHEN_TOKEN", "x" * 64)
-    with pytest.raises(ValueError, match="requires VERSTEHEN_DESKTOP=1"):
-        load_settings()
+    settings = load_settings()
+    assert settings.desktop is False
+    assert settings.token is None
 
 
 def test_settings_read_environment_once(monkeypatch: pytest.MonkeyPatch):
@@ -87,15 +83,9 @@ def test_server_mode_accepts_cli_and_env_overrides(monkeypatch: pytest.MonkeyPat
     assert overridden.port == 0
 
 
-def test_server_mode_refuses_desktop_and_token(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("VERSTEHEN_DESKTOP", "1")
-    monkeypatch.setenv("VERSTEHEN_TOKEN", "x" * 64)
+def test_server_mode_refuses_the_desktop_window():
     with pytest.raises(ValueError, match="cannot be combined with server mode"):
-        load_settings(server=True)
-
-    monkeypatch.delenv("VERSTEHEN_DESKTOP")
-    with pytest.raises(ValueError, match="VERSTEHEN_TOKEN"):
-        load_settings(server=True)
+        load_settings(server=True, desktop_token="x" * 64)
 
 
 def test_non_loopback_host_refused_outside_server_mode(

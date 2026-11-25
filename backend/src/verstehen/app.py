@@ -3,9 +3,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
+from starlette.types import Scope
 
 from verstehen.api.access import authenticate_server_request, request_refusal
 from verstehen.api.auth import PairingCodeManager
@@ -71,9 +74,29 @@ from verstehen.sync.provision import (
 )
 from verstehen.sync.service import SyncService
 
+DESKTOP_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "img-src 'self' data: blob: 'unsafe-inline' https:; "
+    "font-src 'self' 'unsafe-inline' https:; "
+    "connect-src 'self' http://127.0.0.1:* 'unsafe-inline' https:"
+)
+
+
+class SinglePageFiles(StaticFiles):
+    """Serves the built app, answering unknown client routes with index.html."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as error:
+            if error.status_code != 404 or path.startswith("api/"):
+                raise
+            return await super().get_response("index.html", scope)
+
 
 def create_app(settings: Settings) -> FastAPI:
-    """Build the API with database lifecycle, access checks, and desktop CORS."""
+    """Build the API with database lifecycle and access checks; desktop mode also serves the app."""
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -395,22 +418,10 @@ def create_app(settings: Settings) -> FastAPI:
                     )
         return await call_next(request)
 
-    if settings.desktop:
+    if settings.server:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["tauri://localhost", "http://tauri.localhost"],
-            allow_methods=["*"],
-            allow_headers=["x-verstehen-token", "content-type"],
-        )
-    elif settings.server:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[
-                "tauri://localhost",
-                "http://tauri.localhost",
-                "https://tauri.localhost",
-                "http://localhost",
-            ],
+            allow_origins=["http://localhost"],
             allow_methods=["*"],
             allow_headers=["authorization", "x-verstehen-token", "content-type"],
         )
@@ -430,4 +441,15 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)
+    if settings.desktop and settings.spa_dir is not None:
+
+        @app.middleware("http")
+        async def content_security_policy(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
+            response = await call_next(request)
+            response.headers["Content-Security-Policy"] = DESKTOP_CSP
+            return response
+
+        app.mount("/", SinglePageFiles(directory=settings.spa_dir), name="spa")
     return app

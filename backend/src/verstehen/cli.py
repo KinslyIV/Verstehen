@@ -5,7 +5,6 @@ import logging
 import os
 import socket
 import sys
-import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
@@ -61,29 +60,23 @@ def bind_listener(listener: socket.socket, host: str, port: int) -> None:
     listener.bind((host, port))
 
 
+def uvicorn_config(settings: Settings) -> uvicorn.Config:
+    """Configure uvicorn for the application; the caller supplies the listening socket."""
+    return uvicorn.Config(
+        create_app(settings),
+        host=settings.host,
+        port=settings.port,
+        log_config=None,
+        proxy_headers=False,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
+
+
 async def serve(settings: Settings) -> None:
-    """Run the API server, shutting down on desktop stdin EOF."""
+    """Run the API server until it is told to exit."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         bind_listener(listener, settings.host, settings.port)
-        config = uvicorn.Config(
-            create_app(settings),
-            host=settings.host,
-            port=settings.port,
-            log_config=None,
-            proxy_headers=False,
-            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
-        )
-        server = SidecarServer(config)
-        if settings.desktop and not settings.server:
-            loop = asyncio.get_running_loop()
-
-            def watch_stdin() -> None:
-                """Request server shutdown when the desktop parent closes stdin."""
-                while sys.stdin.buffer.read(4096):
-                    pass
-                loop.call_soon_threadsafe(setattr, server, "should_exit", True)
-
-            threading.Thread(target=watch_stdin, daemon=True).start()
+        server = SidecarServer(uvicorn_config(settings))
         await server.serve(sockets=[listener])
         if not server.started:
             raise RuntimeError("The sidecar failed to start; see verstehen.log.")
@@ -156,11 +149,7 @@ def main() -> None:
             port=arguments.port,
         )
         configure_logging(settings)
-        mode = (
-            "server"
-            if settings.server
-            else ("desktop" if settings.desktop else "browser-only")
-        )
+        mode = "server" if settings.server else "browser-only"
         logging.getLogger(__name__).info(
             "Starting mode=%s data_dir=%s host=%s port=%s",
             mode,

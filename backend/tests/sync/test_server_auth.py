@@ -403,16 +403,8 @@ def test_pairing_code_manager_per_ip_rate_limit_isolation_and_pruning():
     assert manager.failures == {}
 
 
-@pytest.mark.parametrize(
-    "origin",
-    [
-        "tauri://localhost",
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-        "http://localhost",
-    ],
-)
-def test_server_mode_cors_allows_app_origins(tmp_path: Path, origin: str):
+def test_server_mode_cors_allows_only_the_android_app_origin(tmp_path: Path):
+    origin = "http://localhost"
     with TestClient(create_app(Settings(tmp_path, server=True))) as client:
         response = client.options(
             "/api/sessions",
@@ -430,15 +422,16 @@ def test_server_mode_cors_allows_app_origins(tmp_path: Path, origin: str):
         }
         assert {"authorization", "x-verstehen-token", "content-type"} <= allowed_headers
 
-        bad = client.options(
-            "/api/sessions",
-            headers={
-                "origin": "https://evil.example",
-                "access-control-request-method": "GET",
-            },
-        )
-        assert bad.status_code == 400
-        assert "access-control-allow-origin" not in bad.headers
+        for foreign in ("https://evil.example", "tauri://localhost"):
+            bad = client.options(
+                "/api/sessions",
+                headers={
+                    "origin": foreign,
+                    "access-control-request-method": "GET",
+                },
+            )
+            assert bad.status_code == 400
+            assert "access-control-allow-origin" not in bad.headers
 
 
 def test_concurrent_pairing_code_issuance_and_revocation(tmp_path: Path):

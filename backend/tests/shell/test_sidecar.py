@@ -1,6 +1,7 @@
 import json
 import os
 import selectors
+import signal
 import subprocess
 import sys
 from contextlib import contextmanager
@@ -11,14 +12,11 @@ import pytest
 
 pytestmark = pytest.mark.slow
 
-TOKEN = "sidecar-test-" * 6
-
 
 @contextmanager
 def sidecar(
     tmp_path: Path,
     *,
-    desktop: bool = True,
     script: Path | None = None,
     provider_events: bool = False,
 ):
@@ -34,8 +32,6 @@ def sidecar(
             env.pop(name, None)
     if provider_events:
         env["VERSTEHEN_PROVIDER_EVENTS"] = "1"
-    if desktop:
-        env.update(VERSTEHEN_DESKTOP="1", VERSTEHEN_TOKEN=TOKEN)
     process = subprocess.Popen(
         [str(Path(sys.executable).with_name("verstehen"))],
         env=env,
@@ -61,35 +57,34 @@ def sidecar(
                 stream.close()
 
 
-def test_desktop_sidecar_handshake_log_and_stdin_eof_shutdown(tmp_path: Path):
+def stop_gracefully(process: subprocess.Popen[str]) -> None:
+    process.terminate()
+    assert process.wait(timeout=10) in (0, -signal.SIGTERM)
+
+
+def test_sidecar_handshake_log_and_sigterm_shutdown(tmp_path: Path):
     with sidecar(tmp_path) as (process, port, line):
         assert line == json.dumps({"port": port}) + "\n"
         assert 0 < port <= 65535
-        response = httpx2.get(
-            f"http://127.0.0.1:{port}/api/health", headers={"x-verstehen-token": TOKEN}
-        )
+        response = httpx2.get(f"http://127.0.0.1:{port}/api/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
-        assert httpx2.get(f"http://127.0.0.1:{port}/api/health").status_code == 403
-        assert process.stdin is not None
-        process.stdin.close()
-        assert process.wait(timeout=10) == 0
+        stop_gracefully(process)
         assert process.stdout is not None
         assert process.stderr is not None
         assert process.stdout.read() == ""
         assert process.stderr.read() == ""
         log = (tmp_path / "logs/verstehen.log").read_text()
-        assert "mode=desktop" in log
+        assert "mode=browser-only" in log
         assert str(tmp_path) in log
         assert str(port) in log
         assert "uvicorn" in log
         assert "Application shutdown complete" in log
-        assert TOKEN not in log
         assert not (tmp_path / "verstehen.db-wal").exists()
 
 
-def test_browser_only_ignores_stdin_eof(tmp_path: Path):
-    with sidecar(tmp_path, desktop=False) as (process, port, line):
+def test_sidecar_ignores_stdin_eof(tmp_path: Path):
+    with sidecar(tmp_path) as (process, port, line):
         assert process.stdin is not None
         process.stdin.close()
         assert httpx2.get(f"http://127.0.0.1:{port}/api/health").status_code == 200
@@ -107,9 +102,7 @@ def test_model_calls_keep_handshake_output_clean_and_provider_events_are_opt_in(
         port,
         _,
     ):
-        with httpx2.Client(
-            base_url=f"http://127.0.0.1:{port}", headers={"x-verstehen-token": TOKEN}
-        ) as client:
+        with httpx2.Client(base_url=f"http://127.0.0.1:{port}") as client:
             slots = {
                 "strong": {"account": "fake", "model": "fake"},
                 "cheap": {"account": "fake", "model": "fake-title"},
@@ -131,9 +124,7 @@ def test_model_calls_keep_handshake_output_clean_and_provider_events_are_opt_in(
             assert client.get(url + "/stream").status_code == 200
             entries = client.get(url).json()["entries"]
             assert entries[-1]["parts"][0]["text"] == "MODEL_TRAFFIC_SENTINEL"
-        assert process.stdin is not None
-        process.stdin.close()
-        assert process.wait(timeout=10) == 0
+        stop_gracefully(process)
         assert process.stdout is not None and process.stdout.read() == ""
         assert process.stderr is not None and process.stderr.read() == ""
         log = (tmp_path / "logs/verstehen.log").read_text()
