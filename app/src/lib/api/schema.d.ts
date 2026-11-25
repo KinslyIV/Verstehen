@@ -2327,7 +2327,7 @@ export interface components {
 			 * Status
 			 * @enum {string}
 			 */
-			status: 'disabled' | 'active' | 'invalid' | 'failed';
+			status: 'disabled' | 'activating' | 'active' | 'invalid' | 'failed';
 			/** Error */
 			error?: string | null;
 			/** Warnings */

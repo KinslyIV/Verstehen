@@ -2,7 +2,7 @@ import os
 import tempfile
 from pathlib import Path
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, ValidationError
 
 
 class PluginsStateError(Exception):
@@ -11,7 +11,7 @@ class PluginsStateError(Exception):
 
 class PluginsState(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    enabled: dict[str, bool] = Field(default_factory=dict)
+    enabled: dict[str, StrictBool] = Field(default_factory=dict)
 
 
 class PluginsStore:
@@ -22,10 +22,10 @@ class PluginsStore:
 
     def read(self) -> PluginsState:
         try:
-            text = self.path.read_text()
+            text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return PluginsState()
-        except OSError as error:
+        except (OSError, UnicodeDecodeError) as error:
             raise PluginsStateError(
                 f"Cannot read plugins-state.json: {error}"
             ) from error
@@ -45,7 +45,7 @@ class PluginsStore:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         descriptor, name = tempfile.mkstemp(dir=self.path.parent, prefix=".plugins-")
         try:
-            with os.fdopen(descriptor, "w") as stream:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
                 os.fchmod(stream.fileno(), 0o600)
                 stream.write(state.model_dump_json())
                 stream.flush()

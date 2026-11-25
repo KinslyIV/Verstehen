@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from verstehen.plugins.service import PluginInfo, PluginService
+from verstehen.plugins.service import PluginInfo, PluginRefused, PluginService
 from verstehen.store.plugins import PluginsStateError, PluginsStore
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "plugins"
@@ -127,6 +127,69 @@ def test_a_symlinked_dist_is_refused(tmp_path: Path):
     assert "symlinks are not allowed" in str(discover(tmp_path)["sample"].error)
 
 
+def backend_plugin(tmp_path: Path) -> Path:
+    shutil.copytree(FIXTURES / "greeter", tmp_path / "plugins" / "greeter")
+    return tmp_path / "plugins" / "greeter" / "dist"
+
+
+@pytest.mark.parametrize("target", ["backend", "backend/sub", "backend/__init__.py"])
+def test_a_symlink_in_or_as_the_backend_is_refused(tmp_path: Path, target: str):
+    dist = backend_plugin(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "__init__.py").write_text("def activate(ctx): ...")
+    path = dist / target
+    if path.is_dir():
+        shutil.rmtree(path) if target == "backend" else None
+    elif path.exists():
+        path.unlink()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.symlink_to(outside, target_is_directory=True)
+    info = discover(tmp_path)["greeter"]
+    assert info.status == "invalid"
+    assert "symlink" in str(info.error)
+
+
+@pytest.mark.parametrize("entry", ["main.js", "styles.css", "assets"])
+def test_a_symlinked_frontend_entry_is_refused(tmp_path: Path, entry: str):
+    manifest = {**MANIFEST, "styles": "styles.css"}
+    dist = install(tmp_path, "sample", manifest)
+    (dist / "styles.css").write_text("a {}")
+    (dist / "assets").mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "x").write_text("x")
+    link = dist / entry
+    if link.is_dir():
+        link.rmdir()
+    else:
+        link.unlink()
+    link.symlink_to(outside / "x" if entry != "assets" else outside)
+    info = discover(tmp_path)["sample"]
+    assert info.status == "invalid" and "symlink" in str(info.error)
+
+
+def test_a_backend_swapped_for_a_link_before_import_is_not_imported(tmp_path: Path):
+    dist = backend_plugin(tmp_path)
+    service = service_for(tmp_path)
+    asyncio.run(service.discover())
+    marker = tmp_path / "imported"
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "__init__.py").write_text(f"open({str(marker)!r}, 'w').close()\n")
+    shutil.rmtree(dist / "backend")
+    (dist / "backend").symlink_to(outside, target_is_directory=True)
+
+    async def run():
+        info = await service.set_enabled("greeter", True)
+        assert isinstance(info, PluginInfo)
+        return info
+
+    info = asyncio.run(run())
+    assert info.status == "failed" and "symlink" in str(info.error)
+    assert not marker.exists()
+
+
 def test_plugin_code_is_never_imported_during_discovery(tmp_path: Path):
     shutil.copytree(FIXTURES / "greeter", tmp_path / "plugins" / "greeter")
     marker = tmp_path / "imported"
@@ -153,6 +216,35 @@ def test_an_unknown_state_field_is_refused(tmp_path: Path):
     (tmp_path / "plugins-state.json").write_text('{"enabled": {}, "version": 2}')
     with pytest.raises(PluginsStateError):
         PluginsStore(tmp_path).read()
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b'{"enabled": {"sample": "yes"}}',
+        b'{"enabled": {"sample": 1}}',
+        b'{"enabled": {"sample": null}}',
+        b"[]",
+        b'{"enabled": {"sample": true}}\xff',
+        b"\xff\xfe",
+    ],
+)
+def test_a_state_file_that_is_not_plain_booleans_or_not_utf8_is_reported_and_kept(
+    tmp_path: Path, content: bytes
+):
+    install(tmp_path, "sample")
+    state = tmp_path / "plugins-state.json"
+    state.write_bytes(content)
+    service = service_for(tmp_path)
+
+    async def run():
+        assert await service.discover() == []
+        assert service.error and "plugins-state.json" in service.error
+        refused = await service.set_enabled("sample", True)
+        assert isinstance(refused, PluginRefused)
+
+    asyncio.run(run())
+    assert state.read_bytes() == content
 
 
 def test_the_enable_choice_survives_a_new_service(tmp_path: Path):

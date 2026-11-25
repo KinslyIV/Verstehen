@@ -21,11 +21,16 @@ from verstehen.plugins.context import (
     failure_text,
 )
 from verstehen.plugins.loader import add_vendor, forget_backend, load_backend
-from verstehen.plugins.manifest import PluginInvalid, PluginManifest, validate_package
+from verstehen.plugins.manifest import (
+    PluginInvalid,
+    PluginManifest,
+    check_backend_unlinked,
+    validate_package,
+)
 from verstehen.plugins.toolsets import PluginMember, PluginToolset, PluginToolsets
 from verstehen.store.plugins import PluginsStateError, PluginsStore
 
-PluginStatus = Literal["disabled", "active", "invalid", "failed"]
+PluginStatus = Literal["disabled", "activating", "active", "invalid", "failed"]
 SEGMENT = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 JSON = TypeAdapter(JsonValue)
 logger = logging.getLogger(__name__)
@@ -92,20 +97,23 @@ class PluginService:
         self.plugin_message = plugin_message
         self.plugins: dict[str, InstalledPlugin] = {}
         self.locks: dict[str, asyncio.Lock] = {}
+        self.tasks: set[asyncio.Task[None]] = set()
+        self.activations: dict[str, asyncio.Task[None]] = {}
+        self.closing = False
         self.error: str | None = None
 
     def installed(self) -> list[PluginInfo]:
         return [self.plugins[plugin_id].info for plugin_id in sorted(self.plugins)]
 
     async def discover(self) -> list[PluginInfo]:
-        """Find new folders and activate those already enabled. A plugin whose code is imported or
-        running is not rescanned: changed code needs a restart. An unreadable state file adds nothing.
+        """Find new folders and start the enabled ones in the background, never waiting on plugin code.
+        A plugin being changed, or whose code is imported, is not rescanned: changed code needs a restart.
         """
         self.error = None
         if not self.available:
             return []
         try:
-            enabled = self.plugins_store.read().enabled
+            self.plugins_store.read()
         except PluginsStateError as error:
             self.error = str(error)
             return self.installed()
@@ -127,24 +135,35 @@ class PluginService:
             ):
                 del self.plugins[plugin_id]
         for plugin_id, root in folders.items():
-            known = self.plugins.get(plugin_id)
-            if known and (
-                known.module or known.context or known.info.status == "failed"
-            ):
-                continue
-            plugin = self.read_package(root, enabled.get(plugin_id, False))
-            self.plugins[plugin_id] = plugin
-            if plugin.info.enabled and plugin.manifest:
-                async with self.lock_for(plugin_id):
-                    await self.reconcile(plugin)
+            plugin = self.rescan(plugin_id, root)
+            if plugin and plugin.info.enabled and plugin.manifest:
+                self.begin(plugin)
         self.plugins_changed()
         return self.installed()
+
+    def rescan(self, plugin_id: str, root: Path) -> InstalledPlugin | None:
+        """Replace a folder's package with a fresh read, unless it is mid-lifecycle or already running.
+        The enable choice is read when the lock is free and nothing awaits before it is used.
+        """
+        known = self.plugins.get(plugin_id)
+        if self.lock_for(plugin_id).locked() or (
+            known and (known.module or known.context or known.info.status == "failed")
+        ):
+            return None
+        try:
+            enabled = self.plugins_store.read().enabled.get(plugin_id, False)
+        except PluginsStateError as error:
+            self.error = str(error)
+            return None
+        plugin = self.read_package(root, enabled)
+        self.plugins[plugin_id] = plugin
+        return plugin
 
     async def set_enabled(
         self, plugin_id: str, enabled: bool
     ) -> PluginInfo | PluginRefused:
         """Save the choice, then start or stop the plugin once earlier changes to it have finished.
-        An invalid package only records the choice.
+        Disabling ends a running activation. An invalid package only records the choice.
         """
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
@@ -154,9 +173,10 @@ class PluginService:
         except PluginsStateError as error:
             return PluginRefused(500, str(error))
         plugin.info.enabled = enabled
-        async with self.lock_for(plugin_id):
-            await self.reconcile(plugin)
-        self.plugins_changed()
+        running = self.activations.get(plugin_id)
+        if not enabled and running:
+            running.cancel()
+        await asyncio.wait({self.begin(plugin)})
         return plugin.info
 
     async def call(
@@ -268,7 +288,12 @@ class PluginService:
             self.plugins_changed()
 
     async def close(self) -> None:
-        """Stop every running plugin and forget the imported code."""
+        """End pending starts and stops, stop every running plugin, and forget the imported code."""
+        self.closing = True
+        for task in list(self.activations.values()):
+            task.cancel()
+        if self.tasks:
+            await asyncio.wait(list(self.tasks))
         for plugin in self.plugins.values():
             async with self.lock_for(plugin.info.id):
                 await self.deactivate(plugin)
@@ -300,6 +325,22 @@ class PluginService:
         )
         return InstalledPlugin(root, info, manifest)
 
+    def begin(self, plugin: InstalledPlugin) -> asyncio.Task[None]:
+        """Bring the plugin to its saved choice in a task the service owns; it ends with a plugins-changed."""
+        if plugin.info.enabled and plugin.manifest and plugin.context is None:
+            plugin.info.status = "activating"
+        task = asyncio.create_task(self.reconcile_locked(plugin))
+        self.tasks.add(task)
+        task.add_done_callback(self.tasks.discard)
+        return task
+
+    async def reconcile_locked(self, plugin: InstalledPlugin) -> None:
+        try:
+            async with self.lock_for(plugin.info.id):
+                await self.reconcile(plugin)
+        finally:
+            self.plugins_changed()
+
     def lock_for(self, plugin_id: str) -> asyncio.Lock:
         return self.locks.setdefault(plugin_id, asyncio.Lock())
 
@@ -307,7 +348,7 @@ class PluginService:
         """Bring the plugin to its saved choice. Call it holding the plugin's lock, so starts and stops never overlap."""
         if not plugin.info.enabled:
             await self.deactivate(plugin)
-        elif plugin.manifest and plugin.context is None:
+        elif plugin.manifest and plugin.context is None and not self.closing:
             await self.activate(plugin)
 
     async def activate(self, plugin: InstalledPlugin) -> None:
@@ -320,11 +361,16 @@ class PluginService:
         context = PluginContext(
             manifest.id, dist, plugin.root / "data", self.plugin_message
         )
+        task = asyncio.current_task()
+        if task:
+            self.activations[manifest.id] = task
         try:
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
                 add_vendor(manifest, dist, context)
-                plugin.module = plugin.module or load_backend(manifest, dist)
+                if plugin.module is None:
+                    check_backend_unlinked(dist, manifest.backend)
+                    plugin.module = load_backend(manifest, dist)
                 activate = getattr(plugin.module, "activate", None)
                 if not callable(activate):
                     raise TypeError("Plugin backend must export activate(ctx)")
@@ -334,6 +380,9 @@ class PluginService:
                 if returned is not None:
                     context.cleanup(returned)
                 await context.start_toolsets()
+        except asyncio.CancelledError:
+            self.mark_stopped(plugin, await context.close())
+            raise
         except Exception as error:
             failures = await context.close()
             plugin.info.status = "failed"
@@ -341,6 +390,8 @@ class PluginService:
                 [failure_text(error), *(f"Cleanup: {text}" for text in failures)]
             )
             return
+        finally:
+            self.activations.pop(manifest.id, None)
         if not plugin.info.enabled:
             failures = await context.close()
             self.mark_stopped(plugin, failures)

@@ -1,4 +1,5 @@
 import json
+import os
 import re
 from pathlib import Path
 
@@ -84,6 +85,20 @@ def parse_manifest(value: object, folder: str, app_version: str) -> PluginManife
     return PluginManifest.model_validate(value)
 
 
+def check_backend_unlinked(dist: Path, backend: str) -> None:
+    """Raise `PluginInvalid` if the backend folder, or anything under it, is a symlink."""
+    package = dist / backend
+    if package.is_symlink():
+        raise PluginInvalid(f"Unsafe plugin entry: {backend} is a symlink")
+    for current, folders, files in os.walk(package):
+        for name in (*folders, *files):
+            link = Path(current) / name
+            if link.is_symlink():
+                raise PluginInvalid(
+                    f"Unsafe plugin entry: {link.relative_to(dist)} is a symlink"
+                )
+
+
 def validate_package(root: Path, app_version: str) -> PluginManifest:
     """Validate `<root>/dist` against the manifest rules and the files it names; raises `PluginInvalid`."""
     if root.is_symlink() or not root.is_dir():
@@ -101,8 +116,13 @@ def validate_package(root: Path, app_version: str) -> PluginManifest:
     except (OSError, ValueError) as error:
         raise PluginInvalid(f"manifest.json cannot be read: {error}") from error
     manifest = parse_manifest(value, root.name, app_version)
-    if manifest.backend and not (dist / manifest.backend / "__init__.py").is_file():
-        raise PluginInvalid(f"Missing plugin entry: {manifest.backend}/__init__.py")
+    for entry in (manifest.main, manifest.styles, "assets"):
+        if entry and (dist / entry).is_symlink():
+            raise PluginInvalid(f"Unsafe plugin entry: {entry} is a symlink")
+    if manifest.backend:
+        check_backend_unlinked(dist, manifest.backend)
+        if not (dist / manifest.backend / "__init__.py").is_file():
+            raise PluginInvalid(f"Missing plugin entry: {manifest.backend}/__init__.py")
     for entry in (manifest.main, manifest.styles):
         if entry and not (dist / entry).is_file():
             raise PluginInvalid(f"Missing plugin entry: {entry}")

@@ -43,17 +43,21 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
 
 - **Layout.** `plugins/<id>/dist/` holds what runs: `manifest.json`, `backend/` (a Python package,
   optional `vendor/`), `main.js`, `styles.css`, `assets/`. `plugins/<id>/data/` is the plugin's
-  own folder and survives updates and disabling. A `dist/` symlink is refused.
+  own folder and survives updates and disabling. A symlink anywhere in a package is refused: `dist/`,
+  `backend/` and everything under it, `main`, `styles` and the `assets` root.
 - **Discovery** (`PluginService.discover`, at startup and on **Refresh**): validate each manifest
   without importing anything; a package that cannot run is listed `invalid` with the reason. New
   plugins start disabled. A plugin whose code is imported or running is not rescanned: changed
   code needs an app restart.
-- **Enable state** is `plugins-state.json` (`enabled: {id: bool}`). Enabling activates the backend;
+- **Enable state** is `plugins-state.json` (`enabled: {id: bool}`, literal booleans only; a file
+  that is unreadable, not UTF-8, or invalid is reported on the Plugins page and never rewritten).
+  Enabling activates the backend;
   disabling runs its cleanups (newest first) and keeps `data/`. Starts and stops of one plugin are
   serialized by a per-plugin lock and converge on the latest saved choice: an activation that finds
   the plugin disabled meanwhile closes its own context instead of publishing it. A failing `activate` or cleanup
   marks only that plugin `failed` with the error.
-- **Backend activation:** `load_backend` imports the package once per process, `vendor/` goes on
+- **Backend activation:** a plugin being started is `activating`. `load_backend` re-checks the
+  backend path for symlinks and imports the package once per process, `vendor/` goes on
   `sys.path` while the plugin runs, then `activate(ctx)` runs (sync or async; a returned function is
   a cleanup). MCP toolsets are started right after `activate`, so one that cannot start fails the
   plugin.
@@ -103,9 +107,14 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   re-checks the plugin folder, `dist/`, and each segment for symlinks and that the resolved file is
   inside `dist/`. The manifest refuses a `backend` folder named `assets`, `manifest.json`, or the
   `main` or `styles` entry.
-- **Startup and shutdown.** A plugins folder that cannot be read (say a regular file) is reported as
-  `PluginList.error` on the Plugins page and the app starts. On shutdown the session runtimes stop
-  first, so no running turn can call a plugin's tool after its cleanup.
+- **Startup and shutdown.** Discovery is synchronous and quick; persisted activations then run as
+  host-owned tasks, so a slow or hanging `activate` never delays the API (the plugin shows
+  `activating`, and `plugins-changed` is published when it settles). Disabling or shutting down
+  cancels an activation in progress and closes its context, entered toolsets included. A plugins
+  folder that cannot be read (say a regular file) is reported as `PluginList.error` on the Plugins
+  page and the app starts. On shutdown the session runtimes stop first, so no running turn can call
+  a plugin's tool after its cleanup. **Refresh** takes each plugin's lock before replacing or
+  keeping its package and reads the enable choice inside it, so a concurrent disable always wins.
 
 ## Data and events
 
