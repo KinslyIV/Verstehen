@@ -55,6 +55,7 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   unload. Packaging is one PyInstaller onedir app, with no Rust in the build. Heavy libraries are
   imported inside the functions that use them; Python is back on 3.14, since PySide6 breaks
   Python 3.15's PEP 810 `lazy` imports, the standard library's included.
+  The package ships only the Qt it loads, in English and German (219 MB, 527 MB installed).
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.

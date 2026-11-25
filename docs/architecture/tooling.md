@@ -98,13 +98,16 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
   and Chromium runtime libraries; Docker volumes cache npm and uv). `compile.sh` builds the SPA,
   then `verstehen.spec` freezes one PyInstaller onedir app, `/usr/lib/verstehen/verstehen`
   (`/usr/bin/verstehen` links to it), with PySide6, QtWebEngine, the built SPA (`spa/`), and the
-  window icons (`icons/`); `entrypoint.py` points `VERSTEHEN_SPA_DIR` and `VERSTEHEN_ICONS_DIR` at
+  window icons (`icons/`). Its `shipped` filter drops the Qt parts nothing loads: libraries no
+  shipped binary links to (`UNUSED_QT_LIBRARY`), `qml/`, the QML debugger plugins, and every
+  translation except English and German (about 170 MB unpacked). `entrypoint.py` points `VERSTEHEN_SPA_DIR` and `VERSTEHEN_ICONS_DIR` at
   them, opens the desktop when run without arguments, and refuses `--server` (server mode runs
   from the server bundle). The pure-Python server bundle (`/usr/lib/verstehen/server-bundle/`:
   wheel + `requirements.txt` exported with `--extra server`, for SSH server provisioning) is built
   next, and `compile.sh` fails if that file names PySide6 or shiboken6
   (`backend/tests/sync/test_server_bundle.py` runs the same export). The frozen app must not
-  bundle the Claude Code CLI. `packaging/smoke.py` then runs the frozen `--self-check` and starts
+  bundle the Claude Code CLI. `packaging/smoke.py` first checks with `ldd` that every shipped
+library finds the Qt libraries it links to, then runs the frozen `--self-check` and starts
   the app offscreen (`QT_QPA_PLATFORM=offscreen`, with `--no-sandbox --disable-gpu` for the smoke
   run only): the window's own API calls must return 200 with the cookie (read from the access
   log), `/` is served, `/api/health` without the cookie is 403, SIGTERM exits 0 with no process
