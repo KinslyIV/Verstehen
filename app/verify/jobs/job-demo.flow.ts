@@ -123,9 +123,11 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	};
 	await throwInDemo();
 	await expect(errorChip).toContainText('flow boom');
+	const scrollHeightWithError = await scrollHeight();
 	await scrollTo('end');
 	await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
 	await expect(errorChip).toHaveCount(0);
+	expect(await scrollHeight()).toBe(scrollHeightWithError);
 	await scrollTo('start');
 	await expect(page.getByTestId('demo-iframe')).toHaveCount(1);
 	await expect(demo.locator('#out')).toHaveText('slope = 4.00');

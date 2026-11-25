@@ -32,6 +32,8 @@
 	let card = $state<HTMLDialogElement>();
 	let zoomed = $state(false);
 	let heldHeight = $state(0);
+	let area = $state<HTMLDivElement>();
+	let unloadedAreaHeight = $state(0);
 	let near = $state(false);
 	const mounted = $derived(demoFrameMounted(near, zoomed));
 	const frameStyle = $derived(`height: ${bridge.height ?? 360}px`);
@@ -47,7 +49,10 @@
 			observedHeight = sized.clientHeight;
 			observer?.disconnect();
 			observer = new IntersectionObserver(
-				(entries) => (near = entries[entries.length - 1].isIntersecting),
+				(entries) => {
+					near = entries[entries.length - 1].isIntersecting;
+					if (!near && area) unloadedAreaHeight = area.offsetHeight;
+				},
 				{ root, rootMargin: demoLoadMargin(observedHeight) }
 			);
 			observer.observe(card!);
@@ -135,45 +140,47 @@
 					</button>
 				</div>
 			</div>
-			{#if mounted && bridge.error}
-				<div
-					class="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
-					data-testid="demo-error-chip"
-				>
-					<span class="font-medium">This demo threw an error</span>
-					<span class="min-w-0 flex-1 truncate font-mono text-xs" title={bridge.error}>
-						{bridge.error}
-					</span>
-					{#if onsenderror}<button
-							type="button"
-							class="rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium hover:bg-destructive/15"
-							onclick={() =>
-								onsenderror(`The demo "${result.title}" threw an error: ${bridge.error}`)}
-						>
-							Send to teacher
-						</button>{/if}
-				</div>
-			{/if}
-			{#if mounted}
-				<iframe
-					bind:this={frame}
-					{@attach endFrameLife}
-					title={result.title}
-					sandbox="allow-scripts"
-					{srcdoc}
-					scrolling="no"
-					class="mt-2 box-content w-full rounded-lg border bg-white"
-					style={frameStyle}
-					style:filter={inverted ? 'invert(1) hue-rotate(180deg)' : undefined}
-					data-testid="demo-iframe"
-				></iframe>
-			{:else}
-				<div
-					class="mt-2 box-content w-full rounded-lg border bg-white"
-					style={frameStyle}
-					data-testid="demo-placeholder"
-				></div>
-			{/if}
+			<div bind:this={area} style:min-height={mounted ? undefined : `${unloadedAreaHeight}px`}>
+				{#if mounted && bridge.error}
+					<div
+						class="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+						data-testid="demo-error-chip"
+					>
+						<span class="font-medium">This demo threw an error</span>
+						<span class="min-w-0 flex-1 truncate font-mono text-xs" title={bridge.error}>
+							{bridge.error}
+						</span>
+						{#if onsenderror}<button
+								type="button"
+								class="rounded-md border border-destructive/40 px-2 py-1 text-xs font-medium hover:bg-destructive/15"
+								onclick={() =>
+									onsenderror(`The demo "${result.title}" threw an error: ${bridge.error}`)}
+							>
+								Send to teacher
+							</button>{/if}
+					</div>
+				{/if}
+				{#if mounted}
+					<iframe
+						bind:this={frame}
+						{@attach endFrameLife}
+						title={result.title}
+						sandbox="allow-scripts"
+						{srcdoc}
+						scrolling="no"
+						class="mt-2 box-content w-full rounded-lg border bg-white"
+						style={frameStyle}
+						style:filter={inverted ? 'invert(1) hue-rotate(180deg)' : undefined}
+						data-testid="demo-iframe"
+					></iframe>
+				{:else}
+					<div
+						class="mt-2 box-content w-full rounded-lg border bg-white"
+						style={frameStyle}
+						data-testid="demo-placeholder"
+					></div>
+				{/if}
+			</div>
 		</div>
 	</dialog>
 	{#if zoomed}<div
