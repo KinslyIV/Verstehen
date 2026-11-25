@@ -11,9 +11,8 @@ from pathlib import Path
 import httpx2
 import uvicorn
 
-from verstehen.api.access import TOKEN_COOKIE
 from verstehen.cli import bind_listener, configure_logging, uvicorn_config
-from verstehen.config import Settings, load_settings
+from verstehen.config import TOKEN_COOKIE, Settings, load_settings
 from verstehen.jobs.workers.headless import DemoRunner
 
 PREFERRED_PORT = 28420
@@ -81,7 +80,7 @@ class DesktopServer:
             self._server = uvicorn.Server(
                 uvicorn_config(self.settings, self._demo_runner)
             )
-        except (ValueError, OSError, RuntimeError) as error:
+        except (ValueError, OSError, RuntimeError, ImportError) as error:
             self.close_listener()
             raise ServerStartupError(str(error)) from error
         self._thread = threading.Thread(target=self._serve, daemon=True)

@@ -5,11 +5,10 @@ from urllib.parse import urlsplit
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from verstehen.config import Settings
+from verstehen.config import TOKEN_COOKIE, Settings
 from verstehen.store.devices import DevicesStore
 
 SERVER_EXEMPT_PATHS = {"/api/health", "/api/auth/pair"}
-TOKEN_COOKIE = "verstehen_token"
 
 
 def extract_bearer_token(request: Request) -> str | None:

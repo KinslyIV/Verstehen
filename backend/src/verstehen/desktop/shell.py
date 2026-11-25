@@ -26,8 +26,7 @@ from PySide6.QtWebEngineCore import (
 from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication, QFileDialog, QWidget
 
-from verstehen.api.access import TOKEN_COOKIE
-from verstehen.config import resolve_data_dir
+from verstehen.config import TOKEN_COOKIE, resolve_data_dir
 from verstehen.desktop.demo_runner import DesktopDemoRunner, register_demo_scheme
 from verstehen.desktop.links import navigation_for
 from verstehen.desktop.pages import failure_page, starting_page

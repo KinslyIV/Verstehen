@@ -1,4 +1,3 @@
-import argparse
 import asyncio
 import json
 import logging
@@ -10,7 +9,7 @@ from pathlib import Path
 
 import uvicorn
 
-from verstehen.app import create_app
+from verstehen.arguments import parse_arguments
 from verstehen.config import Settings, load_settings, resolve_data_dir
 from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.store.database import open_database
@@ -65,6 +64,8 @@ def uvicorn_config(
     settings: Settings, demo_runner: DemoRunner | None = None
 ) -> uvicorn.Config:
     """Configure uvicorn for the application; the caller supplies the listening socket."""
+    from verstehen.app import create_app
+
     return uvicorn.Config(
         create_app(settings, demo_runner),
         host=settings.host,
@@ -100,25 +101,7 @@ async def mint_device_token(device_name: str, data_dir: Path) -> dict[str, str]:
 def main() -> None:
     """Load launch settings and run the sidecar or CLI subcommand."""
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--self-check", action="store_true")
-    parser.add_argument("--server", action="store_true")
-    parser.add_argument("--host")
-    parser.add_argument("--port")
-    commands = parser.add_subparsers(dest="command")
-    importing = commands.add_parser(
-        "import-learnharness",
-        help="replace all sessions and the graph with a LearnHarness data folder",
-    )
-    importing.add_argument("folder", type=Path)
-    importing.add_argument("--dry-run", action="store_true")
-    minting = commands.add_parser(
-        "mint-token",
-        help="create a paired device and print its bearer token once",
-    )
-    minting.add_argument("device_name")
-    commands.add_parser("desktop", help="open the desktop window")
-    arguments = parser.parse_args()
+    arguments = parse_arguments()
     if arguments.self_check:
         from verstehen.self_check import run_self_check
 

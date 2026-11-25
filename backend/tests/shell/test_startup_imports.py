@@ -143,15 +143,25 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
     assert not loaded, f"Heavy modules loaded via CLI main(): {loaded}"
 
 
-@pytest.mark.parametrize(("command", "eager"), [("desktop", True), ("--server", False)])
-def test_only_the_desktop_command_turns_lazy_imports_off_before_the_app_loads(
-    command: str, eager: bool, tmp_path: Path
+@pytest.mark.parametrize(
+    ("arguments", "eager"),
+    [
+        (["desktop"], True),
+        (["--port", "0", "desktop"], True),
+        (["--self-check"], True),
+        (["--server"], False),
+        (["--port", "0"], False),
+        (["mint-token", "Phone"], False),
+    ],
+)
+def test_only_commands_that_run_qt_turn_lazy_imports_off_before_the_app_loads(
+    arguments: list[str], eager: bool, tmp_path: Path
 ):
     code = f"""
 import sys
 import types
 
-sys.argv = ["verstehen", {command!r}]
+sys.argv = ["verstehen", *{arguments!r}]
 seen = []
 sys.modules["verstehen.cli"] = types.SimpleNamespace(
     main=lambda: seen.append(
@@ -164,6 +174,23 @@ main()
 assert seen == [({eager!r}, False)], seen
 """
     _run_python(code, tmp_path)
+
+
+def test_the_packaged_desktop_refuses_server_mode_and_says_where_it_runs(
+    tmp_path: Path,
+):
+    entrypoint = Path(__file__).parents[2] / "packaging" / "entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entrypoint), "--server"],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Settings → Sync" in result.stderr
+    assert "no server mode" in result.stderr
 
 
 def test_the_desktop_app_loads_and_serves_without_playwright(tmp_path: Path):

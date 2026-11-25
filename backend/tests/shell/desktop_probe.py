@@ -20,8 +20,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     shell = DesktopShell(app)
     shell.show()
+    result: dict[str, object] = {
+        "backend_loaded_when_shown": "verstehen.app" in sys.modules
+    }
     shell.start_server()
-    result: dict[str, object] = {}
     opened: list[str] = []
     asked: list[str] = []
     desktop_shell.open_externally = lambda url: opened.append(url.toString())
@@ -33,6 +35,7 @@ def main() -> int:
     desktop_shell.choose_save_path = choose_save_path
 
     def probe() -> None:
+        result["backend_loaded_after_start"] = "verstehen.app" in sys.modules
         result["origin"] = shell.page.origin
         result["opened"] = opened
         result["has_icon"] = not shell.view.windowIcon().isNull()

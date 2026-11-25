@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from verstehen.providers.fake import load_script
+TOKEN_COOKIE = "verstehen_token"
 
 
 @dataclass(frozen=True)
@@ -76,6 +76,8 @@ def load_settings(
     script = os.environ.get("VERSTEHEN_FAKE_MODEL_SCRIPT")
     fake_model_script = Path(script).expanduser() if script is not None else None
     if fake_model_script is not None:
+        from verstehen.providers.fake import load_script
+
         load_script(fake_model_script)
     data_dir = resolve_data_dir(create=create_data_dir)
     allowed_hosts = tuple(

@@ -1,10 +1,11 @@
-"""The console entry: the desktop command turns lazy imports off before the app loads."""
+"""The console entry: processes that run Qt turn lazy imports off before the app loads."""
 
-import sys
+from verstehen.arguments import parse_arguments
 
 
 def main() -> None:
-    if sys.argv[1:2] == ["desktop"]:
+    arguments = parse_arguments()
+    if arguments.command == "desktop" or arguments.self_check:
         import verstehen.desktop.eager  # noqa: F401
     from verstehen.cli import main as run_cli
 

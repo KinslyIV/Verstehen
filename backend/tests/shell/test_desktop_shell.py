@@ -132,6 +132,8 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
         "</script></body>"
     )
     result = run_probe(PROBE, tmp_path, spa, "6")
+    assert result["backend_loaded_when_shown"] is False
+    assert result["backend_loaded_after_start"] is True
     assert result["origin"].startswith("http://127.0.0.1:")
     assert result["text"] == "health 200"
     assert result["has_icon"] is True
