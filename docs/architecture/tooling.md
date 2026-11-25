@@ -17,7 +17,7 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
 |---|---|
 | `Makefile` | `setup`, `check` (= `check-backend` + `check-frontend`), `test`, `fmt`, `dev`, `verify`, `verify-run`, `verify-live`, `api-types`, `lock-migrations`, `app`, `app-image`, `android-setup`, `android-debug`, `android`, `android-key` (`AREA='...'` scopes test and flow targets to the 9 architecture areas; `SLOW=1` includes `@pytest.mark.slow` in area-scoped pytest runs) |
 | `tools/` | custom checks and runners, each tested in `tools/tests/`: `check_comments.py` (≤ 3 lines per comment block), `check_migrations.py` (migration lock), `check_feature_map.py` (every verify flow is in the feature map), `test_areas.py` (enforces 9-area organization across `backend/tests/<area>/`, frontend Vitest globs, and `app/verify/<area>/`, and routes `pytest`, `vitest`, and `verify`), `api_types.py` (generated types are fresh), `verify_build.py` (the SPA build guard), `dev.py` (`make dev`) |
-| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.15 (`backend/.python-version`), heavy dependencies imported inside the functions that use them (guarded by `backend/tests/shell/test_startup_imports.py`; PEP 810 `lazy` is banned by `ruff` `ban-lazy`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
+| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.14 (`backend/.python-version`), heavy dependencies imported inside the functions that use them (guarded by `backend/tests/shell/test_startup_imports.py`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
 | `app/eslint.config.*`, Prettier, Vitest | frontend lint with boundaries, format, unit and browser-mode component tests |
 | `backend/src/verstehen/arguments.py`, `cli.py`, `config.py` | the command line (`parse_arguments`, parsed once; the mode comes from `--server` or `VERSTEHEN_SERVER=1`), the console entry `verstehen.cli:main`, the browser-only and `--server` backend (`serve`, logging, `uvicorn_config`), the `import-learnharness`, `mint-token`, and `desktop` subcommands, and environment settings |
 | `backend/src/verstehen/desktop/` | the Qt shell (`shell.py`, `server.py`, `demo_runner.py`, `links.py`, `pages.py`) and `__main__.py` (`python -m verstehen.desktop`, which runs `verstehen.cli:main` with `desktop` appended); [frontend shell](frontend-shell.md), [jobs](jobs.md) |
@@ -46,13 +46,9 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
   scripted replies (text, thinking, tool calls, errors, delays, usage), `fake-title` serves titles
   and role-tagged worker replies.
 - **Heavy libraries load on first use, in every mode.** Each is imported inside the function
-  that uses it; PEP 810 `lazy` is banned because PySide6 (shiboken6) replaces `__import__` and
-  leaves some lazy names as unresolved proxies, depending on import order. The standard library
-  uses `lazy` too (`concurrent.futures.ThreadPoolExecutor`, which `asyncio.to_thread` needs), so
-  importing `verstehen` (`__init__.py`) refuses every lazy import and resolves the ones interpreter
-  startup already made. `test_startup_imports.py` checks server start and the real desktop window
-  (offscreen) load none of the heavy libraries, that one still loads on use, and that no lazy name
-  is left unresolved once Qt has loaded. No pytest process imports PySide6: Qt tests run a probe
+  that uses it. `test_startup_imports.py` checks server start and the real desktop window
+  (offscreen) load none of the heavy libraries, and that one still loads on use and a
+  `ThreadPoolExecutor` still starts once Qt has loaded. No pytest process imports PySide6: Qt tests run a probe
   script in a subprocess (`backend/tests/shell/desktop_probe.py`,
   `backend/tests/jobs/desktop_demo_probe.py`), with `QT_QPA_PLATFORM=offscreen`.
 - **Two extras.** `desktop` is `PySide6-Essentials` and `PySide6-WebEngine`; `server` is

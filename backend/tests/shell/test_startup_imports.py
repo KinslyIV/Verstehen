@@ -138,7 +138,7 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
 
 
 @pytest.mark.slow
-def test_the_desktop_window_resolves_every_lazy_name_and_loads_heavy_modules_on_first_use(
+def test_the_desktop_window_loads_heavy_modules_on_first_use(
     tmp_path: Path,
 ):
     spa = tmp_path / "spa"
@@ -164,7 +164,6 @@ def test_the_desktop_window_resolves_every_lazy_name_and_loads_heavy_modules_on_
     assert json.loads(result.stdout.splitlines()[-1]) == {
         "qt_loaded": True,
         "heavy_at_startup": [],
-        "unresolved_lazy_names": [],
         "rendered_png": True,
         "resvg_loaded_on_use": True,
     }
