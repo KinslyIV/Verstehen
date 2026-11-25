@@ -122,6 +122,7 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
     result = run_probe(PROBE, tmp_path, spa, "6")
     assert result["origin"].startswith("http://127.0.0.1:")
     assert result["text"] == "health 200"
+    assert result["has_icon"] is True
     assert result["opened"] == ["https://code.claude.com/docs/en/setup"]
     assert result["url"] == result["origin"] + "/"
 

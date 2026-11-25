@@ -2,6 +2,7 @@ import os
 import signal
 import sys
 import threading
+from pathlib import Path
 
 from PySide6.QtCore import (
     QCoreApplication,
@@ -13,7 +14,7 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QCloseEvent, QDesktopServices, QKeySequence, QShortcut
+from PySide6.QtGui import QCloseEvent, QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtNetwork import QNetworkCookie
 from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -27,6 +28,16 @@ from verstehen.desktop.pages import failure_page, starting_page
 from verstehen.desktop.server import DesktopServer, ServerStartupError
 
 WINDOW_SIZE = (1280, 800)
+REPOSITORY_ICONS_DIR = Path(__file__).resolve().parents[4] / "packaging" / "icons"
+
+
+def window_icon() -> QIcon:
+    """The app icon from VERSTEHEN_ICONS_DIR, else the repository's packaging/icons."""
+    directory = Path(os.environ.get("VERSTEHEN_ICONS_DIR", REPOSITORY_ICONS_DIR))
+    icon = QIcon()
+    for file in sorted(directory.glob("*.png")):
+        icon.addFile(str(file))
+    return icon
 
 
 def open_externally(url: QUrl) -> None:
@@ -111,6 +122,7 @@ class DesktopShell(QObject):
         self.page = ShellPage(self.profile, self)
         self.view.setPage(self.page)
         self.view.setWindowTitle("Verstehen")
+        self.view.setWindowIcon(window_icon())
         self.view.resize(*WINDOW_SIZE)
         if os.environ.get("VERSTEHEN_DEVTOOLS") == "1":
             self._enable_devtools()

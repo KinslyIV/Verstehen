@@ -24,6 +24,7 @@ def main() -> int:
     def probe() -> None:
         result["origin"] = shell.page.origin
         result["opened"] = opened
+        result["has_icon"] = not shell.view.windowIcon().isNull()
         result["url"] = shell.page.url().toString()
         shell.page.runJavaScript(SCRIPT, lambda text: result.update(text=text))
         QTimer.singleShot(1000, shell.view.close)

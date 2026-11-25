@@ -8,4 +8,5 @@ from verstehen.cli import main
 if len(sys.argv) == 1:
     sys.argv.append("desktop")
 os.environ.setdefault("VERSTEHEN_SPA_DIR", str(Path(sys._MEIPASS) / "spa"))
+os.environ.setdefault("VERSTEHEN_ICONS_DIR", str(Path(sys._MEIPASS) / "icons"))
 main()

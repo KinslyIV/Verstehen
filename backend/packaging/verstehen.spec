@@ -7,7 +7,7 @@ binaries = []
 datas = collect_data_files(
     "verstehen", includes=["store/migrations/*.sql", "teaching/prompts/**/*.md"]
 )
-datas += [(str(spa), "spa")]
+datas += [(str(spa), "spa"), (str(root.parent / "packaging" / "icons"), "icons")]
 datas += copy_metadata("verstehen", recursive=True)
 hiddenimports = collect_submodules("uvicorn")
 for package in (
