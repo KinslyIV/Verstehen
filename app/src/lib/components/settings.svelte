@@ -24,6 +24,7 @@
 	import SettingsAccounts from './settings-accounts.svelte';
 	import SettingsSync from './settings-sync.svelte';
 	import SettingsConnection from './settings-connection.svelte';
+	import SettingsPlugins from './settings-plugins.svelte';
 
 	const sections = [
 		'Appearance',
@@ -33,6 +34,7 @@
 		'Prompts',
 		'Graph',
 		'Tools',
+		...(clientMode() === 'remote' ? [] : (['Plugins'] as const)),
 		clientMode() === 'remote' ? 'Connection' : 'Sync'
 	] as const;
 	type Section = (typeof sections)[number];
@@ -159,6 +161,8 @@
 					<SettingsGraph />
 				{:else if section === 'Tools'}
 					<SettingsTools />
+				{:else if section === 'Plugins'}
+					<SettingsPlugins />
 				{:else if section === 'Sync'}
 					<SettingsSync />
 				{:else if section === 'Connection'}

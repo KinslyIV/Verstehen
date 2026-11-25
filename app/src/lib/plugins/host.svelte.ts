@@ -1,0 +1,148 @@
+import { SvelteMap } from 'svelte/reactivity';
+import {
+	listPlugins,
+	pluginFileUrl,
+	type Notification,
+	type PluginInfo,
+	type PluginList
+} from '#lib/api/client.js';
+import { createContext, type Navigation } from './context.js';
+import { PluginRuntime } from './runtime.svelte.js';
+import type { ActionContext, ActionRegistration, PluginModule } from './types.js';
+
+export interface PluginHostOptions {
+	/** Imports a plugin's `main` module from its file URL. */
+	load(url: string): Promise<PluginModule>;
+	navigation: Navigation;
+	/** False where plugins do not run (a paired device): the host then loads nothing. */
+	available(): boolean;
+}
+
+export interface ActionFailure {
+	plugin: string;
+	action: string;
+	message: string;
+}
+
+const messageOf = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** Loads each enabled plugin's frontend once per window and keeps what it registered. */
+export class PluginHost {
+	list = $state.raw<PluginList>();
+	error = $state<string | null>(null);
+	actionFailure = $state<ActionFailure | null>(null);
+	readonly runtimes = new SvelteMap<string, PluginRuntime>();
+	private syncing: Promise<void> | undefined;
+	private resyncRequested = false;
+
+	constructor(private options: PluginHostOptions) {}
+
+	/** Rereads the plugin list and activates or disposes plugins to match; overlapping calls run one after another. */
+	sync(): Promise<void> {
+		if (this.syncing) {
+			this.resyncRequested = true;
+			return this.syncing;
+		}
+		const run = (async () => {
+			do {
+				this.resyncRequested = false;
+				await this.reconcile();
+			} while (this.resyncRequested);
+		})().finally(() => (this.syncing = undefined));
+		this.syncing = run;
+		return run;
+	}
+
+	private async reconcile(): Promise<void> {
+		if (!this.options.available()) return;
+		try {
+			this.list = await listPlugins();
+			this.error = null;
+		} catch (error) {
+			this.error = messageOf(error);
+			return;
+		}
+		const wanted = new SvelteMap(
+			this.list.plugins
+				.filter((plugin) => plugin.status === 'active' && plugin.main)
+				.map((plugin) => [plugin.id, plugin])
+		);
+		for (const [id, runtime] of [...this.runtimes]) {
+			if (!wanted.has(id)) {
+				this.runtimes.delete(id);
+				await runtime.dispose();
+			}
+		}
+		for (const [id, info] of wanted) {
+			const known = this.runtimes.get(id);
+			if (known) known.info = info;
+			else await this.activate(info);
+		}
+	}
+
+	private async activate(info: PluginInfo): Promise<void> {
+		const runtime = new PluginRuntime(info);
+		this.runtimes.set(info.id, runtime);
+		try {
+			if (info.styles) runtime.cleanups.push(this.addStyles(info));
+			const module = await this.options.load(pluginFileUrl(info.id, info.main!));
+			const returned = await module.activate?.(createContext(runtime, this.options.navigation));
+			if (typeof returned === 'function') runtime.cleanups.push(returned);
+		} catch (error) {
+			runtime.failure = messageOf(error);
+			await runtime.dispose();
+		}
+	}
+
+	private addStyles(info: PluginInfo): () => void {
+		const link = document.createElement('link');
+		link.rel = 'stylesheet';
+		link.href = pluginFileUrl(info.id, info.styles!);
+		link.dataset.plugin = info.id;
+		document.head.append(link);
+		return () => link.remove();
+	}
+
+	/** Hands a server notification to the plugins that listen for it. */
+	deliver(event: Notification): void {
+		if (event.type === 'plugins-changed') void this.sync();
+		else if (event.type === 'plugin-message' && event.plugin_id && event.topic)
+			this.notify(this.runtimes.get(event.plugin_id)?.notifications.get(event.topic), event.data);
+		else if (event.type === 'turn-settled' && event.session_id)
+			for (const runtime of this.runtimes.values())
+				this.notify(runtime.appEvents.get('turn-settled'), event.session_id);
+	}
+
+	/** After the event stream reconnects: plugins refetch what they show, and the list is reread. */
+	resync(): void {
+		for (const runtime of this.runtimes.values()) this.notify(runtime.resyncs, undefined);
+		void this.sync();
+	}
+
+	private notify(listeners: Set<(value: never) => void> | undefined, value: unknown): void {
+		for (const listener of [...(listeners ?? [])]) {
+			try {
+				listener(value as never);
+			} catch (error) {
+				console.error('Plugin listener failed', error);
+			}
+		}
+	}
+
+	/** Runs a placed action: repeat clicks are blocked by the caller, a failure is shown by the host. */
+	async runAction(
+		runtime: PluginRuntime,
+		action: ActionRegistration,
+		context: ActionContext
+	): Promise<void> {
+		try {
+			await action.run(context);
+		} catch (error) {
+			this.actionFailure = {
+				plugin: runtime.info.name,
+				action: action.name,
+				message: messageOf(error)
+			};
+		}
+	}
+}

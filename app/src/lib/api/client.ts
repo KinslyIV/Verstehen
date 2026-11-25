@@ -68,6 +68,8 @@ export type Device = components['schemas']['Device'];
 export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
 export type PromptSegment = components['schemas']['PromptSegment'];
 export type PromptSegments = components['schemas']['PromptSegments'];
+export type PluginInfo = components['schemas']['PluginInfo'];
+export type PluginList = components['schemas']['PluginList'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
 export class ApiError extends Error {
 	constructor(
@@ -641,3 +643,26 @@ export async function createServerPairingCode(): Promise<PairingCodeResponse> {
 export async function revokeServerDevice(id: string): Promise<void> {
 	await requestSettled(`/api/server/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+const pluginPath = (id: string) => `/api/plugins/${encodeURIComponent(id)}`;
+export async function listPlugins(signal?: AbortSignal): Promise<PluginList> {
+	return (await request('/api/plugins', { signal })).json();
+}
+export async function refreshPlugins(): Promise<PluginList> {
+	return (await request('/api/plugins/refresh', { method: 'POST' })).json();
+}
+export async function setPluginEnabled(id: string, enabled: boolean): Promise<PluginInfo> {
+	return (
+		await request(`${pluginPath(id)}/enabled`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+	).json();
+}
+/** Calls a function the plugin's backend exposed; JSON in, JSON out, and a failure rejects with its message. */
+export async function callPlugin(id: string, name: string, input?: unknown): Promise<unknown> {
+	const response = await request(`${pluginPath(id)}/call/${encodeURIComponent(name)}`, {
+		method: 'POST',
+		body: JSON.stringify(input ?? null)
+	});
+	return response.json();
+}
+/** The same-origin URL of a plugin's own file (`main`, `styles`, or something under `assets/`). */
+export const pluginFileUrl = (id: string, path: string) => `${pluginPath(id)}/files/${path}`;
