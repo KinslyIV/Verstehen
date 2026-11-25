@@ -176,13 +176,21 @@ assert seen == [({eager!r}, False)], seen
     _run_python(code, tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("arguments", "environment"),
+    [
+        (["--server"], {}),
+        (["--port", "0"], {"VERSTEHEN_SERVER": "1"}),
+        ([], {"VERSTEHEN_SERVER": "1"}),
+    ],
+)
 def test_the_packaged_desktop_refuses_server_mode_and_says_where_it_runs(
-    tmp_path: Path,
+    arguments: list[str], environment: dict[str, str], tmp_path: Path
 ):
     entrypoint = Path(__file__).parents[2] / "packaging" / "entrypoint.py"
     result = subprocess.run(
-        [sys.executable, str(entrypoint), "--server"],
-        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path)},
+        [sys.executable, str(entrypoint), *arguments],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path), **environment},
         capture_output=True,
         text=True,
         timeout=30,
@@ -219,3 +227,49 @@ with TestClient(create_app(settings)) as client:
     assert client.get("/api/health", headers=headers).status_code == 200
 """
     _run_python(code, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment", "server"),
+    [
+        (["--server"], {}, True),
+        ([], {"VERSTEHEN_SERVER": "1"}, True),
+        (["--port", "0"], {}, False),
+        (["desktop"], {}, False),
+    ],
+)
+def test_server_mode_comes_from_the_flag_or_the_environment(
+    arguments: list[str], environment: dict[str, str], server: bool, tmp_path: Path
+):
+    code = f"""
+import os, sys
+os.environ.pop("VERSTEHEN_SERVER", None)
+os.environ.update({environment!r})
+sys.argv = ["verstehen", *{arguments!r}]
+from verstehen.arguments import parse_arguments
+
+assert parse_arguments().server is {server!r}
+"""
+    _run_python(code, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment"),
+    [
+        (["--server", "desktop"], {}),
+        (["desktop"], {"VERSTEHEN_SERVER": "1"}),
+    ],
+)
+def test_the_desktop_window_cannot_be_combined_with_server_mode(
+    arguments: list[str], environment: dict[str, str], tmp_path: Path
+):
+    result = subprocess.run(
+        [sys.executable, "-m", "verstehen", *arguments],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path), **environment},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "cannot be combined with server mode" in result.stderr

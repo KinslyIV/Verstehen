@@ -10,10 +10,10 @@ SERVER_REFUSED = (
     "that Settings → Sync installs on the server."
 )
 
-if len(sys.argv) == 1:
-    sys.argv.append("desktop")
 if parse_arguments().server:
     sys.exit(SERVER_REFUSED)
+if len(sys.argv) == 1:
+    sys.argv.append("desktop")
 os.environ.setdefault("VERSTEHEN_SPA_DIR", str(Path(sys._MEIPASS) / "spa"))
 os.environ.setdefault("VERSTEHEN_ICONS_DIR", str(Path(sys._MEIPASS) / "icons"))
 main()
