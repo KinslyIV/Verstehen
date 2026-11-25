@@ -440,3 +440,16 @@ alternative, and the consequence, until the user reviews them at the end of the 
   click-to-jump; LH has no turn navigation beyond its scroll-to-bottom button.
 - **Demos zoom in place:** LH opens images and figures fullscreen but not demos; Verstehen zooms a
   demo in a dialog without remounting its iframe, so its state survives.
+
+**Qt shell ([plan](plans/qt-shell.md), user decisions 2026-11-24):**
+
+- **PySide6 + QtWebEngine replaces Tauri** in one process: the Qt window on the main thread,
+  uvicorn + FastAPI on a background thread; FastAPI serves the built SPA in desktop mode, and the
+  per-launch token is an HttpOnly, SameSite=Strict cookie the shell sets. Package
+  `verstehen.desktop`; PySide6 never reaches the server bundle.
+- **Desktop demo checks run in a hidden QtWebEngine page; server mode keeps Playwright.** Both
+  return `DemoRunResult`. The desktop has no Playwright, Chromium lookup or download, or Demo
+  browser setting. LH tests demos headlessly in a separate browser (`headless.ts`).
+- **Off-screen transcript rows are `content-visibility` placeholders.** LH renders every row.
+- **Demo iframes load near the viewport and unload far off-screen** (about two viewport heights),
+  so a demo scrolled far away resets; a zoomed demo is never unloaded. LH keeps every demo alive.
