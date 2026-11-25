@@ -7,6 +7,8 @@ import sys
 import urllib.request
 from pathlib import Path
 
+import pytest
+
 HEAVY_MODULES = (
     "anthropic",
     "claude_agent_sdk",
@@ -139,3 +141,26 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
                 imported_roots.add(module.split(".", 1)[0])
     loaded = [name for name in HEAVY_MODULES if name in imported_roots]
     assert not loaded, f"Heavy modules loaded via CLI main(): {loaded}"
+
+
+@pytest.mark.parametrize(("command", "eager"), [("desktop", True), ("--server", False)])
+def test_only_the_desktop_command_turns_lazy_imports_off_before_the_app_loads(
+    command: str, eager: bool, tmp_path: Path
+):
+    code = f"""
+import sys
+import types
+
+sys.argv = ["verstehen", {command!r}]
+seen = []
+sys.modules["verstehen.cli"] = types.SimpleNamespace(
+    main=lambda: seen.append(
+        (sys.get_lazy_imports_filter() is not None, "verstehen.app" in sys.modules)
+    )
+)
+from verstehen.launcher import main
+
+main()
+assert seen == [({eager!r}, False)], seen
+"""
+    _run_python(code, tmp_path)

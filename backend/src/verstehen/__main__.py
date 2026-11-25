@@ -1,3 +1,3 @@
-from verstehen.cli import main
+from verstehen.launcher import main
 
 main()

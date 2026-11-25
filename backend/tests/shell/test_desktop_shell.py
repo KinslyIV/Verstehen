@@ -5,15 +5,14 @@ import sys
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QUrl
 
-from verstehen.desktop import shell as desktop_shell
 from verstehen.desktop.links import navigation_for
+from verstehen.desktop.pages import failure_page, starting_page
 from verstehen.desktop.server import DesktopServer, ServerStartupError
-from verstehen.desktop.shell import failure_page, starting_page
 
 ORIGIN = "http://127.0.0.1:28420"
 PROBE = Path(__file__).with_name("desktop_probe.py")
+LAZY_PROBE = Path(__file__).with_name("lazy_imports_probe.py")
 
 
 @pytest.mark.parametrize(
@@ -53,22 +52,6 @@ def test_the_window_stays_on_its_own_origin_and_frames_load_freely():
     assert navigation_for(ORIGIN + "/", None, is_main_frame=True) == "block"
 
 
-def test_window_open_hands_only_an_allowed_url_to_the_desktop(
-    monkeypatch: pytest.MonkeyPatch,
-):
-    opened: list[str] = []
-    monkeypatch.setattr(
-        desktop_shell, "open_externally", lambda url: opened.append(url.toString())
-    )
-    page = desktop_shell.LinkPage.__new__(desktop_shell.LinkPage)
-    allowed = QUrl("https://code.claude.com/docs/en/setup")
-    assert page.acceptNavigationRequest(allowed, None, True) is False
-    assert (
-        page.acceptNavigationRequest(QUrl("https://example.com/"), None, True) is False
-    )
-    assert opened == ["https://code.claude.com/docs/en/setup"]
-
-
 def test_the_starting_and_failure_pages_say_what_happened():
     assert "Starting Verstehen…" in starting_page()
     failure = failure_page("<boom>", Path("/data/logs/verstehen.log"))
@@ -103,7 +86,7 @@ def test_a_server_that_is_not_healthy_in_time_reports_the_wait(
         server.stop()
 
 
-def run_probe(tmp_path: Path, spa_dir: Path, wait: int) -> dict:
+def run_probe(script: Path, tmp_path: Path, spa_dir: Path, *args: str) -> dict:
     env = {
         **os.environ,
         "VERSTEHEN_DATA_DIR": str(tmp_path / "data"),
@@ -112,7 +95,7 @@ def run_probe(tmp_path: Path, spa_dir: Path, wait: int) -> dict:
         "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu --no-sandbox",
     }
     done = subprocess.run(
-        [sys.executable, str(PROBE), str(wait)],
+        [sys.executable, str(script), *args],
         env=env,
         capture_output=True,
         text=True,
@@ -136,7 +119,7 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
         "setTimeout(() => { location.href = 'https://example.com/' }, 500);"
         "</script></body>"
     )
-    result = run_probe(tmp_path, spa, wait=6)
+    result = run_probe(PROBE, tmp_path, spa, "6")
     assert result["origin"].startswith("http://127.0.0.1:")
     assert result["text"] == "health 200"
     assert result["opened"] == ["https://code.claude.com/docs/en/setup"]
@@ -145,6 +128,18 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
 
 @pytest.mark.slow
 def test_the_window_shows_why_the_server_did_not_start(tmp_path: Path):
-    result = run_probe(tmp_path, tmp_path / "missing", wait=4)
+    result = run_probe(PROBE, tmp_path, tmp_path / "missing", "4")
     assert "Verstehen couldn't start" in result["text"]
     assert "verstehen.log" in result["text"]
+
+
+@pytest.mark.slow
+def test_lazy_names_resolve_in_the_desktop_process_after_qt_loads(tmp_path: Path):
+    spa = tmp_path / "spa"
+    spa.mkdir()
+    (spa / "index.html").write_text("<body></body>")
+    assert run_probe(LAZY_PROBE, tmp_path, spa) == {
+        "qt_loaded": True,
+        "claude_code_model_is_a_class": True,
+        "worker_module_is_a_module": True,
+    }
