@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from verstehen.arguments import parse_arguments
-from verstehen.launcher import main
+from verstehen.cli import main
 
 SERVER_REFUSED = (
     "The desktop app has no server mode. Server mode runs from the server bundle "

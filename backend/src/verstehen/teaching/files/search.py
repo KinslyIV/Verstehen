@@ -4,8 +4,6 @@ from collections.abc import Iterator, Sequence
 from pathlib import Path
 from time import monotonic
 
-lazy import regex
-
 from verstehen.teaching.files.access import SourceAccess, regular_file
 
 MAX_OUTPUT = 50 * 1024
@@ -197,6 +195,8 @@ def grep_sources(
     context: int,
     limit: int,
 ) -> str:
+    import regex
+
     roots, notices, multi_root = access.search_roots(path)
     try:
         expression = regex.compile(

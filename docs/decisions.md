@@ -29,16 +29,16 @@ alternative, and the consequence, until the user reviews them at the end of the 
   text now says "server" instead of "sidecar".
 - **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
   Packaging sets the bundled path.
-- **The desktop process imports eagerly.** Importing PySide6 (shiboken6) leaves lazy names read
-  across modules as unresolved proxies, so `desktop/eager.py` sets a lazy-imports filter that
-  refuses every lazy import before anything else loads; server mode stays lazy. The cost is
-  every heavy SDK loading at desktop startup, behind the already painted window. No pytest
-  process imports PySide6; Qt tests run in subprocess probes.
+- **Heavy imports are function-level; PEP 810 `lazy` is banned (user, 2026-11-25).** PySide6
+  (shiboken6) leaves some lazy names unresolved depending on import order, so `lazy` cannot be
+  trusted in the desktop process; making it eager there would load every SDK at startup. All 26
+  `lazy` imports became imports inside the using function (or `TYPE_CHECKING`), `ruff`
+  `ban-lazy` refuses new ones, `launcher.py` and `desktop/eager.py` are gone (the entry is
+  `verstehen.cli:main` again), and the vendored `claude_code/__init__.py` no longer re-exports
+  (nothing used it). No pytest process imports PySide6; Qt tests run in subprocess probes.
 - **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
   has no Playwright, and server mode runs from the server bundle. Source and dev modes are
   unchanged. The alternative was a server mode without demo checks.
-- **`--self-check` also imports eagerly,** since the desktop bundle's self-check runs a Qt demo
-  check; the server bundle's self-check gets slower.
 - **Each desktop demo check runs in a shown `QWebEngineView` that never reaches the screen**
   (1280×720, Playwright's viewport), so `requestAnimationFrame`, timers, and `visibilityState`
   behave as in Playwright; a hidden page never fires rAF.

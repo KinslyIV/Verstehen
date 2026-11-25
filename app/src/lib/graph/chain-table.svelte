@@ -227,6 +227,7 @@
 					{...chainRowAttributes(['folder', folder.id], depth, open)}
 					kind="folder"
 					id={folder.id}
+					name={folder.name}
 					enabled={editingId !== folder.id}
 					ondragitem={(value) => drop.drag(value)}
 					data-testid="folder-row-{folder.id}"
@@ -261,6 +262,7 @@
 					</button>
 					<button
 						type="button"
+						data-source-icon
 						data-testid="folder-icon-{folder.id}"
 						aria-expanded={open}
 						aria-label="Expand folder {folder.name}"

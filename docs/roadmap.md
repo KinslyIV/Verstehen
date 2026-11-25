@@ -141,9 +141,6 @@ merges.
   memory (PSS) for a demo-free lesson and a 2-demo session, and five session switches followed by
   a Chromium heap snapshot (`VERSTEHEN_DEVTOOLS=1`) for detached `SessionThread` /
   `SessionController` objects or iframes.
-- **The desktop's eager-import startup cost is unmeasured.** The desktop process imports every
-  heavy SDK at startup because Qt cannot resolve lazy imports; the window paints first, but the
-  time until the server is healthy has not been compared with the lazy server mode.
 - **Node selection while the camera or physics is moving.** A click can be swallowed during
   post-drag settling, and camera movement can immediately close a newly opened node card.
   Both reproduce in the graph renderer inherited from LearnHarness.

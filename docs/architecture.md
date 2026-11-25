@@ -130,7 +130,7 @@ settles. Details: [session and turns](architecture/session.md).
 | Storage | [store](architecture/store.md) | `store/`, migrations, `lh_import/` | — | [storage and events](learnharness/storage-and-events.md) |
 | API and events | [API and events](architecture/api-and-events.md) | `api/`, `session/events.py` | `lib/api/` | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |
 | Frontend shell | [frontend shell](architecture/frontend-shell.md) | `desktop/` | routes, layout, settings, markdown, what the page expects of the Qt shell | [overview](learnharness/overview.md) |
-| Tooling and packaging | [tooling](architecture/tooling.md) | `launcher.py`, `cli.py`, `self_check.py`, fake model | verify flows | — |
+| Tooling and packaging | [tooling](architecture/tooling.md) | `cli.py`, `self_check.py`, fake model | verify flows | — |
 
 Paths in the table are relative to `backend/src/verstehen/` and `app/src/`.
 

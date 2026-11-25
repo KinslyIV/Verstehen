@@ -5,8 +5,6 @@ from contextlib import closing
 from dataclasses import dataclass
 
 from pydantic import BaseModel
-lazy import pypdfium2 as pdfium
-lazy import pypdfium2.raw as raw
 
 from verstehen.teaching.pdfium import PDFIUM_LOCK
 
@@ -35,6 +33,8 @@ def clean(text: str) -> str:
 
 
 def scan_page(page) -> list[Line]:
+    import pypdfium2.raw as raw
+
     lines = []
     with closing(page.get_textpage()) as text:
         chars: list[str] = []
@@ -154,6 +154,9 @@ def lines_to_markdown(lines: list[Line]) -> str:
 
 
 def convert_pdf(data: bytes, max_pages: int = 1000) -> list[PdfPage]:
+    import pypdfium2 as pdfium
+    import pypdfium2.raw as raw
+
     with PDFIUM_LOCK, pdfium.PdfDocument(data) as document:
         if len(document) > max_pages:
             raise ValueError("Too long. Max 1,000 pages.")

@@ -1,7 +1,7 @@
 # Tooling and packaging
 
 Owns how the code is checked, verified, run, built, and released: the Makefile, the custom checks,
-the fake model, the verify flows, the launcher, the desktop entry and self-check, the Arch package, the Android app build and its emulator loop, and CI.
+the fake model, the verify flows, the console entry, the desktop entry and self-check, the Arch package, the Android app build and its emulator loop, and CI.
 
 ## Where things run
 
@@ -17,10 +17,10 @@ the fake model, the verify flows, the launcher, the desktop entry and self-check
 |---|---|
 | `Makefile` | `setup`, `check` (= `check-backend` + `check-frontend`), `test`, `fmt`, `dev`, `verify`, `verify-run`, `verify-live`, `api-types`, `lock-migrations`, `app`, `app-image`, `android-setup`, `android-debug`, `android`, `android-key` (`AREA='...'` scopes test and flow targets to the 9 architecture areas; `SLOW=1` includes `@pytest.mark.slow` in area-scoped pytest runs) |
 | `tools/` | custom checks and runners, each tested in `tools/tests/`: `check_comments.py` (≤ 3 lines per comment block), `check_migrations.py` (migration lock), `check_feature_map.py` (every verify flow is in the feature map), `test_areas.py` (enforces 9-area organization across `backend/tests/<area>/`, frontend Vitest globs, and `app/verify/<area>/`, and routes `pytest`, `vitest`, and `verify`), `api_types.py` (generated types are fresh), `verify_build.py` (the SPA build guard), `dev.py` (`make dev`) |
-| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.15 (`backend/.python-version`), PEP 810 module-scope `lazy` imports for heavy dependencies in server mode (guarded by `backend/tests/shell/test_startup_imports.py` and `ruff` `TID255`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
+| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.15 (`backend/.python-version`), heavy dependencies imported inside the functions that use them (guarded by `backend/tests/shell/test_startup_imports.py`; PEP 810 `lazy` is banned by `ruff` `ban-lazy`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
 | `app/eslint.config.*`, Prettier, Vitest | frontend lint with boundaries, format, unit and browser-mode component tests |
-| `backend/src/verstehen/arguments.py`, `launcher.py`, `cli.py`, `config.py` | the command line (`parse_arguments`, parsed once; the mode comes from `--server` or `VERSTEHEN_SERVER=1`), the console entry `verstehen.launcher:main`, the browser-only and `--server` backend (`serve`, logging, `uvicorn_config`), the `import-learnharness`, `mint-token`, and `desktop` subcommands, and environment settings |
-| `backend/src/verstehen/desktop/` | the Qt shell (`shell.py`, `server.py`, `demo_runner.py`, `links.py`, `pages.py`), `eager.py`, and `__main__.py` (`python -m verstehen.desktop`, which goes through the launcher); [frontend shell](frontend-shell.md), [jobs](jobs.md) |
+| `backend/src/verstehen/arguments.py`, `cli.py`, `config.py` | the command line (`parse_arguments`, parsed once; the mode comes from `--server` or `VERSTEHEN_SERVER=1`), the console entry `verstehen.cli:main`, the browser-only and `--server` backend (`serve`, logging, `uvicorn_config`), the `import-learnharness`, `mint-token`, and `desktop` subcommands, and environment settings |
+| `backend/src/verstehen/desktop/` | the Qt shell (`shell.py`, `server.py`, `demo_runner.py`, `links.py`, `pages.py`) and `__main__.py` (`python -m verstehen.desktop`, which runs `verstehen.cli:main` with `desktop` appended); [frontend shell](frontend-shell.md), [jobs](jobs.md) |
 | `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, an offline demo page (`qt-demo` in the desktop bundle, `playwright` and `headless` in the server bundle, chosen by whether PySide6 imports), the Claude CLI |
 | `backend/src/verstehen/providers/fake.py`, `app/verify/scripts/*.json` | the scripted fake model and its reply scripts |
 | `app/verify/<area>/*.flow.ts`, `fixtures.ts`, helpers | fake-model Playwright flows grouped by the 9 architecture areas; `playwright.config.ts` |
@@ -45,12 +45,11 @@ the fake model, the verify flows, the launcher, the desktop entry and self-check
 - **The fake model.** `VERSTEHEN_FAKE_MODEL_SCRIPT` enables only the fake account: `fake` streams
   scripted replies (text, thinking, tool calls, errors, delays, usage), `fake-title` serves titles
   and role-tagged worker replies.
-- **The desktop process imports eagerly.** `verstehen.launcher.main` imports `desktop/eager.py`
-  before the application for `desktop` and `--self-check`; it sets a lazy-imports filter that
-  refuses every lazy import, because PySide6 (shiboken6) leaves lazy names that are read across
-  modules unresolved. Server mode and the other subcommands stay lazy. The cost is every heavy SDK
-  loading at desktop startup behind the already painted window; it is not measured yet
-  ([roadmap](../roadmap.md#known-gaps)). No pytest process imports PySide6: Qt tests run a probe
+- **Heavy libraries load on first use, in every mode.** Each is imported inside the function
+  that uses it; PEP 810 `lazy` is banned because PySide6 (shiboken6) replaces `__import__` and
+  leaves some lazy names as unresolved proxies, depending on import order.
+  `test_startup_imports.py` checks server start and the real desktop window (offscreen) load none
+  of them, and that one still loads on use. No pytest process imports PySide6: Qt tests run a probe
   script in a subprocess (`backend/tests/shell/desktop_probe.py`,
   `backend/tests/jobs/desktop_demo_probe.py`), with `QT_QPA_PLATFORM=offscreen`.
 - **Two extras.** `desktop` is `PySide6-Essentials` and `PySide6-WebEngine`; `server` is

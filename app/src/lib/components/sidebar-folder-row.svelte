@@ -50,6 +50,7 @@
 	{...rest}
 	kind="folder"
 	id={folder.id}
+	name={folder.name}
 	enabled={draggable && !renaming}
 	{ondragitem}
 	data-testid="sidebar-folder-row-{folder.id}"

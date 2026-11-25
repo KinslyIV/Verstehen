@@ -5,15 +5,15 @@ import tempfile
 from dataclasses import asdict
 from pathlib import Path
 from threading import RLock
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, ValidationError
-lazy from pydantic_ai.providers.openai_chatgpt import (
-    OpenAIChatGPTCredentials,
-)
 
 from verstehen.providers.accounts import AccountUnavailable
+
+if TYPE_CHECKING:
+    from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTCredentials
 
 
 class StoredAccount(BaseModel):
@@ -28,6 +28,8 @@ class StoredAccount(BaseModel):
     reason: str | None = None
 
     def credentials(self) -> OpenAIChatGPTCredentials:
+        from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTCredentials
+
         return OpenAIChatGPTCredentials(
             client_id=self.client_id,
             access_token=self.access_token,

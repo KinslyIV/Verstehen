@@ -23,7 +23,7 @@ desktop = ["PySide6-Essentials>=6.12", "PySide6-WebEngine>=6.12"]
 server = ["playwright>=1.65.2"]
 
 [project.scripts]
-verstehen = "verstehen.launcher:main"
+verstehen = "verstehen.cli:main"
 
 [build-system]
 requires = ["uv_build>=0.9,<0.14"]

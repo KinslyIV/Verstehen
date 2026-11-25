@@ -36,6 +36,11 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
   the pieces fit, approved before any implementation. Every option offered to the user says what it
   means, its consequences, what it rules out, how reversible it is, and what LearnHarness does,
   with a recommendation; check the user understood before they choose.
+- **Flag bad decisions, the user's included.** The user is not a senior developer. When a
+  request or decision (from the user, the docs, or an agent) would cost performance, features,
+  correctness, security, or maintainability, say so before acting: what it costs, why, and the
+  better option, with a recommendation. The user still decides; never comply or work around it
+  silently.
 - **LearnHarness's code is the specification** (commit `069a6a11`; changes since the earlier
   pin `cb25c8e` are the [LH catch-up list](docs/roadmap.md#lh-catch-up)). When a Part A doc and the code
   disagree, the code is right: report the mismatch, don't fix the doc yourself. A behavior change
