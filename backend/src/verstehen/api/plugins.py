@@ -15,7 +15,7 @@ router = APIRouter(responses={404: {"model": ApiError}, 409: {"model": ApiError}
 class PluginList(BaseModel):
     plugins: list[PluginInfo]
     directory: str
-    state_error: str | None = None
+    error: str | None = None
 
 
 class EnabledInput(BaseModel):
@@ -26,7 +26,7 @@ def plugin_list(plugin_service: PluginService) -> PluginList:
     return PluginList(
         plugins=plugin_service.installed(),
         directory=str(plugin_service.plugins_directory),
-        state_error=plugin_service.state_error,
+        error=plugin_service.error,
     )
 
 

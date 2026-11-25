@@ -72,6 +72,13 @@ def parse_manifest(value: object, folder: str, app_version: str) -> PluginManife
         raise PluginInvalid("Manifest backend must name a Python package folder")
     if not value.get("main") and not backend:
         raise PluginInvalid("A plugin needs a main or backend entry")
+    if backend and backend in (
+        "assets",
+        "manifest.json",
+        value.get("main"),
+        value.get("styles"),
+    ):
+        raise PluginInvalid("Manifest backend must not share a name with another entry")
     if value.get("styles") and not value.get("main"):
         raise PluginInvalid("styles requires a frontend main entry")
     return PluginManifest.model_validate(value)

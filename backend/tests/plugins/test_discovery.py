@@ -75,6 +75,9 @@ def test_a_valid_package_is_listed_disabled(tmp_path: Path):
         ({"main": None}, "A plugin needs a main or backend entry"),
         ({"main": None, "styles": "a.css"}, "A plugin needs a main or backend entry"),
         ({"main": "gone.js"}, "Missing plugin entry: gone.js"),
+        ({"backend": "assets"}, "backend must not share a name"),
+        ({"backend": "main.js"}, "backend must not share a name"),
+        ({"backend": "manifest.json"}, "backend must not share a name"),
     ],
 )
 def test_each_manifest_rule_refuses_with_its_reason(
@@ -139,8 +142,8 @@ def test_a_corrupt_state_file_is_refused_and_never_overwritten(tmp_path: Path):
     state.write_text("{not json")
     service = service_for(tmp_path)
     assert asyncio.run(service.discover()) == []
-    assert service.state_error is not None
-    assert "plugins-state.json" in service.state_error
+    assert service.error is not None
+    assert "plugins-state.json" in service.error
     with pytest.raises(PluginsStateError):
         PluginsStore(tmp_path).set_enabled("sample", True)
     assert state.read_text() == "{not json"

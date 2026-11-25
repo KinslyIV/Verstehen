@@ -1,6 +1,8 @@
 import asyncio
+import json
 import shutil
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -8,7 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
-from verstehen.config import Settings
+from verstehen.config import Settings, load_settings
 from verstehen.plugins.service import PluginInfo, PluginRefused, PluginService
 from verstehen.store.plugins import PluginsStore
 
@@ -240,7 +242,7 @@ def test_enabling_an_invalid_package_only_records_the_choice(
 def test_the_app_starts_enabled_plugins_and_stops_them_on_shutdown(tmp_path: Path):
     root = install(tmp_path, "lifecycle")
     PluginsStore(tmp_path).set_enabled("lifecycle", True)
-    with TestClient(create_app(Settings(tmp_path))):
+    with TestClient(create_app(Settings(tmp_path, plugins=True))):
         assert events(root) == ["activate"]
     assert events(root)[-1] == "cleanup first"
 
@@ -251,3 +253,161 @@ def test_server_mode_runs_no_plugins(tmp_path: Path):
     with TestClient(create_app(Settings(tmp_path, server=True))):
         pass
     assert not (root / "data").exists()
+
+
+async def until(condition, seconds: float = 5) -> None:
+    for _ in range(int(seconds / 0.01)):
+        if condition():
+            return
+        await asyncio.sleep(0.01)
+    raise AssertionError("Timed out")
+
+
+def test_disabling_while_activation_is_pending_ends_disabled_with_nothing_registered(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "slow")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        enabling = asyncio.create_task(service.set_enabled("slow", True))
+        await until(lambda: (root / "data" / "events.txt").exists())
+        disabling = asyncio.create_task(service.set_enabled("slow", False))
+        await asyncio.sleep(0.05)
+        (root / "data" / "release").write_text("")
+        await asyncio.gather(enabling, disabling)
+        plugin = service.plugins["slow"]
+        assert plugin.context is None
+        assert plugin.info.status == "disabled" and plugin.info.error is None
+        assert events(root) == ["activating", "activated", "cleanup"]
+        assert isinstance(await service.call("slow", "ping", None), PluginRefused)
+        await service.close()
+
+    asyncio.run(run())
+    assert PluginsStore(tmp_path).read().enabled == {"slow": False}
+
+
+def test_concurrent_enables_start_one_activation(tmp_path: Path):
+    root = install(tmp_path, "slow")
+    (root / "data").mkdir()
+    (root / "data" / "release").write_text("")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await asyncio.gather(
+            service.set_enabled("slow", True), service.set_enabled("slow", True)
+        )
+        assert events(root) == ["activating", "activated"]
+        assert service.plugins["slow"].info.status == "active"
+        await service.close()
+
+    asyncio.run(run())
+    assert events(root) == ["activating", "activated", "cleanup"]
+
+
+def test_enabling_again_after_a_pending_disable_leaves_it_running(tmp_path: Path):
+    root = install(tmp_path, "slow")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        first = asyncio.create_task(service.set_enabled("slow", True))
+        await until(lambda: (root / "data" / "events.txt").exists())
+        off = asyncio.create_task(service.set_enabled("slow", False))
+        on = asyncio.create_task(service.set_enabled("slow", True))
+        await asyncio.sleep(0.05)
+        (root / "data" / "release").write_text("")
+        await asyncio.gather(first, off, on)
+        assert service.plugins["slow"].info.status == "active"
+        assert service.plugins["slow"].context is not None
+        await service.close()
+
+    asyncio.run(run())
+
+
+def test_a_plugins_folder_that_is_a_file_is_reported_and_the_app_still_starts(
+    tmp_path: Path,
+):
+    (tmp_path / "plugins").write_text("not a folder")
+    app = create_app(Settings(tmp_path, plugins=True))
+    with TestClient(app, base_url="http://localhost") as client:
+        assert client.get("/api/health").status_code == 200
+        listed = client.get("/api/plugins").json()
+        assert listed["plugins"] == []
+        assert "Cannot read the plugins folder" in listed["error"]
+        refreshed = client.post("/api/plugins/refresh").json()
+        assert "Cannot read the plugins folder" in refreshed["error"]
+
+
+@pytest.mark.parametrize(
+    ("desktop", "server", "environment", "expected"),
+    [
+        (True, False, None, True),
+        (False, False, None, False),
+        (False, False, "1", True),
+        (False, True, "1", False),
+        (False, False, "0", False),
+    ],
+)
+def test_only_the_desktop_or_an_explicit_local_opt_in_loads_plugins(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    desktop: bool,
+    server: bool,
+    environment: str | None,
+    expected: bool,
+):
+    monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("VERSTEHEN_SERVER", raising=False)
+    if environment is None:
+        monkeypatch.delenv("VERSTEHEN_PLUGINS", raising=False)
+    else:
+        monkeypatch.setenv("VERSTEHEN_PLUGINS", environment)
+    settings = load_settings(
+        create_data_dir=False,
+        server=server,
+        desktop_token="t" * 64 if desktop else None,
+    )
+    assert settings.plugins is expected
+
+
+def test_the_app_without_plugin_loading_lists_and_runs_nothing(tmp_path: Path):
+    root = install(tmp_path, "lifecycle")
+    PluginsStore(tmp_path).set_enabled("lifecycle", True)
+    with TestClient(
+        create_app(Settings(tmp_path)), base_url="http://localhost"
+    ) as client:
+        assert client.get("/api/plugins").json()["plugins"] == []
+    assert not (root / "data").exists()
+
+
+def test_shutdown_ends_running_turns_before_plugins_are_stopped(tmp_path: Path):
+    root = install(tmp_path, "blocking-tool")
+    script = tmp_path / "script.json"
+    script.write_text(
+        json.dumps([{"tool_calls": [{"name": "wait_forever", "arguments": {}}]}])
+    )
+    app = create_app(Settings(tmp_path, plugins=True, fake_model_script=script))
+    with TestClient(app, base_url="http://localhost") as client:
+        client.put(
+            "/api/settings",
+            json={
+                "models": {
+                    "strong": {"account": "fake", "model": "fake"},
+                    "cheap": {"account": "fake", "model": "fake-title"},
+                    "vision": {"account": "fake", "model": "fake"},
+                }
+            },
+        )
+        client.put("/api/plugins/blocking-tool/enabled", json={"enabled": True})
+        session_id = client.post("/api/sessions", json={}).json()["id"]
+        client.post(
+            f"/api/sessions/{session_id}/input", json={"type": "text", "text": "hi"}
+        )
+        for _ in range(500):
+            if (root / "data" / "events.txt").exists():
+                break
+            time.sleep(0.01)
+    assert events(root) == ["tool started", "tool ended", "cleanup"]

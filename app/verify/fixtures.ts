@@ -345,6 +345,7 @@ export const test = base.extend<{
 	baseURL: async (
 		{
 			script,
+			plugins,
 			client,
 			goesOffline,
 			playwright,
@@ -361,6 +362,7 @@ export const test = base.extend<{
 		Object.assign(env, {
 			VERSTEHEN_DATA_DIR: dataDirectory,
 			VERSTEHEN_PORT: '0',
+			...(plugins.length ? { VERSTEHEN_PLUGINS: '1' } : {}),
 			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
 		const remote = client === 'remote';

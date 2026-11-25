@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import logging
 import mimetypes
@@ -96,7 +97,8 @@ class PluginService:
         self.plugins_changed = plugins_changed
         self.plugin_message = plugin_message
         self.plugins: dict[str, InstalledPlugin] = {}
-        self.state_error: str | None = None
+        self.locks: dict[str, asyncio.Lock] = {}
+        self.error: str | None = None
 
     def installed(self) -> list[PluginInfo]:
         return [self.plugins[plugin_id].info for plugin_id in sorted(self.plugins)]
@@ -105,22 +107,30 @@ class PluginService:
         """Find new folders and activate those already enabled. A plugin whose code is imported or
         running is not rescanned: changed code needs a restart. An unreadable state file adds nothing.
         """
-        self.state_error = None
+        self.error = None
         if not self.available:
             return []
         try:
             enabled = self.plugins_store.read().enabled
         except PluginsStateError as error:
-            self.state_error = str(error)
+            self.error = str(error)
             return self.installed()
-        self.plugins_directory.mkdir(parents=True, exist_ok=True)
-        folders = {
-            root.name: root
-            for root in sorted(self.plugins_directory.glob("*/"))
-            if root.is_dir() or root.is_symlink()
-        }
+        try:
+            self.plugins_directory.mkdir(parents=True, exist_ok=True)
+            folders = {
+                root.name: root
+                for root in sorted(self.plugins_directory.glob("*/"))
+                if root.is_dir() or root.is_symlink()
+            }
+        except OSError as error:
+            self.error = f"Cannot read the plugins folder: {error}"
+            self.plugins_changed()
+            return self.installed()
         for plugin_id in [name for name in self.plugins if name not in folders]:
-            if self.plugins[plugin_id].context is None:
+            if (
+                self.plugins[plugin_id].context is None
+                and not self.lock_for(plugin_id).locked()
+            ):
                 del self.plugins[plugin_id]
         for plugin_id, root in folders.items():
             known = self.plugins.get(plugin_id)
@@ -131,14 +141,17 @@ class PluginService:
             plugin = self.read_package(root, enabled.get(plugin_id, False))
             self.plugins[plugin_id] = plugin
             if plugin.info.enabled and plugin.manifest:
-                await self.activate(plugin)
+                async with self.lock_for(plugin_id):
+                    await self.reconcile(plugin)
         self.plugins_changed()
         return self.installed()
 
     async def set_enabled(
         self, plugin_id: str, enabled: bool
     ) -> PluginInfo | PluginRefused:
-        """Save the choice, then start or stop the plugin; an invalid package only records the choice."""
+        """Save the choice, then start or stop the plugin once earlier changes to it have finished.
+        An invalid package only records the choice.
+        """
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
             return unknown_plugin(plugin_id)
@@ -147,10 +160,8 @@ class PluginService:
         except PluginsStateError as error:
             return PluginRefused(500, str(error))
         plugin.info.enabled = enabled
-        if not enabled:
-            await self.deactivate(plugin)
-        elif plugin.manifest and plugin.context is None:
-            await self.activate(plugin)
+        async with self.lock_for(plugin_id):
+            await self.reconcile(plugin)
         self.plugins_changed()
         return plugin.info
 
@@ -181,7 +192,9 @@ class PluginService:
             return PluginRefused(422, f"Plugin function {name} did not return JSON")
 
     def file(self, plugin_id: str, path: str) -> tuple[Path, str] | PluginRefused:
-        """Resolve a public file of an active plugin: its `main`, `styles`, or anything under `assets/`."""
+        """Resolve a public file of an active plugin: its `main`, `styles`, or anything under `assets/`.
+        The folder is checked again on every request, so a file swapped for a link out of `dist/` is refused.
+        """
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
             return unknown_plugin(plugin_id)
@@ -194,11 +207,17 @@ class PluginService:
         )
         if not public or not all(SEGMENT.match(part) for part in parts):
             return PluginRefused(404, "Plugin file is not public")
-        current = plugin.root / "dist"
+        root = self.plugins_directory / plugin_id
+        dist = root / "dist"
+        if root.is_symlink() or dist.is_symlink():
+            return PluginRefused(404, "Plugin file is not public")
+        current = dist
         for part in parts:
             current = current / part
             if current.is_symlink():
                 return PluginRefused(404, "Plugin file is not public")
+        if not current.resolve().is_relative_to(dist.resolve()):
+            return PluginRefused(404, "Plugin file is not public")
         if not current.is_file():
             return PluginRefused(404, "Unknown plugin file")
         return current, content_type(current)
@@ -261,14 +280,15 @@ class PluginService:
     async def close(self) -> None:
         """Stop every running plugin and forget the imported code."""
         for plugin in self.plugins.values():
-            await self.deactivate(plugin)
-            forget_backend(plugin.info.id)
-            plugin.module = None
+            async with self.lock_for(plugin.info.id):
+                await self.deactivate(plugin)
+                forget_backend(plugin.info.id)
+                plugin.module = None
 
     def read_package(self, root: Path, enabled: bool) -> InstalledPlugin:
         try:
             manifest = validate_package(root, self.app_version)
-        except PluginInvalid as error:
+        except (PluginInvalid, OSError) as error:
             info = PluginInfo(
                 id=root.name,
                 name=root.name,
@@ -290,8 +310,20 @@ class PluginService:
         )
         return InstalledPlugin(root, info, manifest)
 
+    def lock_for(self, plugin_id: str) -> asyncio.Lock:
+        return self.locks.setdefault(plugin_id, asyncio.Lock())
+
+    async def reconcile(self, plugin: InstalledPlugin) -> None:
+        """Bring the plugin to its saved choice. Call it holding the plugin's lock, so starts and stops never overlap."""
+        if not plugin.info.enabled:
+            await self.deactivate(plugin)
+        elif plugin.manifest and plugin.context is None:
+            await self.activate(plugin)
+
     async def activate(self, plugin: InstalledPlugin) -> None:
-        """Import the backend once, call its `activate(ctx)`, and mark the plugin active or failed."""
+        """Import the backend once, call its `activate(ctx)`, and mark the plugin active or failed.
+        A choice to disable made meanwhile closes this activation's own context instead of publishing it.
+        """
         manifest = plugin.manifest
         assert manifest is not None
         dist = plugin.root / "dist"
@@ -319,6 +351,10 @@ class PluginService:
                 [failure_text(error), *(f"Cleanup: {text}" for text in failures)]
             )
             return
+        if not plugin.info.enabled:
+            failures = await context.close()
+            self.mark_stopped(plugin, failures)
+            return
         plugin.context = context
         plugin.info.status = "active"
         plugin.info.error = None
@@ -327,6 +363,9 @@ class PluginService:
         """Run the plugin's cleanups; a failing cleanup marks it failed."""
         context, plugin.context = plugin.context, None
         failures = await context.close() if context else []
+        self.mark_stopped(plugin, failures)
+
+    def mark_stopped(self, plugin: InstalledPlugin, failures: list[str]) -> None:
         if plugin.manifest is None:
             return
         plugin.info.status = "failed" if failures else "disabled"

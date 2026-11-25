@@ -319,7 +319,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 PluginsStore(settings.data_dir),
                 settings.data_dir / "plugins",
                 importlib.metadata.version("verstehen"),
-                not settings.server,
+                settings.plugins,
                 plugins_changed,
                 plugin_message,
             )
@@ -401,6 +401,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 yield
             finally:
                 settled_watcher.cancel()
+                await runtimes.close()
                 await plugin_service.close()
                 await server_oauth_service.close()
                 await server_install_service.close()
@@ -411,7 +412,6 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 await job_runner.close()
                 if browser_download_service:
                     await browser_download_service.close()
-                await runtimes.close()
                 await title_service.close()
                 claude_code_adapter.close()
                 await chatgpt_sign_in_service.close()

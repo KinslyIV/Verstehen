@@ -2339,8 +2339,8 @@ export interface components {
 			plugins: components['schemas']['PluginInfo'][];
 			/** Directory */
 			directory: string;
-			/** State Error */
-			state_error?: string | null;
+			/** Error */
+			error?: string | null;
 		};
 		/** Position */
 		Position: {

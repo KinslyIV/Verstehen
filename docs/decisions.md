@@ -23,6 +23,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **A toolset's tool names are read with `get_tools` and a minimal `RunContext`** once per turn, to
   find collisions. Alternative: skip the check for toolsets; consequence: a clash would fail the
   turn instead of dropping the plugin's contribution.
+- **Plugins load only in the desktop app, or with `VERSTEHEN_PLUGINS=1` in browser-only mode** (the
+  verify flows set it). A plain local API (`make dev`) and server mode load none: its loopback
+  access check has no token, and plugin code is trusted. Alternative: always on locally.
 - **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
   desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
   run plugin code on a device that has no plugin folder.

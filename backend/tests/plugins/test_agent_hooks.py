@@ -286,7 +286,7 @@ def client_for(
     script = tmp_path / "script.json"
     script.write_text(json.dumps(replies))
     with TestClient(
-        create_app(Settings(tmp_path, fake_model_script=script)),
+        create_app(Settings(tmp_path, plugins=True, fake_model_script=script)),
         base_url="http://localhost",
     ) as client:
         client.put(

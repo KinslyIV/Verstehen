@@ -10,6 +10,7 @@ class Settings:
     data_dir: Path
     desktop: bool = False
     server: bool = False
+    plugins: bool = False
     host: str = "127.0.0.1"
     token: str | None = field(default=None, repr=False)
     port: int = 0
@@ -89,6 +90,8 @@ def load_settings(
         data_dir,
         desktop=desktop,
         server=is_server,
+        plugins=desktop
+        or (not is_server and os.environ.get("VERSTEHEN_PLUGINS") == "1"),
         host=resolved_host,
         token=desktop_token,
         spa_dir=spa_dir,

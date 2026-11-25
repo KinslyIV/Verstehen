@@ -3,7 +3,9 @@
 Owns what runs from `<data dir>/plugins/<id>/`: finding installed plugins, the enable choice, a
 plugin's Python backend and JS frontend, the bridge between the two, what a plugin adds to the
 prober, teacher, and practitioner, and Settings → Plugins. Plugins are trusted local code with no
-sandbox. Desktop only: server mode discovers nothing, and paired remote devices load no plugins.
+sandbox. Desktop only: plugins load only in the desktop app (`Settings.plugins`: the desktop shell, or
+`VERSTEHEN_PLUGINS=1` in browser-only mode, which the verify flows set); server mode never loads them
+and paired remote devices run none.
 
 LearnHarness spec: LH's plugin API v1 (`docs/plugin-authoring.md` at `069a6a11`; no Part A doc).
 Differences are in [decisions](../decisions.md#plugins). Writing a plugin:
@@ -47,7 +49,9 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   plugins start disabled. A plugin whose code is imported or running is not rescanned: changed
   code needs an app restart.
 - **Enable state** is `plugins-state.json` (`enabled: {id: bool}`). Enabling activates the backend;
-  disabling runs its cleanups (newest first) and keeps `data/`. A failing `activate` or cleanup
+  disabling runs its cleanups (newest first) and keeps `data/`. Starts and stops of one plugin are
+  serialized by a per-plugin lock and converge on the latest saved choice: an activation that finds
+  the plugin disabled meanwhile closes its own context instead of publishing it. A failing `activate` or cleanup
   marks only that plugin `failed` with the error.
 - **Backend activation:** `load_backend` imports the package once per process, `vendor/` goes on
   `sys.path` while the plugin runs, then `activate(ctx)` runs (sync or async; a returned function is
@@ -78,8 +82,13 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   the plugin's own views. A failing action shows a dismissible banner. **Settings** is a per-plugin
   page under Settings → Plugins (`?section=plugins&plugin=<id>`): rows, or a `mount`.
 - **Served files.** `GET /api/plugins/{id}/files/{path}` serves only the manifest's `main` and
-  `styles` and anything under `assets/`, of an active plugin, never through a symlink, each segment
-  a plain name.
+  `styles` and anything under `assets/`, of an active plugin, each segment a plain name. Every request
+  re-checks the plugin folder, `dist/`, and each segment for symlinks and that the resolved file is
+  inside `dist/`. The manifest refuses a `backend` folder named `assets`, `manifest.json`, or the
+  `main` or `styles` entry.
+- **Startup and shutdown.** A plugins folder that cannot be read (say a regular file) is reported as
+  `PluginList.error` on the Plugins page and the app starts. On shutdown the session runtimes stop
+  first, so no running turn can call a plugin's tool after its cleanup.
 
 ## Data and events
 

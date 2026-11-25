@@ -25,7 +25,7 @@ def client_for(tmp_path: Path, replies=None) -> Iterator[TestClient]:
         path = tmp_path / "script.json"
         path.write_text(json.dumps(replies))
     with TestClient(
-        create_app(Settings(tmp_path, fake_model_script=path)),
+        create_app(Settings(tmp_path, plugins=True, fake_model_script=path)),
         base_url="http://localhost",
     ) as client:
         if replies is not None:
@@ -60,7 +60,7 @@ def test_the_list_shows_the_plugin_and_the_enable_route_activates_it(tmp_path: P
     with client_for(tmp_path) as client:
         listed = client.get("/api/plugins").json()
         assert listed["directory"] == str(tmp_path / "plugins")
-        assert listed["state_error"] is None
+        assert listed["error"] is None
         assert [(p["id"], p["status"]) for p in listed["plugins"]] == [
             ("bridge", "disabled")
         ]
@@ -214,3 +214,34 @@ def test_the_file_resolver_refuses_traversal_segments(tmp_path: Path):
         ):
             assert service.file("bridge", path).status == 404
         assert service.file("bridge", "assets/logo.svg")[1] == "image/svg+xml"
+
+
+def test_a_file_swapped_for_a_link_out_of_dist_is_not_served_after_activation(
+    tmp_path: Path,
+):
+    with client_for(tmp_path) as client:
+        enable(client)
+        secret = tmp_path / "plugins" / "bridge" / "data" / "secret.txt"
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        base = "/api/plugins/bridge/files/"
+        assert client.get(base + "main.js").status_code == 200
+        (dist / "main.js").unlink()
+        (dist / "main.js").symlink_to(secret)
+        assert client.get(base + "main.js").status_code == 404
+        (dist / "assets" / "logo.svg").unlink()
+        (dist / "assets").rename(dist / "assets-real")
+        (dist / "assets").symlink_to(tmp_path / "plugins" / "bridge" / "data")
+        assert client.get(base + "assets/secret.txt").status_code == 404
+
+
+def test_a_dist_replaced_by_a_link_after_activation_serves_nothing(tmp_path: Path):
+    with client_for(tmp_path) as client:
+        enable(client)
+        root = tmp_path / "plugins" / "bridge"
+        other = tmp_path / "elsewhere"
+        shutil.copytree(root / "dist", other)
+        shutil.rmtree(root / "dist")
+        (root / "dist").symlink_to(other)
+        base = "/api/plugins/bridge/files/"
+        assert client.get(base + "main.js").status_code == 404
+        assert client.get(base + "assets/logo.svg").status_code == 404

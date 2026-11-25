@@ -79,8 +79,8 @@
 				Refresh
 			</Button>
 		</p>
-		{#if list.state_error}<p class="mt-3 text-sm text-destructive" role="alert">
-				{list.state_error}
+		{#if list.error}<p class="mt-3 text-sm text-destructive" role="alert">
+				{list.error}
 			</p>{/if}
 	{/if}
 	{#if error ?? plugins.error}<p class="mt-3 text-sm text-destructive" role="alert">

@@ -34,7 +34,7 @@ types stay behind the client.
 | Sync | `POST /api/sync/push`; `GET /api/sync/pull`; `POST /api/sync/images/{sha256}.{ext}` (server mode only; `404` otherwise); `GET /api/sync/status`; `POST /api/sync/now` (laptop mode; `404` in server mode) |
 | Server setup | `GET POST /api/server/install`; `POST /api/server/trust-host`; `POST /api/server/connect`; `POST /api/server/disconnect`; `GET /api/server/accounts/claude-code`; `GET POST /api/server/accounts/chatgpt`; `GET /api/server/accounts/chatgpt/sign-in/{id}`; `DELETE /api/server/accounts/chatgpt/{id}`; `GET /api/server/devices`; `POST /api/server/pairing-code`; `DELETE /api/server/devices/{id}` (laptop mode only; `404` in server mode) |
 | Tools | `GET /api/search-keys`; `PUT DELETE /api/search-keys/{engine}`; `GET /api/demo-browser`; `GET POST /api/demo-browser/download` |
-| Plugins | `GET /api/plugins`; `POST /api/plugins/refresh`; `PUT /api/plugins/{id}/enabled`; `POST /api/plugins/{id}/call/{name}` (JSON in and out); `GET /api/plugins/{id}/files/{path}` (the manifest's `main`, `styles`, and `assets/`). Server mode lists none ([plugins](plugins.md)). |
+| Plugins | `GET /api/plugins`; `POST /api/plugins/refresh`; `PUT /api/plugins/{id}/enabled`; `POST /api/plugins/{id}/call/{name}` (JSON in and out); `GET /api/plugins/{id}/files/{path}` (the manifest's `main`, `styles`, and `assets/`). The list reports `error` for a plugins-level problem (an unreadable state file or folder). Plugins load only in the desktop app, or in browser-only mode with `VERSTEHEN_PLUGINS=1`; otherwise the list is empty ([plugins](plugins.md)). |
 | Other | `GET /api/images/{sha256}.{ext}`; `GET /api/health` |
 
 ## Events
