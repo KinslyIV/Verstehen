@@ -164,3 +164,31 @@ main()
 assert seen == [({eager!r}, False)], seen
 """
     _run_python(code, tmp_path)
+
+
+def test_the_desktop_app_loads_and_serves_without_playwright(tmp_path: Path):
+    code = f"""
+import sys
+from pathlib import Path
+
+class RefusePlaywright:
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] == "playwright":
+            raise ImportError("playwright is not part of the desktop")
+
+sys.meta_path.insert(0, RefusePlaywright())
+import verstehen.desktop.eager
+from fastapi.testclient import TestClient
+from verstehen.app import create_app
+from verstehen.config import Settings
+import verstehen.desktop.demo_runner
+import verstehen.desktop.server
+import verstehen.desktop.shell
+
+token = "test-token-" * 8
+settings = Settings(Path({str(tmp_path)!r}), desktop=True, token=token)
+with TestClient(create_app(settings)) as client:
+    headers = {{"x-verstehen-token": token}}
+    assert client.get("/api/health", headers=headers).status_code == 200
+"""
+    _run_python(code, tmp_path)

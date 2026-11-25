@@ -614,6 +614,8 @@ def locate_server_bundle() -> Path:
             "--frozen",
             "--no-dev",
             "--no-emit-project",
+            "--extra",
+            "server",
             "--format",
             "requirements-txt",
             "-o",

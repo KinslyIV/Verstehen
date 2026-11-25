@@ -13,7 +13,6 @@ hiddenimports = collect_submodules("uvicorn")
 for package in (
     "asyncssh",
     "cryptography",
-    "playwright",
     "claude_agent_sdk",
     "pypdfium2",
     "pypdfium2_raw",
@@ -25,9 +24,8 @@ for package in (
     hiddenimports += hidden
 
 a = Analysis([str(root / "packaging/entrypoint.py")], pathex=[str(root / "src")],
-             binaries=binaries, datas=datas, hiddenimports=hiddenimports)
-a.datas = [entry for entry in a.datas if not entry[0].startswith("playwright/driver/")]
-a.binaries = [entry for entry in a.binaries if not entry[0].startswith("playwright/driver/")]
+             binaries=binaries, datas=datas, hiddenimports=hiddenimports,
+             excludes=["playwright"])
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="verstehen", console=True)
 coll = COLLECT(exe, a.binaries, a.datas, name="verstehen")

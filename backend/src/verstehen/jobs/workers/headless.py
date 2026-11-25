@@ -4,7 +4,6 @@ from collections.abc import Callable
 from typing import Protocol
 
 from pydantic import BaseModel, Field, JsonValue
-lazy from playwright.async_api import async_playwright
 
 ALLOWED_SCHEMES = frozenset({"http", "https", "data", "blob", "about"})
 SETTLE_SECONDS = 2
@@ -47,6 +46,8 @@ class PlaywrightDemoRunner:
 async def run_demo(
     html: str, executable: str, probe: str | None = None
 ) -> DemoRunResult:
+    from playwright.async_api import async_playwright
+
     result = DemoRunResult(probed=bool(probe))
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
