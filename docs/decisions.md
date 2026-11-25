@@ -14,6 +14,26 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Qt shell (implementation):**
+
+- **The desktop server prefers port 28420 and falls back to a random free port.** The page origin
+  keys `localStorage` (theme, graph camera, filters, transcript width, open folders), so a random
+  port every launch would reset it; a launch that falls back loses that state once.
+- **The QtWebEngine profile is persistent, stored under `<data dir>/webengine` and
+  `webengine-cache`.** An off-the-record profile would lose every stored UI preference; keeping it
+  under `VERSTEHEN_DATA_DIR` keeps tests isolated.
+- **Desktop CSP `font-src` also allows `data:`.** Chromium refuses Vite's inlined `data:` fonts
+  under the exact Tauri string; the alternative keeps the Tauri string and a missing font.
+- **The frontend startup screen is removed; the shell owns the starting and failure pages.** The
+  startup timing marks are dropped too (their only reader was the Rust shell's log). The failure
+  text now says "server" instead of "sidecar".
+- **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
+  Packaging sets the bundled path.
+- **The Brave/Tavily "Get a key" links stay refused by the two-URL allowlist, now silently.**
+  Tauri refused them with an error message; adding them to the allowlist is the alternative.
+- **The `desktop` extra is `PySide6-Essentials` + `PySide6-WebEngine`** (6.12 split WebEngine into
+  its own wheel); `PySide6-Addons` is not needed.
+
 **M11a sidebar folders:**
 
 - **Folder Delete is one server-checked operation on the folder's tree.** The menu item is enabled
