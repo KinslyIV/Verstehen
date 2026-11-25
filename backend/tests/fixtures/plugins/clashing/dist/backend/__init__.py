@@ -1,5 +1,5 @@
 def activate(ctx):
-    ctx.register_instructions(["teacher"], "Plugin rule: never shown.")
+    ctx.register_instructions(["teacher"], "Plugin rule: shadowed.")
 
     def create(turn):
         def quiz() -> str:

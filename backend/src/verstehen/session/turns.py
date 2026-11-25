@@ -516,21 +516,20 @@ class TurnService:
             self.provider_events,
             turn_id=state.run.id if state.run else None,
         )
-        state.agent = self.build_role_agent(
-            state, model, instructions, settings, PluginContributions()
+        plugins = (
+            await self.plugin_service.contributions(role, state.session_id)
+            if self.plugin_service
+            else PluginContributions()
         )
-        if self.plugin_service:
-            plugins = await self.plugin_service.contributions(
-                role, state.session_id, state.agent
-            )
-            if plugins.instructions or plugins.tools or plugins.toolsets:
-                state.agent = self.build_role_agent(
-                    state,
-                    model,
-                    join_fragments([instructions, *plugins.instructions]),
-                    settings,
-                    plugins,
-                )
+        state.agent = self.build_role_agent(
+            state,
+            model,
+            join_fragments([instructions, *plugins.instructions])
+            if plugins.instructions
+            else instructions,
+            settings,
+            plugins,
+        )
         return Continue(state)
 
     def build_role_agent(
@@ -585,9 +584,8 @@ class TurnService:
                         else ()
                     ),
                     *job_tools(dispatcher, ToolSettings(), prober=True),
-                    *plugins.tools,
                 ),
-                extra_toolsets=tuple(plugins.toolsets),
+                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
                 extra_capabilities=(updates,),
             )
         elif role == "prober":
@@ -620,9 +618,8 @@ class TurnService:
                         else ()
                     ),
                     *job_tools(dispatcher, settings.tools, prober=True),
-                    *plugins.tools,
                 ),
-                extra_toolsets=tuple(plugins.toolsets),
+                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
@@ -647,9 +644,8 @@ class TurnService:
                     plan_tool(remember_plan),
                     show_image_tool(self.settings_store, self.data_dir),
                     *job_tools(dispatcher, settings.tools),
-                    *plugins.tools,
                 ),
-                extra_toolsets=tuple(plugins.toolsets),
+                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )

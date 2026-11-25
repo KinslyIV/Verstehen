@@ -6,6 +6,10 @@ def activate(ctx):
             """Look a word up."""
             return f"{turn.agent} knows {word}"
 
-        return [lookup]
+        def explode() -> str:
+            """Always fails."""
+            raise RuntimeError("boom")
+
+        return [lookup, explode]
 
     ctx.register_tools(["prober"], create)

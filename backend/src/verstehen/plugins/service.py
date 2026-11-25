@@ -7,12 +7,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from types import ModuleType
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
-from pydantic_ai import Agent, RunContext, Tool
-from pydantic_ai.toolsets import AbstractToolset, CombinedToolset
-from pydantic_ai.usage import RunUsage
+from pydantic_ai import Tool
+from pydantic_ai.toolsets import AbstractToolset, CombinedToolset, FunctionToolset
 
 from verstehen.plugins.context import (
     AgentContribution,
@@ -23,6 +22,7 @@ from verstehen.plugins.context import (
 )
 from verstehen.plugins.loader import add_vendor, forget_backend, load_backend
 from verstehen.plugins.manifest import PluginInvalid, PluginManifest, validate_package
+from verstehen.plugins.toolsets import PluginMember, PluginToolset, PluginToolsets
 from verstehen.store.plugins import PluginsStateError, PluginsStore
 
 PluginStatus = Literal["disabled", "active", "invalid", "failed"]
@@ -53,16 +53,10 @@ class PluginInfo(BaseModel):
 
 @dataclass
 class PluginContributions:
-    """What the plugins add to one agent's turn: prompt sections, tools, and toolsets."""
+    """What the plugins add to one agent's turn: prompt sections and one toolset for all their tools."""
 
     instructions: list[str] = field(default_factory=list)
-    tools: list[Tool[None]] = field(default_factory=list)
-    toolsets: list[AbstractToolset[None]] = field(default_factory=list)
-
-    def extend(self, other: "PluginContributions") -> None:
-        self.instructions.extend(other.instructions)
-        self.tools.extend(other.tools)
-        self.toolsets.extend(other.toolsets)
+    toolset: AbstractToolset[None] | None = None
 
 
 @dataclass
@@ -239,43 +233,39 @@ class PluginService:
                     )
 
     async def contributions(
-        self, agent: AgentName, session_id: str, built_in: Agent[None, Any]
+        self, agent: AgentName, session_id: str
     ) -> PluginContributions:
-        """What running plugins add to `agent`'s turn, in plugin-id order. A plugin whose tool names
-        clash with the built-in tools or an earlier plugin's, or whose hook fails, adds nothing and gets a warning.
+        """What running plugins add to `agent`'s turn, in plugin-id order: their prompt sections and
+        one toolset holding their tools. A plugin whose tools fail to build adds nothing and gets a warning.
         """
-        run = RunContext(deps=None, model=built_in.model, usage=RunUsage())  # pyrefly: ignore
-        taken = set(await tool_names(CombinedToolset(built_in.toolsets), run))
         result = PluginContributions()
+        members: list[PluginMember] = []
         for plugin_id in sorted(self.plugins):
-            plugin = self.plugins[plugin_id]
-            context = plugin.context
-            if context is None:
+            context = self.plugins[plugin_id].context
+            chosen = [
+                item
+                for item in (context.contributions if context else [])
+                if agent in item.agents
+            ]
+            if context is None or not chosen:
                 continue
-            chosen = [item for item in context.contributions if agent in item.agents]
-            if not chosen:
-                continue
-            warnings: list[str] = []
             try:
-                own = build_contributions(chosen, agent, session_id)
-                names = [tool.name for tool in own.tools]
-                for toolset in own.toolsets:
-                    names.extend(await tool_names(toolset, run))
-                clash = sorted(
-                    {name for name in names if name in taken or names.count(name) > 1}
-                )
-                if clash:
-                    raise ValueError(f"tool name already in use: {clash[0]}")
+                instructions, toolsets = build_contributions(chosen, agent, session_id)
             except Exception as error:
-                warnings = [f"Added nothing to a {agent} turn: {failure_text(error)}"]
-                own = PluginContributions()
-                names = []
-            taken.update(names)
-            result.extend(own)
-            if plugin.info.warnings != warnings:
-                plugin.info.warnings = warnings
-                self.plugins_changed()
+                members.append(PluginMember(plugin_id, problem=failure_text(error)))
+                continue
+            result.instructions.extend(instructions)
+            toolset = PluginToolset(CombinedToolset(toolsets), plugin_id, context)
+            members.append(PluginMember(plugin_id, toolset))
+        if members:
+            result.toolset = PluginToolsets(agent, members, self.set_warnings)
         return result
+
+    def set_warnings(self, plugin_id: str, warnings: list[str]) -> None:
+        plugin = self.plugins.get(plugin_id)
+        if plugin and plugin.info.warnings != warnings:
+            plugin.info.warnings = warnings
+            self.plugins_changed()
 
     async def close(self) -> None:
         """Stop every running plugin and forget the imported code."""
@@ -374,28 +364,25 @@ class PluginService:
         )
 
 
-async def tool_names(
-    toolset: AbstractToolset[None], run: RunContext[None]
-) -> list[str]:
-    return list(await toolset.get_tools(run))
-
-
 def build_contributions(
     chosen: list[AgentContribution], agent: AgentName, session_id: str
-) -> PluginContributions:
-    result = PluginContributions()
+) -> tuple[list[str], list[AbstractToolset[None]]]:
+    """A plugin's prompt sections and toolsets for one turn: a factory's tools, then its toolsets."""
+    instructions: list[str] = []
+    tools: list[Tool[None]] = []
+    toolsets: list[AbstractToolset[None]] = []
     turn = PluginTurnContext(session_id, agent)
     for item in chosen:
         if item.instructions and item.instructions.strip():
-            result.instructions.append(item.instructions)
+            instructions.append(item.instructions)
         if item.create_tools:
-            result.tools.extend(
+            tools.extend(
                 tool if isinstance(tool, Tool) else Tool(tool)
                 for tool in item.create_tools(turn)
             )
         if item.toolset is not None:
-            result.toolsets.append(item.toolset)
-    return result
+            toolsets.append(item.toolset)
+    return instructions, [FunctionToolset(tools), *toolsets]
 
 
 def unknown_plugin(plugin_id: str) -> PluginRefused:

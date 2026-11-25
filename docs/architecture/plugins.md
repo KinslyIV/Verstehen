@@ -64,13 +64,21 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   the frontend's `onNotification(topic, fn)` hears only its own plugin's. `onResync` fires after
   the event stream reconnects. `ctx.on("turn-settled", fn)` observers run after a turn is saved;
   the frontend's `onAppEvent("turn-settled", fn)` follows the same notification.
-- **Agent hooks** (`contributions(agent, session_id, built_in)`, called by `build_agent` once per
-  turn for the agent that turn runs). Targets: `prober`, `teacher`, `practice` (the practitioner).
-  Instructions are joined after the built-in prompt; tool factories receive
-  `PluginTurnContext(session_id, agent)` and return tools; toolsets are added as they are. A tool
-  name that is already a built-in tool's or an earlier plugin's drops that plugin's whole
-  contribution for the turn and puts `Added nothing to a <agent> turn: …` in `PluginInfo.warnings`;
-  a clean later turn clears it. A raising factory does the same. Plugins are visited in id order.
+- **Agent hooks** (`contributions(agent, session_id)`, called by `build_agent` once per turn for
+  the agent that turn runs). Targets: `prober`, `teacher`, `practice` (the practitioner).
+  Instructions are joined after the built-in prompt. Tool factories receive
+  `PluginTurnContext(session_id, agent)` and return tools; toolsets are added as they are. Each
+  plugin's tools are one `PluginToolset` and all plugins one `PluginToolsets` (`plugins/toolsets.py`),
+  the only toolset the agent gets from plugins. Plugins are visited in id order.
+- **Tool names.** `plugins/reserved.py` lists every built-in tool name for every role, setting and
+  provider; a test builds the real tools and fails if one is missing. When the turn lists its tools,
+  a plugin whose names are reserved or an earlier plugin's, whose factory or listing raises, adds no
+  tools and gets `Added nothing to a <agent> turn: …` in `PluginInfo.warnings`; a clean later turn
+  clears it. Its instructions stay in the prompt.
+- **Tool boundary.** A plugin tool that raises is logged on the plugin and returned to the model as a
+  failed tool result (`Tool <name> failed: …`, also shown as a plugin warning); the turn goes on.
+  `ModelRetry`, `ToolFailed`, deferral and cancellation pass through. A call from a plugin that was
+  disabled or restarted since the turn began is refused with a tool failure.
 - **Frontend activation.** `PluginHost.sync()` (serialized) reads `/api/plugins` and reconciles:
   for each active plugin with `main` it adds the `styles` link, imports the module from
   `/api/plugins/{id}/files/{main}`, and calls `activate(ctx)` once per window. A plugin that
@@ -116,7 +124,6 @@ after its plugin is removed.
   toolset should run an external command (`npx`, `uvx`, a binary), not a Python script.
 - **Pydantic AI 2.70:** MCP is `pydantic_ai.mcp.MCPToolset` over `fastmcp-slim`; `MCPServerStdio` no
   longer exists. PyInstaller does not see `mcp`/`fastmcp` imports, so `verstehen.spec` collects them.
-- **Tool names of a toolset** are found with `get_tools` and a minimal `RunContext`, once per turn.
 - **`practice` means the practitioner;** a session's `kind` is `teach|practice` in the API but
   `teaching|practice` in plugin placements, as in LearnHarness.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
