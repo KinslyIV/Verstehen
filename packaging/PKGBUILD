@@ -4,20 +4,21 @@ pkgrel=1
 pkgdesc='A local learning app with an AI tutor'
 arch=('x86_64')
 license=('AGPL-3.0-only')
-depends=('webkit2gtk-4.1' 'gtk3' 'glibc' 'zlib')
-optdepends=('chromium: test generated demos with an installed browser')
+depends=('glibc' 'zlib' 'libglvnd' 'wayland' 'libxcb' 'nss' 'libxkbcommon' 'libxkbcommon-x11' 'fontconfig' 'libdrm' 'mesa' 'alsa-lib'
+         'libxcomposite' 'libxdamage' 'libxrandr' 'libxtst' 'libxkbfile' 'libxshmfence' 'dbus'
+         'at-spi2-core' 'xcb-util-cursor' 'xcb-util-image' 'xcb-util-keysyms' 'xcb-util-renderutil'
+         'xcb-util-wm')
 options=('!strip' '!debug')
 
 package() {
-  install -Dm755 /cache/target/release/verstehen "$pkgdir/usr/lib/verstehen/verstehen"
-  cp -a "$startdir/../backend/dist/verstehen-sidecar/." "$pkgdir/usr/lib/verstehen/"
+  install -d "$pkgdir/usr/lib/verstehen"
+  cp -a "$startdir/../backend/dist/verstehen/." "$pkgdir/usr/lib/verstehen/"
   install -d "$pkgdir/usr/lib/verstehen/server-bundle"
   cp -a "$startdir/../backend/dist/server-bundle/." "$pkgdir/usr/lib/verstehen/server-bundle/"
   install -d "$pkgdir/usr/bin"
   ln -s /usr/lib/verstehen/verstehen "$pkgdir/usr/bin/verstehen"
   install -Dm644 "$startdir/verstehen.desktop" "$pkgdir/usr/share/applications/verstehen.desktop"
-  for size in 32 128; do
-    install -Dm644 "$startdir/../app/src-tauri/icons/${size}x${size}.png" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/verstehen.png"
+  for size in 32 128 256; do
+    install -Dm644 "$startdir/icons/${size}x${size}.png" "$pkgdir/usr/share/icons/hicolor/${size}x${size}/apps/verstehen.png"
   done
-  install -Dm644 "$startdir/../app/src-tauri/icons/128x128@2x.png" "$pkgdir/usr/share/icons/hicolor/256x256/apps/verstehen.png"
 }

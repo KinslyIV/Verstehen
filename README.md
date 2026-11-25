@@ -4,7 +4,7 @@ Verstehen is a learning app: an AI tutor that probes what you know, plans a less
 questions, and builds a knowledge graph of what you've learned. It runs locally as a desktop app.
 
 It is a port of [LearnHarness](https://github.com/amosblomqvist/learnharness) to Python, Pydantic
-AI, Tauri, and Svelte. The goal is to keep the same learning flow and knowledge graph, rebuilt with
+AI, PySide6, and Svelte. The goal is to keep the same learning flow and knowledge graph, rebuilt with
 code that is easy to read, and to understand how LearnHarness works along the way: how the graph is
 managed, how background work reports back to the tutor, how questions pause and resume a turn, and
 how the side chat works.
@@ -35,16 +35,15 @@ make dev       # sidecar + Vite with a fresh temporary data dir; open http://loc
 `make app` builds `dist/verstehen-<version>-1-x86_64.pkg.tar.zst` in a prepared Arch image
 (`verstehen-build`, created on the first run; `make app-image` refreshes it). Copy the package to
 the Arch laptop and install it with `sudo pacman -U <file>`, then open **Verstehen** from the
-launcher. `/usr/lib/verstehen/verstehen-sidecar --self-check` confirms the frozen dependencies.
+launcher. `verstehen --self-check` confirms the frozen dependencies.
 
 The app uses the installed `claude` for Claude Code and signs in to ChatGPT in the browser.
-Chromium is optional; it is used to test demos.
+Demos are checked in the app's own Chromium; no browser needs to be installed.
 
 ## Releases
 
-Bump the versions in `backend/pyproject.toml`, `app/src-tauri/Cargo.toml`, and
-`app/src-tauri/tauri.conf.json`, merge the PR with green CI, then on the merged commit run
-`git tag vX.Y.Z && git push origin vX.Y.Z`. The release workflow checks the versions, builds the
+Bump the version in `backend/pyproject.toml`, merge the PR with green CI, then on the merged commit run
+`git tag vX.Y.Z && git push origin vX.Y.Z`. The release workflow checks the tag against the version, builds the
 package, and publishes it to a GitHub Release. On the laptop:
 
 ```sh
