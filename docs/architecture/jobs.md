@@ -20,7 +20,7 @@ Backend, `backend/src/verstehen/`:
 | `jobs/workers/pdf.py`, `pdf_ops.py` | the PDF reader on pypdfium2 |
 | `jobs/workers/visual.py` | SVG figures and photo annotation, rendered with resvg and looked at by the model |
 | `jobs/workers/demo.py`, `headless.py`, `browser.py` | the demo builder, its mandatory headless check, and demo-browser discovery and download |
-| `desktop/demo_runner.py` | `DesktopDemoRunner`: the desktop's demo check in a hidden QtWebEngine page; server mode runs the same `DemoRunner` protocol in Playwright, and the desktop has no demo-browser setting, routes or download |
+| `desktop/demo_runner.py` | `DesktopDemoRunner`: the desktop's demo check in a hidden QtWebEngine page (opaque `verstehen-demo` origin, loopback requests blocked like in the Playwright runner, cancelled with its waiter and aborted when the app closes); server mode runs the same `DemoRunner` protocol in Playwright, and the desktop has no demo-browser setting, routes or download |
 | `jobs/workers/common.py` | `WorkerModel`, typed `worker_tool` schema wrapper, CPU work in threads, usage |
 | `session/delivery.py`, `session/context_updates.py` | `DeliveryService` (wakes) and the context-update step ([session](session.md)) |
 | `session/jobs.py` | `JobService`: `GET /api/jobs` with the recovery sweep, and abort |
@@ -58,9 +58,10 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
   script in a demo (the size bridge too), so `dangerousDisableAssetCspModification` covers
   `script-src`. Demos are never delivered untested.
 - **Loading.** An `IntersectionObserver` on the card (root: the transcript viewport, margin
-  `DEMO_LOAD_MARGIN`, two viewport heights) mounts the `<iframe srcdoc>` only when the card is near
+  `demoLoadMargin`, twice the viewport's height, recomputed on resize) mounts the `<iframe srcdoc>` only when the card is near
   and replaces it with a placeholder of the last measured height when it is far (`demoFrameMounted`).
-  A zoomed demo is never unloaded; the error banner shows only while the frame is loaded.
+  A zoomed demo is never unloaded; the error banner shows only while the frame is loaded, and a
+  remounted frame starts without the previous frame's error (`resetDemoFrameError`).
 - **Zoom.** `demo-card.svelte` zooms in place: its own `<dialog>` is opened with `showModal()` and
   a spacer (`demo-spacer`) holds the card's height in the transcript, so the iframe is never
   remounted and its live state survives. The sandboxed demo cannot hand Escape to the page, so the

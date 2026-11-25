@@ -3,12 +3,13 @@
 	import { downloadFile, slugFilename } from './download.js';
 	import InvertSwitch from './invert-switch.svelte';
 	import {
-		DEMO_LOAD_MARGIN,
+		demoLoadMargin,
 		INITIAL_DEMO_BRIDGE_STATE,
 		demoFrameMounted,
 		demoSrcDoc,
 		isDemoEscape,
 		reduceDemoBridgeState,
+		resetDemoFrameError,
 		type DemoBridgeState,
 		type DemoResult
 	} from './jobs.js';
@@ -37,16 +38,31 @@
 
 	$effect(() => {
 		if (!card) return;
-		const observer = new IntersectionObserver(
-			(entries) => (near = entries[entries.length - 1].isIntersecting),
-			{
-				root: card.closest('[data-slot="message-scroller-viewport"]'),
-				rootMargin: DEMO_LOAD_MARGIN
-			}
-		);
-		observer.observe(card);
-		return () => observer.disconnect();
+		const root = card.closest<HTMLElement>('[data-slot="message-scroller-viewport"]');
+		const sized = root ?? document.documentElement;
+		let observer: IntersectionObserver | undefined;
+		let observedHeight = -1;
+		const watchNearness = () => {
+			if (sized.clientHeight === observedHeight) return;
+			observedHeight = sized.clientHeight;
+			observer?.disconnect();
+			observer = new IntersectionObserver(
+				(entries) => (near = entries[entries.length - 1].isIntersecting),
+				{ root, rootMargin: demoLoadMargin(observedHeight) }
+			);
+			observer.observe(card!);
+		};
+		const resizeObserver = new ResizeObserver(watchNearness);
+		resizeObserver.observe(sized);
+		return () => {
+			resizeObserver.disconnect();
+			observer?.disconnect();
+		};
 	});
+
+	function endFrameLife() {
+		return () => (bridge = resetDemoFrameError(bridge));
+	}
 
 	function toggleZoom() {
 		if (!card) return;
@@ -141,6 +157,7 @@
 			{#if mounted}
 				<iframe
 					bind:this={frame}
+					{@attach endFrameLife}
 					title={result.title}
 					sandbox="allow-scripts"
 					{srcdoc}

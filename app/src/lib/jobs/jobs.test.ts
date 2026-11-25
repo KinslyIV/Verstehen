@@ -1,6 +1,7 @@
 import { expect, test } from 'vitest';
 import {
 	demoFrameMounted,
+	demoLoadMargin,
 	demoSrcDoc,
 	isDemoEscape,
 	embedLearnerImage,
@@ -8,6 +9,7 @@ import {
 	INITIAL_DEMO_BRIDGE_STATE,
 	jobCostLabel,
 	reduceDemoBridgeState,
+	resetDemoFrameError,
 	svgDataUri,
 	totalCostLabel
 } from './jobs.js';
@@ -40,6 +42,13 @@ test('demo_frame_mounts_near_the_viewport_and_never_unloads_while_zoomed', () =>
 	expect(demoFrameMounted(true, false)).toBe(true);
 	expect(demoFrameMounted(false, false)).toBe(false);
 	expect(demoFrameMounted(false, true)).toBe(true);
+});
+
+test('demo_load_margin_is_twice_the_viewport_height_and_a_frame_error_ends_with_the_frame', () => {
+	expect(demoLoadMargin(600)).toBe('1200px 0px');
+	const state = { height: 300, error: 'Oops' };
+	expect(resetDemoFrameError(state)).toEqual({ height: 300, error: null });
+	expect(resetDemoFrameError(INITIAL_DEMO_BRIDGE_STATE)).toBe(INITIAL_DEMO_BRIDGE_STATE);
 });
 
 test('annotation_embeds_only_the_image_placeholder_and_svg_is_an_image', () => {

@@ -113,6 +113,26 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	}
 	expect(unloadedScrollHeights[1]).toBe(unloadedScrollHeights[0]);
 
+	// An error belongs to the loaded frame: scrolled away and back, the banner is gone until it errors again.
+	const errorChip = page.getByTestId('demo-error-chip');
+	const throwInDemo = async () => {
+		const frame = await (await iframe.elementHandle())!.contentFrame();
+		await frame!.evaluate(() =>
+			parent.postMessage({ type: 'demo-error', message: 'flow boom' }, '*')
+		);
+	};
+	await throwInDemo();
+	await expect(errorChip).toContainText('flow boom');
+	await scrollTo('end');
+	await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
+	await expect(errorChip).toHaveCount(0);
+	await scrollTo('start');
+	await expect(page.getByTestId('demo-iframe')).toHaveCount(1);
+	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
+	await expect(errorChip).toHaveCount(0);
+	await throwInDemo();
+	await expect(errorChip).toContainText('flow boom');
+
 	// A zoomed demo is never unloaded, even scrolled far away; it unloads once zoom closes.
 	await demo.locator('#x').fill('2');
 	await farCard.getByTestId('demo-zoom').click();
