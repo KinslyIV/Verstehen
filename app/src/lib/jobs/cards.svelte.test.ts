@@ -19,6 +19,10 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	abortJob: vi.fn()
 }));
 afterEach(() => vi.resetAllMocks());
+// Unstyled, a closed dialog is display:none and a demo card could never be near the viewport.
+document.head.append(
+	Object.assign(document.createElement('style'), { textContent: 'dialog { display: block }' })
+);
 const job = (patch: Partial<JobRecord> = {}): JobRecord => ({
 	id: 'job-1',
 	session_id: 'one',
@@ -232,6 +236,7 @@ test('demo_zoom_opens_in_place_holds_its_height_and_closes_on_escape_message_fro
 		oninvert: vi.fn()
 	});
 	const card = screen.getByTestId('demo-card').element() as HTMLDialogElement;
+	await expect.element(screen.getByTestId('demo-iframe')).toBeInTheDocument();
 	const frame = screen.getByTestId('demo-iframe').element() as HTMLIFrameElement;
 	(screen.getByTestId('demo-zoom').element() as HTMLButtonElement).click();
 	expect(card.open).toBe(true);

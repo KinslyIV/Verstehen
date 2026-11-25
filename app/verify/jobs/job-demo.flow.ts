@@ -1,5 +1,6 @@
 import { test, expect } from '../fixtures';
 import { seedTeaching, useDemoBrowser } from '../jobs';
+import { filler } from '../compaction';
 import { sendLessonMessage } from '../teaching';
 
 test.use({ script: 'verify/scripts/job-demo.json' });
@@ -68,4 +69,59 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	const reloaded = page.getByTestId('demo-card');
 	await expect(reloaded.getByRole('switch', { name: 'Invert demo brightness' })).toBeChecked();
 	await expect(reloaded.getByTestId('demo-iframe')).toHaveCSS('filter', /invert/);
+
+	// A demo far from the viewport is not loaded; it loads when near and unloads when far again.
+	await appendEntries(id, filler(30, 600));
+	await page.reload();
+	const farCard = page.getByTestId('demo-card');
+	const viewport = page.locator('[data-slot="message-scroller-viewport"]');
+	const box = (await viewport.boundingBox())!;
+	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	const scrollTo = async (where: 'start' | 'end') => {
+		await expect
+			.poll(async () => {
+				await page.mouse.wheel(0, where === 'end' ? 4000 : -4000);
+				return viewport.evaluate((element) =>
+					element.scrollTop < 1
+						? 'start'
+						: element.scrollTop + element.clientHeight > element.scrollHeight - 1
+							? 'end'
+							: 'middle'
+				);
+			})
+			.toBe(where);
+	};
+	await scrollTo('end');
+	await expect(page.getByText('Tutor turn 30')).toBeVisible();
+	await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
+	await scrollTo('start');
+	await expect(page.getByTestId('demo-iframe')).toHaveCount(1);
+	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
+	await expect.poll(async () => (await iframe.boundingBox())?.height).toBeGreaterThan(200);
+	const loadedHeight = await iframe.evaluate((element) => element.style.height);
+	const placeholder = page.getByTestId('demo-placeholder');
+	const scrollHeight = () => viewport.evaluate((element) => element.scrollHeight);
+	const unloadedScrollHeights: number[] = [];
+	for (let round = 0; round < 2; round++) {
+		await scrollTo('end');
+		await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
+		await expect(placeholder).toHaveCount(1);
+		expect(await placeholder.evaluate((element) => element.style.height)).toBe(loadedHeight);
+		unloadedScrollHeights.push(await scrollHeight());
+		await scrollTo('start');
+		await expect(page.getByTestId('demo-iframe')).toHaveCount(1);
+	}
+	expect(unloadedScrollHeights[1]).toBe(unloadedScrollHeights[0]);
+
+	// A zoomed demo is never unloaded, even scrolled far away; it unloads once zoom closes.
+	await demo.locator('#x').fill('2');
+	await farCard.getByTestId('demo-zoom').click();
+	await viewport.evaluate((element) => element.scrollTo(0, element.scrollHeight));
+	await expect(page.getByText('Tutor turn 30')).toBeInViewport();
+	await page.evaluate(
+		() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)))
+	);
+	await expect(demo.locator('#out')).toHaveText('slope = 3.00');
+	await page.keyboard.press('Escape');
+	await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
 });

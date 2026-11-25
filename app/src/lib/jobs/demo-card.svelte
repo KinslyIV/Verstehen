@@ -3,7 +3,9 @@
 	import { downloadFile, slugFilename } from './download.js';
 	import InvertSwitch from './invert-switch.svelte';
 	import {
+		DEMO_LOAD_MARGIN,
 		INITIAL_DEMO_BRIDGE_STATE,
+		demoFrameMounted,
 		demoSrcDoc,
 		isDemoEscape,
 		reduceDemoBridgeState,
@@ -29,6 +31,22 @@
 	let card = $state<HTMLDialogElement>();
 	let zoomed = $state(false);
 	let heldHeight = $state(0);
+	let near = $state(false);
+	const mounted = $derived(demoFrameMounted(near, zoomed));
+	const frameStyle = $derived(`height: ${bridge.height ?? 360}px`);
+
+	$effect(() => {
+		if (!card) return;
+		const observer = new IntersectionObserver(
+			(entries) => (near = entries[entries.length - 1].isIntersecting),
+			{
+				root: card.closest('[data-slot="message-scroller-viewport"]'),
+				rootMargin: DEMO_LOAD_MARGIN
+			}
+		);
+		observer.observe(card);
+		return () => observer.disconnect();
+	});
 
 	function toggleZoom() {
 		if (!card) return;
@@ -101,7 +119,7 @@
 					</button>
 				</div>
 			</div>
-			{#if bridge.error}
+			{#if mounted && bridge.error}
 				<div
 					class="mt-2 flex flex-wrap items-center gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
 					data-testid="demo-error-chip"
@@ -120,17 +138,25 @@
 						</button>{/if}
 				</div>
 			{/if}
-			<iframe
-				bind:this={frame}
-				title={result.title}
-				sandbox="allow-scripts"
-				{srcdoc}
-				scrolling="no"
-				class="mt-2 box-content w-full rounded-lg border bg-white"
-				style:height={`${bridge.height ?? 360}px`}
-				style:filter={inverted ? 'invert(1) hue-rotate(180deg)' : undefined}
-				data-testid="demo-iframe"
-			></iframe>
+			{#if mounted}
+				<iframe
+					bind:this={frame}
+					title={result.title}
+					sandbox="allow-scripts"
+					{srcdoc}
+					scrolling="no"
+					class="mt-2 box-content w-full rounded-lg border bg-white"
+					style={frameStyle}
+					style:filter={inverted ? 'invert(1) hue-rotate(180deg)' : undefined}
+					data-testid="demo-iframe"
+				></iframe>
+			{:else}
+				<div
+					class="mt-2 box-content w-full rounded-lg border bg-white"
+					style={frameStyle}
+					data-testid="demo-placeholder"
+				></div>
+			{/if}
 		</div>
 	</dialog>
 	{#if zoomed}<div

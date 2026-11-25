@@ -1,5 +1,6 @@
 import { expect, test } from 'vitest';
 import {
+	demoFrameMounted,
 	demoSrcDoc,
 	isDemoEscape,
 	embedLearnerImage,
@@ -33,6 +34,12 @@ test('demo_bridge_bounds_height_and_reports_errors', () => {
 	expect(isDemoEscape({ type: 'demo-escape' })).toBe(true);
 	expect(isDemoEscape({ type: 'demo-resize' })).toBe(false);
 	expect(isDemoEscape('demo-escape')).toBe(false);
+});
+
+test('demo_frame_mounts_near_the_viewport_and_never_unloads_while_zoomed', () => {
+	expect(demoFrameMounted(true, false)).toBe(true);
+	expect(demoFrameMounted(false, false)).toBe(false);
+	expect(demoFrameMounted(false, true)).toBe(true);
 });
 
 test('annotation_embeds_only_the_image_placeholder_and_svg_is_an_image', () => {

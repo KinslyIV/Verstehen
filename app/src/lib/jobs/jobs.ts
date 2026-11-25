@@ -169,6 +169,14 @@ export function reduceDemoBridgeState(state: DemoBridgeState, data: unknown): De
 	return state;
 }
 
+/** How far from the transcript viewport a demo frame stays loaded. */
+export const DEMO_LOAD_MARGIN = '200% 0px';
+
+/** Whether a demo card keeps its iframe mounted: near the viewport, or zoomed (never unloaded). */
+export function demoFrameMounted(near: boolean, zoomed: boolean): boolean {
+	return near || zoomed;
+}
+
 /** Whether a demo-frame message is the Escape key forwarded out of the sandboxed iframe. */
 export function isDemoEscape(data: unknown): boolean {
 	return asObject(data)?.type === 'demo-escape';

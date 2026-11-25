@@ -57,6 +57,10 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
   the app's CSP, and Tauri would add script hashes that void `'unsafe-inline'`, blocking every inline
   script in a demo (the size bridge too), so `dangerousDisableAssetCspModification` covers
   `script-src`. Demos are never delivered untested.
+- **Loading.** An `IntersectionObserver` on the card (root: the transcript viewport, margin
+  `DEMO_LOAD_MARGIN`, two viewport heights) mounts the `<iframe srcdoc>` only when the card is near
+  and replaces it with a placeholder of the last measured height when it is far (`demoFrameMounted`).
+  A zoomed demo is never unloaded; the error banner shows only while the frame is loaded.
 - **Zoom.** `demo-card.svelte` zooms in place: its own `<dialog>` is opened with `showModal()` and
   a spacer (`demo-spacer`) holds the card's height in the transcript, so the iframe is never
   remounted and its live state survives. The sandboxed demo cannot hand Escape to the page, so the
