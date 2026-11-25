@@ -35,7 +35,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   `lazy` imports became imports inside the using function (or `TYPE_CHECKING`), `ruff`
   `ban-lazy` refuses new ones, `launcher.py` and `desktop/eager.py` are gone (the entry is
   `verstehen.cli:main` again), and the vendored `claude_code/__init__.py` no longer re-exports
-  (nothing used it). No pytest process imports PySide6; Qt tests run in subprocess probes.
+  (nothing used it). The standard library uses `lazy` as well, so `verstehen/__init__.py` refuses
+  lazy imports for the whole process and resolves the few made at interpreter startup; the cost
+  is a handful of small standard-library modules. No pytest process imports PySide6; Qt tests run in subprocess probes.
 - **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
   has no Playwright, and server mode runs from the server bundle. Source and dev modes are
   unchanged. The alternative was a server mode without demo checks.

@@ -47,9 +47,12 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
   and role-tagged worker replies.
 - **Heavy libraries load on first use, in every mode.** Each is imported inside the function
   that uses it; PEP 810 `lazy` is banned because PySide6 (shiboken6) replaces `__import__` and
-  leaves some lazy names as unresolved proxies, depending on import order.
-  `test_startup_imports.py` checks server start and the real desktop window (offscreen) load none
-  of them, and that one still loads on use. No pytest process imports PySide6: Qt tests run a probe
+  leaves some lazy names as unresolved proxies, depending on import order. The standard library
+  uses `lazy` too (`concurrent.futures.ThreadPoolExecutor`, which `asyncio.to_thread` needs), so
+  importing `verstehen` (`__init__.py`) refuses every lazy import and resolves the ones interpreter
+  startup already made. `test_startup_imports.py` checks server start and the real desktop window
+  (offscreen) load none of the heavy libraries, that one still loads on use, and that no lazy name
+  is left unresolved once Qt has loaded. No pytest process imports PySide6: Qt tests run a probe
   script in a subprocess (`backend/tests/shell/desktop_probe.py`,
   `backend/tests/jobs/desktop_demo_probe.py`), with `QT_QPA_PLATFORM=offscreen`.
 - **Two extras.** `desktop` is `PySide6-Essentials` and `PySide6-WebEngine`; `server` is
