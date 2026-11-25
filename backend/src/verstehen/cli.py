@@ -1,3 +1,4 @@
+import argparse
 import asyncio
 import json
 import logging
@@ -9,7 +10,6 @@ from pathlib import Path
 
 import uvicorn
 
-from verstehen.arguments import parse_arguments
 from verstehen.config import Settings, load_settings, resolve_data_dir
 from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.store.database import open_database
@@ -98,10 +98,9 @@ async def mint_device_token(device_name: str, data_dir: Path) -> dict[str, str]:
     return {"device_id": device.id, "token": token}
 
 
-def main() -> None:
-    """Load launch settings and run the sidecar or CLI subcommand."""
+def main(arguments: argparse.Namespace) -> None:
+    """Load launch settings and run the sidecar or CLI subcommand for the resolved `arguments`."""
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
-    arguments = parse_arguments()
     if arguments.self_check:
         from verstehen.self_check import run_self_check
 

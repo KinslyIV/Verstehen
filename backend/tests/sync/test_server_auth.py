@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from verstehen import cli
 from verstehen.api.auth import PAIRING_ALPHABET, PairingCodeManager
 from verstehen.app import create_app
+from verstehen.arguments import parse_arguments
 from verstehen.cli import mint_device_token
 from verstehen.config import Settings
 from verstehen.store.database import open_database
@@ -93,7 +94,7 @@ def test_mint_token_cli_creates_device_and_rejects_blank_name(
     monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(sys, "argv", ["verstehen", "mint-token", "   "])
     with pytest.raises(SystemExit) as exited:
-        cli.main()
+        cli.main(parse_arguments())
     assert exited.value.code == 1
     assert "must not be empty" in capsys.readouterr().err
 

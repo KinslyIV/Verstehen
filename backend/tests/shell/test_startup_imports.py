@@ -87,7 +87,7 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
             "-X",
             "importtime",
             "-c",
-            "from verstehen.cli import main; main()",
+            "from verstehen.arguments import parse_arguments; from verstehen.cli import main; main(parse_arguments())",
             "--port",
             "0",
         ],
@@ -164,7 +164,7 @@ import types
 sys.argv = ["verstehen", *{arguments!r}]
 seen = []
 sys.modules["verstehen.cli"] = types.SimpleNamespace(
-    main=lambda: seen.append(
+    main=lambda arguments: seen.append(
         (sys.get_lazy_imports_filter() is not None, "verstehen.app" in sys.modules)
     )
 )
@@ -266,6 +266,19 @@ def test_the_desktop_window_cannot_be_combined_with_server_mode(
     result = subprocess.run(
         [sys.executable, "-m", "verstehen", *arguments],
         env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path), **environment},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "cannot be combined with server mode" in result.stderr
+
+
+def test_the_desktop_module_refuses_server_mode(tmp_path: Path):
+    result = subprocess.run(
+        [sys.executable, "-m", "verstehen.desktop", "--server"],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path)},
         capture_output=True,
         text=True,
         timeout=30,
