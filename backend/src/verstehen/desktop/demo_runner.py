@@ -4,6 +4,7 @@ import json
 import re
 import sys
 import threading
+from collections import Counter
 from collections.abc import Awaitable, Callable
 
 from PySide6.QtCore import (
@@ -45,6 +46,7 @@ SCHEME = b"verstehen-demo"
 DEMO_URL = QUrl("verstehen-demo:page")
 FAILED_RESOURCE_MARK = "verstehen-failed-resource:"
 FAILED_REQUEST_MARK = "verstehen-failed-request:"
+HTTP_ERROR_MARK = "verstehen-http-error:"
 FAILED_REQUEST_REASON = "net::ERR_FAILED"
 PROBE_POLL_MILLISECONDS = 50
 VIEWPORT_SIZE = QSize(1280, 720)
@@ -62,6 +64,13 @@ REPORT_FAILED_RESOURCES = f"""
     const url = event.target && (event.target.currentSrc || event.target.src || event.target.href);
     if (url) log({FAILED_RESOURCE_MARK!r} + url);
   }}, true);
+  const reportStatus = (response) => {{
+    if (response.status >= 400) {{
+      log({HTTP_ERROR_MARK!r} + 'Failed to load resource: the server responded with a status of '
+        + response.status + ' (' + response.statusText + ')');
+    }}
+    return response;
+  }};
   const nativeFetch = window.fetch;
   window.fetch = function (input, init) {{
     let request;
@@ -70,7 +79,7 @@ REPORT_FAILED_RESOURCES = f"""
     }} catch {{
       return nativeFetch.call(this, input, init);
     }}
-    return nativeFetch.call(this, request).catch((error) => {{
+    return nativeFetch.call(this, request).then(reportStatus, (error) => {{
       if (error instanceof TypeError) report({FAILED_REQUEST_MARK!r}, request.url);
       throw error;
     }});
@@ -81,6 +90,7 @@ REPORT_FAILED_RESOURCES = f"""
     const opened = nativeOpen.apply(this, arguments);
     if (!requestUrls.has(this)) {{
       this.addEventListener('error', () => report({FAILED_REQUEST_MARK!r}, requestUrls.get(this)));
+      this.addEventListener('load', () => reportStatus(this));
     }}
     requestUrls.set(this, url);
     return opened;
@@ -100,10 +110,11 @@ REPORT_FAILED_RESOURCES = f"""
 RUN_PROBE = """
 window.__verstehenProbe = undefined;
 (async () => {{
-  const value = (0, eval)({probe});
-  return typeof value === 'function' ? value() : value;
+  const probed = (0, eval)({probe});
+  const value = await (typeof probed === 'function' ? probed() : probed);
+  return JSON.stringify(value, (key, item) => typeof item === 'bigint' ? Number(item) : item) ?? null;
 }})().then(
-  (value) => {{ window.__verstehenProbe = {{ value: JSON.stringify(value) ?? null }}; }},
+  (value) => {{ window.__verstehenProbe = {{ value }}; }},
   (error) => {{ window.__verstehenProbe = {{ error: String(error) }}; }}
 );
 """
@@ -140,12 +151,21 @@ class RequestGuard(QWebEngineUrlRequestInterceptor):
     def __init__(self, result: DemoRunResult, parent: QObject) -> None:
         super().__init__(parent)
         self._result = result
+        self._unclaimed: Counter[str] = Counter()
+
+    def claim(self, url: str) -> bool:
+        """Whether the guard blocked a request to `url` that the page has not yet reported; claims one."""
+        if self._unclaimed[url] <= 0:
+            return False
+        self._unclaimed[url] -= 1
+        return True
 
     def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:
         url = info.requestUrl()
         if url == DEMO_URL or scheme_allowed(url.toString()):
             return
         info.block(True)
+        self._unclaimed[url.toString()] += 1
         self._result.failed_requests.append(
             f"{url.toString()} (net::ERR_ACCESS_DENIED)"
         )
@@ -157,21 +177,26 @@ class RequestGuard(QWebEngineUrlRequestInterceptor):
 class DemoPage(QWebEnginePage):
     """Sorts the page's console output into the result's console errors, page errors and failed requests."""
 
-    def __init__(self, profile: QWebEngineProfile, result: DemoRunResult) -> None:
+    def __init__(
+        self, profile: QWebEngineProfile, result: DemoRunResult, guard: RequestGuard
+    ) -> None:
         super().__init__(profile)
         self._result = result
+        self._guard = guard
 
     def javaScriptConsoleMessage(self, level, message, line_number, source_id) -> None:
         if message.startswith(FAILED_RESOURCE_MARK):
             self._add_failed_request(message.removeprefix(FAILED_RESOURCE_MARK), False)
         elif message.startswith(FAILED_REQUEST_MARK):
             self._add_failed_request(message.removeprefix(FAILED_REQUEST_MARK), True)
+        elif message.startswith(HTTP_ERROR_MARK):
+            self._result.console_errors.append(message.removeprefix(HTTP_ERROR_MARK))
         elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
             self._add_error(message)
 
     def _add_failed_request(self, url: str, from_script: bool) -> None:
         """Add a failure the guard did not already report; a script's failed request has no console error of its own."""
-        if any(f.startswith(f"{url} (") for f in self._result.failed_requests):
+        if self._guard.claim(url):
             return
         self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
         if from_script:
@@ -218,7 +243,7 @@ class DemoCheck(QObject):
         )
         self._guard = RequestGuard(self.result, self.profile)
         self.profile.setUrlRequestInterceptor(self._guard)
-        self.page = DemoPage(self.profile, self.result)
+        self.page = DemoPage(self.profile, self.result, self._guard)
         self.page.setAudioMuted(True)
         self.view = visible_view(self.page)
         self.page.settings().setAttribute(
@@ -228,6 +253,7 @@ class DemoCheck(QObject):
         script.setSourceCode(REPORT_FAILED_RESOURCES)
         script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentCreation)
         script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+        script.setRunsOnSubFrames(True)
         self.page.scripts().insert(script)
         self._timeout = QTimer(self)
         self._timeout.setSingleShot(True)

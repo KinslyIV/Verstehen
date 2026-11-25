@@ -3,6 +3,9 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from collections.abc import Iterator
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
@@ -25,16 +28,43 @@ DESKTOP_ENVIRONMENT = {
 }
 
 
-def demo_html(fixture: dict) -> str:
+STATUS_BY_PATH = {"/missing": 404, "/broken": 500}
+
+
+class StatusHandler(BaseHTTPRequestHandler):
+    """Answers every GET with the status its path names, or 200, and allows any page origin."""
+
+    def do_GET(self) -> None:
+        self.send_response(STATUS_BY_PATH.get(self.path, 200))
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def log_message(self, format: str, *args: object) -> None:
+        pass
+
+
+@pytest.fixture(scope="module")
+def server() -> Iterator[str]:
+    """The base URL of a local server that fixtures reach as {server}."""
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), StatusHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_port}"
+    httpd.shutdown()
+    httpd.server_close()
+
+
+def demo_html(fixture: dict, server: str) -> str:
     """The fixture's document, padded with a comment to pass setHtml's 2 MB limit when asked."""
     padding = fixture.get("padding", 0)
-    return fixture["html"] + (f"<!--{'x' * padding}-->" if padding else "")
+    html = fixture["html"] + (f"<!--{'x' * padding}-->" if padding else "")
+    return html.replace("{server}", server)
 
 
-def expected(fixture: dict, reason: str) -> dict:
-    """The fixture's result with the runner's wording of a network failure filled in."""
+def expected(fixture: dict, reason: str, server: str) -> dict:
+    """The fixture's result with the runner's wording of a network failure and the server filled in."""
     text = json.dumps(fixture["expect"])
-    return json.loads(text.replace("{reason}", reason))
+    return json.loads(text.replace("{reason}", reason).replace("{server}", server))
 
 
 def summarize(result: dict) -> dict:
@@ -51,14 +81,14 @@ def summarize(result: dict) -> dict:
 
 
 @pytest.fixture(scope="module")
-def desktop_results() -> dict[str, dict]:
+def desktop_results(server: str) -> dict[str, dict]:
     done = subprocess.run(
         [sys.executable, str(PROBE)],
         input=json.dumps(
             [
                 {
                     "name": f["name"],
-                    "html": demo_html(f),
+                    "html": demo_html(f, server),
                     "probe": f["probe"],
                 }
                 for f in FIXTURES
@@ -76,20 +106,24 @@ def desktop_results() -> dict[str, dict]:
 
 @pytest.mark.slow
 @pytest.mark.parametrize("fixture", FIXTURES, ids=IDS)
-def test_playwright_runner_gives_the_fixture_result(fixture: dict):
+def test_playwright_runner_gives_the_fixture_result(fixture: dict, server: str):
     with sync_playwright() as playwright:
         executable = playwright.chromium.executable_path
-    result = asyncio.run(run_demo(demo_html(fixture), executable, fixture["probe"]))
-    assert summarize(result.model_dump()) == expected(fixture, PLAYWRIGHT_REASON)
+    result = asyncio.run(
+        run_demo(demo_html(fixture, server), executable, fixture["probe"])
+    )
+    assert summarize(result.model_dump()) == expected(
+        fixture, PLAYWRIGHT_REASON, server
+    )
 
 
 @pytest.mark.slow
 @pytest.mark.parametrize("fixture", FIXTURES, ids=IDS)
 def test_desktop_runner_gives_the_fixture_result(
-    fixture: dict, desktop_results: dict[str, dict]
+    fixture: dict, desktop_results: dict[str, dict], server: str
 ):
     assert summarize(desktop_results[fixture["name"]]) == expected(
-        fixture, DESKTOP_REASON
+        fixture, DESKTOP_REASON, server
     )
 
 

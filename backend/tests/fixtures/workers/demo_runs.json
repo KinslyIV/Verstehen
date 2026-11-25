@@ -259,5 +259,97 @@
       "probe_result": true,
       "probed": true
     }
+  },
+  {
+    "name": "a failed fetch in an iframe",
+    "html": "<iframe srcdoc=\"<script>fetch('http://example.invalid/data.json').catch(() => { parent.refused = true })</script>\"></iframe>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a fetch answered with 404",
+    "html": "<script>fetch('{server}/missing').then((response) => { window.status404 = response.status })</script>",
+    "probe": "window.status404",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 404,
+      "probed": true
+    }
+  },
+  {
+    "name": "an XHR answered with 500",
+    "html": "<script>const request = new XMLHttpRequest(); request.open('GET', '{server}/broken'); request.onload = () => { window.status500 = request.status }; request.send()</script>",
+    "probe": "window.status500",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 500,
+      "probed": true
+    }
+  },
+  {
+    "name": "two failed fetches to the same URL",
+    "html": "<script>let n = 0; const count = () => { window.refusals = ++n }; fetch('http://example.invalid/data.json').catch(count); fetch('http://example.invalid/data.json').catch(count)</script>",
+    "probe": "window.refusals === 2",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json",
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "two failed XHRs to the same URL",
+    "html": "<script>let n = 0; for (let i = 0; i < 2; i++) { const request = new XMLHttpRequest(); request.open('GET', 'http://example.invalid/data.json'); request.onerror = () => { window.refusals = ++n }; request.send() }</script>",
+    "probe": "window.refusals === 2",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json",
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a BigInt probe",
+    "html": "<p>b</p>",
+    "probe": "() => 1n",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 1,
+      "probed": true
+    }
   }
 ]
