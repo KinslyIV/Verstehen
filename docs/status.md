@@ -60,8 +60,9 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   `<data dir>/plugins/<id>/`, each with an optional Python backend and JS frontend: discovery and
   enable state, backend activation and cleanup, the `@ctx.expose` bridge and events, prompt, tool,
   and MCP-toolset hooks for the prober, teacher, and practitioner, and views, actions, settings
-  pages, and `ctx.ui` widgets, with Settings → Plugins. Desktop only. Steps 1–6 are committed;
-  see [plugin authoring](plugin-authoring.md).
+  pages, and `ctx.ui` widgets, with Settings → Plugins. Desktop only. Steps 1–6 and review round 1
+  (lifecycle locks, tool boundary and reserved names, thread card for plugin tool calls, frontend
+  lifetimes) are committed; see [plugin authoring](plugin-authoring.md).
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.
