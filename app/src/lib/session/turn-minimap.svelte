@@ -50,7 +50,7 @@
 			role="group"
 			aria-label="Turn navigation"
 			class="group/rail pointer-events-auto relative w-full cursor-pointer"
-			style:height="min(calc(100% - 2rem), {ticks.length * TICK_SPACING}px)"
+			style:height="min(40%, {ticks.length * TICK_SPACING}px)"
 			onpointermove={trackPointer}
 			onpointerleave={() => (pointerY = undefined)}
 		>

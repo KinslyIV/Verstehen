@@ -18,7 +18,7 @@ async def health(
     request: Request,
     response: Response,
     database: Annotated[Database, Depends(get_database)],
-) -> dict[str, str]:
+) -> dict[str, str | bool]:
     await database.check_health()
     invocation = request.app.state.settings.server_invocation_id
     if invocation:
@@ -28,4 +28,8 @@ async def health(
         deployment = request.app.state.settings.server_deployment_id
         if deployment:
             response.headers[DEPLOYMENT_HEADER] = deployment
-    return {"status": "ok"}
+    return (
+        {"status": "ok", "desktop": True}
+        if request.app.state.settings.desktop
+        else {"status": "ok"}
+    )

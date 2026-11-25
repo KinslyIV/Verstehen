@@ -1,0 +1,5 @@
+extend = "../../../../ruff.toml"
+
+[lint.flake8-tidy-imports.banned-api]
+"sqlite3".msg = "move this SQL into verstehen.store"
+"aiosqlite".msg = "move this SQL into verstehen.store"

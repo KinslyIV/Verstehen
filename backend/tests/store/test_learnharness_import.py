@@ -18,6 +18,7 @@ from pydantic_ai.messages import ThinkingPart as AiThinkingPart
 
 from verstehen import cli
 from verstehen.app import create_app
+from verstehen.arguments import parse_arguments
 from verstehen.config import Settings
 from verstehen.graph.coverage import coverage_of
 from verstehen.graph.model import get_graph
@@ -1236,7 +1237,7 @@ def test_sidecar_command_prints_refusals(
         sys, "argv", ["verstehen", "import-learnharness", str(tmp_path)]
     )
     with pytest.raises(SystemExit) as exited:
-        cli.main()
+        cli.main(parse_arguments())
     assert exited.value.code == 1
     assert "not a LearnHarness data folder" in capsys.readouterr().err
 
@@ -1252,7 +1253,7 @@ def test_eof_at_confirmation_cancels_cleanly(
     monkeypatch.setattr(sys, "argv", ["verstehen", "import-learnharness", str(FIXTURE)])
     monkeypatch.setattr(sys, "stdin", io.StringIO(""))
     with pytest.raises(SystemExit) as exited:
-        cli.main()
+        cli.main(parse_arguments())
     assert exited.value.code == 1
     captured = capsys.readouterr()
     assert "Aborted: nothing was changed." in captured.out

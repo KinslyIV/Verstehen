@@ -1,4 +1,4 @@
-import { beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import * as api from '#lib/api/client.js';
 import { live } from '#lib/api/live.svelte.js';
@@ -25,6 +25,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getClaudeCode: vi.fn(),
 	getOwnDeviceName: vi.fn(),
 	getSearchKeys: vi.fn(),
+	health: vi.fn(),
 	getDemoBrowser: vi.fn(),
 	browserDownload: vi.fn(),
 	streamNotifications: vi.fn()
@@ -54,10 +55,13 @@ async function connectionReturns() {
 }
 
 beforeEach(() => {
+	// The reconnect backoff must wait for resume, however slow the test runs.
+	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
 	mode.current = 'remote';
 	streamFailsOnce();
 	vi.mocked(api.getSettings).mockReset().mockResolvedValue(stored);
 	vi.mocked(api.saveSettings).mockReset();
+	vi.mocked(api.health).mockReset().mockResolvedValue({ status: 'ok' });
 	vi.mocked(api.getModels).mockReset().mockResolvedValue({ accounts: [], slots: {} });
 	vi.mocked(api.refreshModels).mockReset().mockResolvedValue();
 	vi.mocked(api.listChatGPTAccounts).mockReset().mockResolvedValue([]);
@@ -75,6 +79,8 @@ beforeEach(() => {
 	vi.mocked(api.getDemoBrowser).mockReset().mockResolvedValue({ path: null, source: null });
 	vi.mocked(api.browserDownload).mockReset().mockResolvedValue({ state: 'idle' });
 });
+
+afterEach(() => vi.useRealTimers());
 
 test('lesson_loads_once_the_connection_returns_after_a_failed_first_read', async () => {
 	vi.mocked(api.getSettings).mockRejectedValueOnce(offline());

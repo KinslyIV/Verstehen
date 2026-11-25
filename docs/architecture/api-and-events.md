@@ -1,6 +1,6 @@
 # API and events
 
-Owns the HTTP boundary between the UI and the sidecar: thin FastAPI routes, the access policy, the
+Owns the HTTP boundary between the UI and the backend: thin FastAPI routes, the access policy, the
 two kinds of event streams, and the generated TypeScript types with the one client that uses them.
 Routes hold no learning logic: they validate the transport, call the service, and map its typed
 result to HTTP (notes import is the one route that makes several service calls).
@@ -11,12 +11,11 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md#ev
 
 Backend, `backend/src/verstehen/api/`: one router per area (`auth.py`, `sync.py`, `sync_status.py`,
 `server_setup.py`, `sessions.py`, `jobs.py`, `side_chats.py`, `graph.py`, `providers.py`,
-`chatgpt.py`, `claude_code.py`, `tools.py`, `images.py`, `health.py`), `access.py`
+`chatgpt.py`, `claude_code.py`, `tools.py`, `demo_browser.py` (not mounted on the desktop), `images.py`, `health.py`), `access.py`
 (`authenticate_server_request`, `request_refusal`), and `deps.py` (services from `app.state`, wired
 in `app.py`).
 
-Frontend, `app/src/lib/api/`: `client.ts` (every request; JSON and fetch-based SSE with the token
-header; the Tauri `sidecar_connection` lookup) and `schema.d.ts` (generated, never edited). Generated
+Frontend, `app/src/lib/api/`: `client.ts` (every request; JSON and fetch-based SSE, same-origin on the desktop and with the bearer token in remote mode) and `schema.d.ts` (generated, never edited). Generated
 types stay behind the client.
 
 ## Routes
@@ -67,24 +66,33 @@ In server mode under systemd, `GET /api/health` includes `X-Verstehen-Invocation
 
 ## Access
 
-- **Desktop mode** (`VERSTEHEN_DESKTOP=1`): every `/api` request carries the per-launch token
-  (`VERSTEHEN_TOKEN`, at least 64 characters) in `x-verstehen-token`, checked in constant time.
-  CORS allows only the Tauri origins, never `null`, and answers preflight requests itself. The
-  sidecar refuses to start without a valid token.
+- **Desktop mode** (the Qt shell starts the server with its token; there is no environment
+  variable): every `/api` request carries the per-launch token (at least 64 characters) in the
+  `verstehen_token` cookie or the `x-verstehen-token` header, compared in constant time. The shell
+  sets the cookie (HttpOnly, SameSite=Strict) before the page loads. There is no CORS: the page and
+  the API share one origin. `GET /api/health` also answers `"desktop": true`, which Settings →
+  Tools reads to hide the Demo browser section; the demo-browser routes are not mounted. The
+  server also serves the built app: `SinglePageFiles` serves files from `VERSTEHEN_SPA_DIR` (else
+  the repository's `app/build`) and answers an unknown client route with `index.html`
+  (never under `/api`), and every response carries the app's CSP (`DESKTOP_CSP` in `app.py`:
+  `'self'`, plus `'unsafe-inline'` and `https:` so demos' inline scripts and CDN libraries run,
+  `data:` and `blob:` images, and `data:` fonts).
 - **Server mode** (`VERSTEHEN_SERVER=1` or `--server`, default `127.0.0.1:8420`): every `/api`
   request except `/api/health` and `/api/auth/pair` carries a per-device token in
   `Authorization: Bearer <token>` or `x-verstehen-token`, verified against SHA-256 hashes in
   `DevicesStore` and refused with `401` (`WWW-Authenticate: Bearer`) when missing, invalid, or
-  revoked. CORS allows the Tauri origins (`tauri://localhost`, `http://tauri.localhost`,
-  `https://tauri.localhost`) and the Android app's page origin `http://localhost`
+  revoked. CORS allows only the Android app's page origin `http://localhost`
   (Capacitor with `androidScheme: 'http'`). The first device is bootstrapped with `verstehen mint-token <name>`,
   and additional devices pair with short-lived single-use codes via `/api/auth/pair`. The listener
-  does not exit on stdin EOF and serves cleartext HTTP assuming a trusted Tailscale (WireGuard)
-  network.
-- **Browser-only mode** (neither variable set, as in `make dev` and `make verify`): LH's Host check
+  serves cleartext HTTP assuming a trusted Tailscale (WireGuard) network.
+- **Browser-only mode** (neither `--server` nor `VERSTEHEN_SERVER`, as in `make dev` and `make verify`): LH's Host check
   and cross-site write check; `VERSTEHEN_ALLOWED_HOSTS` adds names.
-- **Startup handshake:** the sidecar prints exactly one stdout line, `{"port": N}`, once it listens.
-  In desktop mode it exits when stdin closes or on SIGTERM.
+- **Startup:** `DesktopServer` (`desktop/server.py`) binds `127.0.0.1:28420` (a fixed port keeps the
+  page origin, and so its `localStorage`, stable; any free port if that is taken), runs uvicorn on
+  a background thread with that listener, and polls `/api/health` with the cookie until it answers
+  200 or 30 s pass. No stdin-EOF watcher exists: closing the window stops
+  uvicorn (`should_exit`, joined for up to 10 s), and a server that exits while the window is open
+  closes the app. `--server` and browser-only runs use `serve` in `cli.py`, print one `{"port": N}` stdout line once they listen (the verify flows and `make dev` read it), and exit on SIGTERM.
 - SSE is read with `fetch` streaming, not `EventSource`, so the token stays in a header. A stream
   cut by the network is reopened with backoff; see [frontend-shell](frontend-shell.md).
 - **Remote clients** (the Android app, or a build with `PUBLIC_VERSTEHEN_CLIENT=remote`) send

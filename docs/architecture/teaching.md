@@ -132,5 +132,5 @@ Frontend, `app/src/lib/`:
 - **Question actions come from the saved record**, not the live stream: the stream shows a
   response before its tool results exist, so it could offer a question the model has already
   replaced.
-- **Prompts must be in the package.** The frozen sidecar once shipped without
+- **Prompts must be in the package.** The frozen app once shipped without
   `teaching/prompts/`; `verstehen --self-check` now fails when a prompt folder is missing.

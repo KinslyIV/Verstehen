@@ -1,10 +1,13 @@
 import json
 import os
 import selectors
+import signal
 import subprocess
 import sys
 import urllib.request
 from pathlib import Path
+
+import pytest
 
 HEAVY_MODULES = (
     "anthropic",
@@ -46,7 +49,7 @@ app = create_app(Settings(Path({str(tmp_path)!r}), desktop=True, token=token))
 with TestClient(app) as client:
     response = client.get("/api/health", headers={{"x-verstehen-token": token}})
     assert response.status_code == 200, response.text
-    assert response.json() == {{"status": "ok"}}
+    assert response.json() == {{"status": "ok", "desktop": True}}
 
 loaded = [name for name in {HEAVY_MODULES!r} if name in sys.modules]
 assert not loaded, f"Heavy modules loaded at startup: {{loaded}}"
@@ -72,13 +75,10 @@ assert resolve_model is not None
 
 
 def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
-    token = "test-token-" * 8
     stderr_log = tmp_path / "importtime.log"
     env = {
         **os.environ,
         "VERSTEHEN_DATA_DIR": str(tmp_path),
-        "VERSTEHEN_DESKTOP": "1",
-        "VERSTEHEN_TOKEN": token,
     }
     err_file = stderr_log.open("wb")
     proc = subprocess.Popen(
@@ -87,7 +87,7 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
             "-X",
             "importtime",
             "-c",
-            "from verstehen.cli import main; main()",
+            "from verstehen.arguments import parse_arguments; from verstehen.cli import main; main(parse_arguments())",
             "--port",
             "0",
         ],
@@ -109,16 +109,12 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
         line = proc.stdout.readline().strip()
         assert line, stderr_log.read_text(encoding="utf-8", errors="replace")
         port = json.loads(line)["port"]
-        request = urllib.request.Request(
-            f"http://127.0.0.1:{port}/api/health",
-            headers={"x-verstehen-token": token},
-        )
-        with urllib.request.urlopen(request, timeout=10) as response:
+        url = f"http://127.0.0.1:{port}/api/health"
+        with urllib.request.urlopen(url, timeout=10) as response:
             assert response.status == 200
             assert json.loads(response.read().decode("utf-8")) == {"status": "ok"}
     finally:
-        if proc.stdin is not None and not proc.stdin.closed:
-            proc.stdin.close()
+        proc.terminate()
         try:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
@@ -130,8 +126,8 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
                 stream.close()
         err_file.close()
 
-    assert not shutdown_timed_out, "sidecar did not shut down within 15s on stdin EOF"
-    assert proc.returncode == 0, stderr_log.read_text(
+    assert not shutdown_timed_out, "sidecar did not shut down within 15s on SIGTERM"
+    assert proc.returncode in (0, -signal.SIGTERM), stderr_log.read_text(
         encoding="utf-8", errors="replace"
     )
     imported_roots = set()
@@ -145,3 +141,166 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
                 imported_roots.add(module.split(".", 1)[0])
     loaded = [name for name in HEAVY_MODULES if name in imported_roots]
     assert not loaded, f"Heavy modules loaded via CLI main(): {loaded}"
+
+
+@pytest.mark.parametrize(
+    ("arguments", "eager"),
+    [
+        (["desktop"], True),
+        (["--port", "0", "desktop"], True),
+        (["--self-check"], True),
+        (["--server"], False),
+        (["--port", "0"], False),
+        (["mint-token", "Phone"], False),
+    ],
+)
+def test_only_commands_that_run_qt_turn_lazy_imports_off_before_the_app_loads(
+    arguments: list[str], eager: bool, tmp_path: Path
+):
+    code = f"""
+import sys
+import types
+
+sys.argv = ["verstehen", *{arguments!r}]
+seen = []
+sys.modules["verstehen.cli"] = types.SimpleNamespace(
+    main=lambda arguments: seen.append(
+        (sys.get_lazy_imports_filter() is not None, "verstehen.app" in sys.modules)
+    )
+)
+from verstehen.launcher import main
+
+main()
+assert seen == [({eager!r}, False)], seen
+"""
+    _run_python(code, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment"),
+    [
+        (["--server"], {}),
+        (["--port", "0"], {"VERSTEHEN_SERVER": "1"}),
+        ([], {"VERSTEHEN_SERVER": "1"}),
+    ],
+)
+def test_the_packaged_desktop_refuses_server_mode_and_says_where_it_runs(
+    arguments: list[str], environment: dict[str, str], tmp_path: Path
+):
+    entrypoint = Path(__file__).parents[2] / "packaging" / "entrypoint.py"
+    result = subprocess.run(
+        [sys.executable, str(entrypoint), *arguments],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path), **environment},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "Settings → Sync" in result.stderr
+    assert "no server mode" in result.stderr
+
+
+def test_the_desktop_app_loads_and_serves_without_playwright(tmp_path: Path):
+    code = f"""
+import sys
+from pathlib import Path
+
+class RefusePlaywright:
+    def find_spec(self, name, path=None, target=None):
+        if name.split(".")[0] == "playwright":
+            raise ImportError("playwright is not part of the desktop")
+
+sys.meta_path.insert(0, RefusePlaywright())
+import verstehen.desktop.eager
+from fastapi.testclient import TestClient
+from verstehen.app import create_app
+from verstehen.config import Settings
+import verstehen.desktop.demo_runner
+import verstehen.desktop.server
+import verstehen.desktop.shell
+
+token = "test-token-" * 8
+settings = Settings(Path({str(tmp_path)!r}), desktop=True, token=token)
+with TestClient(create_app(settings)) as client:
+    headers = {{"x-verstehen-token": token}}
+    assert client.get("/api/health", headers=headers).status_code == 200
+"""
+    _run_python(code, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment", "server"),
+    [
+        (["--server"], {}, True),
+        ([], {"VERSTEHEN_SERVER": "1"}, True),
+        (["--port", "0"], {}, False),
+        (["desktop"], {}, False),
+    ],
+)
+def test_server_mode_comes_from_the_flag_or_the_environment(
+    arguments: list[str], environment: dict[str, str], server: bool, tmp_path: Path
+):
+    code = f"""
+import os, sys
+os.environ.pop("VERSTEHEN_SERVER", None)
+os.environ.update({environment!r})
+sys.argv = ["verstehen", *{arguments!r}]
+from verstehen.arguments import parse_arguments
+
+assert parse_arguments().server is {server!r}
+"""
+    _run_python(code, tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("arguments", "environment"),
+    [
+        (["--server", "desktop"], {}),
+        (["desktop"], {"VERSTEHEN_SERVER": "1"}),
+    ],
+)
+def test_the_desktop_window_cannot_be_combined_with_server_mode(
+    arguments: list[str], environment: dict[str, str], tmp_path: Path
+):
+    result = subprocess.run(
+        [sys.executable, "-m", "verstehen", *arguments],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path), **environment},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "cannot be combined with server mode" in result.stderr
+
+
+def test_the_desktop_module_refuses_server_mode(tmp_path: Path):
+    result = subprocess.run(
+        [sys.executable, "-m", "verstehen.desktop", "--server"],
+        env={**os.environ, "VERSTEHEN_DATA_DIR": str(tmp_path)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "cannot be combined with server mode" in result.stderr
+
+
+def test_the_desktop_module_runs_the_command_it_parsed_like_verstehen_desktop(
+    tmp_path: Path,
+):
+    code = """
+import runpy
+import sys
+import types
+
+sys.argv = ["verstehen.desktop", "--self-check", "--port", "0"]
+seen = []
+sys.modules["verstehen.cli"] = types.SimpleNamespace(main=seen.append)
+runpy.run_module("verstehen.desktop", run_name="__main__")
+(arguments,) = seen
+assert (arguments.command, arguments.self_check, arguments.port) == ("desktop", True, "0")
+"""
+    _run_python(code, tmp_path)

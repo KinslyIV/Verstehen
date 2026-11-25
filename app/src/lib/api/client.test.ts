@@ -1,34 +1,22 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { invoke, isTauri } from '@tauri-apps/api/core';
 import {
 	deleteSession,
 	health,
 	listSessions,
 	refreshModels,
 	revokeOwnDevice,
-	setToken,
 	streamTurn
 } from './client';
 
-vi.mock('@tauri-apps/api/core', () => ({
-	invoke: vi.fn(),
-	isTauri: vi.fn().mockReturnValue(false)
-}));
-
 afterEach(() => {
-	setToken(undefined);
 	vi.unstubAllGlobals();
-	vi.mocked(isTauri).mockReturnValue(false);
 });
 
-test.each([undefined, 'test-token'])('health sends only a configured token (%s)', async (token) => {
+test('health sends no token of its own: the shell supplies the cookie', async () => {
 	const request = vi.fn().mockResolvedValue(new Response(JSON.stringify({ status: 'ok' })));
 	vi.stubGlobal('fetch', request);
-	setToken(token);
 	expect(await health()).toEqual({ status: 'ok' });
-	expect(request).toHaveBeenCalledWith('/api/health', {
-		headers: token ? { 'x-verstehen-token': token } : {}
-	});
+	expect(request).toHaveBeenCalledWith('/api/health', { headers: {} });
 });
 
 test('health reports an HTTP failure', async () => {
@@ -36,9 +24,7 @@ test('health reports an HTTP failure', async () => {
 	await expect(health()).rejects.toThrow('HTTP 503');
 });
 
-test('desktop JSON and SSE requests share one connection and use its URL and token', async () => {
-	vi.mocked(isTauri).mockReturnValue(true);
-	vi.mocked(invoke).mockResolvedValue({ port: 12345, token: 'desktop-token' });
+test('JSON and SSE requests go to the page origin without a token header', async () => {
 	const request = vi.fn().mockImplementation((url: string) => {
 		if (url.endsWith('/stream')) return Promise.resolve(new Response('data: [DONE]\n\n'));
 		const body = url.endsWith('/sessions') ? { sessions: [] } : { status: 'ok' };
@@ -49,36 +35,11 @@ test('desktop JSON and SSE requests share one connection and use its URL and tok
 	await Promise.all([health(), health()]);
 	expect(await listSessions()).toEqual([]);
 	expect(await streamTurn('session-id', vi.fn(), signal)).toBe(true);
-	expect(invoke).toHaveBeenCalledExactlyOnceWith('sidecar_connection');
 	expect(request).toHaveBeenCalledTimes(4);
-	expect(request).toHaveBeenCalledWith('http://127.0.0.1:12345/api/health', {
-		headers: { 'x-verstehen-token': 'desktop-token' }
-	});
-	expect(request).toHaveBeenCalledWith('http://127.0.0.1:12345/api/sessions/session-id/stream', {
+	expect(request).toHaveBeenCalledWith('/api/sessions/session-id/stream', {
 		signal,
-		headers: { 'x-verstehen-token': 'desktop-token' }
+		headers: {}
 	});
-});
-
-test('desktop requests can retry after a shared connection lookup fails', async () => {
-	vi.resetModules();
-	const { health } = await import('./client');
-	vi.mocked(isTauri).mockReturnValue(true);
-	vi.mocked(invoke)
-		.mockClear()
-		.mockRejectedValueOnce('Sidecar is not ready')
-		.mockResolvedValueOnce({ port: 12345, token: 'desktop-token' });
-	const request = vi.fn().mockResolvedValue(new Response('{"status":"ok"}'));
-	vi.stubGlobal('fetch', request);
-
-	await Promise.all([
-		expect(health()).rejects.toThrow('Sidecar is not ready'),
-		expect(health()).rejects.toThrow('Sidecar is not ready')
-	]);
-	expect(invoke).toHaveBeenCalledTimes(1);
-	expect(request).not.toHaveBeenCalled();
-	expect(await health()).toEqual({ status: 'ok' });
-	expect(invoke).toHaveBeenCalledTimes(2);
 });
 
 test('SSE decodes split UTF-8, CRLF frames, comments, and terminal marker', async () => {
@@ -127,28 +88,28 @@ test('model_refusals_retain_the_reason_and_missing_slots', async () => {
 	await expect(getModels()).rejects.toBeInstanceOf(ApiError);
 });
 
-test('desktop_sign_in_opens_the_system_browser_through_the_existing_shell', async () => {
+test('external_links_open_a_new_window_without_an_opener_which_the_desktop_shell_routes_out', async () => {
 	const { openExternal } = await import('./client');
-	vi.mocked(isTauri).mockReturnValue(true);
-	vi.mocked(invoke).mockClear().mockResolvedValue(undefined);
-	await openExternal('https://auth.openai.com/authorize');
-	expect(invoke).toHaveBeenCalledExactlyOnceWith('plugin:shell|open', {
-		path: 'https://auth.openai.com/authorize'
-	});
-});
-
-test('browser_sign_in_opens_a_new_tab_without_an_opener', async () => {
-	const { openExternal } = await import('./client');
-	vi.mocked(invoke).mockClear();
 	const open = vi.fn();
 	vi.stubGlobal('window', { open });
-	await openExternal('https://auth.openai.com/authorize');
+	openExternal('https://auth.openai.com/authorize');
 	expect(open).toHaveBeenCalledExactlyOnceWith(
 		'https://auth.openai.com/authorize',
 		'_blank',
 		'noopener,noreferrer'
 	);
-	expect(invoke).not.toHaveBeenCalled();
+});
+
+test('the_desktop_shell_refusing_a_link_reaches_the_listener_until_it_unsubscribes', async () => {
+	const { onLinkRefused, LINK_REFUSED_EVENT } = await import('./client');
+	const target = new EventTarget();
+	vi.stubGlobal('window', target);
+	const refused = vi.fn();
+	const stop = onLinkRefused(refused);
+	target.dispatchEvent(new CustomEvent(LINK_REFUSED_EVENT, { detail: 'https://example.com/' }));
+	stop();
+	target.dispatchEvent(new CustomEvent(LINK_REFUSED_EVENT, { detail: 'https://other.example/' }));
+	expect(refused).toHaveBeenCalledExactlyOnceWith('https://example.com/');
 });
 
 test('void_requests_drain_their_response_body_before_resolving', async () => {

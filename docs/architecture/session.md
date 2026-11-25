@@ -32,7 +32,7 @@ Frontend, `app/src/`:
 | File | What it holds |
 |---|---|
 | `lib/session/controller.svelte.ts` | `SessionController`: send, follow the stream, bounded 409 wait, one read-only recovery, append-only adoption of the saved record, question actions |
-| `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the dock |
+| `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the floating dock ([shell](frontend-shell.md)) |
 | `lib/components/composer.svelte` | text input, Send/Stop, steering while a turn runs |
 | `lib/components/stats-bar.svelte`, `lib/session/session-stats.svelte.ts`, `stats-format.ts` | the usage row under the composer and its Session stats popover; `SessionStatsReader` reads one session's stats single-flight |
 | `lib/components/session-list.svelte`, `new-session.svelte`, `rename-session.svelte` | sidebar rows, the new-session screen, rename |

@@ -77,8 +77,8 @@ browsers in `<data dir>/browsers/`.
 
 ## Importing from LearnHarness
 
-`verstehen-sidecar import-learnharness <folder> [--dry-run]` (the installed binary is
-`/usr/lib/verstehen/verstehen-sidecar`; in development `verstehen import-learnharness`) replaces
+`verstehen import-learnharness <folder> [--dry-run]` (the installed binary is `/usr/bin/verstehen`,
+which links to `/usr/lib/verstehen/verstehen`) replaces
 Verstehen's sessions and graph with a LearnHarness data folder. It is one-way, runs while the app
 is closed, and uses the data directory from `VERSTEHEN_DATA_DIR` or the default. The code is
 `backend/src/verstehen/lh_import/`: `records.py` (strict Pydantic models of LH's files; any unknown

@@ -1,8 +1,10 @@
 import asyncio
 import importlib
 import importlib.metadata
+import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import Callable
@@ -90,6 +92,27 @@ def check_playwright() -> str:
     )
 
 
+SELF_CHECK_PAGE = "<!doctype html><title>Self-check</title><p>offline</p>"
+SELF_CHECK_PROBE = "document.querySelector('p').textContent"
+
+
+def is_desktop_bundle() -> bool:
+    return importlib.util.find_spec("PySide6") is not None
+
+
+def check_qt_demo() -> str:
+    """Run an offline demo page through the desktop's QtWebEngine runner."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from verstehen.desktop.demo_runner import run_with_demo_runner
+
+    result = run_with_demo_runner(
+        lambda runner: runner(SELF_CHECK_PAGE, SELF_CHECK_PROBE)
+    )
+    if not result.ok or result.probe_result != "offline":
+        raise RuntimeError(f"Offline Qt demo page failed: {result.model_dump_json()}")
+    return "offline Qt demo page loaded and probed"
+
+
 def check_headless() -> str:
     from playwright.sync_api import sync_playwright
 
@@ -116,9 +139,9 @@ def check_headless() -> str:
         return "no browser found; optional headless check skipped"
     result = asyncio.run(
         run_demo(
-            "<!doctype html><title>Self-check</title><p>offline</p>",
+            SELF_CHECK_PAGE,
             executable,
-            "document.querySelector('p').textContent",
+            SELF_CHECK_PROBE,
         )
     )
     if not result.ok or result.probe_result != "offline":
@@ -137,14 +160,18 @@ def check_claude() -> str:
 
 
 def run_self_check() -> bool:
+    demo_checks = (
+        [("qt-demo", check_qt_demo)]
+        if is_desktop_bundle()
+        else [("playwright", check_playwright), ("headless", check_headless)]
+    )
     checks: list[tuple[str, Callable[[], str]]] = [
         ("resvg", check_resvg),
         ("pypdfium2", check_pdfium),
         ("pillow", check_pillow),
         ("regex", check_regex),
         ("prompts", check_prompts),
-        ("playwright", check_playwright),
-        ("headless", check_headless),
+        *demo_checks,
         ("claude-agent-sdk", check_claude),
     ]
     results = []

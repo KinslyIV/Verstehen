@@ -16,6 +16,7 @@ from fastapi.testclient import TestClient
 from verstehen import cli
 from verstehen.api.auth import PAIRING_ALPHABET, PairingCodeManager
 from verstehen.app import create_app
+from verstehen.arguments import parse_arguments
 from verstehen.cli import mint_device_token
 from verstehen.config import Settings
 from verstehen.store.database import open_database
@@ -93,7 +94,7 @@ def test_mint_token_cli_creates_device_and_rejects_blank_name(
     monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path))
     monkeypatch.setattr(sys, "argv", ["verstehen", "mint-token", "   "])
     with pytest.raises(SystemExit) as exited:
-        cli.main()
+        cli.main(parse_arguments())
     assert exited.value.code == 1
     assert "must not be empty" in capsys.readouterr().err
 
@@ -403,16 +404,8 @@ def test_pairing_code_manager_per_ip_rate_limit_isolation_and_pruning():
     assert manager.failures == {}
 
 
-@pytest.mark.parametrize(
-    "origin",
-    [
-        "tauri://localhost",
-        "http://tauri.localhost",
-        "https://tauri.localhost",
-        "http://localhost",
-    ],
-)
-def test_server_mode_cors_allows_app_origins(tmp_path: Path, origin: str):
+def test_server_mode_cors_allows_only_the_android_app_origin(tmp_path: Path):
+    origin = "http://localhost"
     with TestClient(create_app(Settings(tmp_path, server=True))) as client:
         response = client.options(
             "/api/sessions",
@@ -430,15 +423,16 @@ def test_server_mode_cors_allows_app_origins(tmp_path: Path, origin: str):
         }
         assert {"authorization", "x-verstehen-token", "content-type"} <= allowed_headers
 
-        bad = client.options(
-            "/api/sessions",
-            headers={
-                "origin": "https://evil.example",
-                "access-control-request-method": "GET",
-            },
-        )
-        assert bad.status_code == 400
-        assert "access-control-allow-origin" not in bad.headers
+        for foreign in ("https://evil.example", "tauri://localhost"):
+            bad = client.options(
+                "/api/sessions",
+                headers={
+                    "origin": foreign,
+                    "access-control-request-method": "GET",
+                },
+            )
+            assert bad.status_code == 400
+            assert "access-control-allow-origin" not in bad.headers
 
 
 def test_concurrent_pairing_code_issuance_and_revocation(tmp_path: Path):

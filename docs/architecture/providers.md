@@ -20,7 +20,7 @@ Backend, `backend/src/verstehen/providers/`:
 | `service.py` | `ProviderService`: settings, the saved catalog read, the account refresh, Set as default |
 | `usage.py` | `UsageModel`: wraps every request, saves a `usage` row per call through `UsageStore` |
 | `claude_code/` | `ClaudeCodeAccountAdapter` and binary discovery (`binary.py`), plus the vendored `ClaudeCodeModel` (`model.py`, `_transport.py`, `_request.py`; see `VENDORED.md`) |
-| `chatgpt/` | `ChatGPTAccountAdapter` (with each account's model list cached for the sidecar's lifetime), the lazily loaded provider/model wrappers (`client.py`: `AccountProvider`, `AccountModel`, `catalog_model`), the browser sign-in (`ChatGPTSignInService`), the credential source |
+| `chatgpt/` | `ChatGPTAccountAdapter` (with each account's model list cached for the process's lifetime), the lazily loaded provider/model wrappers (`client.py`: `AccountProvider`, `AccountModel`, `catalog_model`), the browser sign-in (`ChatGPTSignInService`), the credential source |
 | `credentials.py` | `CredentialsStore`: the private atomic `<data dir>/credentials.json` (0600) for ChatGPT tokens and search keys |
 | `search_keys.py` | Tavily and Brave key status and storage |
 | `fake.py` | `FakeAccountAdapter` and the scripted streaming model, enabled only by `VERSTEHEN_FAKE_MODEL_SCRIPT` |

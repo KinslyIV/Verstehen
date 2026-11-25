@@ -70,6 +70,7 @@ async def turn_service_context(tmp_path: Path, model=None):
             CredentialsStore(tmp_path),
             WorkerAdmission(settings_store),
             tmp_path,
+            lambda configured: None,
             lambda session_id: asyncio.sleep(0),
             lambda session_id: None,
         )

@@ -3,15 +3,19 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
+from starlette.types import Scope
 
 from verstehen.api.access import authenticate_server_request, request_refusal
 from verstehen.api.auth import PairingCodeManager
 from verstehen.api.auth import router as auth_router
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
+from verstehen.api.demo_browser import router as demo_browser_router
 from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
@@ -30,7 +34,11 @@ from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.service import GraphService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
-from verstehen.jobs.workers.browser import BrowserDownloadService
+from verstehen.jobs.workers.browser import (
+    BrowserDownloadService,
+    playwright_runner_provider,
+)
+from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -71,9 +79,31 @@ from verstehen.sync.provision import (
 )
 from verstehen.sync.service import SyncService
 
+DESKTOP_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "img-src 'self' data: blob: 'unsafe-inline' https:; "
+    "font-src 'self' data: 'unsafe-inline' https:; "
+    "connect-src 'self' http://127.0.0.1:* 'unsafe-inline' https:"
+)
 
-def create_app(settings: Settings) -> FastAPI:
-    """Build the API with database lifecycle, access checks, and desktop CORS."""
+
+class SinglePageFiles(StaticFiles):
+    """Serves the built app, answering unknown client routes with index.html."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        try:
+            return await super().get_response(path, scope)
+        except HTTPException as error:
+            if error.status_code != 404 or path.startswith("api/"):
+                raise
+            return await super().get_response("index.html", scope)
+
+
+def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> FastAPI:
+    """Build the API with database lifecycle and access checks; desktop mode also serves the app.
+    The desktop shell injects its `demo_runner`; without one, demos run in Playwright's Chromium.
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -102,7 +132,9 @@ def create_app(settings: Settings) -> FastAPI:
             chatgpt_adapter = ChatGPTAccountAdapter(
                 credentials_store, on_invalidated=catalog_store.forget
             )
-            browser_download_service = BrowserDownloadService(settings.data_dir)
+            browser_download_service = (
+                None if settings.desktop else BrowserDownloadService(settings.data_dir)
+            )
             app.state.browser_download_service = browser_download_service
             callback_port = CallbackPort()
             chatgpt_sign_in_service = ChatGPTSignInService(
@@ -152,6 +184,11 @@ def create_app(settings: Settings) -> FastAPI:
                 credentials_store,
                 WorkerAdmission(settings_store),
                 settings.data_dir,
+                (
+                    (lambda configured: demo_runner)
+                    if demo_runner
+                    else playwright_runner_provider(settings.data_dir)
+                ),
                 wake_session,
                 jobs_changed,
                 settings.provider_events,
@@ -332,7 +369,8 @@ def create_app(settings: Settings) -> FastAPI:
                 await extraction_service.close()
                 await side_chat_service.close()
                 await job_runner.close()
-                await browser_download_service.close()
+                if browser_download_service:
+                    await browser_download_service.close()
                 await runtimes.close()
                 await title_service.close()
                 claude_code_adapter.close()
@@ -395,22 +433,10 @@ def create_app(settings: Settings) -> FastAPI:
                     )
         return await call_next(request)
 
-    if settings.desktop:
+    if settings.server:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["tauri://localhost", "http://tauri.localhost"],
-            allow_methods=["*"],
-            allow_headers=["x-verstehen-token", "content-type"],
-        )
-    elif settings.server:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[
-                "tauri://localhost",
-                "http://tauri.localhost",
-                "https://tauri.localhost",
-                "http://localhost",
-            ],
+            allow_origins=["http://localhost"],
             allow_methods=["*"],
             allow_headers=["authorization", "x-verstehen-token", "content-type"],
         )
@@ -421,6 +447,8 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(server_setup_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
+    if not settings.desktop:
+        app.include_router(demo_browser_router)
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(images_router)
@@ -430,4 +458,15 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)
+    if settings.desktop and settings.spa_dir is not None:
+
+        @app.middleware("http")
+        async def content_security_policy(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
+            response = await call_next(request)
+            response.headers["Content-Security-Policy"] = DESKTOP_CSP
+            return response
+
+        app.mount("/", SinglePageFiles(directory=settings.spa_dir), name="spa")
     return app

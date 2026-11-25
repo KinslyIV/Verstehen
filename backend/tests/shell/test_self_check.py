@@ -33,8 +33,7 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
         "pillow",
         "regex",
         "prompts",
-        "playwright",
-        "headless",
+        "qt-demo",
         "claude-agent-sdk",
     }
     assert all(check["ok"] and check["detail"] for check in checks)
@@ -47,12 +46,14 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
     def fail():
         raise RuntimeError("render failed")
 
+    monkeypatch.setattr(self_check, "is_desktop_bundle", lambda: True)
     monkeypatch.setattr(self_check, "check_resvg", fail)
     for name in (
         "check_pdfium",
         "check_pillow",
         "check_regex",
         "check_prompts",
+        "check_qt_demo",
         "check_playwright",
         "check_headless",
         "check_claude",
@@ -62,6 +63,26 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
     checks = json.loads(capsys.readouterr().out)
     assert checks[0] == {"name": "resvg", "ok": False, "detail": "render failed"}
     assert all(check["ok"] for check in checks[1:])
+
+
+def test_self_check_runs_playwright_in_the_server_bundle(monkeypatch, capsys):
+    from verstehen import self_check
+
+    monkeypatch.setattr(self_check, "is_desktop_bundle", lambda: False)
+    for name in (
+        "check_resvg",
+        "check_pdfium",
+        "check_pillow",
+        "check_regex",
+        "check_prompts",
+        "check_playwright",
+        "check_headless",
+        "check_claude",
+    ):
+        monkeypatch.setattr(self_check, name, lambda: "checked")
+    assert self_check.run_self_check()
+    names = [check["name"] for check in json.loads(capsys.readouterr().out)]
+    assert "headless" in names and "qt-demo" not in names
 
 
 def test_self_check_passes_without_an_installed_claude(monkeypatch):

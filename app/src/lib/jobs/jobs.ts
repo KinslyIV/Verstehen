@@ -169,6 +169,21 @@ export function reduceDemoBridgeState(state: DemoBridgeState, data: unknown): De
 	return state;
 }
 
+/** How far above and below the transcript viewport a demo frame stays loaded: twice its height. */
+export function demoLoadMargin(viewportHeight: number): string {
+	return `${Math.round(viewportHeight * 2)}px 0px`;
+}
+
+/** A demo frame's error ends with the frame; its measured height stays so the layout does not move. */
+export function resetDemoFrameError(state: DemoBridgeState): DemoBridgeState {
+	return state.error === null ? state : { ...state, error: null };
+}
+
+/** Whether a demo card keeps its iframe mounted: near the viewport, or zoomed (never unloaded). */
+export function demoFrameMounted(near: boolean, zoomed: boolean): boolean {
+	return near || zoomed;
+}
+
 /** Whether a demo-frame message is the Escape key forwarded out of the sandboxed iframe. */
 export function isDemoEscape(data: unknown): boolean {
 	return asObject(data)?.type === 'demo-escape';

@@ -8,7 +8,6 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getModels: vi.fn(),
 	refreshModels: vi.fn()
 }));
-vi.mock('#lib/api/startup.js', () => ({ markStartup: vi.fn() }));
 
 const saved = (label: string): api.ModelCatalog => {
 	const catalog = structuredClone(testCatalog);

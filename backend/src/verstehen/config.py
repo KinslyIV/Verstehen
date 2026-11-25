@@ -2,7 +2,7 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from verstehen.providers.fake import load_script
+TOKEN_COOKIE = "verstehen_token"
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class Settings:
     provider_events: bool = False
     server_invocation_id: str | None = None
     server_deployment_id: str | None = None
+    spa_dir: Path | None = None
 
 
 def resolve_data_dir(*, create: bool = True) -> Path:
@@ -36,29 +37,19 @@ def load_settings(
     server: bool = False,
     host: str | None = None,
     port: int | str | None = None,
+    desktop_token: str | None = None,
+    spa_dir: Path | None = None,
 ) -> Settings:
-    """Validate launch environment variables and, unless told not to, create the data directory."""
-    desktop_flag = os.environ.get("VERSTEHEN_DESKTOP")
+    """Validate launch settings and environment variables; the desktop shell passes its token."""
     server_flag = os.environ.get("VERSTEHEN_SERVER")
-    token = os.environ.get("VERSTEHEN_TOKEN")
-    if desktop_flag not in (None, "1"):
-        raise ValueError("VERSTEHEN_DESKTOP must be unset or 1.")
     if server_flag not in (None, "1"):
         raise ValueError("VERSTEHEN_SERVER must be unset or 1.")
-    desktop = desktop_flag == "1"
+    desktop = desktop_token is not None
     is_server = server or server_flag == "1"
     if desktop and is_server:
-        raise ValueError("VERSTEHEN_DESKTOP=1 cannot be combined with server mode.")
-    if token is not None and is_server:
-        raise ValueError(
-            "VERSTEHEN_TOKEN cannot be used in server mode; VERSTEHEN_TOKEN requires VERSTEHEN_DESKTOP=1."
-        )
-    if token is not None and not desktop:
-        raise ValueError("VERSTEHEN_TOKEN requires VERSTEHEN_DESKTOP=1.")
-    if desktop and (token is None or len(token) < 64):
-        raise ValueError(
-            "VERSTEHEN_DESKTOP=1 requires VERSTEHEN_TOKEN of at least 64 characters."
-        )
+        raise ValueError("The desktop window cannot be combined with server mode.")
+    if desktop_token is not None and len(desktop_token) < 64:
+        raise ValueError("The desktop token must be at least 64 characters.")
     raw_host = (
         host if host is not None else os.environ.get("VERSTEHEN_HOST", "127.0.0.1")
     )
@@ -85,6 +76,8 @@ def load_settings(
     script = os.environ.get("VERSTEHEN_FAKE_MODEL_SCRIPT")
     fake_model_script = Path(script).expanduser() if script is not None else None
     if fake_model_script is not None:
+        from verstehen.providers.fake import load_script
+
         load_script(fake_model_script)
     data_dir = resolve_data_dir(create=create_data_dir)
     allowed_hosts = tuple(
@@ -97,7 +90,8 @@ def load_settings(
         desktop=desktop,
         server=is_server,
         host=resolved_host,
-        token=token,
+        token=desktop_token,
+        spa_dir=spa_dir,
         port=resolved_port,
         allowed_hosts=allowed_hosts,
         fake_model_script=fake_model_script,

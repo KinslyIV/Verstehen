@@ -1,6 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import httpx2
 from genai_prices.data_snapshot import get_snapshot
@@ -22,7 +22,9 @@ from pydantic_ai.settings import ModelSettings, ThinkingEffort
 from verstehen.providers.accounts import AccountUnavailable
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
 from verstehen.providers.chatgpt.credentials import AccountCredentialSource
-lazy from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
+
+if TYPE_CHECKING:
+    from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
 
 
 class AccountProvider(OpenAIChatGPTProvider):

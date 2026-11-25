@@ -5,7 +5,7 @@ from urllib.parse import urlsplit
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-from verstehen.config import Settings
+from verstehen.config import TOKEN_COOKIE, Settings
 from verstehen.store.devices import DevicesStore
 
 SERVER_EXEMPT_PATHS = {"/api/health", "/api/auth/pair"}
@@ -86,9 +86,13 @@ def host_allowed(hostname: str, settings: Settings) -> bool:
 def request_refusal(request: Request, settings: Settings) -> str | None:
     """Return an access-denial reason, or None when the launch mode permits the request."""
     if settings.desktop:
-        supplied = request.headers.get("x-verstehen-token", "")
-        if not settings.token or not hmac.compare_digest(
-            supplied.encode(), settings.token.encode()
+        supplied = (
+            request.cookies.get(TOKEN_COOKIE, ""),
+            request.headers.get("x-verstehen-token", ""),
+        )
+        if not settings.token or not any(
+            hmac.compare_digest(value.encode(), settings.token.encode())
+            for value in supplied
         ):
             return "Desktop API access requires the trusted Verstehen window."
         return None

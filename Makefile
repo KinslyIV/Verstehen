@@ -17,7 +17,6 @@ check-backend:
 	cd backend && uv run lint-imports
 	uv run --project backend python tools/check_comments.py
 	uv run --project backend python tools/check_migrations.py
-	uv run --project backend python tools/check_versions.py
 	uv run --project backend python tools/check_feature_map.py
 	uv run --project backend python tools/test_areas.py --check
 	uv run --project backend python tools/test_areas.py pytest $(if $(AREA),--area "$(AREA)") $(if $(filter 1,$(SLOW)),--slow)

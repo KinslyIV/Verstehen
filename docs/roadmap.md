@@ -23,9 +23,8 @@ step and its open questions are in [status](status.md); how each area works is i
 All of this is merged into `main`.
 
 - **M1 Walking skeleton.** Repository and checks (`make check`, comment and migration checks,
-  import-linter, ESLint boundaries), the FastAPI sidecar with the token handshake and stdin-EOF
-  shutdown, the SQLite store with migrations, the fake model and `make verify`, the empty layout,
-  and the packaging proof: a frozen sidecar in a Tauri app built as an Arch package.
+  import-linter, ESLint boundaries), the FastAPI backend with its token check, the SQLite store with migrations, the fake model and `make verify`, the empty layout,
+  and the packaging proof: a frozen app built as an Arch package.
 - **M2 Session core.** The append-only entry log and projection, `SessionRuntime` and the named
   turn stages, the replayable SSE turn stream and `/api/events`, Stop and Retry, the copied prompt
   tree with overrides, the markdown renderer, and the lesson UI (session list, rename, delete,
@@ -56,10 +55,16 @@ All of this is merged into `main`.
 
 ## Next
 
-1. **Release `0.2.0` (`dev` → `main`).** Already merged into `dev` and queued for `0.2.0` on
+1. **Qt shell** (branch `qt-shell`, built and ready for review; [plan](plans/qt-shell.md)). PySide6 +
+   QtWebEngine replaces Tauri: one process with the window on the main thread and FastAPI, which
+   serves the app, on a thread; demo checks run in the app's own Chromium; WebKitGTK workarounds
+   are gone; off-screen transcript rows are `content-visibility` placeholders and far demo frames
+   unload. Left: the memory and retention check and the hand checks on the laptop (see the known
+   gap below).
+2. **Release `0.2.0` (`dev` → `main`).** Already merged into `dev` and queued for `0.2.0` on
    `main`: `chatgpt-catalog-cache`, docs redesign (PR #4), slim verification (PR #5),
    `reasoning-resend` (PR #3), worker and extraction simplifications (PR #7, PR #10),
-   `learnharness-import` (PR #9; `verstehen-sidecar import-learnharness <folder> [--dry-run]`),
+   `learnharness-import` (PR #9; `verstehen import-learnharness <folder> [--dry-run]`),
    **M10 Practice sessions** (PR #14; practitioner agent with `problem` and `conclude`,
    `0010_practice_sessions.sql`, practice dock, sidebar/graph entry points, and LearnHarness
    practice import), **Mobile app (Android) and two-way sync Milestones A–D** (PR #12–#17;
@@ -71,7 +76,7 @@ All of this is merged into `main`.
    title search, stats bar, 90% quiz confidence, and prompt editor follow-ups), and **Python 3.15
    + PEP 810 lazy imports** (PR #20). `release/0.2.0` bumps the version to `0.2.0` and refreshes
    [status](status.md) and this roadmap ahead of merging `dev` into `main`.
-2. **M11b Smaller features and later providers.** Remaining items from the
+3. **M11b Smaller features and later providers.** Remaining items from the
    [LH catch-up list](#lh-catch-up); the activity dock (the right panel's Activity tab is a
    placeholder until then); themes as shadcn theme variables; API keys, a custom endpoint, Copilot
    (Pydantic AI has a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a
@@ -125,14 +130,20 @@ milestone ports them or a decision records the difference.
 Open problems found along the way. Each is fixed or decided before the milestone that touches it
 merges.
 
-- **Long transcript rendering.** Synthetic teaching sessions with hundreds of entries still mount
-  thousands of DOM nodes on open. Sidebar summary and coverage work reduces API costs, while
-  loaded-host Chromium profiles still place most time in transcript rendering. Compare bounded
-  rendering and finer per-entry updates in a separate change.
-- **Native graph pinch on Arch.** The Chromium flows cover wheel and Ctrl+wheel graph zoom.
-  A two-finger trackpad pinch in the Arch build can magnify the webview. WebKitGTK has a
-  separate native pinch path. An on-device reproduction and a graph-scoped native fix are
-  still needed.
+- **Long transcript rendering.** Off-screen rows are `content-visibility` placeholders on the
+  Chromium-based desktop, so layout and paint skip them, but every row's DOM nodes still mount on
+  open. Confirm the open time of a long lesson on the laptop.
+- **Native graph pinch on QtWebEngine is unverified.** The Chromium flows cover wheel and
+  Ctrl+wheel graph zoom; a two-finger trackpad pinch in the installed app may still magnify the
+  page instead of reaching the graph. Check it on the laptop.
+- **Qt shell hand checks pending on the laptop:** trackpad pinch (above), dropping a folder or
+  files onto the window, window flashing and the window icon on Wayland, and Task 8: process
+  memory (PSS) for a demo-free lesson and a 2-demo session, and five session switches followed by
+  a Chromium heap snapshot (`VERSTEHEN_DEVTOOLS=1`) for detached `SessionThread` /
+  `SessionController` objects or iframes.
+- **The desktop's eager-import startup cost is unmeasured.** The desktop process imports every
+  heavy SDK at startup because Qt cannot resolve lazy imports; the window paints first, but the
+  time until the server is healthy has not been compared with the lazy server mode.
 - **Node selection while the camera or physics is moving.** A click can be swallowed during
   post-drag settling, and camera movement can immediately close a newly opened node card.
   Both reproduce in the graph renderer inherited from LearnHarness.

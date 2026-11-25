@@ -5,14 +5,13 @@ import logging
 import os
 import socket
 import sys
-import threading
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 import uvicorn
 
-from verstehen.app import create_app
 from verstehen.config import Settings, load_settings, resolve_data_dir
+from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.store.database import open_database
 from verstehen.store.devices import DevicesStore
 from verstehen.store.migrate import migrate
@@ -61,29 +60,27 @@ def bind_listener(listener: socket.socket, host: str, port: int) -> None:
     listener.bind((host, port))
 
 
+def uvicorn_config(
+    settings: Settings, demo_runner: DemoRunner | None = None
+) -> uvicorn.Config:
+    """Configure uvicorn for the application; the caller supplies the listening socket."""
+    from verstehen.app import create_app
+
+    return uvicorn.Config(
+        create_app(settings, demo_runner),
+        host=settings.host,
+        port=settings.port,
+        log_config=None,
+        proxy_headers=False,
+        timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
+    )
+
+
 async def serve(settings: Settings) -> None:
-    """Run the API server, shutting down on desktop stdin EOF."""
+    """Run the API server until it is told to exit."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         bind_listener(listener, settings.host, settings.port)
-        config = uvicorn.Config(
-            create_app(settings),
-            host=settings.host,
-            port=settings.port,
-            log_config=None,
-            proxy_headers=False,
-            timeout_graceful_shutdown=GRACEFUL_SHUTDOWN_SECONDS,
-        )
-        server = SidecarServer(config)
-        if settings.desktop and not settings.server:
-            loop = asyncio.get_running_loop()
-
-            def watch_stdin() -> None:
-                """Request server shutdown when the desktop parent closes stdin."""
-                while sys.stdin.buffer.read(4096):
-                    pass
-                loop.call_soon_threadsafe(setattr, server, "should_exit", True)
-
-            threading.Thread(target=watch_stdin, daemon=True).start()
+        server = SidecarServer(uvicorn_config(settings))
         await server.serve(sockets=[listener])
         if not server.started:
             raise RuntimeError("The sidecar failed to start; see verstehen.log.")
@@ -101,27 +98,9 @@ async def mint_device_token(device_name: str, data_dir: Path) -> dict[str, str]:
     return {"device_id": device.id, "token": token}
 
 
-def main() -> None:
-    """Load launch settings and run the sidecar or CLI subcommand."""
+def main(arguments: argparse.Namespace) -> None:
+    """Load launch settings and run the sidecar or CLI subcommand for the resolved `arguments`."""
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--self-check", action="store_true")
-    parser.add_argument("--server", action="store_true")
-    parser.add_argument("--host")
-    parser.add_argument("--port")
-    commands = parser.add_subparsers(dest="command")
-    importing = commands.add_parser(
-        "import-learnharness",
-        help="replace all sessions and the graph with a LearnHarness data folder",
-    )
-    importing.add_argument("folder", type=Path)
-    importing.add_argument("--dry-run", action="store_true")
-    minting = commands.add_parser(
-        "mint-token",
-        help="create a paired device and print its bearer token once",
-    )
-    minting.add_argument("device_name")
-    arguments = parser.parse_args()
     if arguments.self_check:
         from verstehen.self_check import run_self_check
 
@@ -137,6 +116,10 @@ def main() -> None:
         raise SystemExit(
             import_learnharness(arguments.folder, settings, dry_run=arguments.dry_run)
         )
+    if arguments.command == "desktop":
+        from verstehen.desktop.shell import run_desktop
+
+        raise SystemExit(run_desktop())
     if arguments.command == "mint-token":
         try:
             if not arguments.device_name.strip():
@@ -156,11 +139,7 @@ def main() -> None:
             port=arguments.port,
         )
         configure_logging(settings)
-        mode = (
-            "server"
-            if settings.server
-            else ("desktop" if settings.desktop else "browser-only")
-        )
+        mode = "server" if settings.server else "browser-only"
         logging.getLogger(__name__).info(
             "Starting mode=%s data_dir=%s host=%s port=%s",
             mode,

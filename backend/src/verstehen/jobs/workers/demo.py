@@ -16,10 +16,10 @@ from verstehen.jobs.workers.common import (
 )
 from verstehen.jobs.workers.headless import (
     NO_BROWSER,
+    DemoRunner,
     DemoRunResult,
     failure_summary,
     format_run_result,
-    run_demo,
     summarize_counts,
 )
 
@@ -60,7 +60,7 @@ async def run_demo_builder(
     input: DemoInput,
     model: Model,
     *,
-    executable: str | None,
+    runner: DemoRunner | None,
     on_activity: ActivityCallback | None = None,
     on_usage: UsageCallback | None = None,
     max_steps: int = 24,
@@ -70,7 +70,7 @@ async def run_demo_builder(
     def failed(reason: str) -> DemoResult:
         return DemoResult(title=title, html="", notes=f"FAILED: {reason}")
 
-    if not executable:
+    if not runner:
         return failed(NO_BROWSER)
     prompt = "\n".join(
         [
@@ -114,7 +114,7 @@ async def run_demo_builder(
         if not current:
             return "ERROR: nothing to run — call write_demo first."
         try:
-            last_result = await run_demo(current, executable, probe)
+            last_result = await runner(current, probe)
             tested = current
             await note(
                 "run_demo: clean"
@@ -159,7 +159,7 @@ async def run_demo_builder(
     if tested != current or last_result is None or not last_result.ok:
         await note("final verification")
         try:
-            last_result = await run_demo(current, executable)
+            last_result = await runner(current)
         except Exception as error:
             return failed(f"final verification crashed — {error}")
         if not last_result.ok:
