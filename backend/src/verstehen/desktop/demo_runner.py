@@ -13,6 +13,7 @@ from PySide6.QtCore import (
     QIODevice,
     QMetaObject,
     QObject,
+    QSize,
     Qt,
     QTimer,
     QUrl,
@@ -30,6 +31,7 @@ from PySide6.QtWebEngineCore import (
     QWebEngineUrlScheme,
     QWebEngineUrlSchemeHandler,
 )
+from PySide6.QtWebEngineWidgets import QWebEngineView
 from PySide6.QtWidgets import QApplication
 
 from verstehen.jobs.workers.headless import (
@@ -43,6 +45,7 @@ SCHEME = b"verstehen-demo"
 DEMO_URL = QUrl("verstehen-demo:page")
 FAILED_RESOURCE_MARK = "verstehen-failed-resource:"
 PROBE_POLL_MILLISECONDS = 50
+VIEWPORT_SIZE = QSize(1280, 720)
 UNCAUGHT_PREFIX = re.compile(r"Uncaught (?:\(in promise\) )?(?:[A-Za-z]*Error: )?")
 
 REPORT_FAILED_RESOURCES = f"""
@@ -135,6 +138,17 @@ class DemoPage(QWebEnginePage):
             self._result.console_errors.append(message)
 
 
+def visible_view(page: QWebEnginePage) -> QWebEngineView:
+    """Host `page` in a shown view that never reaches the screen, so it renders as a visible page does."""
+    view = QWebEngineView()
+    view.setAttribute(Qt.WidgetAttribute.WA_DontShowOnScreen)
+    view.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
+    view.setPage(page)
+    view.resize(VIEWPORT_SIZE)
+    view.show()
+    return view
+
+
 class DemoCheck(QObject):
     """One demo check on the Qt thread: load, settle, probe, then hand over the result and dispose."""
 
@@ -158,6 +172,7 @@ class DemoCheck(QObject):
         self.profile.setUrlRequestInterceptor(self._guard)
         self.page = DemoPage(self.profile, self.result)
         self.page.setAudioMuted(True)
+        self.view = visible_view(self.page)
         self.page.settings().setAttribute(
             QWebEngineSettings.WebAttribute.LocalStorageEnabled, False
         )
@@ -237,6 +252,7 @@ class DemoCheck(QObject):
 
     def _dispose(self) -> None:
         self._timeout.stop()
+        self.view.deleteLater()
         self.page.deleteLater()
         self.profile.deleteLater()
         self.deleteLater()

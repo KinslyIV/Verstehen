@@ -179,5 +179,43 @@
       "probe_result": true,
       "probed": true
     }
+  },
+  {
+    "name": "an error in the first animation frame",
+    "html": "<script>requestAnimationFrame(() => { throw new Error('frame') })</script>",
+    "probe": null,
+    "expect": {
+      "console_errors": [],
+      "page_errors": [
+        "frame"
+      ],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a visible page",
+    "html": "<p>v</p>",
+    "probe": "document.visibilityState",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "visible",
+      "probed": true
+    }
+  },
+  {
+    "name": "two animation frames",
+    "html": "<p>f</p>",
+    "probe": "async () => { await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); return 'two frames' }",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "two frames",
+      "probed": true
+    }
   }
 ]
