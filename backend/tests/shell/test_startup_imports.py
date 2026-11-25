@@ -138,7 +138,9 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
 
 
 @pytest.mark.slow
-def test_the_desktop_window_loads_heavy_modules_only_on_first_use(tmp_path: Path):
+def test_the_desktop_window_loads_heavy_modules_on_first_use(
+    tmp_path: Path,
+):
     spa = tmp_path / "spa"
     spa.mkdir()
     (spa / "index.html").write_text("<body></body>")

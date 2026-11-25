@@ -37,6 +37,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+SERVER_PYTHON = "3.14"
+
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 USER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -762,7 +764,10 @@ def _initial_steps(mode: InstallMode) -> list[InstallStep]:
         ),
         InstallStep(id="install_uv", label="Ensure uv package manager is installed"),
         InstallStep(id="upload_bundle", label="Upload Verstehen server bundle"),
-        InstallStep(id="install_venv", label="Install Python 3.15 virtual environment"),
+        InstallStep(
+            id="install_venv",
+            label=f"Install Python {SERVER_PYTHON} virtual environment",
+        ),
         InstallStep(
             id="configure_systemd", label="Configure and start systemd user service"
         ),
@@ -1252,18 +1257,18 @@ class ServerInstallService:
             else "uv ready"
         )
         py_install = await session.run(
-            '"$HOME/.local/bin/uv" python install 3.15', timeout=300.0
+            f'"$HOME/.local/bin/uv" python install {SERVER_PYTHON}', timeout=300.0
         )
         self._append_log(py_install.stdout or py_install.stderr)
         if py_install.exit_status != 0:
             if is_symlink:
                 message = (
-                    f"The server's system uv ({version}) cannot install Python 3.15. "
+                    f"The server's system uv ({version}) cannot install Python {SERVER_PYTHON}. "
                     "Upgrade the system uv package (or install uv >= 0.13.9) and retry."
                 )
             else:
                 message = (
-                    f"The server's uv ({version}) cannot install Python 3.15 after self-update. "
+                    f"The server's uv ({version}) cannot install Python {SERVER_PYTHON} after self-update. "
                     "Upgrade ~/.local/bin/uv (uv >= 0.13.9) and retry."
                 )
             self._fail("install_uv", "install_failed", message)
@@ -1312,7 +1317,7 @@ class ServerInstallService:
         python = f'"{SERVER_DIR}/venv.new/bin/python"'
         result = await session.run(
             f'rm -rf "{SERVER_DIR}/venv.new" && '
-            f'{uv} venv --managed-python --no-python-downloads --python 3.15 "{SERVER_DIR}/venv.new" && '
+            f'{uv} venv --managed-python --no-python-downloads --python {SERVER_PYTHON} "{SERVER_DIR}/venv.new" && '
             f'{uv} pip install --python {python} -r "{SERVER_DIR}/bundle/requirements.txt" && '
             f'{uv} pip install --python {python} --no-deps "{SERVER_DIR}/bundle/"{shlex.quote(wheel_name)} && '
             f'{python} -c "import verstehen.cli, verstehen.app"',
@@ -1325,10 +1330,12 @@ class ServerInstallService:
                 "install_venv",
                 "install_failed",
                 result.stderr.strip()
-                or "Failed to install Python 3.15 environment on server.",
+                or f"Failed to install Python {SERVER_PYTHON} environment on server.",
             )
             return False
-        self._set_step("install_venv", "done", detail="Python 3.15 venv ready")
+        self._set_step(
+            "install_venv", "done", detail=f"Python {SERVER_PYTHON} venv ready"
+        )
         return True
 
     async def _reconnect(self) -> SshSession:

@@ -29,13 +29,11 @@ alternative, and the consequence, until the user reviews them at the end of the 
   text now says "server" instead of "sidecar".
 - **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
   Packaging sets the bundled path.
-- **Heavy imports are function-level; PEP 810 `lazy` is banned (user, 2026-11-25).** PySide6
-  (shiboken6) leaves some lazy names unresolved depending on import order, so `lazy` cannot be
-  trusted in the desktop process; making it eager there would load every SDK at startup. All 26
-  `lazy` imports became imports inside the using function (or `TYPE_CHECKING`), `ruff`
-  `ban-lazy` refuses new ones, `launcher.py` and `desktop/eager.py` are gone (the entry is
-  `verstehen.cli:main` again), and the vendored `claude_code/__init__.py` no longer re-exports
-  (nothing used it). No pytest process imports PySide6; Qt tests run in subprocess probes.
+- **Python stays on 3.14 while the desktop app uses PySide6 (user, 2026-11-25).** Python 3.15's
+  PEP 810 `lazy` imports, the standard library's included, break under shiboken6, which replaces
+  `__import__` and leaves lazy names unresolved (`concurrent.futures.ThreadPoolExecutor`, so
+  `asyncio.to_thread`, failed with "'lazy_import' object is not callable"). Heavy libraries are
+  imported inside the functions that use them instead. Servers get a Python 3.14 venv. No pytest process imports PySide6; Qt tests run in subprocess probes.
 - **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
   has no Playwright, and server mode runs from the server bundle. Source and dev modes are
   unchanged. The alternative was a server mode without demo checks.

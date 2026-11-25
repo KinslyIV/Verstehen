@@ -36,7 +36,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   graph folder filter, stats bar, 90% quiz confidence, and prompt editor follow-ups. The
   specification is now LH `069a6a11`; the remaining changes since `cb25c8e` are in the
   [LH catch-up list](roadmap.md#lh-catch-up).
-- **Python 3.15 + PEP 810 lazy imports** (PR #20): backend upgraded to Python 3.15
+- **Python 3.15 + PEP 810 lazy imports** (PR #20, since reverted to 3.14 for PySide6): backend
+  upgraded to Python 3.15
   (`uv >= 0.13.9`), nine heavy SDK/worker imports (`anthropic`, `claude_agent_sdk`, `openai`,
   `asyncssh`, `playwright`, `pypdfium2`, `PIL`, `regex`, `resvg_py`) deferred with module-scope
   `lazy` imports (guarded by `backend/tests/shell/test_startup_imports.py`), plus verify fixture
@@ -52,7 +53,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   own Chromium (`DesktopDemoRunner`; server mode keeps Playwright), the WebKitGTK workarounds are
   gone, off-screen transcript rows are `content-visibility` placeholders, and far demo frames
   unload. Packaging is one PyInstaller onedir app, with no Rust in the build. Heavy libraries are
-  imported inside the functions that use them, since PySide6 breaks PEP 810 `lazy` imports.
+  imported inside the functions that use them; Python is back on 3.14, since PySide6 breaks
+  Python 3.15's PEP 810 `lazy` imports, the standard library's included.
   The package ships only the Qt it loads, in English and German (219 MB, 527 MB installed).
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
