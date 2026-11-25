@@ -217,5 +217,37 @@
       "probe_result": "two frames",
       "probed": true
     }
+  },
+  {
+    "name": "a caught failed fetch",
+    "html": "<script>fetch('http://example.invalid/data.json').catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a caught failed XHR",
+    "html": "<script>const request = new XMLHttpRequest(); request.open('GET', 'http://example.invalid/data.json'); request.onerror = () => { window.refused = true }; request.send()</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
   }
 ]

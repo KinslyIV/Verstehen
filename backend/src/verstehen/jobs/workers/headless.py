@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import ipaddress
 import json
 from collections.abc import Callable
@@ -67,6 +68,25 @@ class PlaywrightDemoRunner:
         return await run_demo(html, self.executable, probe)
 
 
+async def guard_requests(context, page) -> None:
+    """Fail every request `request_allowed` refuses, each redirect hop too, which `page.route` never sees."""
+    from playwright.async_api import Error
+
+    session = await context.new_cdp_session(page)
+
+    async def decide(event: dict) -> None:
+        allowed = request_allowed(event["request"]["url"])
+        method = "Fetch.continueRequest" if allowed else "Fetch.failRequest"
+        arguments = {"requestId": event["requestId"]}
+        if not allowed:
+            arguments["errorReason"] = "AccessDenied"
+        with contextlib.suppress(Error):
+            await session.send(method, arguments)
+
+    session.on("Fetch.requestPaused", decide)
+    await session.send("Fetch.enable", {"patterns": [{"urlPattern": "*"}]})
+
+
 async def run_demo(
     html: str, executable: str, probe: str | None = None
 ) -> DemoRunResult:
@@ -96,13 +116,7 @@ async def run_demo(
                 ),
             )
 
-            async def guard(route):
-                if request_allowed(route.request.url):
-                    await route.continue_()
-                else:
-                    await route.abort("accessdenied")
-
-            await page.route("**/*", guard)
+            await guard_requests(context, page)
             try:
                 await page.set_content(
                     html, wait_until="load", timeout=LOAD_TIMEOUT_SECONDS * 1000

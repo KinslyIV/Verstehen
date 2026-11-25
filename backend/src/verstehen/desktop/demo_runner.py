@@ -44,6 +44,8 @@ from verstehen.jobs.workers.headless import (
 SCHEME = b"verstehen-demo"
 DEMO_URL = QUrl("verstehen-demo:page")
 FAILED_RESOURCE_MARK = "verstehen-failed-resource:"
+FAILED_REQUEST_MARK = "verstehen-failed-request:"
+FAILED_REQUEST_REASON = "net::ERR_FAILED"
 PROBE_POLL_MILLISECONDS = 50
 VIEWPORT_SIZE = QSize(1280, 720)
 UNCAUGHT_PREFIX = re.compile(r"Uncaught (?:\(in promise\) )?(?:[A-Za-z]*Error: )?")
@@ -53,6 +55,22 @@ window.addEventListener('error', (event) => {{
   const url = event.target && (event.target.currentSrc || event.target.src || event.target.href);
   if (url) console.debug({FAILED_RESOURCE_MARK!r} + url);
 }}, true);
+const reportFailedRequest = (url) =>
+  console.debug({FAILED_REQUEST_MARK!r} + new URL(url, document.baseURI).href);
+const nativeFetch = window.fetch;
+window.fetch = function (input, init) {{
+  return nativeFetch.call(this, input, init).catch((error) => {{
+    if (error instanceof TypeError) reportFailedRequest(input.url ?? input);
+    throw error;
+  }});
+}};
+const requestUrls = new WeakMap();
+const nativeOpen = XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open = function (method, url) {{
+  requestUrls.set(this, url);
+  this.addEventListener('error', () => reportFailedRequest(requestUrls.get(this)));
+  return nativeOpen.apply(this, arguments);
+}};
 """
 
 RUN_PROBE = """
@@ -122,14 +140,33 @@ class DemoPage(QWebEnginePage):
     def javaScriptConsoleMessage(self, level, message, line_number, source_id) -> None:
         if message.startswith(FAILED_RESOURCE_MARK):
             self._add_failed_resource(message.removeprefix(FAILED_RESOURCE_MARK))
+        elif message.startswith(FAILED_REQUEST_MARK):
+            self._add_failed_request(message.removeprefix(FAILED_REQUEST_MARK))
         elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
             self._add_error(message)
 
     def _add_failed_resource(self, url: str) -> None:
-        if not any(
+        if not self._already_failed(url):
+            self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
+
+    def _add_failed_request(self, url: str) -> None:
+        """A failed fetch or XHR, unless the guard blocked a request: that hop is then the failure, as in Playwright."""
+        if not (self._already_failed(url) or self._guard_blocked_a_request()):
+            self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
+            self._result.console_errors.append(
+                f"Failed to load resource: {FAILED_REQUEST_REASON}"
+            )
+
+    def _guard_blocked_a_request(self) -> bool:
+        return any(
+            failed.endswith("(net::ERR_ACCESS_DENIED)")
+            for failed in self._result.failed_requests
+        )
+
+    def _already_failed(self, url: str) -> bool:
+        return any(
             failed.startswith(f"{url} (") for failed in self._result.failed_requests
-        ):
-            self._result.failed_requests.append(f"{url} (net::ERR_FAILED)")
+        )
 
     def _add_error(self, message: str) -> None:
         if uncaught := UNCAUGHT_PREFIX.match(message):
