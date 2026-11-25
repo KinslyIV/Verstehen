@@ -18,8 +18,6 @@ def main() -> None:
     signal.signal(signal.SIGTERM, stop)
     with tempfile.TemporaryDirectory(prefix="verstehen-dev-") as directory:
         env = os.environ.copy()
-        env.pop("VERSTEHEN_DESKTOP", None)
-        env.pop("VERSTEHEN_TOKEN", None)
         env["VERSTEHEN_DATA_DIR"] = directory
         env["VERSTEHEN_PORT"] = env.get("VERSTEHEN_PORT", "8765")
         try:
