@@ -1,7 +1,7 @@
 # Frontend shell
 
 Owns the app around the lesson: routes and the lesson layout (sidebar, header, right panel), the
-settings page, the markdown renderer, the shadcn-svelte components, theming, the Tauri shell, and the
+settings page, the markdown renderer, the shadcn-svelte components, theming, what the page expects of the Qt shell, and the
 Android app (Capacitor) with its remote mode and `/pair`.
 Feature UI lives with its area (questions in [teaching](teaching.md), cards in [jobs](jobs.md), …).
 
@@ -13,7 +13,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 
 | Path | What it holds |
 |---|---|
-| `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, startup status, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
+| `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
 | `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
 | `src/lib/components/session-list.svelte`, `sidebar-folder-row.svelte`, `new-folder-row.svelte`, `lib/graph/source-directory.svelte.ts`, `source-drop.svelte.ts` | the sidebar folder tree: rows, folder menu, drag and drop, and the shared directory reader |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
@@ -25,8 +25,8 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | `src/lib/markdown/` | assistant markdown: Streamdown-style top-level blocks, each parsed by LH's unified/remark stack and sanitized; math, Shiki code, app-owned Mermaid; learner text stays plain |
 | `src/lib/components/ui/` | shadcn-svelte components, generated with its CLI (excluded from the comment check) |
 | `src/lib/components/reasoning.svelte` | the thinking row |
-| `src/lib/api/connection.svelte.ts`, `src/lib/api/startup.ts`, `src/lib/components/startup-status.svelte` | the desktop sidecar state (pending, ready, failed with the shell's reason) that every request waits on, the one-time startup milestone marks, and the pending/failure display mounted by the root layout |
-| `src-tauri/` | the Rust shell (`lib.rs`), `tauri.conf.json` (window, CSP, shell allow-list), icons |
+| `src/lib/api/client.ts` (`openExternal`, `onLinkRefused`) | opening an external link with `window.open`, and the `verstehen:link-refused` window event the desktop shell raises when it declines one |
+| `backend/src/verstehen/desktop/` | the Qt shell that hosts this page on the desktop: window, starting and failure pages, link rules, downloads, DevTools ([architecture](../architecture.md)) |
 | `capacitor.config.ts`, `android/` | the Capacitor Android project around the static build (`webDir: build`, `androidScheme: 'http'`, app id `local.verstehen.app`): manifest, backup rules, and `CleartextGuard` / `GuardedWebViewClient` in `android/app/src/main/java/local/verstehen/app/`; generated parts (copied web assets, builds) are git-ignored |
 
 ## How it works
@@ -100,29 +100,41 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   The right panel is hidden on `/graph`.
 - **Markdown streaming:** finished blocks keep their parse and DOM while the tail changes, so long
   replies stay responsive.
-- **Tauri shell:** the window is visible at once and paints the lesson shell while the sidecar starts.
-  The shell starts the sidecar with a fresh token and waits for the port line and a 200 health
-  response carrying that token (30 s); `sidecar_connection` resolves only then, so every request
-  waits behind a quiet "Starting Verstehen…" status. On failure (or the 30 s limit) it stays open and
-  `sidecar_connection` rejects with the reason and the log path, which fills a full-window
-  "couldn't start" panel. The shell exposes `sidecar_connection` and `startup_mark`. The shell plugin
-  opens exactly the ChatGPT sign-in URLs and the Claude Code setup page in the system browser. The CSP
-  is relaxed for demos and allows `blob:` images.
-- **Startup timings:** the shell prints `startup <milestone>: <ms>` lines on stderr, counted from its
-  own start: `window_created`, `sidecar_spawned`, `sidecar_port`, `sidecar_healthy`. The UI reports
-  `ui_mounted`, `models_displayed` (saved models on screen), and `composer_usable` (sidecar ready and the saved catalog loaded, so the composer can send or open Setup) once each through
-  `startup_mark`, and also as `performance` marks (`verstehen:<name>`). Read them by running the
-  installed app from a terminal with `VERSTEHEN_DATA_DIR` set to a temporary folder.
+- **Qt shell:** the page is a same-origin SPA that FastAPI serves in desktop mode, so the client
+  uses relative URLs with no connection lookup, no token header, and no CORS. The shell
+  (`desktop/shell.py`) owns the first and last screens: the window is visible at once with a quiet
+  "Starting Verstehen…" page, and a start that fails or takes over 30 s shows a "couldn't start"
+  page with the reason and the log path (`desktop/pages.py`). The app loads only after the server
+  is healthy and the token is set as an HttpOnly, SameSite=Strict cookie in the window's cookie
+  store, so the page never sees the token. The app's CSP is sent by FastAPI
+  ([API and events](api-and-events.md#access)). The persistent web profile lives under
+  `<data dir>/webengine` and `webengine-cache`.
+- **Links and windows:** the window stays on the app's origin. `acceptNavigationRequest` and
+  `newWindowRequested` open exactly the ChatGPT sign-in URLs (`auth.openai.com`) and the Claude
+  Code setup page in the system browser (`desktop/links.py`); every other navigation is refused.
+  The client opens links with `window.open`, which cannot report a refusal, so the shell runs a
+  script that dispatches `verstehen:link-refused` with the URL; Settings → Tools listens and
+  shows "Verstehen can't open <url>. Open it in your browser." Files dropped on the window do not
+  navigate. A download opens a save dialog starting in the Downloads folder; cancelling cancels
+  the download.
+- **DevTools and icon:** DevTools exist only when the app starts with `VERSTEHEN_DEVTOOLS=1`; F12
+  opens them in their own window, which closes with the app. The window icon comes from the
+  package icons (`VERSTEHEN_ICONS_DIR`, else `packaging/icons`).
+- **Off-screen rows:** each transcript row is a `content-visibility: auto` placeholder
+  (`message-scroller-item.svelte`, intrinsic size 10 rem) so a long lesson mounts fast; LearnHarness
+  renders every row ([decisions](../decisions.md)). Chromium anchors the scroll position as
+  placeholders take their real height.
+- **Settings → Tools on the desktop:** the Demo browser section is hidden when `/api/health` says
+  `desktop: true`, because the desktop checks demos in its own engine ([jobs](jobs.md)).
 - **Settings → Models:** the slot pickers, then a refresh button with a status line (updated, which
   accounts could not be reached, or the request failure); see [providers](providers.md).
 
 ## Remote mode and the Android app
 
-- **Two client modes** (`clientMode()` in `connection.ts`): `sidecar` (desktop and `make dev`) and
-  `remote`. Remote is chosen when `Capacitor.isNativePlatform()` is true (the Android app, always)
+- **Two client modes** (`clientMode()` in `connection.ts`): `sidecar` (the desktop and `make dev`:
+  requests go to the page's own origin) and `remote`. Remote is chosen when `Capacitor.isNativePlatform()` is true (the Android app, always)
   or the build sets `PUBLIC_VERSTEHEN_CLIENT` to `remote` (headless flows) or `android` (the app's
   build); normal builds never do.
-  `app/src-tauri/` is untouched; the desktop still bundles and starts the sidecar.
 - **Requests in remote mode** go to the stored `server_url` with `Authorization: Bearer <token>`,
   using the WebView's own `fetch` so SSE streams (Capacitor's native HTTP plugin cannot stream and
   is not used, and `plugins.CapacitorHttp.enabled` is `false`). Every remote request and the pairing
@@ -198,14 +210,15 @@ connection returns; a section that already has its data is left alone, so edits 
 
 ## Traps found in M1–M9
 
-- **A hidden window hides a slow start.** The window used to stay hidden until the sidecar was
-  healthy, so a slow start looked like nothing happening. It is visible from the start now.
-- **Early desktop requests must wait for the sidecar connection.** Accounts once opened before the
-  connection existed; requests now wait, and failed lookups are cleared for retry.
+- **A hidden window hides a slow start.** The window used to stay hidden until the server was
+  healthy, so a slow start looked like nothing happening. It is visible from the start now, with
+  the shell's starting page.
 - **Vite's Host rewrite** broke the backend's same-origin check for browser writes until the proxy
   was fixed.
 - **mode-watcher 1.1.0 persists "system" at import,** so the app writes the stored preference
   before the library initializes.
 - **One huge paragraph still re-parses as one block** (as in LH). Smooth streaming of very long
   single paragraphs is not established; see the [roadmap](../roadmap.md).
-- **The Tauri window is checked by hand** on the laptop; agents never run it.
+- **The Qt window is checked by hand** on the laptop; agents run it only offscreen in tests. Still
+  to check there: trackpad pinch, file drag-and-drop, window flashing and the window icon on
+  Wayland ([roadmap](../roadmap.md#known-gaps)).

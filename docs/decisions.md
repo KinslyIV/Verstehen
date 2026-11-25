@@ -23,7 +23,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   `webengine-cache`.** An off-the-record profile would lose every stored UI preference; keeping it
   under `VERSTEHEN_DATA_DIR` keeps tests isolated.
 - **Desktop CSP `font-src` also allows `data:`.** Chromium refuses Vite's inlined `data:` fonts
-  under the exact Tauri string; the alternative keeps the Tauri string and a missing font.
+  otherwise; the alternative is a missing font.
 - **The frontend startup screen is removed; the shell owns the starting and failure pages.** The
   startup timing marks are dropped too (their only reader was the Rust shell's log). The failure
   text now says "server" instead of "sidecar".
@@ -55,7 +55,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Desktop demo-check messages match Playwright except where Qt reports differently:** resource
   and caught fetch/XHR failures read `net::ERR_FAILED` (JavaScript can't see the real reason), a
   load timeout `Timeout 30000ms exceeded.`, a probe error has no stack, and an error-level console
-  line starting with `Uncaught` counts as a page error. Aborted requests are not reported. The
+  line starting with `Uncaught` counts as a page error. A fetch or XHR answered 400 or higher is
+  reported like Chromium's own console line (`Failed to load resource: the server responded with a
+  status of 404 ()`), in any frame. Aborted requests are not reported. The
   contract fixtures compare failed requests by URL and reason placeholder. Both runners
   block only schemes other than `http`, `https`, `data`, `blob`, `about`, as LH does (user decision
   2026-11-25: no localhost block).
@@ -162,7 +164,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   including on first load, and Settings can force refresh. A refresh superseded by a newer
   one reports the newer one's outcome, because the backend skips the older one's writes. The
   backend still answers 204, so a refresh superseded by a different client reports success.
-  Only two remote clients of one server can hit this (each desktop sidecar has its own catalog);
+  Only two remote clients of one server can hit this (each desktop app has its own catalog);
   Setup may then show "Connect a provider" until the next refresh. Accepted as is.
 - **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** At `cb25c8e`
   LearnHarness exports only `GET /api/models`, which refreshes the subscription connection catalogs
@@ -171,9 +173,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   Verstehen refreshes every account at launch, when Settings → Models opens, when
   Setup opens and while it waits for a connection, and after a successful sign-in; opening the
   picker only rereads the saved catalog.
-- **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
-  would exit the app before the learner sees the shell. The in-app panel keeps the log path
-  visible and the timing marks distinguish desktop, sidecar, and composer readiness.
 - **Return graph summary counts with the snapshot and serve titles separately.** Counting
   through the sidebar endpoint and rebuilding the snapshot after rename duplicate work.
   Graph cost reads also use only source metadata and usage, so they can tolerate broken
@@ -354,7 +353,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
   offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
   to the server.
-- **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
+- **Android only (v1), built with Capacitor**. Signed `.apk`
   connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
   `tailscale serve`), with cleartext HTTP limited to `100.64.0.0/10` by a native WebView guard.
 - **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
@@ -393,8 +392,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
   LH only cuts the first message.
 - **The owed handoff is derived** from the entries, so a restart doesn't lose it, and a learner
   message sent before it starts cancels it.
-- **The sidecar refuses to start** in desktop mode without a valid token (LH starts and refuses every
-  request), exits when stdin closes, and rotates its log (5 MiB, three backups).
+- **The desktop server refuses to start** without a valid token (LH starts and refuses every
+  request), and the backend rotates its log (5 MiB, three backups).
 
 ### Teaching and questions
 
@@ -416,6 +415,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
   falls back. With native search the researcher prompt drops its `web_search` wording.
 - **The Jobs tab** shows the open session's jobs only; LH's Background agents section is app-wide.
 - **The invert switch** for figures and demos is saved in `artifact_views`; LH rewrites the marker.
+- **Desktop demo checks run in the app's own QtWebEngine; server mode keeps Playwright.** Both
+  return `DemoRunResult` through one `DemoRunner` protocol, and the desktop has no Playwright,
+  Chromium lookup or download, or Demo browser setting. LH tests demos in a separate headless
+  browser (`headless.ts`) for everyone.
 - **The no-browser demo failure text** points to Settings → Tools instead of Chrome and
   `CHROME_PATH`. A wrong configured browser path falls back to PATH, then the downloaded browser.
 - **Web pages are read with a Python parser** plus LH's Jina fallback, and PDF text comes from
@@ -475,7 +478,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   slot. LH writes it when you pick on the new-session screen.
 - **Background use is one switch per provider, Claude Code included.**
 - **The user never enters a model's context limit.**
-- **ChatGPT model lists are cached** per account for the sidecar's lifetime; LH refreshes every turn.
+- **ChatGPT model lists are cached** per account for the process's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
 
 ### Frontend
@@ -500,16 +503,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
   click-to-jump; LH has no turn navigation beyond its scroll-to-bottom button.
 - **Demos zoom in place:** LH opens images and figures fullscreen but not demos; Verstehen zooms a
   demo in a dialog without remounting its iframe, so its state survives.
-
-**Qt shell ([plan](plans/qt-shell.md), user decisions 2026-11-24):**
-
-- **PySide6 + QtWebEngine replaces Tauri** in one process: the Qt window on the main thread,
-  uvicorn + FastAPI on a background thread; FastAPI serves the built SPA in desktop mode, and the
-  per-launch token is an HttpOnly, SameSite=Strict cookie the shell sets. Package
-  `verstehen.desktop`; PySide6 never reaches the server bundle.
-- **Desktop demo checks run in a hidden QtWebEngine page; server mode keeps Playwright.** Both
-  return `DemoRunResult`. The desktop has no Playwright, Chromium lookup or download, or Demo
-  browser setting. LH tests demos headlessly in a separate browser (`headless.ts`).
-- **Off-screen transcript rows are `content-visibility` placeholders.** LH renders every row.
+- **Off-screen transcript rows are `content-visibility` placeholders** so a long lesson opens
+  fast; LH renders every row.
 - **Demo iframes load near the viewport and unload far off-screen** (about two viewport heights),
-  so a demo scrolled far away resets; a zoomed demo is never unloaded. LH keeps every demo alive.
+  so a demo scrolled far away resets when it comes back; a zoomed demo is never unloaded. LH keeps
+  every demo alive.

@@ -1,6 +1,6 @@
 # Qt Shell — PySide6 + QtWebEngine replaces Tauri
 
-> Status: **approved by the user (2026-11-24).**
+> Status: **implemented on `qt-shell`; Task 8 pending on the laptop** (approved 2026-11-24).
 > Branch: `qt-shell` off `dev`.
 
 ## Overview

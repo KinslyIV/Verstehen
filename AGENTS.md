@@ -5,7 +5,7 @@
 Verstehen is a learning app: an AI tutor that probes what you know, plans a lesson, teaches with
 questions, and builds a knowledge graph of what you've learned. It is a **port of LearnHarness**
 ([github.com/amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness),
-TypeScript/Next.js) to Python + Pydantic AI, with a Tauri + SvelteKit desktop app. The port has two
+TypeScript/Next.js) to Python + Pydantic AI, with a PySide6 + SvelteKit desktop app. The port has two
 goals: **keep LearnHarness's learning flow and knowledge graph exactly**, rebuilt with code a human
 can read; and **understand how LearnHarness works** (`docs/learnharness/`).
 

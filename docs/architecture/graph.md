@@ -112,7 +112,7 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   Changing either needs a decision.
 - **A drag commit is expensive on the server**: every node's position is rewritten and synced
   (3,000 nodes take about three seconds), then the layout is saved once the settle ends.
-- **Trackpad pinch inside the desktop app (WebKitGTK) bypasses the page**: GTK delivers it to
-  WebKit's native magnification, which scales the whole page and never reaches `wheel` handlers.
-  Only Chromium behavior is covered by the flows.
+- **Trackpad pinch inside the desktop app is unverified on QtWebEngine.** The flows cover wheel and
+  Ctrl+wheel zoom in Chromium only; whether a two-finger pinch reaches the graph's Ctrl+wheel
+  handler (rather than magnifying the page) has to be checked on the laptop.
 - **Not ported yet:** the activity dock (M11), plugin knowledge picker.

@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-24 (UX polish branch `ux-polish-folders-width-zoom-minimap` ready for review).
+> PRs. Last update: 2026-11-25 (Qt shell branch `qt-shell` ready for review).
 
 ## Where we are
 
@@ -15,7 +15,7 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   slim verification (PR #5), ChatGPT reasoning resend (PR #3; all six orchestrator decisions from
   PR #3 and PR #5 reviewed and kept on 2026-11-21), background worker and extraction
   simplifications (PR #7, PR #10), explain skill (PR #8), and LearnHarness data import
-  (`verstehen-sidecar import-learnharness`, PR #9; one real ChatGPT turn on the imported
+  (`verstehen import-learnharness`, PR #9; one real ChatGPT turn on the imported
   "Learning SIFT" session still has to confirm converted reasoning acceptance).
 - **Mobile & sync Milestones A–D** (PR #12–#17; [mobile-and-sync](plans/mobile-and-sync.md),
   [mobile-sync-c](plans/mobile-sync-c.md), [mobile-sync-d](plans/mobile-sync-d.md)): server mode,
@@ -31,7 +31,7 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   requires an unpaired local data directory).
 - **Desktop responsiveness** (PR #18; [plan](plans/desktop-responsiveness.md)): early shell paint,
   saved model catalogs and stable pickers with Thinking slider, lighter sidebar and graph reads,
-  and the prompt editor. Native trackpad zoom on Arch and long-transcript rendering remain open.
+  and the prompt editor.
 - **M11a** (PR #19; [plan](plans/m11-folders-search-stats.md)): sidebar folders, title search,
   graph folder filter, stats bar, 90% quiz confidence, and prompt editor follow-ups. The
   specification is now LH `069a6a11`; the remaining changes since `cb25c8e` are in the
@@ -46,14 +46,24 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   folder** and **New teaching/practice here**, Settings → Appearance → Transcript width, zoom
   popups for demos, figures, and images, the turn minimap rail, and an always-visible
   scroll-to-bottom button. Steps 0–4 are committed; the docs sync is Step 5.
+- **Qt shell** (branch `qt-shell`, not yet merged; [plan](plans/qt-shell.md)): PySide6 +
+  QtWebEngine replaces Tauri. One process runs the Qt window on the main thread and FastAPI, which
+  also serves the app, on a thread; the token is an HttpOnly cookie. Demo checks run in the app's
+  own Chromium (`DesktopDemoRunner`; server mode keeps Playwright), the WebKitGTK workarounds are
+  gone, off-screen transcript rows are `content-visibility` placeholders, and far demo frames
+  unload. Packaging is one PyInstaller onedir app, with no Rust in the build.
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.
 
 ## Next
 
-0. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
-   `dev`; check the folder drag-and-drop in the installed Tauri app by hand.
+0. Review and merge the `qt-shell` PR into `dev`. Then, on the laptop with `make app` installed:
+   Task 8 (PSS for a demo-free lesson and the 2-demo session; five session switches plus a heap
+   snapshot with `VERSTEHEN_DEVTOOLS=1`) and the hand checks: trackpad pinch on the graph,
+   folder and file drag-and-drop, and Wayland window flashing and window icon.
+0a. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
+   `dev`; check the sidebar folder drag-and-drop in the installed app by hand.
 1. Merge `release/0.2.0` into `dev`.
 2. Open and merge `dev` → `main` with green GitHub CI (`ci` and `android-debug`), then tag
    `v0.2.0` on `main` to publish the Arch package and signed Android `.apk`.
