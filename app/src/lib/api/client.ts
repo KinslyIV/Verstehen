@@ -1,4 +1,3 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import {
@@ -10,7 +9,6 @@ import {
 	saveConnection,
 	type ServerConnection
 } from './connection';
-import { connectSidecar } from './connection.svelte';
 import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
@@ -71,18 +69,6 @@ export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
 export type PromptSegment = components['schemas']['PromptSegment'];
 export type PromptSegments = components['schemas']['PromptSegments'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
-let token: string | undefined;
-
-export function setToken(value: string | undefined): void {
-	token = value;
-}
-
-async function baseUrl(): Promise<string> {
-	const connection = await connectSidecar();
-	if (connection.token) setToken(connection.token);
-	return connection.base;
-}
-
 export class ApiError extends Error {
 	constructor(
 		public status: number,
@@ -106,10 +92,9 @@ interface Endpoint {
 	rejectedToken?: string;
 }
 
-/** Where requests go and how they authenticate: the sidecar, or the paired server. */
+/** Where requests go and how they authenticate: the app's own server, or the paired server. */
 async function endpoint(): Promise<Endpoint> {
-	if (clientMode() === 'sidecar')
-		return { base: await baseUrl(), auth: token ? { 'x-verstehen-token': token } : {} };
+	if (clientMode() === 'sidecar') return { base: '', auth: {} };
 	const connection = await loadConnection();
 	if (!isPaired(connection)) {
 		await returnToPairing(connection.token);
@@ -398,9 +383,8 @@ export async function getClaudeCode(): Promise<BinaryStatus> {
 	return (await request('/api/accounts/claude-code')).json();
 }
 export const CLAUDE_CODE_INSTALL_URL = 'https://code.claude.com/docs/en/setup';
-export async function openExternal(url: string): Promise<void> {
-	if (isTauri()) await invoke('plugin:shell|open', { path: url });
-	else window.open(url, '_blank', 'noopener,noreferrer');
+export function openExternal(url: string): void {
+	window.open(url, '_blank', 'noopener,noreferrer');
 }
 
 export type DemoBrowser = components['schemas']['DemoBrowser'];

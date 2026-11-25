@@ -1,11 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
-import { markStartup } from '#lib/api/startup.js';
-import { models } from '#lib/models/catalog.svelte.js';
-import { testCatalog } from '#lib/models/test-fixtures.js';
 import Composer from './composer.svelte';
-vi.mock('#lib/api/startup.js', () => ({ markStartup: vi.fn() }));
 test('enter_sends_but_shift_enter_keeps_a_newline', async () => {
 	const send = vi.fn();
 	const screen = await render(Composer, { onsend: send });
@@ -66,13 +62,4 @@ test('typing_turns_next_problem_back_into_send_and_enter_outside_the_field_moves
 	await userEvent.keyboard('{Enter}');
 	expect(send).toHaveBeenCalledOnce();
 	expect(next).toHaveBeenCalledOnce();
-});
-
-test('the_composer_is_usable_once_the_saved_model_catalog_has_loaded', async () => {
-	models.reset();
-	await render(Composer, { onsend: vi.fn() });
-	expect(markStartup).not.toHaveBeenCalledWith('composer_usable');
-	models.catalog = structuredClone(testCatalog);
-	await expect.poll(() => vi.mocked(markStartup).mock.calls).toContainEqual(['composer_usable']);
-	models.reset();
 });

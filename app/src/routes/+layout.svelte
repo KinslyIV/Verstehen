@@ -4,10 +4,7 @@
 	import { ModeWatcher } from 'mode-watcher';
 	import { page } from '$app/state';
 	import { clientMode } from '#lib/api/connection.js';
-	import { connectSidecar } from '#lib/api/connection.svelte.js';
 	import { models } from '#lib/models/catalog.svelte.js';
-	import { markStartup } from '#lib/api/startup.js';
-	import StartupStatus from '#lib/components/startup-status.svelte';
 	import SystemBars from '#lib/components/system-bars.svelte';
 	import { onAndroidBack } from '#lib/session/android-back.js';
 	import type { LayoutProps } from './$types';
@@ -17,13 +14,7 @@
 	const pairing = $derived(page.route.id === '/pair');
 
 	onMount(() => {
-		if (!remote) {
-			markStartup('ui_mounted');
-			void connectSidecar().then(
-				() => models.start(),
-				() => {}
-			);
-		}
+		if (!remote) void models.start();
 		return onAndroidBack();
 	});
 
@@ -38,4 +29,3 @@
 <SystemBars />
 
 {@render children()}
-<StartupStatus />

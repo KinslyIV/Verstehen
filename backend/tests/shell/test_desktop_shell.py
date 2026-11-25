@@ -130,11 +130,17 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
     (spa / "index.html").write_text(
         "<body><p id=p>loading</p><script>"
         "fetch('/api/health').then(r => r.status).then(s => "
-        "document.body.innerText = 'health ' + s)</script></body>"
+        "document.body.innerText = 'health ' + s);"
+        "window.open('https://code.claude.com/docs/en/setup', '_blank', 'noopener,noreferrer');"
+        "window.open('https://example.com/', '_blank');"
+        "setTimeout(() => { location.href = 'https://example.com/' }, 500);"
+        "</script></body>"
     )
     result = run_probe(tmp_path, spa, wait=6)
     assert result["origin"].startswith("http://127.0.0.1:")
     assert result["text"] == "health 200"
+    assert result["opened"] == ["https://code.claude.com/docs/en/setup"]
+    assert result["url"] == result["origin"] + "/"
 
 
 @pytest.mark.slow

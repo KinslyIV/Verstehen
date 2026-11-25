@@ -243,7 +243,7 @@
 					<label for={`key-${engine.id}`}>{engine.label}</label>
 					<button
 						type="button"
-						onclick={() => void openExternal(engine.docs).catch(failure)}
+						onclick={() => openExternal(engine.docs)}
 						class="text-xs text-muted-foreground underline underline-offset-4"
 					>
 						Get a key

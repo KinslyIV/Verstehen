@@ -89,7 +89,7 @@
 			const started = await startChatGPTSignIn(account);
 			pending = started.id;
 			signInUrl = started.url;
-			await openExternal(started.url);
+			openExternal(started.url);
 		} catch (cause) {
 			error = cause instanceof Error ? cause.message : String(cause);
 		} finally {
@@ -196,7 +196,7 @@
 				Waiting for browser sign-in… <Button
 					variant="link"
 					size="sm"
-					onclick={() => signInUrl && void openExternal(signInUrl)}
+					onclick={() => signInUrl && openExternal(signInUrl)}
 				>
 					Open sign-in page
 				</Button>
@@ -235,7 +235,7 @@
 			{#if !readOnly && (claude.state === 'not_installed' || claude.state === 'too_old')}<Button
 					variant="outline"
 					size="sm"
-					onclick={() => void openExternal(CLAUDE_CODE_INSTALL_URL)}
+					onclick={() => openExternal(CLAUDE_CODE_INSTALL_URL)}
 				>
 					Install Claude Code
 				</Button>{/if}{/if}
