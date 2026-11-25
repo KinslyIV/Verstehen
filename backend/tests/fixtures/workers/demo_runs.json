@@ -149,38 +149,6 @@
     }
   },
   {
-    "name": "an image from the app origin",
-    "html": "<img src=\"{origin}/image.png\">",
-    "probe": null,
-    "expect": {
-      "console_errors": [
-        "Failed to load resource: net::ERR_ACCESS_DENIED"
-      ],
-      "page_errors": [],
-      "failed_request_urls": [
-        "{origin}/image.png"
-      ],
-      "probe_result": null,
-      "probed": false
-    }
-  },
-  {
-    "name": "a fetch to the app origin",
-    "html": "<script>fetch('{origin}/api/health').catch(() => { window.refused = true })</script>",
-    "probe": "window.refused === true",
-    "expect": {
-      "console_errors": [
-        "Failed to load resource: net::ERR_ACCESS_DENIED"
-      ],
-      "page_errors": [],
-      "failed_request_urls": [
-        "{origin}/api/health"
-      ],
-      "probe_result": true,
-      "probed": true
-    }
-  },
-  {
     "name": "an error in the first animation frame",
     "html": "<script>requestAnimationFrame(() => { throw new Error('frame') })</script>",
     "probe": null,
@@ -275,8 +243,8 @@
     }
   },
   {
-    "name": "a blocked request and an independent failed fetch",
-    "html": "<script>fetch('{origin}/api/health').catch(() => {}).then(() => fetch('http://example.invalid/data.json')).catch(() => { window.refused = true })</script>",
+    "name": "a blocked scheme and an independent failed fetch",
+    "html": "<img src=\"ftp://example.invalid/x.png\"><script>fetch('http://example.invalid/data.json').catch(() => { window.refused = true })</script>",
     "probe": "window.refused === true",
     "expect": {
       "console_errors": [
@@ -285,7 +253,7 @@
       ],
       "page_errors": [],
       "failed_request_urls": [
-        "{origin}/api/health",
+        "ftp://example.invalid/x.png",
         "http://example.invalid/data.json"
       ],
       "probe_result": true,

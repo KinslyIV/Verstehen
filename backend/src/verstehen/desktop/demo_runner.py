@@ -4,9 +4,7 @@ import json
 import re
 import sys
 import threading
-import time
 from collections.abc import Awaitable, Callable
-from typing import NamedTuple
 
 from PySide6.QtCore import (
     QBuffer,
@@ -40,7 +38,7 @@ from verstehen.jobs.workers.headless import (
     LOAD_TIMEOUT_SECONDS,
     SETTLE_SECONDS,
     DemoRunResult,
-    request_allowed,
+    scheme_allowed,
 )
 
 SCHEME = b"verstehen-demo"
@@ -136,33 +134,18 @@ class DemoPageHandler(QWebEngineUrlSchemeHandler):
         job.reply(b"text/html; charset=utf-8", body)
 
 
-class BlockedRequest(NamedTuple):
-    url: str
-    time: float
-    is_fetch_or_xhr: bool
-
-
 class RequestGuard(QWebEngineUrlRequestInterceptor):
-    """Blocks every request the demo check does not allow, such as the app on loopback, and reports it as failed."""
+    """Blocks every request whose scheme the demo check does not allow and reports it as failed."""
 
     def __init__(self, result: DemoRunResult, parent: QObject) -> None:
         super().__init__(parent)
         self._result = result
-        self.blocked: list[BlockedRequest] = []
 
     def interceptRequest(self, info: QWebEngineUrlRequestInfo) -> None:
         url = info.requestUrl()
-        if url == DEMO_URL or request_allowed(url.toString()):
+        if url == DEMO_URL or scheme_allowed(url.toString()):
             return
         info.block(True)
-        self.blocked.append(
-            BlockedRequest(
-                url.toString(),
-                time.monotonic(),
-                info.resourceType()
-                == QWebEngineUrlRequestInfo.ResourceType.ResourceTypeXhr,
-            )
-        )
         self._result.failed_requests.append(
             f"{url.toString()} (net::ERR_ACCESS_DENIED)"
         )
@@ -174,49 +157,27 @@ class RequestGuard(QWebEngineUrlRequestInterceptor):
 class DemoPage(QWebEnginePage):
     """Sorts the page's console output into the result's console errors, page errors and failed requests."""
 
-    def __init__(
-        self, profile: QWebEngineProfile, result: DemoRunResult, guard: RequestGuard
-    ) -> None:
+    def __init__(self, profile: QWebEngineProfile, result: DemoRunResult) -> None:
         super().__init__(profile)
         self._result = result
-        self._guard = guard
-        self._page_failures: list[tuple[float, str]] = []
 
     def javaScriptConsoleMessage(self, level, message, line_number, source_id) -> None:
         if message.startswith(FAILED_RESOURCE_MARK):
-            self._add_failed_resource(message.removeprefix(FAILED_RESOURCE_MARK))
+            self._add_failed_request(message.removeprefix(FAILED_RESOURCE_MARK), False)
         elif message.startswith(FAILED_REQUEST_MARK):
-            url = message.removeprefix(FAILED_REQUEST_MARK)
-            self._page_failures.append((time.monotonic(), url))
+            self._add_failed_request(message.removeprefix(FAILED_REQUEST_MARK), True)
         elif level == QWebEnginePage.JavaScriptConsoleMessageLevel.ErrorMessageLevel:
             self._add_error(message)
 
-    def _add_failed_resource(self, url: str) -> None:
-        if not self._already_failed(url):
-            self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
-
-    def report_page_failures(self) -> None:
-        """Report each failed fetch or XHR the guard did not cause: not its own request, nor a redirect hop it blocked."""
-        reported = {url for _, url in self._page_failures}
-        redirect_hops = [
-            blocked
-            for blocked in self._guard.blocked
-            if blocked.is_fetch_or_xhr and blocked.url not in reported
-        ]
-        for failed_at, url in self._page_failures:
-            hop = next((hop for hop in redirect_hops if hop.time <= failed_at), None)
-            if hop:
-                redirect_hops.remove(hop)
-            elif not self._already_failed(url):
-                self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
-                self._result.console_errors.append(
-                    f"Failed to load resource: {FAILED_REQUEST_REASON}"
-                )
-
-    def _already_failed(self, url: str) -> bool:
-        return any(
-            failed.startswith(f"{url} (") for failed in self._result.failed_requests
-        )
+    def _add_failed_request(self, url: str, from_script: bool) -> None:
+        """Add a failure the guard did not already report; a script's failed request has no console error of its own."""
+        if any(f.startswith(f"{url} (") for f in self._result.failed_requests):
+            return
+        self._result.failed_requests.append(f"{url} ({FAILED_REQUEST_REASON})")
+        if from_script:
+            self._result.console_errors.append(
+                f"Failed to load resource: {FAILED_REQUEST_REASON}"
+            )
 
     def _add_error(self, message: str) -> None:
         if uncaught := UNCAUGHT_PREFIX.match(message):
@@ -257,7 +218,7 @@ class DemoCheck(QObject):
         )
         self._guard = RequestGuard(self.result, self.profile)
         self.profile.setUrlRequestInterceptor(self._guard)
-        self.page = DemoPage(self.profile, self.result, self._guard)
+        self.page = DemoPage(self.profile, self.result)
         self.page.setAudioMuted(True)
         self.view = visible_view(self.page)
         self.page.settings().setAttribute(
@@ -334,7 +295,6 @@ class DemoCheck(QObject):
         if self._done:
             return
         self._done = True
-        self.page.report_page_failures()
         self._finished(self.result)
         self._dispose()
 

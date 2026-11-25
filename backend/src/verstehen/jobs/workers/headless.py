@@ -1,39 +1,19 @@
 import asyncio
-import contextlib
-import ipaddress
 import json
 from collections.abc import Callable
 from typing import Protocol
-from urllib.parse import urlsplit
 
 from pydantic import BaseModel, Field, JsonValue
 
 ALLOWED_SCHEMES = frozenset({"http", "https", "data", "blob", "about"})
 SETTLE_SECONDS = 2
 LOAD_TIMEOUT_SECONDS = 30
-LOOPBACK_SUFFIX = ".localhost"
 NO_BROWSER = "No render engine available: no Chromium-family browser was found. Set one in Settings → Tools → Demo browser, install Chromium, or use “Download Chromium for demos” there. (Verification is mandatory — demos are never delivered untested.)"
 
 
-def is_loopback_host(host: str | None) -> bool:
-    if not host:
-        return False
-    if host == "localhost" or host.endswith(LOOPBACK_SUFFIX):
-        return True
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return False
-    return address.is_loopback or address.is_unspecified
-
-
-def request_allowed(url: str) -> bool:
-    """Whether a demo may load `url`: an allowed scheme and no loopback host, which is where the app listens."""
-    try:
-        parts = urlsplit(url)
-        return parts.scheme in ALLOWED_SCHEMES and not is_loopback_host(parts.hostname)
-    except ValueError:
-        return False
+def scheme_allowed(url: str) -> bool:
+    """Whether a demo may load `url`: only the schemes in `ALLOWED_SCHEMES`."""
+    return url.split(":", 1)[0] in ALLOWED_SCHEMES
 
 
 class DemoRunResult(BaseModel):
@@ -68,25 +48,6 @@ class PlaywrightDemoRunner:
         return await run_demo(html, self.executable, probe)
 
 
-async def guard_requests(context, page) -> None:
-    """Fail every request `request_allowed` refuses, each redirect hop too, which `page.route` never sees."""
-    from playwright.async_api import Error
-
-    session = await context.new_cdp_session(page)
-
-    async def decide(event: dict) -> None:
-        allowed = request_allowed(event["request"]["url"])
-        method = "Fetch.continueRequest" if allowed else "Fetch.failRequest"
-        arguments = {"requestId": event["requestId"]}
-        if not allowed:
-            arguments["errorReason"] = "AccessDenied"
-        with contextlib.suppress(Error):
-            await session.send(method, arguments)
-
-    session.on("Fetch.requestPaused", decide)
-    await session.send("Fetch.enable", {"patterns": [{"urlPattern": "*"}]})
-
-
 async def run_demo(
     html: str, executable: str, probe: str | None = None
 ) -> DemoRunResult:
@@ -116,7 +77,13 @@ async def run_demo(
                 ),
             )
 
-            await guard_requests(context, page)
+            async def guard(route):
+                if scheme_allowed(route.request.url):
+                    await route.continue_()
+                else:
+                    await route.abort("accessdenied")
+
+            await page.route("**/*", guard)
             try:
                 await page.set_content(
                     html, wait_until="load", timeout=LOAD_TIMEOUT_SECONDS * 1000

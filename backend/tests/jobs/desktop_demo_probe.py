@@ -1,15 +1,9 @@
-"""Checks demo documents from stdin offscreen and prints the results as JSON; DEMO_PROBE_ALLOWED_PORT allows only that port."""
+"""Checks demo documents from stdin offscreen and prints the results as JSON."""
 
 import json
-import os
 import sys
-from urllib.parse import urlsplit
 
-from verstehen.desktop import demo_runner
 from verstehen.desktop.demo_runner import DesktopDemoRunner, run_with_demo_runner
-
-if allowed_port := os.environ.get("DEMO_PROBE_ALLOWED_PORT"):
-    demo_runner.request_allowed = lambda url: urlsplit(url).port == int(allowed_port)
 
 DEMOS = json.load(sys.stdin)
 
