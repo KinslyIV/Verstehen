@@ -3,6 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import { userEvent } from 'vitest/browser';
 import {
 	getSettings,
+	health,
 	saveSettings,
 	getDemoBrowser,
 	browserDownload,
@@ -16,6 +17,7 @@ import SettingsTools from './settings-tools.svelte';
 
 vi.mock('#lib/api/client.js', () => ({
 	getSettings: vi.fn(),
+	health: vi.fn(),
 	openExternal: vi.fn(),
 	saveSettings: vi.fn(),
 	getDemoBrowser: vi.fn(),
@@ -36,6 +38,7 @@ beforeEach(() => {
 		Object.assign(settings, next);
 		return next;
 	});
+	vi.mocked(health).mockResolvedValue({ status: 'ok' });
 	vi.mocked(getDemoBrowser).mockResolvedValue({ path: null, source: null });
 	vi.mocked(browserDownload).mockResolvedValue({ state: 'idle' });
 	vi.mocked(getSearchKeys).mockResolvedValue({
@@ -197,4 +200,15 @@ test('setting_and_clearing_search_key_switching_engine_and_committing_browser_pa
 	await expect
 		.poll(() => vi.mocked(saveSettings).mock.calls.at(-1)?.[0].demo_browser)
 		.toBe('/usr/bin/chromium');
+});
+
+test('the desktop has no demo browser section and never asks for one', async () => {
+	vi.mocked(health).mockResolvedValue({ status: 'ok', desktop: true });
+	const screen = await render(SettingsTools);
+	await expect.element(screen.getByRole('spinbutton')).toHaveValue(3);
+	await expect
+		.element(screen.getByRole('heading', { name: 'Demo browser' }))
+		.not.toBeInTheDocument();
+	expect(getDemoBrowser).not.toHaveBeenCalled();
+	expect(browserDownload).not.toHaveBeenCalled();
 });

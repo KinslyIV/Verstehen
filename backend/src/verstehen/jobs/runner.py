@@ -17,9 +17,9 @@ from verstehen.jobs.contracts import (
     is_failure,
 )
 from verstehen.jobs.workers.admission import AdmittedModel, WorkerAdmission
-from verstehen.jobs.workers.browser import find_demo_browser
 from verstehen.jobs.workers.common import RequestUsage, add_usage
 from verstehen.jobs.workers.demo import run_demo_builder
+from verstehen.jobs.workers.headless import DemoRunnerProvider
 from verstehen.jobs.workers.pdf import run_pdf_reader
 from verstehen.jobs.workers.research import run_researcher
 from verstehen.jobs.workers.search import choose_search
@@ -111,6 +111,7 @@ class JobRunner:
         credentials_store: CredentialsStore,
         admission: WorkerAdmission,
         data_dir: Path,
+        demo_runner_provider: DemoRunnerProvider,
         wake_session: Callable[[str], Awaitable[None]],
         notify_changed: Callable[[str], None],
         provider_events: bool = False,
@@ -123,6 +124,7 @@ class JobRunner:
         self.credentials_store = credentials_store
         self.admission = admission
         self.data_dir = data_dir
+        self.demo_runner_provider = demo_runner_provider
         self.wake_session = wake_session
         self.notify_changed = notify_changed
         self.provider_events = provider_events
@@ -258,11 +260,10 @@ class JobRunner:
                     **callbacks,
                 )
             case "demo":
-                browser = find_demo_browser(self.data_dir, settings.demo_browser)
                 return await run_demo_builder(
                     DemoInput.model_validate(job.input),
                     model,
-                    executable=str(browser.path) if browser.path else None,
+                    runner=self.demo_runner_provider(settings.demo_browser),
                     **callbacks,
                 )
             case "visual":

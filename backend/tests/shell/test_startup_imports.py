@@ -47,7 +47,7 @@ app = create_app(Settings(Path({str(tmp_path)!r}), desktop=True, token=token))
 with TestClient(app) as client:
     response = client.get("/api/health", headers={{"x-verstehen-token": token}})
     assert response.status_code == 200, response.text
-    assert response.json() == {{"status": "ok"}}
+    assert response.json() == {{"status": "ok", "desktop": True}}
 
 loaded = [name for name in {HEAVY_MODULES!r} if name in sys.modules]
 assert not loaded, f"Heavy modules loaded at startup: {{loaded}}"

@@ -172,7 +172,7 @@ export async function pairDevice(
 	return connection;
 }
 
-export async function health(): Promise<{ status: string }> {
+export async function health(): Promise<{ status: string; desktop?: boolean }> {
 	return (await request('/api/health')).json();
 }
 export async function listSessions(signal?: AbortSignal): Promise<SessionItem[]> {

@@ -10,6 +10,11 @@ from typing import Literal
 from pydantic import BaseModel
 lazy from playwright._impl._driver import compute_driver_executable, get_driver_env
 
+from verstehen.jobs.workers.headless import (
+    DemoRunnerProvider,
+    PlaywrightDemoRunner,
+)
+
 
 class DemoBrowser(BaseModel):
     path: Path | None = None
@@ -56,6 +61,16 @@ def find_demo_browser(
     if downloaded.is_file() and os.access(downloaded, os.X_OK):
         return DemoBrowser(path=downloaded.absolute(), source="downloaded")
     return DemoBrowser()
+
+
+def playwright_runner_provider(data_dir: Path) -> DemoRunnerProvider:
+    """Server mode runs demos in the configured, installed, or downloaded Chromium."""
+
+    def provide(configured: str | None) -> PlaywrightDemoRunner | None:
+        browser = find_demo_browser(data_dir, configured)
+        return PlaywrightDemoRunner(str(browser.path)) if browser.path else None
+
+    return provide
 
 
 class BrowserDownloadProgress(BaseModel):

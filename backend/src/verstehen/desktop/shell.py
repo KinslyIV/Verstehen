@@ -23,6 +23,7 @@ from PySide6.QtWidgets import QApplication
 
 from verstehen.api.access import TOKEN_COOKIE
 from verstehen.config import resolve_data_dir
+from verstehen.desktop.demo_runner import DesktopDemoRunner, register_demo_scheme
 from verstehen.desktop.links import navigation_for
 from verstehen.desktop.server import DesktopServer, ServerStartupError
 
@@ -117,7 +118,10 @@ class DesktopShell(QObject):
         self._data_dir = resolve_data_dir()
         self._serving = False
         self._closing = False
-        self.server = DesktopServer(on_exit=self.server_exited.emit)
+        self.demo_runner = DesktopDemoRunner()
+        self.server = DesktopServer(
+            on_exit=self.server_exited.emit, demo_runner=self.demo_runner
+        )
         self.profile = QWebEngineProfile("verstehen", self)
         self.profile.setPersistentStoragePath(str(self._data_dir / "webengine"))
         self.profile.setCachePath(str(self._data_dir / "webengine-cache"))
@@ -201,6 +205,7 @@ def quit_on_signals(app: QApplication) -> None:
 def run_desktop() -> int:
     """Open the desktop window and run until it closes."""
     os.environ["PYDANTIC_AI_NO_BANNER"] = "1"
+    register_demo_scheme()
     app = QApplication(sys.argv)
     app.setApplicationName("Verstehen")
     app.setAttribute(Qt.ApplicationAttribute.AA_DontCreateNativeWidgetSiblings)

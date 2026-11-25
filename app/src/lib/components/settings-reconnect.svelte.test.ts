@@ -25,6 +25,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	getClaudeCode: vi.fn(),
 	getOwnDeviceName: vi.fn(),
 	getSearchKeys: vi.fn(),
+	health: vi.fn(),
 	getDemoBrowser: vi.fn(),
 	browserDownload: vi.fn(),
 	streamNotifications: vi.fn()
@@ -58,6 +59,7 @@ beforeEach(() => {
 	streamFailsOnce();
 	vi.mocked(api.getSettings).mockReset().mockResolvedValue(stored);
 	vi.mocked(api.saveSettings).mockReset();
+	vi.mocked(api.health).mockReset().mockResolvedValue({ status: 'ok' });
 	vi.mocked(api.getModels).mockReset().mockResolvedValue({ accounts: [], slots: {} });
 	vi.mocked(api.refreshModels).mockReset().mockResolvedValue();
 	vi.mocked(api.listChatGPTAccounts).mockReset().mockResolvedValue([]);

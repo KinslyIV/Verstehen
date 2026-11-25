@@ -17,7 +17,7 @@ def test_health_ok_with_token(tmp_path: Path):
     with desktop_client(tmp_path) as client:
         response = client.get("/api/health", headers={"x-verstehen-token": TOKEN})
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json() == {"status": "ok", "desktop": True}
 
 
 def test_missing_token_is_refused(tmp_path: Path):

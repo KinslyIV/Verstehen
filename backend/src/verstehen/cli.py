@@ -12,6 +12,7 @@ import uvicorn
 
 from verstehen.app import create_app
 from verstehen.config import Settings, load_settings, resolve_data_dir
+from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.store.database import open_database
 from verstehen.store.devices import DevicesStore
 from verstehen.store.migrate import migrate
@@ -60,10 +61,12 @@ def bind_listener(listener: socket.socket, host: str, port: int) -> None:
     listener.bind((host, port))
 
 
-def uvicorn_config(settings: Settings) -> uvicorn.Config:
+def uvicorn_config(
+    settings: Settings, demo_runner: DemoRunner | None = None
+) -> uvicorn.Config:
     """Configure uvicorn for the application; the caller supplies the listening socket."""
     return uvicorn.Config(
-        create_app(settings),
+        create_app(settings, demo_runner),
         host=settings.host,
         port=settings.port,
         log_config=None,

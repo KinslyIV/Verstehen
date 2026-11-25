@@ -14,6 +14,7 @@ import uvicorn
 from verstehen.api.access import TOKEN_COOKIE
 from verstehen.cli import bind_listener, configure_logging, uvicorn_config
 from verstehen.config import Settings, load_settings
+from verstehen.jobs.workers.headless import DemoRunner
 
 PREFERRED_PORT = 28420
 START_TIMEOUT_SECONDS = 30
@@ -47,11 +48,14 @@ def bind_loopback_listener() -> socket.socket:
 class DesktopServer:
     """The API server on a background thread for the desktop window; it owns its listener."""
 
-    def __init__(self, on_exit: Callable[[], None]) -> None:
+    def __init__(
+        self, on_exit: Callable[[], None], demo_runner: DemoRunner | None = None
+    ) -> None:
         self.token = secrets.token_hex(32)
         self.port = 0
         self.settings: Settings | None = None
         self._on_exit = on_exit
+        self._demo_runner = demo_runner
         self._listener: socket.socket | None = None
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -74,7 +78,9 @@ class DesktopServer:
                 self.settings.data_dir,
                 self.port,
             )
-            self._server = uvicorn.Server(uvicorn_config(self.settings))
+            self._server = uvicorn.Server(
+                uvicorn_config(self.settings, self._demo_runner)
+            )
         except (ValueError, OSError, RuntimeError) as error:
             self.close_listener()
             raise ServerStartupError(str(error)) from error

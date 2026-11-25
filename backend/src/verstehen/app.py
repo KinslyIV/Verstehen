@@ -15,6 +15,7 @@ from verstehen.api.auth import PairingCodeManager
 from verstehen.api.auth import router as auth_router
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
+from verstehen.api.demo_browser import router as demo_browser_router
 from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
@@ -33,7 +34,11 @@ from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.service import GraphService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
-from verstehen.jobs.workers.browser import BrowserDownloadService
+from verstehen.jobs.workers.browser import (
+    BrowserDownloadService,
+    playwright_runner_provider,
+)
+from verstehen.jobs.workers.headless import DemoRunner
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -95,8 +100,10 @@ class SinglePageFiles(StaticFiles):
             return await super().get_response("index.html", scope)
 
 
-def create_app(settings: Settings) -> FastAPI:
-    """Build the API with database lifecycle and access checks; desktop mode also serves the app."""
+def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> FastAPI:
+    """Build the API with database lifecycle and access checks; desktop mode also serves the app.
+    The desktop shell injects its `demo_runner`; without one, demos run in Playwright's Chromium.
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -125,7 +132,9 @@ def create_app(settings: Settings) -> FastAPI:
             chatgpt_adapter = ChatGPTAccountAdapter(
                 credentials_store, on_invalidated=catalog_store.forget
             )
-            browser_download_service = BrowserDownloadService(settings.data_dir)
+            browser_download_service = (
+                None if settings.desktop else BrowserDownloadService(settings.data_dir)
+            )
             app.state.browser_download_service = browser_download_service
             callback_port = CallbackPort()
             chatgpt_sign_in_service = ChatGPTSignInService(
@@ -175,6 +184,11 @@ def create_app(settings: Settings) -> FastAPI:
                 credentials_store,
                 WorkerAdmission(settings_store),
                 settings.data_dir,
+                (
+                    (lambda configured: demo_runner)
+                    if demo_runner
+                    else playwright_runner_provider(settings.data_dir)
+                ),
                 wake_session,
                 jobs_changed,
                 settings.provider_events,
@@ -355,7 +369,8 @@ def create_app(settings: Settings) -> FastAPI:
                 await extraction_service.close()
                 await side_chat_service.close()
                 await job_runner.close()
-                await browser_download_service.close()
+                if browser_download_service:
+                    await browser_download_service.close()
                 await runtimes.close()
                 await title_service.close()
                 claude_code_adapter.close()
@@ -432,6 +447,8 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(server_setup_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
+    if not settings.desktop:
+        app.include_router(demo_browser_router)
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(images_router)

@@ -7,6 +7,7 @@
 		openExternal,
 		saveSettings,
 		getDemoBrowser,
+		health,
 		browserDownload,
 		getSearchKeys,
 		setSearchKey,
@@ -26,6 +27,7 @@
 	] as const;
 	const inputClass = 'h-9 min-w-0 rounded-md border bg-background px-3 text-sm disabled:opacity-50';
 	let settings = $state<Settings>();
+	let desktop = $state(false);
 	let browser = $state<DemoBrowser>();
 	let download = $state<BrowserDownloadProgress>();
 	let keys = $state<SearchKeysStatus>();
@@ -50,11 +52,12 @@
 	);
 
 	async function refresh() {
+		desktop = (await health()).desktop === true;
 		const values = await Promise.all([
 			getSettings(),
 			getSearchKeys(),
-			getDemoBrowser(),
-			browserDownload()
+			desktop ? undefined : getDemoBrowser(),
+			desktop ? undefined : browserDownload()
 		]);
 		if (disposed) return;
 		[settings, keys, browser, download] = values;
@@ -98,7 +101,10 @@
 		error = null;
 		try {
 			settings = await saveSettings(update(await getSettings()));
-			[keys, browser] = await Promise.all([getSearchKeys(), getDemoBrowser()]);
+			[keys, browser] = await Promise.all([
+				getSearchKeys(),
+				desktop ? undefined : getDemoBrowser()
+			]);
 			return true;
 		} catch (cause) {
 			failure(cause);
@@ -293,54 +299,61 @@
 			</div>
 		{/each}
 	</section>
-	<section aria-label="Demo browser" class="space-y-4 rounded-xl border bg-card p-4">
-		<h3 class="text-sm font-medium">Demo browser</h3>
-		<label for="demo-browser" class="block text-sm">Browser path</label>
-		<input
-			id="demo-browser"
-			class={`${inputClass} w-full`}
-			placeholder="Automatic discovery"
-			bind:value={browserPath}
-			disabled={busy || !settings}
-			onblur={() => void commitBrowser()}
-			onkeydown={(event) => {
-				if (event.key === 'Enter') {
-					event.preventDefault();
-					void commitBrowser();
-				}
-			}}
-		/>
-		{#if browser?.path}<p class="text-xs break-all text-muted-foreground">
-				{browser.path} · {browser.source}
-			</p>
-		{:else if browser}<p class="text-xs text-muted-foreground">No Chromium-family browser found.</p>
-			<Button
-				variant="outline"
-				size="sm"
-				disabled={busy || download?.state === 'downloading'}
-				onclick={() => void startDownload()}
-			>
-				Download Chromium for demos
-			</Button>
-		{/if}
-		{#if download?.state === 'downloading'}
-			<div role="status" class="space-y-2">
-				<p class="text-xs break-words text-muted-foreground">
-					{download.message ?? 'Downloading Chromium…'}
+	{#if !desktop}
+		<section aria-label="Demo browser" class="space-y-4 rounded-xl border bg-card p-4">
+			<h3 class="text-sm font-medium">Demo browser</h3>
+			<label for="demo-browser" class="block text-sm">Browser path</label>
+			<input
+				id="demo-browser"
+				class={`${inputClass} w-full`}
+				placeholder="Automatic discovery"
+				bind:value={browserPath}
+				disabled={busy || !settings}
+				onblur={() => void commitBrowser()}
+				onkeydown={(event) => {
+					if (event.key === 'Enter') {
+						event.preventDefault();
+						void commitBrowser();
+					}
+				}}
+			/>
+			{#if browser?.path}<p class="text-xs break-all text-muted-foreground">
+					{browser.path} · {browser.source}
 				</p>
-				<progress
-					class="h-1 w-full"
-					value={download.percent ?? undefined}
-					max="100"
-					aria-label="Chromium download"
-				></progress>
-			</div>
-		{:else if download?.state === 'failed'}<p role="alert" class="text-sm text-destructive">
-				{download.error}
-			</p>
-		{:else if download?.state === 'complete'}<p role="status" class="text-xs text-muted-foreground">
-				Chromium installed.
-			</p>{/if}
-	</section>
+			{:else if browser}<p class="text-xs text-muted-foreground">
+					No Chromium-family browser found.
+				</p>
+				<Button
+					variant="outline"
+					size="sm"
+					disabled={busy || download?.state === 'downloading'}
+					onclick={() => void startDownload()}
+				>
+					Download Chromium for demos
+				</Button>
+			{/if}
+			{#if download?.state === 'downloading'}
+				<div role="status" class="space-y-2">
+					<p class="text-xs break-words text-muted-foreground">
+						{download.message ?? 'Downloading Chromium…'}
+					</p>
+					<progress
+						class="h-1 w-full"
+						value={download.percent ?? undefined}
+						max="100"
+						aria-label="Chromium download"
+					></progress>
+				</div>
+			{:else if download?.state === 'failed'}<p role="alert" class="text-sm text-destructive">
+					{download.error}
+				</p>
+			{:else if download?.state === 'complete'}<p
+					role="status"
+					class="text-xs text-muted-foreground"
+				>
+					Chromium installed.
+				</p>{/if}
+		</section>
+	{/if}
 	{#if error}<p role="alert" class="text-sm text-destructive">{error}</p>{/if}
 </div>

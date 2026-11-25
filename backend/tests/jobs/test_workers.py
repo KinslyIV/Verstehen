@@ -38,7 +38,11 @@ from verstehen.jobs.contracts import (
     steer_text,
 )
 from verstehen.jobs.workers.demo import run_demo_builder
-from verstehen.jobs.workers.headless import NO_BROWSER, run_demo
+from verstehen.jobs.workers.headless import (
+    NO_BROWSER,
+    PlaywrightDemoRunner,
+    run_demo,
+)
 from verstehen.jobs.workers.pdf import run_pdf_reader
 from verstehen.jobs.workers.pdf_ops import pdf_extract, pdf_render
 from verstehen.jobs.workers.research import INSTRUCTIONS, instructions, run_researcher
@@ -542,7 +546,9 @@ def test_demo_final_gate_rejects_console_errors_in_real_chromium(chromium):
     )
     result = asyncio.run(
         run_demo_builder(
-            DemoInput(title="Bad demo", brief="x"), model, executable=chromium
+            DemoInput(title="Bad demo", brief="x"),
+            model,
+            runner=PlaywrightDemoRunner(chromium),
         )
     )
     assert result.html == ""
@@ -561,7 +567,11 @@ def test_demo_write_after_success_is_reverified(chromium):
         "Done",
     )
     result = asyncio.run(
-        run_demo_builder(DemoInput(title="Demo", brief="x"), model, executable=chromium)
+        run_demo_builder(
+            DemoInput(title="Demo", brief="x"),
+            model,
+            runner=PlaywrightDemoRunner(chromium),
+        )
     )
     assert result.html == "" and "late failure" in (result.notes or "")
 
@@ -583,7 +593,7 @@ def test_headless_reports_uncaught_errors_failed_requests_and_probe_errors(chrom
 def test_no_browser_fails_before_any_model_request():
     result = asyncio.run(
         run_demo_builder(
-            DemoInput(title=" Demo ", brief="x"), scripted("unused"), executable=None
+            DemoInput(title=" Demo ", brief="x"), scripted("unused"), runner=None
         )
     )
     assert result == DemoResult(title="Demo", html="", notes="FAILED: " + NO_BROWSER)
@@ -893,7 +903,7 @@ def test_demo_clean_run_delivers_only_verified_html(chromium):
             scripted(
                 [call("write_demo", html=html)], [call("run_demo")], "Try the demo."
             ),
-            executable=chromium,
+            runner=PlaywrightDemoRunner(chromium),
         )
     )
     assert result.html == html and result.notes == "Try the demo."
@@ -938,7 +948,9 @@ def captured_wire(name: str, tmp_path: Path) -> tuple[str, list[dict[str, Any]]]
     else:
         asyncio.run(
             run_demo_builder(
-                DemoInput(title="t", brief="x"), model, executable="unused"
+                DemoInput(title="t", brief="x"),
+                model,
+                runner=PlaywrightDemoRunner("unused"),
             )
         )
     return system_prompt, tools
