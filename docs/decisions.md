@@ -29,8 +29,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   text now says "server" instead of "sidecar".
 - **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
   Packaging sets the bundled path.
-- **The Brave/Tavily "Get a key" links stay refused by the two-URL allowlist, now silently.**
-  Tauri refused them with an error message; adding them to the allowlist is the alternative.
 - **The desktop process imports eagerly.** Importing PySide6 (shiboken6) leaves lazy names read
   across modules as unresolved proxies, so `desktop/eager.py` sets a lazy-imports filter that
   refuses every lazy import before anything else loads; server mode stays lazy. The cost is
@@ -47,15 +45,26 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Each desktop demo check runs in a shown `QWebEngineView` that never reaches the screen**
   (1280×720, Playwright's viewport), so `requestAnimationFrame`, timers, and `visibilityState`
   behave as in Playwright; a hidden page never fires rAF.
+- **Playwright guards every redirect hop through a CDP `Fetch` handler** (`page.route` sees only
+  the first URL), so the runner is Chromium-only, as it already was. Qt's interceptor blocks
+  redirect hops too, but under CPU load the blocked hop occasionally still reaches the server;
+  the page never gets the response, and the app refuses it without the token cookie. The Qt test
+  no longer asserts the app saw no request.
+- **The mode is resolved once from `--server` and `VERSTEHEN_SERVER=1`;** `desktop` with either
+  is refused, and the packaged app refuses server mode however it is selected.
+- **A refused external link tells the page** (`verstehen:link-refused`), and Settings → Tools shows
+  "Verstehen can't open <url>. Open it in your browser." for the Brave/Tavily "Get a key" links;
+  `window.open` can't signal refusal in QtWebEngine. The two-URL allowlist is unchanged.
 - **A remounted demo frame starts without the old error;** the measured height is kept, so the
   transcript does not shift.
 - **`/api/health` adds `"desktop": true` in desktop mode only;** Settings → Tools hides Demo
   browser from it. The alternative, treating a 404 on the demo-browser routes as the signal, is
   brittle.
 - **Desktop demo-check messages match Playwright except where Qt reports differently:** resource
-  failures read `net::ERR_FAILED`, a load timeout `Timeout 30000ms exceeded.`, a probe error has
-  no stack; failed `fetch()` calls are not reported, and an error-level console line starting with
-  `Uncaught` counts as a page error. The contract fixtures compare failed requests by URL.
+  and caught fetch/XHR failures read `net::ERR_FAILED` (JavaScript can't see the real reason), a
+  load timeout `Timeout 30000ms exceeded.`, a probe error has no stack, and an error-level console
+  line starting with `Uncaught` counts as a page error. Aborted requests are not reported. The
+  contract fixtures compare failed requests by URL and reason placeholder.
 - **Each desktop demo check gets its own off-the-record profile and page,** deleted after it;
   isolation over a small cost per check.
 - **The self-check picks `qt-demo` when PySide6 is importable** (desktop bundle, dev), and
