@@ -224,3 +224,42 @@ export const pluginUi: PluginUi = {
 		return handle;
 	}
 };
+
+/** The widgets one activation gets: each is also disposed when that activation ends. */
+export function createPluginUi(activation: AbortSignal): PluginUi {
+	function bound<Handle extends { dispose(): void }>(
+		options: WidgetOptions,
+		mount: (options: WidgetOptions) => Handle
+	): Handle {
+		const both = new AbortController();
+		const stop = () => both.abort();
+		const detach = () => {
+			options.signal.removeEventListener('abort', stop);
+			activation.removeEventListener('abort', stop);
+		};
+		if (options.signal.aborted || activation.aborted) both.abort();
+		options.signal.addEventListener('abort', stop, { once: true });
+		activation.addEventListener('abort', stop, { once: true });
+		const handle = mount({ ...options, signal: both.signal });
+		return {
+			...handle,
+			dispose() {
+				detach();
+				handle.dispose();
+			}
+		};
+	}
+	return {
+		mountButton: (target, props, options) =>
+			bound(options, (own) => pluginUi.mountButton(target, props, own)),
+		mountBadge: (target, props, options) =>
+			bound(options, (own) => pluginUi.mountBadge(target, props, own)),
+		mountMarkdown: (target, props, options) =>
+			bound(options, (own) => pluginUi.mountMarkdown(target, props, own)),
+		mountSettingsRows: (target, props, options) =>
+			bound(options, (own) => pluginUi.mountSettingsRows(target, props, own)),
+		openDialog: (props, options) => bound(options, (own) => pluginUi.openDialog(props, own)),
+		openMenu: (anchor, props, options) =>
+			bound(options, (own) => pluginUi.openMenu(anchor, props, own))
+	};
+}

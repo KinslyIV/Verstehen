@@ -2,7 +2,8 @@
 	import type { PluginInfo } from '#lib/api/client.js';
 	import { plugins } from './plugins.svelte.js';
 	import { pluginUi } from './ui/widgets.svelte.js';
-	import type { Cleanup, SettingsRegistration } from './types.js';
+	import { mountSurface } from './surface.js';
+	import type { SettingsRegistration } from './types.js';
 
 	let { plugin }: { plugin: PluginInfo } = $props();
 	let container = $state<HTMLElement>();
@@ -14,29 +15,14 @@
 		const registration: SettingsRegistration | undefined = settings;
 		if (!target || !registration) return;
 		failure = null;
-		const lifetime = new AbortController();
-		let cleanup: void | Cleanup;
-		let rows: ReturnType<typeof pluginUi.mountSettingsRows> | undefined;
-		void (async () => {
-			try {
-				if ('rows' in registration)
-					rows = pluginUi.mountSettingsRows(target, registration, { signal: lifetime.signal });
-				else {
-					const returned = await registration.mount(target, lifetime.signal);
-					if (lifetime.signal.aborted) await returned?.();
-					else cleanup = returned;
-				}
-			} catch (error) {
-				if (!lifetime.signal.aborted)
-					failure = error instanceof Error ? error.message : String(error);
-			}
-		})();
-		return () => {
-			lifetime.abort();
-			rows?.dispose();
-			void cleanup?.();
-			target.replaceChildren();
-		};
+		return mountSurface(
+			target,
+			(child, signal) =>
+				'rows' in registration
+					? pluginUi.mountSettingsRows(child, registration, { signal }).dispose
+					: registration.mount(child, signal),
+			(message) => (failure = message)
+		);
 	});
 </script>
 

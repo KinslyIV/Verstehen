@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import re
 import shutil
 from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
@@ -311,6 +312,13 @@ def test_every_built_in_tool_name_is_reserved():
         return found
 
     assert asyncio.run(names()) <= RESERVED_TOOL_NAMES
+
+
+def test_the_frontend_hides_and_cards_tools_by_the_same_reserved_names():
+    source = (
+        Path(__file__).parents[3] / "app/src/lib/teaching/built-in-tools.ts"
+    ).read_text()
+    assert set(re.findall(r"'([a-z_]+)'", source)) == RESERVED_TOOL_NAMES
 
 
 def test_a_toolset_tool_clashing_with_an_earlier_plugin_is_dropped_with_a_warning(

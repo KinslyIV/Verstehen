@@ -1,6 +1,6 @@
 import { callPlugin } from '#lib/api/client.js';
 import type { PluginRuntime } from './runtime.svelte.js';
-import { pluginUi } from './ui/widgets.svelte.js';
+import { createPluginUi } from './ui/widgets.svelte.js';
 import type { Cleanup, PluginAppControls, PluginFrontendContext } from './types.js';
 
 export interface Navigation {
@@ -11,13 +11,20 @@ export interface Navigation {
 }
 
 /** A plugin's `backend` object: any property is a function that calls the backend function of that name. */
-function backendProxy(pluginId: string): PluginFrontendContext['backend'] {
+function backendProxy(runtime: PluginRuntime): PluginFrontendContext['backend'] {
 	return new Proxy(
 		{},
 		{
 			get: (_, name) =>
 				typeof name === 'string' && name !== 'then'
-					? (input?: unknown) => callPlugin(pluginId, name, input)
+					? (input?: unknown) => {
+							try {
+								runtime.requireLive();
+							} catch (error) {
+								return Promise.reject(error);
+							}
+							return callPlugin(runtime.info.id, name, input);
+						}
 					: undefined
 		}
 	) as PluginFrontendContext['backend'];
@@ -38,9 +45,9 @@ export function createContext(
 	return {
 		id,
 		signal: runtime.controller.signal,
-		backend: backendProxy(id),
+		backend: backendProxy(runtime),
 		app,
-		ui: pluginUi,
+		ui: createPluginUi(runtime.controller.signal),
 		registerView: (view) => runtime.registerView(view),
 		registerAction: (action) => runtime.registerAction(action),
 		placeAction: (placement) => runtime.placeAction(placement),
@@ -54,6 +61,7 @@ export function createContext(
 		onAppEvent: (event, listener) => runtime.listen(runtime.appEvents, event, listener),
 		cleanup: (fn: Cleanup) => {
 			if (typeof fn !== 'function') throw new TypeError('A cleanup must be a function');
+			runtime.requireLive();
 			runtime.cleanups.push(fn);
 		}
 	};

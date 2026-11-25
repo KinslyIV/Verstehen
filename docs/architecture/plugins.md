@@ -79,16 +79,25 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   failed tool result (`Tool <name> failed: …`, also shown as a plugin warning); the turn goes on.
   `ModelRetry`, `ToolFailed`, deferral and cancellation pass through. A call from a plugin that was
   disabled or restarted since the turn began is refused with a tool failure.
-- **Frontend activation.** `PluginHost.sync()` (serialized) reads `/api/plugins` and reconciles:
-  for each active plugin with `main` it adds the `styles` link, imports the module from
-  `/api/plugins/{id}/files/{main}`, and calls `activate(ctx)` once per window. A plugin that
-  throws fails alone (`runtime.failure`, shown in Settings). Disabling aborts `ctx.signal`, runs
-  cleanups newest first, and drops its registrations.
+- **Frontend activation.** `PluginHost.sync()` (serialized) reads `/api/plugins` and reconciles
+  without waiting for any activation: a new active plugin with `main` gets a runtime at once and an
+  activation queued behind its earlier activation or cleanup (one queue per plugin, so a slow plugin
+  holds up only itself). The activation adds the `styles` link, imports `/api/plugins/{id}/files/{main}`
+  and calls its `activate(ctx)`. A plugin that throws, or whose module has no callable `activate`,
+  fails alone (`runtime.failure`, shown in Settings). Disabling aborts `ctx.signal` and drops the
+  registrations immediately, then runs cleanups newest first on that queue. Everything on `ctx`
+  is bound to the activation: `ctx.backend` calls, registrations and `ctx.cleanup` from an ended
+  activation reject or throw, and `ctx.ui` widgets are also disposed when the activation ends.
+- **Tool calls in the thread.** A tool call whose name is not a built-in tool (`built-in-tools.ts`,
+  the same list as `plugins/reserved.py`) renders as a collapsed card that expands to its input and
+  result or error, also after the plugin is removed. Built-in tools keep their own rules.
 - **Surfaces.** A **view** renders in the host's viewport at `/plugin/{id}/{view}`; the host draws
   the top bar. An **action** is registered, then **placed**: `sidebar` (under Knowledge graph),
   `graph` (the graph strip), or `top-bar` for chosen session kinds (`teaching`, `practice`) or for
   the plugin's own views. A failing action shows a dismissible banner. **Settings** is a per-plugin
-  page under Settings → Plugins (`?section=plugins&plugin=<id>`): rows, or a `mount`.
+  page under Settings → Plugins (`?section=plugins&plugin=<id>`): rows, or a `mount`. Each mount of a
+  view or settings page gets its own child container; the host logs a cleanup that throws or rejects, also
+  one returned after the page was left.
 - **Served files.** `GET /api/plugins/{id}/files/{path}` serves only the manifest's `main` and
   `styles` and anything under `assets/`, of an active plugin, each segment a plain name. Every request
   re-checks the plugin folder, `dist/`, and each segment for symlinks and that the resolved file is

@@ -32,6 +32,7 @@ export class PluginHost {
 	error = $state<string | null>(null);
 	actionFailure = $state<ActionFailure | null>(null);
 	readonly runtimes = new SvelteMap<string, PluginRuntime>();
+	private readonly queues = new SvelteMap<string, Promise<void>>();
 	private syncing: Promise<void> | undefined;
 	private resyncRequested = false;
 
@@ -53,6 +54,11 @@ export class PluginHost {
 		return run;
 	}
 
+	/** Resolves once every plugin's pending activation and cleanup has finished. */
+	async settled(): Promise<void> {
+		while (this.queues.size) await Promise.all([...this.queues.values()]);
+	}
+
 	private async reconcile(): Promise<void> {
 		if (!this.options.available()) return;
 		try {
@@ -67,29 +73,48 @@ export class PluginHost {
 				.filter((plugin) => plugin.status === 'active' && plugin.main)
 				.map((plugin) => [plugin.id, plugin])
 		);
-		for (const [id, runtime] of [...this.runtimes]) {
-			if (!wanted.has(id)) {
-				this.runtimes.delete(id);
-				await runtime.dispose();
-			}
-		}
+		for (const [id, runtime] of [...this.runtimes]) if (!wanted.has(id)) this.remove(id, runtime);
 		for (const [id, info] of wanted) {
 			const known = this.runtimes.get(id);
 			if (known) known.info = info;
-			else await this.activate(info);
+			else this.start(info);
 		}
 	}
 
-	private async activate(info: PluginInfo): Promise<void> {
+	/** Runs `task` after the plugin's earlier activation or cleanup; the task must not reject. */
+	private enqueue(id: string, task: () => Promise<void>): void {
+		const run = (this.queues.get(id) ?? Promise.resolve()).then(task);
+		this.queues.set(id, run);
+		void run.then(() => {
+			if (this.queues.get(id) === run) this.queues.delete(id);
+		});
+	}
+
+	private start(info: PluginInfo): void {
 		const runtime = new PluginRuntime(info);
 		this.runtimes.set(info.id, runtime);
+		this.enqueue(info.id, () => this.activate(runtime));
+	}
+
+	private remove(id: string, runtime: PluginRuntime): void {
+		this.runtimes.delete(id);
+		runtime.retire();
+		this.enqueue(id, () => runtime.dispose());
+	}
+
+	private async activate(runtime: PluginRuntime): Promise<void> {
+		const { info } = runtime;
+		const live = () => !runtime.controller.signal.aborted;
 		try {
 			if (info.styles) runtime.cleanups.push(this.addStyles(info));
 			const module = await this.options.load(pluginFileUrl(info.id, info.main!));
-			const returned = await module.activate?.(createContext(runtime, this.options.navigation));
+			if (!live()) return;
+			if (typeof module?.activate !== 'function')
+				throw new Error('The plugin module does not export an activate function');
+			const returned = await module.activate(createContext(runtime, this.options.navigation));
 			if (typeof returned === 'function') runtime.cleanups.push(returned);
 		} catch (error) {
-			runtime.failure = messageOf(error);
+			if (live()) runtime.failure = messageOf(error);
 			await runtime.dispose();
 		}
 	}

@@ -32,7 +32,13 @@ export class PluginRuntime {
 
 	constructor(public info: PluginInfo) {}
 
+	/** Throws once the plugin was disabled or restarted, so a late registration cannot outlive its activation. */
+	requireLive(): void {
+		if (this.controller.signal.aborted) throw new Error('Plugin activation is no longer active');
+	}
+
 	registerView(view: ViewRegistration): () => void {
+		this.requireLive();
 		checkId('view', view?.id);
 		if (!view.name?.trim() || typeof view.mount !== 'function') throw new Error('Invalid view');
 		if (this.views.some((item) => item.id === view.id))
@@ -42,6 +48,7 @@ export class PluginRuntime {
 	}
 
 	registerAction(action: ActionRegistration): () => void {
+		this.requireLive();
 		checkId('action', action?.id);
 		if (!action.name?.trim() || typeof action.run !== 'function') throw new Error('Invalid action');
 		if (this.actions.some((item) => item.id === action.id))
@@ -51,6 +58,7 @@ export class PluginRuntime {
 	}
 
 	placeAction(placement: PlacementRegistration): () => void {
+		this.requireLive();
 		checkId('placement', placement?.id);
 		if (!this.actions.some((item) => item.id === placement.actionId))
 			throw new Error(`Register the action before placing it: ${placement.actionId}`);
@@ -66,6 +74,7 @@ export class PluginRuntime {
 	}
 
 	registerSettings(settings: SettingsRegistration): () => void {
+		this.requireLive();
 		if (!settings || !('rows' in settings || typeof settings.mount === 'function'))
 			throw new Error('Invalid settings registration');
 		this.settings = settings;
@@ -75,6 +84,7 @@ export class PluginRuntime {
 	}
 
 	listen<Key, Listener>(map: Map<Key, Set<Listener>>, key: Key, listener: Listener): () => void {
+		this.requireLive();
 		if (typeof listener !== 'function') throw new TypeError('A listener must be a function');
 		const listeners = map.get(key) ?? new SvelteSet<Listener>();
 		listeners.add(listener);
@@ -82,8 +92,8 @@ export class PluginRuntime {
 		return () => listeners.delete(listener);
 	}
 
-	/** Aborts the plugin's signal and runs its cleanups, newest first; one failing cleanup does not stop the rest. */
-	async dispose(): Promise<void> {
+	/** Aborts the plugin's signal and drops everything it registered, at once. */
+	retire(): void {
 		this.controller.abort();
 		this.views = [];
 		this.actions = [];
@@ -92,6 +102,11 @@ export class PluginRuntime {
 		this.notifications.clear();
 		this.resyncs.clear();
 		this.appEvents.clear();
+	}
+
+	/** Retires the plugin and runs its cleanups, newest first; one failing cleanup does not stop the rest. */
+	async dispose(): Promise<void> {
+		this.retire();
 		while (this.cleanups.length) {
 			try {
 				await this.cleanups.pop()!();

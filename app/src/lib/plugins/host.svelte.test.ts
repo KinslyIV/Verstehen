@@ -31,6 +31,11 @@ function newHost() {
 	});
 }
 
+async function syncAndSettle(host: PluginHost) {
+	await host.sync();
+	await host.settled();
+}
+
 beforeEach(() => {
 	vi.clearAllMocks();
 	modules = {};
@@ -50,8 +55,8 @@ test('an_active_plugin_is_activated_once_and_registers_its_view_and_action', asy
 	modules.hello = { activate };
 	installed = [plugin('hello')];
 	const host = newHost();
-	await host.sync();
-	await host.sync();
+	await syncAndSettle(host);
+	await syncAndSettle(host);
 	expect(activate).toHaveBeenCalledOnce();
 	const runtime = host.runtimes.get('hello')!;
 	expect(runtime.views.map((view) => view.id)).toEqual(['page']);
@@ -71,9 +76,9 @@ test('disabling_a_plugin_aborts_its_signal_and_runs_cleanups_newest_first', asyn
 	};
 	installed = [plugin('hello')];
 	const host = newHost();
-	await host.sync();
+	await syncAndSettle(host);
 	installed = [plugin('hello', { enabled: false, status: 'disabled' })];
-	await host.sync();
+	await syncAndSettle(host);
 	expect(signal?.aborted).toBe(true);
 	expect(order).toEqual(['returned', 'registered']);
 	expect(host.runtimes.has('hello')).toBe(false);
@@ -91,7 +96,7 @@ test('a_plugin_that_throws_on_activate_fails_alone_and_the_others_still_run', as
 	};
 	installed = [plugin('broken'), plugin('fine')];
 	const host = newHost();
-	await host.sync();
+	await syncAndSettle(host);
 	const broken = host.runtimes.get('broken')!;
 	expect(broken.failure).toBe('activation blew up');
 	expect(broken.views).toEqual([]);
@@ -107,7 +112,7 @@ test('the_backend_proxy_calls_the_plugin_route_with_the_function_name_and_input'
 		}
 	};
 	installed = [plugin('hello')];
-	await newHost().sync();
+	await syncAndSettle(newHost());
 	expect(callPlugin).toHaveBeenCalledWith('hello', 'total', [1, 2, 3]);
 	expect(result).toEqual({ total: 6 });
 });
@@ -128,7 +133,7 @@ test('messages_reach_only_listeners_of_that_plugin_and_topic_and_resync_fires_af
 	};
 	installed = [plugin('hello'), plugin('other')];
 	const host = newHost();
-	await host.sync();
+	await syncAndSettle(host);
 	host.deliver({
 		type: 'plugin-message',
 		session_id: '',
@@ -163,7 +168,7 @@ test('a_listener_that_throws_does_not_stop_the_others', async () => {
 	};
 	installed = [plugin('hello')];
 	const host = newHost();
-	await host.sync();
+	await syncAndSettle(host);
 	host.deliver({
 		type: 'plugin-message',
 		session_id: '',
@@ -193,7 +198,7 @@ test('registration_refuses_unregistered_actions_duplicates_and_unscoped_top_bar_
 		}
 	};
 	installed = [plugin('hello')];
-	await newHost().sync();
+	await syncAndSettle(newHost());
 	expect(problems).toEqual([
 		'Register the action before placing it: missing',
 		'Duplicate action: a',
@@ -216,7 +221,7 @@ test('a_failing_action_is_reported_by_the_host', async () => {
 	};
 	installed = [plugin('hello', { name: 'Hello' })];
 	const host = newHost();
-	await host.sync();
+	await syncAndSettle(host);
 	const runtime = host.runtimes.get('hello')!;
 	await host.runAction(runtime, runtime.actions[0]!, { placement: 'sidebar', surface: 'sidebar' });
 	expect(host.actionFailure).toEqual({ plugin: 'Hello', action: 'Boom', message: 'nope' });
@@ -228,4 +233,79 @@ test('nothing_loads_where_plugins_are_not_available', async () => {
 	await host.sync();
 	expect(listPlugins).not.toHaveBeenCalled();
 	expect(host.runtimes.size).toBe(0);
+});
+
+test('a_slow_activation_does_not_hold_up_the_list_or_other_plugins', async () => {
+	let finish!: () => void;
+	modules.slow = { activate: () => new Promise<void>((done) => (finish = done)) };
+	modules.fast = {
+		activate: (ctx) => void ctx.registerView({ id: 'v', name: 'V', mount: () => {} })
+	};
+	installed = [plugin('slow'), plugin('fast')];
+	const host = newHost();
+	await host.sync();
+	await vi.waitFor(() => expect(host.runtimes.get('fast')!.views).toHaveLength(1));
+	expect(host.runtimes.has('slow')).toBe(true);
+	finish();
+	await host.settled();
+});
+
+test('disabling_during_activation_aborts_the_signal_at_once_and_a_re_enable_waits_for_its_cleanup', async () => {
+	const order: string[] = [];
+	const signals: AbortSignal[] = [];
+	let finish!: () => void;
+	let activations = 0;
+	modules.hello = {
+		async activate(ctx) {
+			const number = ++activations;
+			signals.push(ctx.signal);
+			order.push(`activate ${number}`);
+			ctx.cleanup(() => void order.push(`cleanup ${number}`));
+			if (number === 1) await new Promise<void>((done) => (finish = done));
+		}
+	};
+	installed = [plugin('hello')];
+	const host = newHost();
+	await host.sync();
+	await vi.waitFor(() => expect(activations).toBe(1));
+	installed = [plugin('hello', { enabled: false, status: 'disabled' })];
+	await host.sync();
+	expect(signals[0]!.aborted).toBe(true);
+	expect(host.runtimes.has('hello')).toBe(false);
+	installed = [plugin('hello')];
+	await host.sync();
+	expect(activations).toBe(1);
+	finish();
+	await host.settled();
+	expect(order).toEqual(['activate 1', 'cleanup 1', 'activate 2']);
+	expect(signals[1]!.aborted).toBe(false);
+});
+
+test('a_module_without_a_callable_activate_is_a_failure_shown_on_the_plugin', async () => {
+	modules.hello = {} as PluginModule;
+	modules.other = { activate: 'nope' } as unknown as PluginModule;
+	installed = [plugin('hello'), plugin('other')];
+	const host = newHost();
+	await syncAndSettle(host);
+	const message = 'The plugin module does not export an activate function';
+	expect(host.runtimes.get('hello')!.failure).toBe(message);
+	expect(host.runtimes.get('other')!.failure).toBe(message);
+});
+
+test('a_backend_call_from_a_disposed_activation_rejects_and_the_new_activation_still_calls', async () => {
+	vi.mocked(callPlugin).mockResolvedValue('ok');
+	const contexts: PluginFrontendContext[] = [];
+	modules.hello = { activate: (ctx) => void contexts.push(ctx) };
+	installed = [plugin('hello')];
+	const host = newHost();
+	await syncAndSettle(host);
+	installed = [];
+	await syncAndSettle(host);
+	installed = [plugin('hello')];
+	await syncAndSettle(host);
+	await expect(contexts[0]!.backend.total!()).rejects.toThrow('no longer active');
+	expect(callPlugin).not.toHaveBeenCalled();
+	await expect(contexts[1]!.backend.total!()).resolves.toBe('ok');
+	expect(callPlugin).toHaveBeenCalledOnce();
+	expect(() => contexts[0]!.cleanup(() => {})).toThrow('no longer active');
 });

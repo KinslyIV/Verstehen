@@ -47,6 +47,51 @@ test('a_view_mounts_into_the_host_viewport_and_leaving_aborts_its_signal_and_cle
 	expect(cleanup).toHaveBeenCalledOnce();
 });
 
+test('a_view_gets_its_own_container_and_a_failing_cleanup_of_any_kind_is_only_logged', async () => {
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const containers: HTMLElement[] = [];
+	const cleanups = [
+		() => {
+			throw new Error('sync cleanup');
+		},
+		() => Promise.reject(new Error('async cleanup'))
+	];
+	runtime.registerView({
+		id: 'page',
+		name: 'Page',
+		mount(container) {
+			containers.push(container);
+			container.textContent = `Body ${containers.length}`;
+			return cleanups[containers.length - 1];
+		}
+	});
+	const first = await render(PluginView, { pluginId: 'hello', viewId: 'page' });
+	await expect.element(first.getByText('Body 1')).toBeVisible();
+	await first.unmount();
+	const second = await render(PluginView, { pluginId: 'hello', viewId: 'page' });
+	await expect.element(second.getByText('Body 2')).toBeVisible();
+	expect(containers[0]).not.toBe(containers[1]);
+	expect(containers[0]!.isConnected).toBe(false);
+	await second.unmount();
+	await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(2));
+	logged.mockRestore();
+});
+
+test('a_cleanup_returned_after_the_view_was_already_left_still_runs', async () => {
+	const cleanup = vi.fn();
+	runtime.registerView({
+		id: 'page',
+		name: 'Page',
+		async mount() {
+			await new Promise((done) => setTimeout(done, 50));
+			return cleanup;
+		}
+	});
+	const screen = await render(PluginView, { pluginId: 'hello', viewId: 'page' });
+	await screen.unmount();
+	await vi.waitFor(() => expect(cleanup).toHaveBeenCalledOnce());
+});
+
 test('a_view_that_throws_shows_its_message_instead_of_breaking_the_page', async () => {
 	runtime.registerView({
 		id: 'page',

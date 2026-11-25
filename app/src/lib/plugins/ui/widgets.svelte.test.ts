@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { page, userEvent } from 'vitest/browser';
-import { pluginUi } from './widgets.svelte.js';
+import { createPluginUi, pluginUi } from './widgets.svelte.js';
 import type { SettingsRow } from '../types.js';
 
 let container: HTMLElement;
@@ -29,6 +29,19 @@ test('a_button_runs_its_handler_updates_its_label_and_is_removed_on_dispose', as
 	button.dispose();
 	button.dispose();
 	expect(container.querySelector('button')).toBeNull();
+});
+
+test('a_widget_is_disposed_when_its_activation_ends_even_though_its_own_signal_lives', async () => {
+	const activation = new AbortController();
+	const ui = createPluginUi(activation.signal);
+	ui.mountButton(container, { label: 'Stay', onClick: () => {} }, options());
+	await expect.element(page.getByRole('button', { name: 'Stay' })).toBeVisible();
+	activation.abort();
+	await vi.waitFor(() => expect(container.querySelector('button')).toBeNull());
+	expect(lifetime.signal.aborted).toBe(false);
+	const late = ui.mountButton(container, { label: 'Late', onClick: () => {} }, options());
+	expect(container.querySelector('button')).toBeNull();
+	late.dispose();
 });
 
 test('an_icon_only_button_keeps_its_label_as_the_accessible_name', async () => {

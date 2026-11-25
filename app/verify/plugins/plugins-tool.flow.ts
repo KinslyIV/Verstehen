@@ -13,6 +13,19 @@ test('plugins-tool', async ({ page, request }) => {
 	await sendLessonMessage(page, 'Let’s start.');
 	await expect(page.getByText('The hello plugin knows that word.')).toBeVisible();
 
+	const card = page.getByTestId('tool-call-card');
+	await expect(card).toHaveCount(1);
+	await expect(card.getByTestId('tool-call-name')).toHaveText('hello_lookup');
+	await expect(card).not.toHaveAttribute('open');
+	await card.locator('summary').click();
+	await expect(card.getByTestId('tool-call-input')).toContainText('"word": "slope"');
+	await expect(card.getByTestId('tool-call-result')).toHaveText('hello knows slope');
+	await card.scrollIntoViewIfNeeded();
+	await page.screenshot({
+		path: test.info().outputPath('plugin-tool-card.png'),
+		animations: 'disabled'
+	});
+
 	const sessionId = new URL(page.url()).pathname.split('/').pop();
 	const detail = await (await request.get(`/api/sessions/${sessionId}`)).json();
 	expect(JSON.stringify(detail.entries)).toContain('hello knows slope');

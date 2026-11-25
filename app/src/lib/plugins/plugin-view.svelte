@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { plugins } from './plugins.svelte.js';
-	import type { Cleanup } from './types.js';
+	import { mountSurface } from './surface.js';
 
 	let { pluginId, viewId }: { pluginId: string; viewId: string } = $props();
 	let container = $state<HTMLElement>();
@@ -15,23 +15,11 @@
 		const current = view;
 		if (!target || !current) return;
 		failure = null;
-		const lifetime = new AbortController();
-		let cleanup: void | Cleanup;
-		void (async () => {
-			try {
-				const returned = await current.mount(target, lifetime.signal);
-				if (lifetime.signal.aborted) await returned?.();
-				else cleanup = returned;
-			} catch (error) {
-				if (!lifetime.signal.aborted)
-					failure = error instanceof Error ? error.message : String(error);
-			}
-		})();
-		return () => {
-			lifetime.abort();
-			void cleanup?.();
-			target.replaceChildren();
-		};
+		return mountSurface(
+			target,
+			(child, signal) => current.mount(child, signal),
+			(message) => (failure = message)
+		);
 	});
 </script>
 
