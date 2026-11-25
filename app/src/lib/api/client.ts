@@ -386,6 +386,13 @@ export const CLAUDE_CODE_INSTALL_URL = 'https://code.claude.com/docs/en/setup';
 export function openExternal(url: string): void {
 	window.open(url, '_blank', 'noopener,noreferrer');
 }
+export const LINK_REFUSED_EVENT = 'verstehen:link-refused';
+/** Calls `refused` with the URL when the desktop shell declines to open a link; returns the unsubscribe. */
+export function onLinkRefused(refused: (url: string) => void): () => void {
+	const listen = (event: Event) => refused((event as CustomEvent<string>).detail);
+	window.addEventListener(LINK_REFUSED_EVENT, listen);
+	return () => window.removeEventListener(LINK_REFUSED_EVENT, listen);
+}
 
 export type DemoBrowser = components['schemas']['DemoBrowser'];
 export type BrowserDownloadProgress = components['schemas']['BrowserDownloadProgress'];

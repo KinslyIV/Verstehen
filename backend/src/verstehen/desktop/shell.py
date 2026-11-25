@@ -1,3 +1,4 @@
+import json
 import os
 import signal
 import sys
@@ -49,6 +50,11 @@ def open_externally(url: QUrl) -> None:
     QDesktopServices.openUrl(url)
 
 
+def refused_link_script(url: str) -> str:
+    """The script that tells the app a link was refused; window.open returns a window either way."""
+    return f"window.dispatchEvent(new CustomEvent('verstehen:link-refused', {{ detail: {json.dumps(url)} }}))"
+
+
 def choose_save_path(parent: QWidget, suggested: Path) -> str:
     """Ask where to save a download; an empty string means the user cancelled."""
     path, _ = QFileDialog.getSaveFileName(parent, "Save file", str(suggested))
@@ -90,6 +96,8 @@ class ShellPage(QWebEnginePage):
             == "open-externally"
         ):
             open_externally(url)
+        else:
+            self.runJavaScript(refused_link_script(url.toString()))
 
 
 class ShellView(QWebEngineView):

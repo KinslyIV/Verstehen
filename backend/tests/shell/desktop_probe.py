@@ -41,6 +41,10 @@ def main() -> int:
         result["has_icon"] = not shell.view.windowIcon().isNull()
         result["url"] = shell.page.url().toString()
         shell.page.runJavaScript(SCRIPT, lambda text: result.update(text=text))
+        shell.page.runJavaScript(
+            "JSON.stringify(window.refusedLinks)",
+            lambda links: result.update(refused_links=json.loads(links)),
+        )
         if shell.devtools is not None:
             shell.view.activateWindow()
             QTest.keyClick(shell.view, Qt.Key.Key_F12)

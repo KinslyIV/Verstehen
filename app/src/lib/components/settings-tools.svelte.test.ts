@@ -4,6 +4,7 @@ import { userEvent } from 'vitest/browser';
 import {
 	getSettings,
 	health,
+	onLinkRefused,
 	saveSettings,
 	getDemoBrowser,
 	browserDownload,
@@ -19,6 +20,7 @@ vi.mock('#lib/api/client.js', () => ({
 	getSettings: vi.fn(),
 	health: vi.fn(),
 	openExternal: vi.fn(),
+	onLinkRefused: vi.fn(),
 	saveSettings: vi.fn(),
 	getDemoBrowser: vi.fn(),
 	browserDownload: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('#lib/api/client.js', () => ({
 }));
 beforeEach(() => {
 	vi.clearAllMocks();
+	vi.mocked(onLinkRefused).mockReturnValue(() => {});
 	const settings: Settings = {
 		worker_request_concurrency: 3,
 		demo_browser: null,
@@ -95,6 +98,17 @@ test('download starts, shows progress, fails, retries, and hides its button when
 	await expect.element(screen.getByText('Chromium installed.')).toBeVisible();
 	await expect.element(button).not.toBeInTheDocument();
 	await expect.element(screen.getByText('/tmp/demo-browser · downloaded')).toBeVisible();
+});
+
+test('a link the desktop shell refuses shows an error that names it', async () => {
+	const screen = await render(SettingsTools);
+	await expect.element(screen.getByText('Get a key').first()).toBeVisible();
+	vi.mocked(onLinkRefused).mock.calls[0][0]('https://brave.com/search/api/');
+	await expect
+		.element(screen.getByRole('alert'))
+		.toHaveTextContent(
+			"Verstehen can't open https://brave.com/search/api/. Open it in your browser."
+		);
 });
 
 test('environment keys are masked and read only, and missing selected keys show the fallback', async () => {

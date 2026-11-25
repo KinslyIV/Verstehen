@@ -118,4 +118,18 @@ test('settings', async ({ page, request }) => {
 	await concurrency.fill('4');
 	await concurrency.press('Enter');
 	await expect.poll(async () => (await saved()).worker_request_concurrency).toBe(4);
+
+	await page.evaluate(() =>
+		window.dispatchEvent(
+			new CustomEvent('verstehen:link-refused', { detail: 'https://brave.com/search/api/' })
+		)
+	);
+	await expect(page.getByRole('alert')).toHaveText(
+		"Verstehen can't open https://brave.com/search/api/. Open it in your browser."
+	);
+	await page.getByRole('alert').scrollIntoViewIfNeeded();
+	await page.screenshot({
+		path: test.info().outputPath('settings-tools-link-refused.png'),
+		animations: 'disabled'
+	});
 });

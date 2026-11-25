@@ -100,6 +100,18 @@ test('external_links_open_a_new_window_without_an_opener_which_the_desktop_shell
 	);
 });
 
+test('the_desktop_shell_refusing_a_link_reaches_the_listener_until_it_unsubscribes', async () => {
+	const { onLinkRefused, LINK_REFUSED_EVENT } = await import('./client');
+	const target = new EventTarget();
+	vi.stubGlobal('window', target);
+	const refused = vi.fn();
+	const stop = onLinkRefused(refused);
+	target.dispatchEvent(new CustomEvent(LINK_REFUSED_EVENT, { detail: 'https://example.com/' }));
+	stop();
+	target.dispatchEvent(new CustomEvent(LINK_REFUSED_EVENT, { detail: 'https://other.example/' }));
+	expect(refused).toHaveBeenCalledExactlyOnceWith('https://example.com/');
+});
+
 test('void_requests_drain_their_response_body_before_resolving', async () => {
 	let controller!: ReadableStreamDefaultController<Uint8Array>;
 	const streamResponse = new Response(

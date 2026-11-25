@@ -117,6 +117,8 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
     spa.mkdir()
     (spa / "index.html").write_text(
         "<body><p id=p>loading</p><script>"
+        "window.refusedLinks = [];"
+        "addEventListener('verstehen:link-refused', (e) => refusedLinks.push(e.detail));"
         "fetch('/api/health').then(r => r.status).then(s => "
         "document.body.innerText = 'health ' + s);"
         "window.open('https://code.claude.com/docs/en/setup', '_blank', 'noopener,noreferrer');"
@@ -138,6 +140,7 @@ def test_the_window_loads_the_app_with_the_token_cookie(tmp_path: Path):
     assert result["text"] == "health 200"
     assert result["has_icon"] is True
     assert result["opened"] == ["https://code.claude.com/docs/en/setup"]
+    assert result["refused_links"] == ["https://example.com/"]
     assert result["url"] == result["origin"] + "/"
     assert result["asked"] == ["first-demo.html", "second-demo.html"]
     assert result["saved"] == {"first-demo.html": "<p>first</p>"}

@@ -5,6 +5,7 @@
 	import {
 		getSettings,
 		openExternal,
+		onLinkRefused,
 		saveSettings,
 		getDemoBrowser,
 		health,
@@ -89,10 +90,14 @@
 			error = null;
 			void refresh().catch(failure);
 		});
+		const stopRefused = onLinkRefused((url) =>
+			failure(new Error(`Verstehen can't open ${url}. Open it in your browser.`))
+		);
 		return () => {
 			disposed = true;
 			clearInterval(timer);
 			stopReconnect();
+			stopRefused();
 		};
 	});
 	async function save(update: (current: Settings) => Settings): Promise<boolean> {
