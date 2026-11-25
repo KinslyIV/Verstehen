@@ -4,7 +4,7 @@ import logging
 import mimetypes
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Literal
@@ -27,7 +27,7 @@ from verstehen.plugins.manifest import (
     check_backend_unlinked,
     validate_package,
 )
-from verstehen.plugins.toolsets import PluginMember, PluginToolset, PluginToolsets
+from verstehen.plugins.toolsets import PluginToolset, PluginToolsets, PluginTurn
 from verstehen.store.plugins import PluginsStateError, PluginsStore
 
 PluginStatus = Literal["disabled", "activating", "active", "invalid", "failed"]
@@ -54,14 +54,6 @@ class PluginInfo(BaseModel):
     status: PluginStatus
     error: str | None = None
     warnings: list[str] = Field(default_factory=list)
-
-
-@dataclass
-class PluginContributions:
-    """What the plugins add to one agent's turn: prompt sections and one toolset for all their tools."""
-
-    instructions: list[str] = field(default_factory=list)
-    toolset: AbstractToolset[None] | None = None
 
 
 @dataclass
@@ -252,14 +244,14 @@ class PluginService:
                         "Plugin %s turn-settled observer failed", plugin.info.id
                     )
 
-    async def contributions(
+    async def toolset_for(
         self, agent: AgentName, session_id: str
-    ) -> PluginContributions:
-        """What running plugins add to `agent`'s turn, in plugin-id order: their prompt sections and
-        one toolset holding their tools. A plugin whose tools fail to build adds nothing and gets a warning.
+    ) -> PluginToolsets | None:
+        """The plugins' instructions and tools for `agent`'s turn as one toolset, in plugin-id order, or
+        None when no running plugin registered anything for it. The turn admits each plugin whole or not at all.
         """
-        result = PluginContributions()
-        members: list[PluginMember] = []
+        turn = PluginTurn(agent, self.set_warnings)
+        members: list[PluginToolset] = []
         for plugin_id in sorted(self.plugins):
             context = self.plugins[plugin_id].context
             chosen = [
@@ -271,15 +263,19 @@ class PluginService:
                 continue
             try:
                 instructions, toolsets = build_contributions(chosen, agent, session_id)
+                member = PluginToolset(
+                    CombinedToolset(toolsets), plugin_id, context, turn, instructions
+                )
             except Exception as error:
-                members.append(PluginMember(plugin_id, problem=failure_text(error)))
-                continue
-            result.instructions.extend(instructions)
-            toolset = PluginToolset(CombinedToolset(toolsets), plugin_id, context)
-            members.append(PluginMember(plugin_id, toolset))
-        if members:
-            result.toolset = PluginToolsets(agent, members, self.set_warnings)
-        return result
+                member = PluginToolset(
+                    CombinedToolset([]),
+                    plugin_id,
+                    context,
+                    turn,
+                    problem=failure_text(error),
+                )
+            members.append(member)
+        return PluginToolsets(members, turn) if members else None
 
     def set_warnings(self, plugin_id: str, warnings: list[str]) -> None:
         plugin = self.plugins.get(plugin_id)

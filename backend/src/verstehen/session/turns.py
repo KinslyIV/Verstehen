@@ -13,7 +13,8 @@ from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
-from verstehen.plugins.service import PluginContributions, PluginService
+from verstehen.plugins.service import PluginService
+from verstehen.plugins.toolsets import PluginToolsets
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
@@ -77,7 +78,7 @@ from verstehen.teaching.practice.state import (
 )
 from verstehen.teaching.practice.tools import build_practitioner, create_practice_gate
 from verstehen.teaching.prober import build_prober
-from verstehen.teaching.prompts import compose_instructions, join_fragments
+from verstehen.teaching.prompts import compose_instructions
 from verstehen.teaching.questions.inputs import (
     DismissInput,
     QuestionAnswer,
@@ -517,16 +518,14 @@ class TurnService:
             turn_id=state.run.id if state.run else None,
         )
         plugins = (
-            await self.plugin_service.contributions(role, state.session_id)
+            await self.plugin_service.toolset_for(role, state.session_id)
             if self.plugin_service
-            else PluginContributions()
+            else None
         )
         state.agent = self.build_role_agent(
             state,
             model,
-            join_fragments([instructions, *plugins.instructions])
-            if plugins.instructions
-            else instructions,
+            instructions,
             settings,
             plugins,
         )
@@ -538,7 +537,7 @@ class TurnService:
         model: UsageModel,
         instructions: str,
         settings: Settings,
-        plugins: PluginContributions,
+        plugins: PluginToolsets | None,
     ) -> QuestionAgent:
         assert state.resolved is not None
         role = state.role
@@ -585,7 +584,7 @@ class TurnService:
                     ),
                     *job_tools(dispatcher, ToolSettings(), prober=True),
                 ),
-                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 extra_capabilities=(updates,),
             )
         elif role == "prober":
@@ -619,7 +618,7 @@ class TurnService:
                     ),
                     *job_tools(dispatcher, settings.tools, prober=True),
                 ),
-                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
@@ -645,7 +644,7 @@ class TurnService:
                     show_image_tool(self.settings_store, self.data_dir),
                     *job_tools(dispatcher, settings.tools),
                 ),
-                extra_toolsets=(plugins.toolset,) if plugins.toolset else (),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )

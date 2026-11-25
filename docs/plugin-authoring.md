@@ -46,8 +46,9 @@ def activate(ctx):  # sync or async; may return a cleanup function
 - `ctx.id`, `ctx.directory` (`dist/`), `ctx.data_directory` (`data/`, created for you).
 - Exposed functions take at most one JSON value and return JSON; they may be `async`.
 - Agent names: `prober`, `teacher`, `practice` (the practitioner). Hooks only add; a tool whose name
-  clashes with any built-in tool or another plugin's tool is refused, and your plugin adds no tools to
-  that turn (Settings → Plugins shows the warning). A tool that raises gives the model an error
+  clashes with any built-in tool or another plugin's tool is refused, and your plugin adds no tools
+  and no instructions to that turn (Settings → Plugins shows the warning). A plugin that is disabled
+  mid-turn stops at once: its tool calls in flight are cancelled. A tool that raises gives the model an error
   message; the turn goes on.
 - Dependencies: the standard library, what Verstehen bundles, and pure-Python code in
   `backend/vendor/`. Nothing is installed for you. An MCP toolset in the packaged app should run an

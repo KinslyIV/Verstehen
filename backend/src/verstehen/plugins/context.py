@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import re
 from collections.abc import Awaitable, Callable, Iterable, Sequence
@@ -80,6 +81,7 @@ class PluginContext:
         self.exposed: dict[str, Exposed] = {}
         self.observers: dict[AppEvent, list[Observer]] = {}
         self.contributions: list[AgentContribution] = []
+        self.operations: set[asyncio.Future[Any]] = set()
         self.closed = False
 
     def cleanup(self, cleanup: Cleanup) -> None:
@@ -184,11 +186,18 @@ class PluginContext:
             raise RuntimeError("Plugin activation is no longer active")
 
     async def close(self) -> list[str]:
-        """Drop every registration and run the cleanups, newest first; returns the failure messages."""
+        """Drop every registration, end the operations in flight, and run the cleanups, newest first;
+        returns the failure messages.
+        """
         self.closed = True
         self.exposed.clear()
         self.observers.clear()
         self.contributions.clear()
+        operations = list(self.operations)
+        for operation in operations:
+            operation.cancel()
+        if operations:
+            await asyncio.wait(operations)
         failures: list[str] = []
         while self.cleanups:
             try:

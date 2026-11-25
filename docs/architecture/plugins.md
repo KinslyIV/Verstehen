@@ -20,10 +20,10 @@ Backend, `backend/src/verstehen/` (`plugins` sits beside `jobs | sidechat | grap
 | `plugins/manifest.py` | `PluginManifest` and `validate_package`: LH's manifest rules, checked without running plugin code; the reason an invalid package gives |
 | `plugins/loader.py` | `load_backend` (import `dist/<backend>/` as `verstehen_plugins.<id>`), `add_vendor`, `forget_backend` |
 | `plugins/context.py` | `PluginContext`: what `activate(ctx)` receives (`expose`, `emit`, `on`, `cleanup`, `register_instructions`, `register_tools`, `register_toolset`) and the registrations it records |
-| `plugins/service.py` | `PluginService`: discovery, enable and disable, activation, `call`, `file`, `turn_settled`, and `contributions` for one agent's turn |
+| `plugins/service.py` | `PluginService`: discovery, enable and disable, activation, `call`, `file`, `turn_settled`, and `toolset_for` one agent's turn |
 | `store/plugins.py` | `PluginsStore`: `<data dir>/plugins-state.json` (atomic write; a corrupt file is refused and never overwritten) |
 | `api/plugins.py` | the `/api/plugins` routes |
-| `session/turns.py` | `build_agent` asks `PluginService.contributions` and adds the result to the prober, teacher, or practitioner |
+| `session/turns.py` | `build_agent` asks `PluginService.toolset_for` and adds the result to the prober, teacher, or practitioner |
 
 Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settings):
 
@@ -68,21 +68,32 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   the frontend's `onNotification(topic, fn)` hears only its own plugin's. `onResync` fires after
   the event stream reconnects. `ctx.on("turn-settled", fn)` observers run after a turn is saved;
   the frontend's `onAppEvent("turn-settled", fn)` follows the same notification.
-- **Agent hooks** (`contributions(agent, session_id)`, called by `build_agent` once per turn for
-  the agent that turn runs). Targets: `prober`, `teacher`, `practice` (the practitioner).
-  Instructions are joined after the built-in prompt. Tool factories receive
+- **Agent hooks** (`PluginService.toolset_for(agent, session_id)`, called by `build_agent` once per
+  turn for the agent that turn runs, `None` when no plugin registered anything for it). Targets:
+  `prober`, `teacher`, `practice` (the practitioner). Tool factories receive
   `PluginTurnContext(session_id, agent)` and return tools; toolsets are added as they are. Each
-  plugin's tools are one `PluginToolset` and all plugins one `PluginToolsets` (`plugins/toolsets.py`),
-  the only toolset the agent gets from plugins. Plugins are visited in id order.
-- **Tool names.** `plugins/reserved.py` lists every built-in tool name for every role, setting and
-  provider; a test builds the real tools and fails if one is missing. When the turn lists its tools,
-  a plugin whose names are reserved or an earlier plugin's, whose factory or listing raises, adds no
-  tools and gets `Added nothing to a <agent> turn: …` in `PluginInfo.warnings`; a clean later turn
-  clears it. Its instructions stay in the prompt.
+  plugin is one `PluginToolset` (a `WrapperToolset`) and all plugins one `PluginToolsets` (a
+  `CombinedToolset`, `plugins/toolsets.py`), the only toolset the agent gets from plugins, in id
+  order. `for_run` and `for_run_step` reach every plugin's toolsets, and the turn lists and calls
+  the ones they resolve. **Instructions** are not part of the prompt text: `PluginToolsets.get_instructions`
+  returns each admitted plugin's `register_instructions` text, and Pydantic AI sends them with the
+  agent's own (the Claude Code transport sends them in its system prompt like any other).
+- **Admission.** As in LearnHarness, a plugin is admitted whole or not at all. At the turn's first
+  tool listing (`PluginToolsets.admit`, shared by every copy of the toolset through a `PluginTurn`)
+  each plugin in id order is listed once; one whose factory raised, whose listing raised, or that has
+  a tool name from `plugins/reserved.py` (every built-in tool name for every role, setting and
+  provider; a test builds the real tools and fails if one is missing) or an earlier admitted
+  plugin's, adds no tools and no instructions to that turn and gets `Added nothing to a <agent> turn:
+  …` in `PluginInfo.warnings`; a clean later turn clears it. Admission and name ownership do not
+  change during the turn: a later listing that fails offers no tools but keeps the plugin admitted.
+- **Fencing.** Each listing and call is an operation of the plugin's `PluginContext`. Disabling
+  cancels the operations in flight and waits for them before running cleanups, so an MCP process is
+  gone when disable returns. A listing or call that begins after the plugin stopped, or whose
+  result arrives after, is dropped: no tools are offered and the call is a failed tool result
+  (`Plugin <id> is no longer running`). A turn never enters a plugin's MCP toolset (the context owns it).
 - **Tool boundary.** A plugin tool that raises is logged on the plugin and returned to the model as a
   failed tool result (`Tool <name> failed: …`, also shown as a plugin warning); the turn goes on.
-  `ModelRetry`, `ToolFailed`, deferral and cancellation pass through. A call from a plugin that was
-  disabled or restarted since the turn began is refused with a tool failure.
+  `ModelRetry`, `ToolFailed`, deferral and cancellation pass through.
 - **Frontend activation.** `PluginHost.sync()` (serialized) reads `/api/plugins` and reconciles
   without waiting for any activation: a new active plugin with `main` gets a runtime at once and an
   activation queued behind its earlier activation or cleanup (one queue per plugin, so a slow plugin
@@ -130,7 +141,7 @@ after its plugin is removed.
 
 ## Collaborators
 
-`session/turns.py` is the only caller of `contributions`; `app.py` builds `PluginService` before
+`session/turns.py` is the only caller of `toolset_for`; `app.py` builds `PluginService` before
 `TurnService` and passes it `publish` callbacks for `plugins-changed` and `plugin-message`, as
 `jobs` gets `wake_session`.
 

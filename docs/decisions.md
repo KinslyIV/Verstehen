@@ -20,10 +20,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   because Pydantic AI 2.70 no longer has `MCPServerStdio`. Consequence: PyInstaller collects
   `fastmcp` and `mcp` explicitly, and in the packaged app a stdio server must be an external
   command, not a Python script (`sys.executable` is the `verstehen` binary). `make app` was not run.
-- **A plugin whose tool names clash adds no tools but keeps its instructions.** Toolset tool names
-  are known only when the turn lists its tools, after the prompt is composed. Alternative: list them
-  before building the agent (a second pass over MCP servers); consequence: the instructions of a
-  plugin whose tools were dropped may mention tools the model does not have.
 - **Plugins load only in the desktop app, or with `VERSTEHEN_PLUGINS=1` in browser-only mode** (the
   verify flows set it). A plain local API (`make dev`) and server mode load none: its loopback
   access check has no token, and plugin code is trusted. Alternative: always on locally.

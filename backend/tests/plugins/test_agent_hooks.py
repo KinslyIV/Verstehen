@@ -16,14 +16,15 @@ from pydantic_ai.exceptions import ToolFailed
 from pydantic_ai.messages import ModelMessage
 from pydantic_ai.models.function import AgentInfo, DeltaToolCall, FunctionModel
 from pydantic_ai.models.test import TestModel
-from pydantic_ai.toolsets import CombinedToolset
+from pydantic_ai.toolsets import AbstractToolset, CombinedToolset, FunctionToolset
 from pydantic_ai.usage import RunUsage
 
 from verstehen.app import create_app
 from verstehen.config import Settings
 from verstehen.plugins.context import PluginContext
 from verstehen.plugins.reserved import RESERVED_TOOL_NAMES
-from verstehen.plugins.service import PluginContributions, PluginInfo, PluginService
+from verstehen.plugins.service import PluginInfo, PluginService
+from verstehen.plugins.toolsets import PluginToolsets
 from verstehen.providers.claude_code import _request
 from verstehen.store.plugins import PluginsStore
 from verstehen.store.settings import ToolSettings
@@ -67,28 +68,34 @@ def run_context() -> RunContext[None]:
     return RunContext(deps=None, model=TestModel(), usage=RunUsage())
 
 
-async def offered(plugins: PluginContributions) -> list[str]:
-    assert plugins.toolset is not None
-    return sorted(await plugins.toolset.get_tools(run_context()))
+async def offered(plugins: PluginToolsets | None) -> list[str]:
+    assert plugins is not None
+    return sorted(await plugins.get_tools(run_context()))
+
+
+async def instructions_of(plugins: PluginToolsets | None) -> list[str]:
+    assert plugins is not None
+    parts = await plugins.get_instructions(run_context()) or []
+    return [part.content for part in parts]
 
 
 def test_instructions_and_tools_reach_only_the_chosen_agents(tmp_path: Path):
     async def scenario():
         service = service_with(tmp_path, "agent-hooks")
         await enabled(service, "agent-hooks")
-        prober = await service.contributions("prober", "s1")
-        assert prober.instructions == ["Plugin rule: greet by name."]
+        prober = await service.toolset_for("prober", "s1")
+        assert await instructions_of(prober) == ["Plugin rule: greet by name."]
         assert await offered(prober) == ["explode", "lookup"]
-        teacher = await service.contributions("teacher", "s1")
-        assert teacher.instructions == ["Plugin rule: greet by name."]
+        teacher = await service.toolset_for("teacher", "s1")
+        assert await instructions_of(teacher) == ["Plugin rule: greet by name."]
         assert await offered(teacher) == []
-        assert await service.contributions("practice", "s1") == PluginContributions()
+        assert await service.toolset_for("practice", "s1") is None
         await service.close()
 
     asyncio.run(scenario())
 
 
-def test_a_plugin_tool_is_offered_called_and_its_instructions_are_in_the_prompt(
+def test_a_plugin_tool_is_offered_called_and_its_instructions_reach_the_model(
     tmp_path: Path,
 ):
     seen: list[tuple[str, set[str]]] = []
@@ -107,12 +114,12 @@ def test_a_plugin_tool_is_offered_called_and_its_instructions_are_in_the_prompt(
     async def scenario():
         service = service_with(tmp_path, "agent-hooks")
         await enabled(service, "agent-hooks")
-        plugins = await service.contributions("prober", "s1")
-        assert plugins.toolset is not None
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
         agent = build_prober(
             FunctionModel(stream_function=respond),
-            "Built-in prompt.\n\n---\n\n" + plugins.instructions[0],
-            extra_toolsets=(plugins.toolset,),
+            "Built-in prompt.",
+            extra_toolsets=(plugins,),
         )
         result = await agent.run("hi")
         assert result.output == "done"
@@ -126,6 +133,7 @@ def test_a_plugin_tool_is_offered_called_and_its_instructions_are_in_the_prompt(
         await service.close()
 
     asyncio.run(scenario())
+    assert "Built-in prompt." in seen[0][0]
     assert "Plugin rule: greet by name." in seen[0][0]
     assert "lookup" in seen[0][1]
 
@@ -147,12 +155,12 @@ def test_a_tool_that_raises_gives_the_model_an_error_and_the_turn_continues(
     async def scenario():
         service = service_with(tmp_path, "agent-hooks")
         await enabled(service, "agent-hooks")
-        plugins = await service.contributions("prober", "s1")
-        assert plugins.toolset is not None
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
         agent = build_prober(
             FunctionModel(stream_function=respond),
             "",
-            extra_toolsets=(plugins.toolset,),
+            extra_toolsets=(plugins,),
         )
         result = await agent.run("hi")
         assert result.output == "recovered"
@@ -186,13 +194,11 @@ def test_a_tool_cancelled_mid_call_is_not_turned_into_an_error(tmp_path: Path):
             return "never"
 
         context.register_tools(["practice"], lambda turn: [wait_forever])
-        plugins = await service.contributions("practice", "s1")
-        assert plugins.toolset is not None
+        plugins = await service.toolset_for("practice", "s1")
+        assert plugins is not None
         run = run_context()
-        tool = (await plugins.toolset.get_tools(run))["wait_forever"]
-        call = asyncio.create_task(
-            plugins.toolset.call_tool("wait_forever", {}, run, tool)
-        )
+        tool = (await plugins.get_tools(run))["wait_forever"]
+        call = asyncio.create_task(plugins.call_tool("wait_forever", {}, run, tool))
         await asyncio.sleep(0.05)
         call.cancel()
         with pytest.raises(asyncio.CancelledError):
@@ -207,25 +213,21 @@ def test_a_tool_kept_by_a_stopped_plugin_refuses_instead_of_running(tmp_path: Pa
     async def scenario():
         service = service_with(tmp_path, "agent-hooks")
         await enabled(service, "agent-hooks")
-        plugins = await service.contributions("prober", "s1")
-        assert plugins.toolset is not None
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
         run = run_context()
-        tools = await plugins.toolset.get_tools(run)
+        tools = await plugins.get_tools(run)
         await service.set_enabled("agent-hooks", False)
         with pytest.raises(ToolFailed, match="no longer running"):
-            await plugins.toolset.call_tool(
-                "lookup", {"word": "x"}, run, tools["lookup"]
-            )
+            await plugins.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
         await service.set_enabled("agent-hooks", True)
         with pytest.raises(ToolFailed, match="no longer running"):
-            await plugins.toolset.call_tool(
-                "lookup", {"word": "x"}, run, tools["lookup"]
-            )
-        fresh = await service.contributions("prober", "s1")
-        assert fresh.toolset is not None
-        tools = await fresh.toolset.get_tools(run)
+            await plugins.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
+        fresh = await service.toolset_for("prober", "s1")
+        assert fresh is not None
+        tools = await fresh.get_tools(run)
         assert (
-            await fresh.toolset.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
+            await fresh.call_tool("lookup", {"word": "x"}, run, tools["lookup"])
             == "prober knows x"
         )
         await service.close()
@@ -233,16 +235,15 @@ def test_a_tool_kept_by_a_stopped_plugin_refuses_instead_of_running(tmp_path: Pa
     asyncio.run(scenario())
 
 
-def test_a_tool_clashing_with_a_built_in_name_is_dropped_with_a_warning(tmp_path: Path):
+def test_a_plugin_with_a_clashing_tool_adds_neither_tools_nor_instructions(
+    tmp_path: Path,
+):
     async def scenario():
         service = service_with(tmp_path, "agent-hooks", "clashing")
         await enabled(service, "agent-hooks", "clashing")
-        teacher = await service.contributions("teacher", "s1")
-        assert teacher.instructions == [
-            "Plugin rule: greet by name.",
-            "Plugin rule: shadowed.",
-        ]
+        teacher = await service.toolset_for("teacher", "s1")
         assert await offered(teacher) == []
+        assert await instructions_of(teacher) == ["Plugin rule: greet by name."]
         assert warnings_of(service, "clashing") == [
             "Added nothing to a teacher turn: tool name already in use: quiz"
         ]
@@ -266,7 +267,7 @@ def test_a_built_in_tool_name_is_reserved_even_when_this_agent_does_not_offer_it
         assert context is not None
         context.contributions.clear()
         context.register_tools(["prober"], lambda turn: [Tool(shadow, name=name)])
-        prober = await service.contributions("prober", "s1")
+        prober = await service.toolset_for("prober", "s1")
         assert await offered(prober) == []
         assert warnings_of(service, "agent-hooks") == [
             f"Added nothing to a prober turn: tool name already in use: {name}"
@@ -333,7 +334,7 @@ def test_a_toolset_tool_clashing_with_an_earlier_plugin_is_dropped_with_a_warnin
         context = service.plugins["agent-hooks"].context
         assert context is not None
         context.register_tools(["prober"], lambda turn: [shout])
-        prober = await service.contributions("prober", "s1")
+        prober = await service.toolset_for("prober", "s1")
         assert await offered(prober) == ["explode", "lookup", "shout"]
         assert warnings_of(service, "mcp-tools") == [
             "Added nothing to a prober turn: tool name already in use: shout"
@@ -347,15 +348,14 @@ def test_a_later_clean_turn_clears_the_warning(tmp_path: Path):
     async def scenario():
         service = service_with(tmp_path, "clashing")
         await enabled(service, "clashing")
-        await offered(await service.contributions("teacher", "s1"))
+        await offered(await service.toolset_for("teacher", "s1"))
         assert warnings_of(service, "clashing")
         context = service.plugins["clashing"].context
         assert context is not None
         context.contributions.clear()
         context.register_instructions(["teacher"], "Now harmless.")
-        clean = await service.contributions("teacher", "s1")
-        assert clean.instructions == ["Now harmless."]
-        await offered(clean)
+        clean = await service.toolset_for("teacher", "s1")
+        assert await instructions_of(clean) == ["Now harmless."]
         assert warnings_of(service, "clashing") == []
         await service.close()
 
@@ -373,8 +373,8 @@ def test_a_tool_factory_that_raises_adds_nothing(tmp_path: Path):
             raise RuntimeError("no tools today")
 
         context.register_tools(["prober"], broken)
-        prober = await service.contributions("prober", "s1")
-        assert prober.instructions == []
+        prober = await service.toolset_for("prober", "s1")
+        assert await instructions_of(prober) == []
         assert await offered(prober) == []
         assert warnings_of(service, "agent-hooks") == [
             "Added nothing to a prober turn: no tools today"
@@ -411,8 +411,8 @@ def test_an_mcp_toolset_runs_while_the_plugin_is_enabled_and_its_tool_is_called(
     async def scenario():
         service = service_with(tmp_path, "mcp-tools")
         await enabled(service, "mcp-tools")
-        plugins = await service.contributions("prober", "s1")
-        assert plugins.toolset is not None
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
         context = service.plugins["mcp-tools"].context
         assert context is not None
         toolset = context.contributions[0].toolset
@@ -420,7 +420,7 @@ def test_an_mcp_toolset_runs_while_the_plugin_is_enabled_and_its_tool_is_called(
         agent = build_prober(
             FunctionModel(stream_function=respond),
             "",
-            extra_toolsets=(plugins.toolset,),
+            extra_toolsets=(plugins,),
         )
         result = await agent.run("hi")
         returned = [
@@ -457,9 +457,9 @@ def test_the_claude_code_transport_receives_a_toolset_tool(tmp_path: Path):
     async def scenario():
         service = service_with(tmp_path, "mcp-tools")
         await enabled(service, "mcp-tools")
-        plugins = await service.contributions("prober", "s1")
-        assert plugins.toolset is not None
-        definitions = await plugins.toolset.get_tools(run_context())
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        definitions = await plugins.get_tools(run_context())
         await service.close()
         return [tool.tool_def for tool in definitions.values()]
 
@@ -478,6 +478,293 @@ def test_the_claude_code_transport_receives_a_toolset_tool(tmp_path: Path):
     assert [tool.name for tool in manifest] == ["shout"]
     assert names == {"mcp__pydantic_ai__shout": "shout"}
     assert prepared["tools"][0]["name"] == "mcp__pydantic_ai__shout"  # pyrefly: ignore
+
+
+def shadow_tool() -> str:
+    return "shadowed"
+
+
+def harmless() -> str:
+    return "harmless"
+
+
+def test_a_plugin_clashing_with_a_built_in_tool_adds_nothing_to_the_model_request(
+    tmp_path: Path,
+):
+    seen: list[tuple[str, set[str]]] = []
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        seen.append(
+            (info.instructions or "", {tool.name for tool in info.function_tools})
+        )
+        yield "done"
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks", "clashing")
+        await enabled(service, "agent-hooks", "clashing")
+        context = service.plugins["clashing"].context
+        assert context is not None
+        context.contributions.clear()
+        context.register_instructions(["prober"], "Plugin rule: shadowed.")
+        context.register_tools(
+            ["prober"], lambda turn: [Tool(shadow_tool, name="quiz"), harmless]
+        )
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        agent = build_prober(
+            FunctionModel(stream_function=respond),
+            "Built-in prompt.",
+            extra_toolsets=(plugins,),
+        )
+        await agent.run("hi")
+        assert warnings_of(service, "clashing") == [
+            "Added nothing to a prober turn: tool name already in use: quiz"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+    instructions, tools = seen[0]
+    assert "Plugin rule: greet by name." in instructions
+    assert "shadowed" not in instructions
+    assert "lookup" in tools and "harmless" not in tools
+
+
+def test_an_mcp_toolset_clashing_with_an_earlier_plugin_adds_nothing_to_the_model_request(
+    tmp_path: Path,
+):
+    seen: list[str] = []
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        if any(part.part_kind == "tool-return" for m in messages for part in m.parts):
+            yield "done"
+        else:
+            seen.append(info.instructions or "")
+            yield {0: DeltaToolCall(name="shout", json_args='{"text": "quiet"}')}
+
+    def shout(text: str) -> str:
+        return text
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks", "mcp-tools")
+        await enabled(service, "agent-hooks", "mcp-tools")
+        hooks = service.plugins["agent-hooks"].context
+        mcp = service.plugins["mcp-tools"].context
+        assert hooks is not None and mcp is not None
+        hooks.register_tools(["prober"], lambda turn: [shout])
+        mcp.register_instructions(["prober"], "Plugin rule: mcp.")
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        agent = build_prober(
+            FunctionModel(stream_function=respond),
+            "Built-in prompt.",
+            extra_toolsets=(plugins,),
+        )
+        result = await agent.run("hi")
+        await service.close()
+        return result
+
+    result = asyncio.run(scenario())
+    returned = [
+        part.content
+        for message in result.all_messages()
+        for part in message.parts
+        if part.part_kind == "tool-return"
+    ]
+    assert returned == ["quiet"]
+    assert "Plugin rule: mcp." not in seen[0]
+    assert "Plugin rule: greet by name." in seen[0]
+
+
+class FlakyToolset(FunctionToolset[None]):
+    """Lists its tools once, then fails."""
+
+    async def get_tools(self, ctx: RunContext[None]):
+        self.listings = getattr(self, "listings", 0) + 1
+        if self.listings > 1:
+            raise RuntimeError("gone")
+        return await super().get_tools(ctx)
+
+
+def test_a_plugin_admitted_at_the_first_listing_keeps_its_instructions_for_the_turn(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        context.register_instructions(["prober"], "Stays.")
+        context.register_toolset(["prober"], FlakyToolset([harmless]))
+        plugins = await service.toolset_for("prober", "s1")
+        assert await offered(plugins) == ["harmless"]
+        assert await offered(plugins) == []
+        assert await instructions_of(plugins) == ["Stays."]
+        assert warnings_of(service, "agent-hooks") == ["gone"]
+        fresh = await service.toolset_for("prober", "s1")
+        assert await offered(fresh) == []
+        assert await instructions_of(fresh) == []
+        assert warnings_of(service, "agent-hooks") == [
+            "Added nothing to a prober turn: gone"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_turn_listing_after_the_plugin_was_disabled_offers_nothing_and_does_not_reconnect(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "mcp-tools")
+        await enabled(service, "mcp-tools")
+        plugins = await service.toolset_for("prober", "s1")
+        context = service.plugins["mcp-tools"].context
+        assert plugins is not None and context is not None
+        toolset = context.contributions[0].toolset
+        await service.set_enabled("mcp-tools", False)
+        assert await offered(plugins) == []
+        assert await instructions_of(plugins) == []
+        assert not toolset.client.is_connected()  # pyrefly: ignore
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+class SlowListing(AbstractToolset[None]):
+    """A toolset whose listing never finishes; records that it was cancelled."""
+
+    def __init__(self):
+        self.started = asyncio.Event()
+        self.cancelled = False
+
+    @property
+    def id(self) -> str | None:
+        return None
+
+    async def get_tools(self, ctx: RunContext[None]):
+        self.started.set()
+        try:
+            await asyncio.sleep(3600)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+        return {}
+
+    async def call_tool(self, name, tool_args, ctx, tool):
+        raise NotImplementedError
+
+
+def test_disabling_a_plugin_ends_its_listing_in_flight_before_it_returns(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        slow = SlowListing()
+        context.register_toolset(["prober"], slow)
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        listing = asyncio.create_task(plugins.get_tools(run_context()))
+        await slow.started.wait()
+        await service.set_enabled("agent-hooks", False)
+        assert slow.cancelled and not context.operations
+        assert await listing == {}
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_call_in_flight_when_the_plugin_is_disabled_is_cancelled_and_refused(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        ended: list[str] = []
+
+        async def wait_forever() -> str:
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                ended.append("ended")
+            return "late"
+
+        context.register_tools(["practice"], lambda turn: [wait_forever])
+        plugins = await service.toolset_for("practice", "s1")
+        assert plugins is not None
+        run = run_context()
+        tool = (await plugins.get_tools(run))["wait_forever"]
+        call = asyncio.create_task(plugins.call_tool("wait_forever", {}, run, tool))
+        await asyncio.sleep(0.05)
+        await service.set_enabled("agent-hooks", False)
+        assert ended == ["ended"] and not context.operations
+        with pytest.raises(ToolFailed, match="no longer running"):
+            await call
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+class PerRun(AbstractToolset[None]):
+    """Offers nothing itself; the toolset it resolves for a run offers the tool."""
+
+    @property
+    def id(self) -> str | None:
+        return None
+
+    async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+        return FunctionToolset([harmless])
+
+    async def get_tools(self, ctx: RunContext[None]):
+        return {}
+
+    async def call_tool(self, name, tool_args, ctx, tool):
+        raise AssertionError("called the unresolved toolset")
+
+
+def test_a_run_lists_and_calls_the_toolsets_a_plugin_resolved_for_it(tmp_path: Path):
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        if any(part.part_kind == "tool-return" for m in messages for part in m.parts):
+            yield "done"
+        else:
+            yield {0: DeltaToolCall(name="harmless", json_args="{}")}
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        context.register_toolset(["prober"], PerRun())
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        agent = build_prober(
+            FunctionModel(stream_function=respond), "", extra_toolsets=(plugins,)
+        )
+        result = await agent.run("hi")
+        await service.close()
+        return result
+
+    result = asyncio.run(scenario())
+    returned = [
+        part.content
+        for message in result.all_messages()
+        for part in message.parts
+        if part.part_kind == "tool-return"
+    ]
+    assert returned == ["harmless"]
 
 
 @contextmanager

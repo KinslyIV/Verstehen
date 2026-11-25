@@ -9,6 +9,8 @@ from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, StreamEvent
 from fastapi.testclient import TestClient
 from pydantic_ai import Agent
 from pydantic_ai.exceptions import UserError
+from pydantic_ai.messages import InstructionPart
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.app import create_app
 from verstehen.config import Settings
@@ -293,6 +295,53 @@ def test_requests_use_our_prompt_lockdown_and_result_usage(
     assert options.extra_args["no-session-persistence"] is None
     assert options.cli_path == str(tmp_path / "claude")
     assert options.effort == level
+
+
+def test_a_toolsets_instructions_reach_the_claude_code_system_prompt(
+    tmp_path: Path, monkeypatch
+):
+    captured = []
+
+    class Advised(AbstractToolset[None]):
+        @property
+        def id(self) -> str | None:
+            return None
+
+        async def get_tools(self, ctx):
+            return {}
+
+        async def call_tool(self, name, tool_args, ctx, tool):
+            raise NotImplementedError
+
+        async def get_instructions(self, ctx):
+            return [InstructionPart("Plugin rule: from a toolset.")]
+
+    async def info(options):
+        return {"account": {"apiProvider": "firstParty", "subscriptionType": "pro"}}
+
+    async def query(prompt, options):
+        captured.append(options)
+        async for _ in prompt:
+            pass
+        for event in sdk_events():
+            yield event
+
+    monkeypatch.setattr(_transport, "inspect_cli", info)
+    monkeypatch.setattr(_transport, "_query", query)
+
+    async def run():
+        options = lockdown_options(tmp_path / "claude", str(tmp_path), "low")
+        agent = Agent(
+            ClaudeCodeModel("haiku", sdk_options=options),
+            deps_type=type(None),
+            instructions="Built-in prompt.",
+            toolsets=[Advised()],
+        )
+        await agent.run("Hello", model_settings={"thinking": "low"})
+
+    asyncio.run(run())
+    prompt = captured[0].system_prompt
+    assert "Built-in prompt." in prompt and "Plugin rule: from a toolset." in prompt
 
 
 def test_vendor_rejects_conflicting_sdk_prompt(tmp_path: Path):
