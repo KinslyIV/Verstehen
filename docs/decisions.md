@@ -71,6 +71,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
   return 200, `/api/health` without the cookie 403) instead of adding a token hook to the app;
   it ignores zombie `QtWebEngineProcess` children the build container's PID 1 never reaps, and
   sets `--no-sandbox --disable-gpu` only for itself.
+- **The desktop package ships only the Qt it loads, in English and German.** `verstehen.spec`
+  drops Qt libraries nothing links to, `qml/`, the QML debugger, and other languages' Qt and
+  Chromium translations: 277 → 219 MB compressed, 696 → 527 MB installed. Chromium's own texts
+  (such as the spell-check menu) fall back to English in other languages. The smoke test refuses
+  a build where a shipped library links to a dropped one; a library loaded only by name at
+  runtime would show up only when the app runs.
 - **PKGBUILD `depends` is a superset** of the Qt/Chromium runtime libraries (`ldd` found only
   optional plugins missing); trimming waits for the laptop install.
 - **The `desktop` extra is `PySide6-Essentials` + `PySide6-WebEngine`** (6.12 split WebEngine into
