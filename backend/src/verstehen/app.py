@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from pydantic import JsonValue
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
@@ -21,6 +22,7 @@ from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
+from verstehen.api.plugins import router as plugins_router
 from verstehen.api.prompts import router as prompts_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.server_setup import router as server_setup_router
@@ -361,18 +363,42 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
             else:
                 database.on_sync_write = sync_service.notify_local_change
                 sync_service.start()
+
+            def plugins_changed() -> None:
+                notifications.publish(Notification(type="plugins-changed"))
+
+            def plugin_message(plugin_id: str, topic: str, data: JsonValue) -> None:
+                notifications.publish(
+                    Notification(
+                        type="plugin-message",
+                        plugin_id=plugin_id,
+                        topic=topic,
+                        data=data,
+                    )
+                )
+
             plugin_service = PluginService(
                 PluginsStore(settings.data_dir),
                 settings.data_dir / "plugins",
                 importlib.metadata.version("verstehen"),
-                available=not settings.server,
+                not settings.server,
+                plugins_changed,
+                plugin_message,
             )
             app.state.plugin_service = plugin_service
+
+            async def watch_settled_turns() -> None:
+                async for event in notifications.subscribe():
+                    if event and event.type == "turn-settled" and event.session_id:
+                        await plugin_service.turn_settled(event.session_id)
+
             turn_service.delivery_service.start_watching()
+            settled_watcher = asyncio.create_task(watch_settled_turns())
             try:
                 await plugin_service.discover()
                 yield
             finally:
+                settled_watcher.cancel()
                 await plugin_service.close()
                 await server_oauth_service.close()
                 await server_install_service.close()
@@ -467,6 +493,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
     app.include_router(jobs_router)
     app.include_router(side_chats_router)
     app.include_router(prompts_router)
+    app.include_router(plugins_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

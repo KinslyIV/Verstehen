@@ -1,10 +1,14 @@
 import inspect
+import logging
+import mimetypes
+import re
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from types import ModuleType
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 
 from verstehen.plugins.context import PluginContext, failure_text
 from verstehen.plugins.loader import add_vendor, forget_backend, load_backend
@@ -12,10 +16,15 @@ from verstehen.plugins.manifest import PluginInvalid, PluginManifest, validate_p
 from verstehen.store.plugins import PluginsStateError, PluginsStore
 
 PluginStatus = Literal["disabled", "active", "invalid", "failed"]
+SEGMENT = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
+JSON = TypeAdapter(JsonValue)
+logger = logging.getLogger(__name__)
 
 
-class UnknownPlugin(Exception):
-    """No plugin with this id is installed."""
+@dataclass
+class PluginRefused:
+    status: int
+    error: str
 
 
 class PluginInfo(BaseModel):
@@ -24,6 +33,8 @@ class PluginInfo(BaseModel):
     version: str | None = None
     description: str | None = None
     author: str | None = None
+    main: str | None = None
+    styles: str | None = None
     enabled: bool
     status: PluginStatus
     error: str | None = None
@@ -52,11 +63,15 @@ class PluginService:
         plugins_directory: Path,
         app_version: str,
         available: bool,
+        plugins_changed: Callable[[], None],
+        plugin_message: Callable[[str, str, JsonValue], None],
     ):
         self.plugins_store = plugins_store
         self.plugins_directory = plugins_directory
         self.app_version = app_version
         self.available = available
+        self.plugins_changed = plugins_changed
+        self.plugin_message = plugin_message
         self.plugins: dict[str, InstalledPlugin] = {}
         self.state_error: str | None = None
 
@@ -94,20 +109,92 @@ class PluginService:
             self.plugins[plugin_id] = plugin
             if plugin.info.enabled and plugin.manifest:
                 await self.activate(plugin)
+        self.plugins_changed()
         return self.installed()
 
-    async def set_enabled(self, plugin_id: str, enabled: bool) -> PluginInfo:
+    async def set_enabled(
+        self, plugin_id: str, enabled: bool
+    ) -> PluginInfo | PluginRefused:
         """Save the choice, then start or stop the plugin; an invalid package only records the choice."""
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
-            raise UnknownPlugin(plugin_id)
-        self.plugins_store.set_enabled(plugin_id, enabled)
+            return unknown_plugin(plugin_id)
+        try:
+            self.plugins_store.set_enabled(plugin_id, enabled)
+        except PluginsStateError as error:
+            return PluginRefused(500, str(error))
         plugin.info.enabled = enabled
         if not enabled:
             await self.deactivate(plugin)
         elif plugin.manifest and plugin.context is None:
             await self.activate(plugin)
+        self.plugins_changed()
         return plugin.info
+
+    async def call(
+        self, plugin_id: str, name: str, value: JsonValue
+    ) -> JsonValue | PluginRefused:
+        """Run the function the plugin exposed as `name`; its failure comes back as a 500 refusal."""
+        plugin = self.plugins.get(plugin_id)
+        if plugin is None:
+            return unknown_plugin(plugin_id)
+        if plugin.context is None:
+            return PluginRefused(409, f"Plugin {plugin_id} is not active")
+        exposed = plugin.context.exposed.get(name)
+        if exposed is None:
+            return PluginRefused(404, f"Unknown plugin function: {name}")
+        try:
+            result = (
+                exposed.function(value) if exposed.takes_input else exposed.function()
+            )
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception as error:
+            logger.exception("Plugin %s function %s failed", plugin_id, name)
+            return PluginRefused(500, failure_text(error))
+        try:
+            return JSON.validate_python(result)
+        except ValidationError:
+            return PluginRefused(422, f"Plugin function {name} did not return JSON")
+
+    def file(self, plugin_id: str, path: str) -> tuple[Path, str] | PluginRefused:
+        """Resolve a public file of an active plugin: its `main`, `styles`, or anything under `assets/`."""
+        plugin = self.plugins.get(plugin_id)
+        if plugin is None:
+            return unknown_plugin(plugin_id)
+        manifest = plugin.manifest
+        if manifest is None or plugin.info.status != "active":
+            return PluginRefused(409, f"Plugin {plugin_id} is not active")
+        parts = path.split("/")
+        public = path in (manifest.main, manifest.styles) or (
+            len(parts) > 1 and parts[0] == "assets"
+        )
+        if not public or not all(SEGMENT.match(part) for part in parts):
+            return PluginRefused(404, "Plugin file is not public")
+        current = plugin.root / "dist"
+        for part in parts:
+            current = current / part
+            if current.is_symlink():
+                return PluginRefused(404, "Plugin file is not public")
+        if not current.is_file():
+            return PluginRefused(404, "Unknown plugin file")
+        return current, content_type(current)
+
+    async def turn_settled(self, session_id: str) -> None:
+        """Tell every running plugin's `turn-settled` observers; their failures are only logged."""
+        for plugin in list(self.plugins.values()):
+            context = plugin.context
+            for observer in list(
+                context.observers.get("turn-settled", []) if context else []
+            ):
+                try:
+                    result = observer(session_id)
+                    if inspect.isawaitable(result):
+                        await result
+                except Exception:
+                    logger.exception(
+                        "Plugin %s turn-settled observer failed", plugin.info.id
+                    )
 
     async def close(self) -> None:
         """Stop every running plugin and forget the imported code."""
@@ -134,6 +221,8 @@ class PluginService:
             version=manifest.version,
             description=manifest.description,
             author=manifest.author,
+            main=manifest.main,
+            styles=manifest.styles,
             enabled=enabled,
             status="disabled",
         )
@@ -144,7 +233,9 @@ class PluginService:
         manifest = plugin.manifest
         assert manifest is not None
         dist = plugin.root / "dist"
-        context = PluginContext(manifest.id, dist, plugin.root / "data")
+        context = PluginContext(
+            manifest.id, dist, plugin.root / "data", self.plugin_message
+        )
         try:
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
@@ -179,3 +270,14 @@ class PluginService:
         plugin.info.error = (
             "; ".join(f"Cleanup: {text}" for text in failures) if failures else None
         )
+
+
+def unknown_plugin(plugin_id: str) -> PluginRefused:
+    return PluginRefused(404, f"Unknown plugin: {plugin_id}")
+
+
+def content_type(path: Path) -> str:
+    if path.suffix == ".js":
+        return "text/javascript; charset=utf-8"
+    guessed = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return f"{guessed}; charset=utf-8" if guessed.startswith("text/") else guessed

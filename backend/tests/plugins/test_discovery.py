@@ -30,7 +30,12 @@ def install(data_dir: Path, folder: str, manifest: dict | None = None) -> Path:
 
 def service_for(data_dir: Path, available: bool = True) -> PluginService:
     return PluginService(
-        PluginsStore(data_dir), data_dir / "plugins", "0.2.0", available
+        PluginsStore(data_dir),
+        data_dir / "plugins",
+        "0.2.0",
+        available,
+        lambda: None,
+        lambda plugin_id, topic, data: None,
     )
 
 

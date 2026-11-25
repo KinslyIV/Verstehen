@@ -9,7 +9,7 @@ from fastapi.testclient import TestClient
 
 from verstehen.app import create_app
 from verstehen.config import Settings
-from verstehen.plugins.service import PluginService, UnknownPlugin
+from verstehen.plugins.service import PluginInfo, PluginRefused, PluginService
 from verstehen.store.plugins import PluginsStore
 
 FIXTURES = Path(__file__).parent.parent / "fixtures" / "plugins"
@@ -22,7 +22,20 @@ def install(data_dir: Path, name: str) -> Path:
 
 
 def new_service(data_dir: Path) -> PluginService:
-    return PluginService(PluginsStore(data_dir), data_dir / "plugins", "0.2.0", True)
+    return PluginService(
+        PluginsStore(data_dir),
+        data_dir / "plugins",
+        "0.2.0",
+        True,
+        lambda: None,
+        lambda plugin_id, topic, data: None,
+    )
+
+
+async def toggle(service: PluginService, plugin_id: str, enabled: bool) -> PluginInfo:
+    info = await service.set_enabled(plugin_id, enabled)
+    assert isinstance(info, PluginInfo)
+    return info
 
 
 @pytest.fixture
@@ -43,9 +56,9 @@ def test_activation_runs_once_and_cleanups_run_newest_first(
 
     async def run():
         await service.discover()
-        info = await service.set_enabled("lifecycle", True)
+        info = await toggle(service, "lifecycle", True)
         assert (info.status, info.error) == ("active", None)
-        await service.set_enabled("lifecycle", False)
+        await toggle(service, "lifecycle", False)
 
     asyncio.run(run())
     assert events(root) == [
@@ -76,7 +89,7 @@ def test_the_context_gives_the_plugin_its_folders(tmp_path: Path):
 
     async def run():
         await service.discover()
-        await service.set_enabled("vendored", True)
+        await toggle(service, "vendored", True)
         plugin = service.plugins["vendored"]
         assert plugin.context is not None
         assert plugin.context.id == "vendored"
@@ -94,10 +107,10 @@ def test_vendored_code_is_importable_only_while_the_plugin_runs(tmp_path: Path):
 
     async def run():
         await service.discover()
-        await service.set_enabled("vendored", True)
+        await toggle(service, "vendored", True)
         assert vendor in sys.path
         assert (root / "data" / "value.txt").read_text() == "from vendor and sibling"
-        await service.set_enabled("vendored", False)
+        await toggle(service, "vendored", False)
         assert vendor not in sys.path
         await service.close()
 
@@ -112,10 +125,10 @@ def test_a_failing_activate_is_isolated_and_cleaned_up(
 
     async def run():
         await service.discover()
-        failed = await service.set_enabled("failing-activate", True)
+        failed = await toggle(service, "failing-activate", True)
         assert (failed.status, failed.error) == ("failed", "activate exploded")
         assert failed.enabled is True
-        ok = await service.set_enabled("lifecycle", True)
+        ok = await toggle(service, "lifecycle", True)
         assert ok.status == "active"
 
     asyncio.run(run())
@@ -129,7 +142,7 @@ def test_a_failing_import_is_isolated_and_leaves_no_module_behind(
 
     async def run():
         await service.discover()
-        failed = await service.set_enabled("failing-import", True)
+        failed = await toggle(service, "failing-import", True)
         assert (failed.status, failed.error) == ("failed", "import exploded")
 
     asyncio.run(run())
@@ -143,8 +156,8 @@ def test_a_failing_cleanup_marks_the_plugin_failed(
 
     async def run():
         await service.discover()
-        await service.set_enabled("failing-cleanup", True)
-        info = await service.set_enabled("failing-cleanup", False)
+        await toggle(service, "failing-cleanup", True)
+        info = await toggle(service, "failing-cleanup", False)
         assert (info.status, info.error) == ("failed", "Cleanup: cleanup exploded")
         assert info.enabled is False
 
@@ -158,10 +171,10 @@ def test_disabling_closes_the_context_and_keeps_the_data_folder(
 
     async def run():
         await service.discover()
-        await service.set_enabled("lifecycle", True)
+        await toggle(service, "lifecycle", True)
         context = service.plugins["lifecycle"].context
         assert context is not None
-        await service.set_enabled("lifecycle", False)
+        await toggle(service, "lifecycle", False)
         assert service.plugins["lifecycle"].context is None
         with pytest.raises(RuntimeError, match="no longer active"):
             context.cleanup(lambda: None)
@@ -179,10 +192,10 @@ def test_re_enabling_runs_activate_again_without_importing_twice(
 
     async def run():
         await service.discover()
-        await service.set_enabled("lifecycle", True)
+        await toggle(service, "lifecycle", True)
         module = service.plugins["lifecycle"].module
-        await service.set_enabled("lifecycle", False)
-        await service.set_enabled("lifecycle", True)
+        await toggle(service, "lifecycle", False)
+        await toggle(service, "lifecycle", True)
         assert service.plugins["lifecycle"].module is module
 
     asyncio.run(run())
@@ -196,7 +209,7 @@ def test_refresh_finds_a_new_folder_and_keeps_a_running_plugin(
 
     async def run():
         await service.discover()
-        await service.set_enabled("lifecycle", True)
+        await toggle(service, "lifecycle", True)
         install(tmp_path, "greeter")
         infos = {info.id: info for info in await service.discover()}
         assert infos["lifecycle"].status == "active"
@@ -206,8 +219,8 @@ def test_refresh_finds_a_new_folder_and_keeps_a_running_plugin(
 
 
 def test_enabling_an_unknown_plugin_is_refused(service: PluginService):
-    with pytest.raises(UnknownPlugin):
-        asyncio.run(service.set_enabled("ghost", True))
+    result = asyncio.run(service.set_enabled("ghost", True))
+    assert result == PluginRefused(404, "Unknown plugin: ghost")
 
 
 def test_enabling_an_invalid_package_only_records_the_choice(
@@ -217,7 +230,7 @@ def test_enabling_an_invalid_package_only_records_the_choice(
 
     async def run():
         await service.discover()
-        info = await service.set_enabled("unbuilt", True)
+        info = await toggle(service, "unbuilt", True)
         assert (info.status, info.enabled) == ("invalid", True)
 
     asyncio.run(run())

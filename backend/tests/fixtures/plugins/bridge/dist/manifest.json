@@ -1,0 +1,10 @@
+{
+  "apiVersion": 1,
+  "id": "bridge",
+  "name": "Bridge",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.0",
+  "backend": "backend",
+  "main": "main.js",
+  "styles": "styles.css"
+}
