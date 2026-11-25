@@ -301,6 +301,30 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 delete_graph_session,
                 check_graph_session,
             )
+
+            def plugins_changed() -> None:
+                notifications.publish(Notification(type="plugins-changed"))
+
+            def plugin_message(plugin_id: str, topic: str, data: JsonValue) -> None:
+                notifications.publish(
+                    Notification(
+                        type="plugin-message",
+                        plugin_id=plugin_id,
+                        topic=topic,
+                        data=data,
+                    )
+                )
+
+            plugin_service = PluginService(
+                PluginsStore(settings.data_dir),
+                settings.data_dir / "plugins",
+                importlib.metadata.version("verstehen"),
+                not settings.server,
+                plugins_changed,
+                plugin_message,
+            )
+            app.state.plugin_service = plugin_service
+
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
@@ -319,6 +343,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 graph_store,
                 prompt_edit_lock,
                 settings.provider_events,
+                plugin_service,
             )
 
             app.state.job_service = JobService(
@@ -363,29 +388,6 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
             else:
                 database.on_sync_write = sync_service.notify_local_change
                 sync_service.start()
-
-            def plugins_changed() -> None:
-                notifications.publish(Notification(type="plugins-changed"))
-
-            def plugin_message(plugin_id: str, topic: str, data: JsonValue) -> None:
-                notifications.publish(
-                    Notification(
-                        type="plugin-message",
-                        plugin_id=plugin_id,
-                        topic=topic,
-                        data=data,
-                    )
-                )
-
-            plugin_service = PluginService(
-                PluginsStore(settings.data_dir),
-                settings.data_dir / "plugins",
-                importlib.metadata.version("verstehen"),
-                not settings.server,
-                plugins_changed,
-                plugin_message,
-            )
-            app.state.plugin_service = plugin_service
 
             async def watch_settled_turns() -> None:
                 async for event in notifications.subscribe():

@@ -2,6 +2,7 @@ from pydantic_ai import Tool
 from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.store.settings import Quizzing
 from verstehen.teaching.questions.tools import QuestionAgent, build_question_agent
@@ -16,6 +17,7 @@ def build_teacher(
     quizzing: Quizzing = "choice",
     plan_nodes: PlanNodeLookup | None = None,
     extra_tools: tuple[Tool[None], ...] = (),
+    extra_toolsets: tuple[AbstractToolset[None], ...] = (),
     deliver_prose: bool = False,
     extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
@@ -26,6 +28,7 @@ def build_teacher(
         ("explain" if quizzing == "free" else "quiz", "ask_user_question"),
         plan_nodes,
         extra_tools=extra_tools,
+        extra_toolsets=extra_toolsets,
         deliver_prose=deliver_prose,
         guard_narration=True,
         extra_capabilities=extra_capabilities,

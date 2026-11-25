@@ -1,17 +1,22 @@
 import inspect
 import re
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import partial
 from pathlib import Path
 from typing import Any, Literal, TypeVar, overload
 
 from pydantic import JsonValue, TypeAdapter, ValidationError
+from pydantic_ai import Tool
+from pydantic_ai.toolsets import AbstractToolset
 
 Cleanup = Callable[[], Awaitable[None] | None]
 Publish = Callable[[str, str, JsonValue], None]
 Observer = Callable[[str], Awaitable[None] | None]
 AppEvent = Literal["turn-settled"]
 APP_EVENTS: tuple[AppEvent, ...] = ("turn-settled",)
+AgentName = Literal["prober", "teacher", "practice"]
+AGENT_NAMES: tuple[AgentName, ...] = ("prober", "teacher", "practice")
 Function = TypeVar("Function", bound=Callable[..., Any])
 EXPOSED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TOPIC = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
@@ -28,6 +33,31 @@ class Exposed:
 
     function: Callable[..., Any]
     takes_input: bool
+
+
+async def stop_toolset(toolset: AbstractToolset[None]) -> None:
+    await toolset.__aexit__(None, None, None)
+
+
+@dataclass(frozen=True)
+class PluginTurnContext:
+    """What a `register_tools` factory is told about the turn it builds tools for."""
+
+    session_id: str
+    agent: AgentName
+
+
+ToolFactory = Callable[[PluginTurnContext], Iterable[Tool[None] | Callable[..., Any]]]
+
+
+@dataclass
+class AgentContribution:
+    """What a plugin registered for some agents: prompt text, a tool factory, or a toolset."""
+
+    agents: tuple[AgentName, ...]
+    instructions: str | None = None
+    create_tools: ToolFactory | None = None
+    toolset: AbstractToolset[None] | None = None
 
 
 class PluginContext:
@@ -49,6 +79,7 @@ class PluginContext:
         self.cleanups: list[Cleanup] = []
         self.exposed: dict[str, Exposed] = {}
         self.observers: dict[AppEvent, list[Observer]] = {}
+        self.contributions: list[AgentContribution] = []
         self.closed = False
 
     def cleanup(self, cleanup: Cleanup) -> None:
@@ -106,6 +137,48 @@ class PluginContext:
 
         return stop
 
+    def register_instructions(self, agents: Sequence[AgentName], text: str) -> None:
+        """Add `text` to the system prompt of the listed agents (`prober`, `teacher`, `practice`)."""
+        self.add_contribution(AgentContribution(self.known_agents(agents), text))
+
+    def register_tools(self, agents: Sequence[AgentName], create: ToolFactory) -> None:
+        """Offer the tools `create(turn)` returns to the listed agents; it runs on each of their turns."""
+        if not callable(create):
+            raise TypeError("Plugin tool factory must be a function")
+        self.add_contribution(
+            AgentContribution(self.known_agents(agents), create_tools=create)
+        )
+
+    def register_toolset(
+        self, agents: Sequence[AgentName], toolset: AbstractToolset[None]
+    ) -> None:
+        """Offer a Pydantic AI toolset (an MCP server, say) to the listed agents while the plugin runs."""
+        if not isinstance(toolset, AbstractToolset):
+            raise TypeError("Plugin toolset must be a Pydantic AI toolset")
+        self.add_contribution(
+            AgentContribution(self.known_agents(agents), toolset=toolset)
+        )
+
+    def known_agents(self, agents: Sequence[AgentName]) -> tuple[AgentName, ...]:
+        if isinstance(agents, str) or not agents:
+            raise ValueError("Plugin agents must be a non-empty list")
+        unknown = [agent for agent in agents if agent not in AGENT_NAMES]
+        if unknown:
+            raise ValueError(f"Unknown agent: {unknown[0]}")
+        return tuple(dict.fromkeys(agents))
+
+    def add_contribution(self, contribution: AgentContribution) -> None:
+        self.require_live()
+        self.contributions.append(contribution)
+
+    async def start_toolsets(self) -> None:
+        """Enter each registered toolset; its exit runs as a cleanup, so a failure here is cleaned by `close`."""
+        for contribution in self.contributions:
+            toolset = contribution.toolset
+            if toolset is not None:
+                await toolset.__aenter__()
+                self.cleanups.append(partial(stop_toolset, toolset))
+
     def require_live(self) -> None:
         if self.closed:
             raise RuntimeError("Plugin activation is no longer active")
@@ -115,6 +188,7 @@ class PluginContext:
         self.closed = True
         self.exposed.clear()
         self.observers.clear()
+        self.contributions.clear()
         failures: list[str] = []
         while self.cleanups:
             try:

@@ -10,11 +10,13 @@ datas = collect_data_files(
 )
 datas += [(str(spa), "spa"), (str(root.parent / "packaging" / "icons"), "icons")]
 datas += copy_metadata("verstehen", recursive=True)
-hiddenimports = collect_submodules("uvicorn")
+hiddenimports = collect_submodules("uvicorn") + ["pydantic_ai.mcp"]
 for package in (
     "asyncssh",
     "cryptography",
     "claude_agent_sdk",
+    "fastmcp",
+    "mcp",
     "pypdfium2",
     "pypdfium2_raw",
     "resvg_py",

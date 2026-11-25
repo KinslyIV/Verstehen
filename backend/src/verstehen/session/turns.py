@@ -13,6 +13,7 @@ from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
+from verstehen.plugins.service import PluginContributions, PluginService
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
@@ -50,7 +51,7 @@ from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import SessionKind, SessionsStore
-from verstehen.store.settings import SettingsStore, ToolSettings
+from verstehen.store.settings import Settings, SettingsStore, ToolSettings
 from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
 from verstehen.teaching.delivery import needs_send_to_user
@@ -76,7 +77,7 @@ from verstehen.teaching.practice.state import (
 )
 from verstehen.teaching.practice.tools import build_practitioner, create_practice_gate
 from verstehen.teaching.prober import build_prober
-from verstehen.teaching.prompts import compose_instructions
+from verstehen.teaching.prompts import compose_instructions, join_fragments
 from verstehen.teaching.questions.inputs import (
     DismissInput,
     QuestionAnswer,
@@ -201,7 +202,9 @@ class TurnService:
         graph_store: GraphStore,
         prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
+        plugin_service: PluginService | None = None,
     ):
+        self.plugin_service = plugin_service
         self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
@@ -505,7 +508,6 @@ class TurnService:
             self.settings_store, self.data_dir, role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
-        quizzing = settings.quizzing
         model = UsageModel(
             state.resolved,
             self.usage_store,
@@ -514,6 +516,34 @@ class TurnService:
             self.provider_events,
             turn_id=state.run.id if state.run else None,
         )
+        state.agent = self.build_role_agent(
+            state, model, instructions, settings, PluginContributions()
+        )
+        if self.plugin_service:
+            plugins = await self.plugin_service.contributions(
+                role, state.session_id, state.agent
+            )
+            if plugins.instructions or plugins.tools or plugins.toolsets:
+                state.agent = self.build_role_agent(
+                    state,
+                    model,
+                    join_fragments([instructions, *plugins.instructions]),
+                    settings,
+                    plugins,
+                )
+        return Continue(state)
+
+    def build_role_agent(
+        self,
+        state: TurnState,
+        model: UsageModel,
+        instructions: str,
+        settings: Settings,
+        plugins: PluginContributions,
+    ) -> QuestionAgent:
+        assert state.resolved is not None
+        role = state.role
+        quizzing = settings.quizzing
         deliver = needs_send_to_user(state.resolved.kind, state.resolved.pick.model)
         files = file_tools(
             self.settings_store,
@@ -541,7 +571,7 @@ class TurnService:
             async def graph_nodes():
                 return get_graph(await self.graph_store.read()).nodes
 
-            state.agent = build_practitioner(
+            return build_practitioner(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -555,7 +585,9 @@ class TurnService:
                         else ()
                     ),
                     *job_tools(dispatcher, ToolSettings(), prober=True),
+                    *plugins.tools,
                 ),
+                extra_toolsets=tuple(plugins.toolsets),
                 extra_capabilities=(updates,),
             )
         elif role == "prober":
@@ -574,7 +606,7 @@ class TurnService:
             async def list_propositions(session: str) -> str:
                 return format_graph_propositions(await self.graph_store.read(), session)
 
-            state.agent = build_prober(
+            return build_prober(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -588,7 +620,9 @@ class TurnService:
                         else ()
                     ),
                     *job_tools(dispatcher, settings.tools, prober=True),
+                    *plugins.tools,
                 ),
+                extra_toolsets=tuple(plugins.toolsets),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
@@ -602,7 +636,7 @@ class TurnService:
             def node_ids() -> list[str]:
                 return [node.id for node in tree.nodes] if tree else []
 
-            state.agent = build_teacher(
+            return build_teacher(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -613,11 +647,12 @@ class TurnService:
                     plan_tool(remember_plan),
                     show_image_tool(self.settings_store, self.data_dir),
                     *job_tools(dispatcher, settings.tools),
+                    *plugins.tools,
                 ),
+                extra_toolsets=tuple(plugins.toolsets),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
-        return Continue(state)
 
     async def take_context_updates(self, state: TurnState) -> list[ContextEntry]:
         assert state.run is not None and state.resolved is not None
