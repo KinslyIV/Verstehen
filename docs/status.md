@@ -51,7 +51,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   also serves the app, on a thread; the token is an HttpOnly cookie. Demo checks run in the app's
   own Chromium (`DesktopDemoRunner`; server mode keeps Playwright), the WebKitGTK workarounds are
   gone, off-screen transcript rows are `content-visibility` placeholders, and far demo frames
-  unload. Packaging is one PyInstaller onedir app, with no Rust in the build.
+  unload. Packaging is one PyInstaller onedir app, with no Rust in the build. Heavy libraries are
+  imported inside the functions that use them, since PySide6 breaks PEP 810 `lazy` imports.
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.

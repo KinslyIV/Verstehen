@@ -9,7 +9,6 @@ from pydantic import BaseModel, Field
 from pydantic_ai import Tool
 from pydantic_ai.exceptions import ToolFailed
 from pydantic_ai.tools import ToolReturn
-lazy from PIL import Image, ImageOps, UnidentifiedImageError
 
 from verstehen.store.settings import SettingsStore
 from verstehen.teaching.files.access import SourceAccess, regular_file
@@ -86,6 +85,8 @@ def check_learner_image(path: str, access: SourceAccess) -> Path:
 
 
 def normalize_image(data: bytes) -> tuple[bytes, Literal["png", "jpeg"], int, int]:
+    from PIL import Image, ImageOps, UnidentifiedImageError
+
     check_image_dimensions(data)
     try:
         with Image.open(

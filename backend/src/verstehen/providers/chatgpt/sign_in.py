@@ -1,14 +1,16 @@
 import asyncio
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 from uuid import uuid4
 
 import anyio
 from pydantic import BaseModel, Field
-lazy from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
 from verstehen.providers.chatgpt.callback_port import CallbackPort, CallbackPortBusy
+
+if TYPE_CHECKING:
+    from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
 
 
 class SignInStatus(BaseModel):
@@ -44,6 +46,8 @@ class ChatGPTSignInService:
         self.pending_account_id: str | None = None
 
     async def start(self, account_id: str | None = None) -> SignInStarted:
+        from pydantic_ai.providers.openai_chatgpt import OpenAIChatGPTOAuthFlow
+
         try:
             self.callback_port.reserve("local")
         except CallbackPortBusy as error:

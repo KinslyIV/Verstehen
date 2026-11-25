@@ -4,7 +4,6 @@ from collections import Counter
 from collections.abc import Sequence
 
 from pydantic import BaseModel, ConfigDict, Field
-lazy import regex
 
 from verstehen.graph.merge import Proposition
 from verstehen.store.graph import GraphNode
@@ -16,6 +15,8 @@ CANDIDATE_PAGE_SIZE = 5
 
 
 def words(text: str) -> list[str]:
+    import regex
+
     return [
         word
         for word in regex.findall(

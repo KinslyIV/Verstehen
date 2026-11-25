@@ -11,7 +11,6 @@ from pydantic_ai.messages import ModelMessage, UserContent
 from pydantic_ai.models import Model
 from pydantic_ai.tools import ToolReturn
 from pydantic_ai.usage import RunUsage, UsageLimits
-lazy import resvg_py
 
 from verstehen.jobs.contracts import VisualImage, VisualInput, VisualResult
 from verstehen.jobs.workers.common import (
@@ -200,6 +199,8 @@ def annotation_placement_problem(svg: str, width: int, height: int) -> str | Non
 
 
 def render_svg(svg: str, image: LearnerImage | None = None) -> bytes:
+    import resvg_py
+
     if image:
         root = ET.fromstring(svg)
         uri = f"data:{image.mime_type};base64,{base64.b64encode(image.data).decode()}"

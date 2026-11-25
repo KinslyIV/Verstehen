@@ -2,9 +2,9 @@ import asyncio
 import tempfile
 from functools import partial
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from pydantic_ai.settings import ThinkingEffort
-lazy from claude_agent_sdk import ClaudeAgentOptions
 
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel, default_thinking_level
@@ -14,7 +14,11 @@ from verstehen.store.settings import ModelPick
 from . import binary
 from .binary import BinaryStatus
 from .context import context_window
-lazy from .model import ClaudeCodeModel
+
+if TYPE_CHECKING:
+    from claude_agent_sdk import ClaudeAgentOptions
+
+    from .model import ClaudeCodeModel
 
 THINKING_LEVELS: list[ThinkingEffort] = ["low", "medium", "high", "xhigh", "max"]
 MODEL_NAMES = {
@@ -27,6 +31,8 @@ MODEL_NAMES = {
 def lockdown_options(
     path: Path, directory: str, effort: ThinkingEffort | None
 ) -> ClaudeAgentOptions:
+    from claude_agent_sdk import ClaudeAgentOptions
+
     effort = effort or default_thinking_level(THINKING_LEVELS)
     if effort == "minimal":
         raise ValueError(
@@ -114,6 +120,8 @@ class ClaudeCodeAccountAdapter:
         ]
 
     async def build_model(self, account: Account, pick: ModelPick) -> ClaudeCodeModel:
+        from .model import ClaudeCodeModel
+
         status = await self.available(account)
         if pick.account != account.id or pick.model not in MODEL_NAMES:
             raise AccountUnavailable(

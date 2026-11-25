@@ -12,7 +12,6 @@ from verstehen.desktop.server import DesktopServer, ServerStartupError
 
 ORIGIN = "http://127.0.0.1:28420"
 PROBE = Path(__file__).with_name("desktop_probe.py")
-LAZY_PROBE = Path(__file__).with_name("lazy_imports_probe.py")
 
 
 @pytest.mark.parametrize(
@@ -173,15 +172,3 @@ def test_the_window_shows_the_failure_when_the_data_dir_is_a_file(tmp_path: Path
     result = run_probe(PROBE, tmp_path, tmp_path / "spa", "4")
     assert "Verstehen couldn't start" in result["text"]
     assert "data" in result["text"]
-
-
-@pytest.mark.slow
-def test_lazy_names_resolve_in_the_desktop_process_after_qt_loads(tmp_path: Path):
-    spa = tmp_path / "spa"
-    spa.mkdir()
-    (spa / "index.html").write_text("<body></body>")
-    assert run_probe(LAZY_PROBE, tmp_path, spa) == {
-        "qt_loaded": True,
-        "claude_code_model_is_a_class": True,
-        "worker_module_is_a_module": True,
-    }

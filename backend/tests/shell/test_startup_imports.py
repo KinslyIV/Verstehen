@@ -57,19 +57,13 @@ assert not loaded, f"Heavy modules loaded at startup: {{loaded}}"
     _run_python(code, tmp_path)
 
 
-def test_claude_code_package_defers_sdk_until_accessed(tmp_path: Path):
+def test_claude_code_adapter_defers_sdk_until_a_model_is_built(tmp_path: Path):
     code = """
 import sys
-import verstehen.providers.claude_code
+from verstehen.providers.claude_code.adapter import ClaudeCodeAccountAdapter, lockdown_options
 
 for name in ("claude_agent_sdk", "anthropic"):
-    assert name not in sys.modules, f"{name} loaded on package import"
-
-from verstehen.providers.claude_code import ClaudeCodeModel, doctor, resolve_model
-
-assert ClaudeCodeModel is not None
-assert doctor is not None
-assert resolve_model is not None
+    assert name not in sys.modules, f"{name} loaded on adapter import"
 """
     _run_python(code, tmp_path)
 
@@ -143,37 +137,34 @@ def test_cli_main_startup_and_health_defer_heavy_imports(tmp_path: Path):
     assert not loaded, f"Heavy modules loaded via CLI main(): {loaded}"
 
 
-@pytest.mark.parametrize(
-    ("arguments", "eager"),
-    [
-        (["desktop"], True),
-        (["--port", "0", "desktop"], True),
-        (["--self-check"], True),
-        (["--server"], False),
-        (["--port", "0"], False),
-        (["mint-token", "Phone"], False),
-    ],
-)
-def test_only_commands_that_run_qt_turn_lazy_imports_off_before_the_app_loads(
-    arguments: list[str], eager: bool, tmp_path: Path
-):
-    code = f"""
-import sys
-import types
-
-sys.argv = ["verstehen", *{arguments!r}]
-seen = []
-sys.modules["verstehen.cli"] = types.SimpleNamespace(
-    main=lambda arguments: seen.append(
-        (sys.get_lazy_imports_filter() is not None, "verstehen.app" in sys.modules)
+@pytest.mark.slow
+def test_the_desktop_window_loads_heavy_modules_only_on_first_use(tmp_path: Path):
+    spa = tmp_path / "spa"
+    spa.mkdir()
+    (spa / "index.html").write_text("<body></body>")
+    probe = Path(__file__).with_name("desktop_imports_probe.py")
+    env = {
+        **os.environ,
+        "VERSTEHEN_DATA_DIR": str(tmp_path / "data"),
+        "VERSTEHEN_SPA_DIR": str(spa),
+        "QT_QPA_PLATFORM": "offscreen",
+        "QTWEBENGINE_CHROMIUM_FLAGS": "--disable-gpu --no-sandbox",
+    }
+    result = subprocess.run(
+        [sys.executable, str(probe), *HEAVY_MODULES],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
     )
-)
-from verstehen.launcher import main
-
-main()
-assert seen == [({eager!r}, False)], seen
-"""
-    _run_python(code, tmp_path)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout.splitlines()[-1]) == {
+        "qt_loaded": True,
+        "heavy_at_startup": [],
+        "rendered_png": True,
+        "resvg_loaded_on_use": True,
+    }
 
 
 @pytest.mark.parametrize(
@@ -212,7 +203,6 @@ class RefusePlaywright:
             raise ImportError("playwright is not part of the desktop")
 
 sys.meta_path.insert(0, RefusePlaywright())
-import verstehen.desktop.eager
 from fastapi.testclient import TestClient
 from verstehen.app import create_app
 from verstehen.config import Settings
