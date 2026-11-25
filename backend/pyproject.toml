@@ -62,7 +62,7 @@ layers = [
   "verstehen.api | verstehen.lh_import",
   "verstehen.sync",
   "verstehen.session",
-  "verstehen.jobs | verstehen.sidechat | verstehen.graph",
+  "verstehen.jobs | verstehen.sidechat | verstehen.graph | verstehen.plugins",
   "verstehen.teaching | verstehen.providers",
   "verstehen.store",
 ]
