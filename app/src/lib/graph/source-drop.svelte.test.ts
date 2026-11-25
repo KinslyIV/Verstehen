@@ -18,19 +18,6 @@ function dropEvent(data: Record<string, string>, types: string[]) {
 }
 
 describe('SourceDrop', () => {
-	it('drops the remembered row when the browser hides the custom drag type', () => {
-		const move = vi.fn().mockResolvedValue(undefined);
-		const drop = new SourceDrop(() => organization, move);
-		drop.drag({ kind: 'source', id: 's1' });
-		const handlers = drop.props('f');
-		const over = dropEvent({}, ['text/plain']);
-		handlers.ondragover(over);
-		expect(over.preventDefault).toHaveBeenCalled();
-		handlers.ondrop(dropEvent({}, ['text/plain']));
-		expect(move).toHaveBeenCalledWith({ action: 'move', kind: 'source', id: 's1', parent_id: 'f' });
-		expect(drop.dragged).toBeUndefined();
-	});
-
 	it('reads the payload when the custom type is readable', () => {
 		const move = vi.fn().mockResolvedValue(undefined);
 		const drop = new SourceDrop(() => organization, move);

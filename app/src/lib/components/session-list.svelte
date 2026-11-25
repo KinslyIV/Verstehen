@@ -195,7 +195,6 @@
 				{:else}
 					<a
 						href={resolve('/(lesson)/session/[id]', { id: session.id })}
-						draggable={false}
 						class="flex min-w-0 items-center gap-2 rounded-lg p-3"
 						style:padding-left={sessionIndent(depth)}
 						aria-current={page.params.id === session.id ? 'page' : undefined}

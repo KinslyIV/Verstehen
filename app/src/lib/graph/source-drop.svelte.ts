@@ -24,17 +24,12 @@ export class SourceDrop {
 		if (!item) this.target = undefined;
 	}
 
-	/** WebKit hides custom drag types from dragover, so a drag we started counts too. */
-	private draggingOurs(transfer: DataTransfer): boolean {
-		return this.dragged !== undefined || transfer.types.includes(DRAG_TYPE);
-	}
-
 	/** Event handlers that drop into `parentId` (null: outside every folder). */
 	props(parentId: string | null) {
 		return {
 			ondragover: (event: DragEvent) => {
 				const organization = this.organization();
-				if (!organization || !event.dataTransfer || !this.draggingOurs(event.dataTransfer)) return;
+				if (!organization || !event.dataTransfer?.types.includes(DRAG_TYPE)) return;
 				event.preventDefault();
 				event.stopPropagation();
 				const valid =
@@ -54,11 +49,11 @@ export class SourceDrop {
 			ondrop: (event: DragEvent) => {
 				const organization = this.organization();
 				const raw = event.dataTransfer?.getData(DRAG_TYPE);
-				const item = raw ? parseDragPayload(raw) : this.dragged;
-				if (!organization || !item) return;
+				if (!organization || !raw) return;
 				event.preventDefault();
 				event.stopPropagation();
 				this.drag(undefined);
+				const item = parseDragPayload(raw);
 				const action = item && dropMove(organization, item, parentId);
 				if (action) void this.move(action).catch(() => {});
 			}

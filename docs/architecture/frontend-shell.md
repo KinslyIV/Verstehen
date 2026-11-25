@@ -56,10 +56,6 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   and removes all of it or answers 409. Drag payload and drop
   rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` turns `draggable`
   off on touch-primary layouts and `SourceDragRow` cancels touch-origin drags on hybrid devices.
-  The Tauri window sets `dragDropEnabled: false` (`tauri.conf.json`, pinned by `tauri-config.test.ts`),
-  because WebKitGTK otherwise swallows HTML5 drops. The drag carries `text/plain` besides the app
-  type, and `SourceDrop` keeps the dragged item in memory as a fallback when the engine hides
-  custom types during dragover; session rows set `draggable={false}` on their `<a href>`.
 - **Session menu and folder starts:** a session's context menu has **Move to folder** (a submenu of
   `folderChoices`: No folder, then the tree indented; the current parent is disabled), which sends
   the same `move` operation as a drop, so touch can move sessions too. **New teaching here** and
@@ -72,9 +68,6 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   `app.html` sets it before first paint. The lesson thread's header and transcript cap their column
   with it (`layout.css`); as in LearnHarness, the composer, question and practice docks, stats bar,
   and new-session screen keep their fixed `max-w-3xl`. A missing or invalid stored value means Full.
-- **Off-screen rows:** as in LearnHarness, every transcript row renders; no `content-visibility`
-  placeholders. WebKitGTK reports `overflow-anchor` but does not anchor, so a placeholder taking its
-  real height shoved the transcript (and the demo under the pointer) while scrolling up.
 - **Scroll to bottom:** the thread's `<Scroller.Button>` is always mounted (also while a turn or a
   question is pending) and shows only while scrolled away from the end; the turn minimap rail is
   documented in [session](session.md#turn-minimap).

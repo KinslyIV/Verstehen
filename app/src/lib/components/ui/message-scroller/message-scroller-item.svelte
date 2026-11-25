@@ -14,6 +14,9 @@
 	bind:ref
 	data-slot="message-scroller-item"
 	{scrollAnchor}
-	class={cn('min-w-0 shrink-0', className)}
+	class={cn(
+		'min-w-0 shrink-0 [contain-intrinsic-size:auto_10rem] [content-visibility:auto]',
+		className
+	)}
 	{...restProps}
 />

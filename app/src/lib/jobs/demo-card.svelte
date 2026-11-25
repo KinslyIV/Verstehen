@@ -5,7 +5,6 @@
 	import {
 		INITIAL_DEMO_BRIDGE_STATE,
 		demoSrcDoc,
-		demoWheel,
 		isDemoEscape,
 		reduceDemoBridgeState,
 		type DemoBridgeState,
@@ -39,24 +38,9 @@
 		card.showModal();
 	}
 
-	function scrollAround(x: number, y: number) {
-		if (zoomed) return card?.scrollBy(x, y);
-		let box = card?.parentElement;
-		while (
-			box &&
-			!(box.scrollHeight > box.clientHeight && /auto|scroll/.test(getComputedStyle(box).overflowY))
-		)
-			box = box.parentElement;
-		const scroller = box ?? document.scrollingElement;
-		scroller?.dispatchEvent(new WheelEvent('wheel', { deltaX: x, deltaY: y, bubbles: true }));
-		scroller?.scrollBy(x, y);
-	}
-
 	function receive(event: MessageEvent) {
 		if (!frame || event.source !== frame.contentWindow) return;
-		const wheel = demoWheel(event.data);
-		if (wheel) scrollAround(wheel.x, wheel.y);
-		else if (isDemoEscape(event.data)) card?.close();
+		if (isDemoEscape(event.data)) card?.close();
 		else bridge = reduceDemoBridgeState(bridge, event.data);
 	}
 </script>

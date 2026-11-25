@@ -21,18 +21,6 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	await demo.locator('#x').fill('2');
 	await expect(demo.locator('#out')).toHaveText('slope = 3.00');
 
-	// The wheel over the demo scrolls the lesson (WebKitGTK does not chain it out of the frame).
-	const viewport = page.locator('[data-slot="message-scroller-viewport"]');
-	const scrollTop = () => viewport.evaluate((element) => element.scrollTop);
-	await viewport.evaluate((element) => element.scrollTo(0, element.scrollHeight));
-	await iframe.scrollIntoViewIfNeeded();
-	const before = await scrollTop();
-	expect(before).toBeGreaterThan(0);
-	const box = (await iframe.boundingBox())!;
-	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
-	await page.mouse.wheel(0, -200);
-	await expect.poll(scrollTop).toBeLessThan(before);
-
 	await card.scrollIntoViewIfNeeded();
 	const heightBefore = (await card.boundingBox())!.height;
 	await card.getByTestId('demo-zoom').click();
