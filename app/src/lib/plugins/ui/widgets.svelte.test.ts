@@ -232,3 +232,28 @@ test('aborting_the_signal_disposes_every_widget', async () => {
 	await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
 	expect(container.textContent).toBe('');
 });
+
+test('widgets_mounted_and_left_repeatedly_leave_no_listener_on_the_activation_signal', async () => {
+	const activation = new AbortController();
+	const attached = new Set<unknown>();
+	vi.spyOn(activation.signal, 'addEventListener').mockImplementation((_, listener) => {
+		attached.add(listener);
+	});
+	vi.spyOn(activation.signal, 'removeEventListener').mockImplementation((_, listener) => {
+		attached.delete(listener);
+	});
+	const ui = createPluginUi(activation.signal);
+	for (let round = 0; round < 10; round++) {
+		const view = new AbortController();
+		const own = { signal: view.signal };
+		ui.mountButton(container, { label: 'Leave', onClick: () => {} }, own);
+		ui.mountBadge(container, { text: 'Gone' }, own).dispose();
+		ui.openDialog({ title: 'Closes', content: document.createElement('div') }, own);
+		await expect.element(page.getByRole('dialog')).toBeVisible();
+		await userEvent.keyboard('{Escape}');
+		await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+		view.abort();
+	}
+	expect(attached.size).toBe(0);
+	expect(container.textContent).toBe('');
+});

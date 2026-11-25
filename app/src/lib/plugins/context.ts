@@ -17,13 +17,21 @@ function backendProxy(runtime: PluginRuntime): PluginFrontendContext['backend'] 
 		{
 			get: (_, name) =>
 				typeof name === 'string' && name !== 'then'
-					? (input?: unknown) => {
+					? async (input?: unknown) => {
+							runtime.requireLive();
 							try {
+								const result = await callPlugin(
+									runtime.info.id,
+									name,
+									input,
+									runtime.controller.signal
+								);
 								runtime.requireLive();
+								return result;
 							} catch (error) {
-								return Promise.reject(error);
+								runtime.requireLive();
+								throw error;
 							}
-							return callPlugin(runtime.info.id, name, input);
 						}
 					: undefined
 		}
@@ -37,10 +45,22 @@ export function createContext(
 	const id = runtime.info.id;
 	const app: PluginAppControls = {
 		pathname: () => window.location.pathname,
-		openSession: (sessionId) => navigation.openSession(sessionId),
-		openHome: () => navigation.openHome(),
-		openView: (viewId) => navigation.openView(id, viewId),
-		openSettings: () => navigation.openSettings(id)
+		openSession: (sessionId) => {
+			runtime.requireLive();
+			navigation.openSession(sessionId);
+		},
+		openHome: () => {
+			runtime.requireLive();
+			navigation.openHome();
+		},
+		openView: (viewId) => {
+			runtime.requireLive();
+			navigation.openView(id, viewId);
+		},
+		openSettings: () => {
+			runtime.requireLive();
+			navigation.openSettings(id);
+		}
 	};
 	return {
 		id,
@@ -55,6 +75,7 @@ export function createContext(
 		refreshActions: () => runtime.revision++,
 		onNotification: (topic, listener) => runtime.listen(runtime.notifications, topic, listener),
 		onResync: (listener) => {
+			runtime.requireLive();
 			runtime.resyncs.add(listener);
 			return () => runtime.resyncs.delete(listener);
 		},

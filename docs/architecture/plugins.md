@@ -101,8 +101,11 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   and calls its `activate(ctx)`. A plugin that throws, or whose module has no callable `activate`,
   fails alone (`runtime.failure`, shown in Settings). Disabling aborts `ctx.signal` and drops the
   registrations immediately, then runs cleanups newest first on that queue. Everything on `ctx`
-  is bound to the activation: `ctx.backend` calls, registrations and `ctx.cleanup` from an ended
-  activation reject or throw, and `ctx.ui` widgets are also disposed when the activation ends.
+  is bound to the activation: `ctx.backend` calls carry the activation's signal and reject if the
+  activation ended meanwhile (also when the reply arrives late), registrations, `ctx.app` navigation,
+  `onResync` and `ctx.cleanup` from an ended activation throw, and `ctx.ui` widgets are also disposed
+  when the activation ends. A widget listens to its own signal and the activation's and detaches both
+  however it ends (dismissed, disposed, or either signal aborted).
 - **Tool calls in the thread.** A tool call whose name is not a built-in tool (`built-in-tools.ts`,
   the same list as `plugins/reserved.py`) renders as a collapsed card that expands to its input and
   result or error, also after the plugin is removed. Built-in tools keep their own rules.

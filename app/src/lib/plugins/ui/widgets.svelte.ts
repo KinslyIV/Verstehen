@@ -124,22 +124,27 @@ interface MountedWidget<Props extends object> {
 	target: HTMLElement;
 	props: Props;
 	options: WidgetOptions;
+	activation?: AbortSignal;
 	check(props: Props): void;
 	extra?: Record<string, unknown>;
 	onDismiss?(props: Props): void;
 	onDispose?(): void;
 }
 
-/** Mounts a component over reactive props: `update` merges and re-validates, abort or `dispose` unmounts. */
+/** Mounts a component over reactive props: `update` merges and re-validates; dismissal, `dispose` or
+ * the abort of its own or its activation's signal unmounts it and detaches both listeners. */
 function mountWidget<Props extends object>(widget: MountedWidget<Props>): WidgetHandle<Props> {
 	widget.check(widget.props);
 	const props = $state(widget.props);
+	const signals = widget.activation
+		? [widget.options.signal, widget.activation]
+		: [widget.options.signal];
 	let instance: Record<string, unknown> | undefined;
 	const dispose = () => {
 		if (!instance) return;
 		const mounted = instance;
 		instance = undefined;
-		widget.options.signal.removeEventListener('abort', dispose);
+		for (const signal of signals) signal.removeEventListener('abort', dispose);
 		void unmount(mounted);
 		widget.onDispose?.();
 	};
@@ -152,8 +157,8 @@ function mountWidget<Props extends object>(widget: MountedWidget<Props>): Widget
 		target: widget.target,
 		props: { props, ondismiss, ...widget.extra }
 	});
-	if (widget.options.signal.aborted) dispose();
-	else widget.options.signal.addEventListener('abort', dispose, { once: true });
+	if (signals.some((signal) => signal.aborted)) dispose();
+	else for (const signal of signals) signal.addEventListener('abort', dispose, { once: true });
 	return {
 		update(next) {
 			if (!instance) return;
@@ -175,91 +180,90 @@ function overlayHost(): HTMLElement {
 const openMenus = new WeakMap<HTMLElement, () => void>();
 const inertHandle = { update() {}, dispose() {} };
 
-/** The six host widgets a plugin builds its pages from. */
-export const pluginUi: PluginUi = {
-	mountButton: (target, props, options) =>
-		mountWidget({ component: PluginButton, target, props, options, check: checkButton }),
-	mountBadge: (target, props, options) =>
-		mountWidget({ component: PluginBadge, target, props, options, check: checkBadge }),
-	mountMarkdown: (target, props, options) =>
-		mountWidget({ component: PluginMarkdown, target, props, options, check: checkMarkdown }),
-	mountSettingsRows: (target, props, options) =>
-		mountWidget({ component: PluginSettingsRows, target, props, options, check: checkRows }),
-	openDialog(props, options) {
-		const target = overlayHost();
-		return mountWidget({
-			component: PluginDialog,
-			target,
-			props,
-			options,
-			check: checkDialog,
-			onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
-			onDispose: () => target.remove()
-		});
-	},
-	openMenu(anchor, props, options) {
-		const open = openMenus.get(anchor);
-		if (open) {
-			open();
-			return inertHandle;
-		}
-		const target = overlayHost();
-		const handle = mountWidget({
-			component: PluginMenu,
-			target,
-			props,
-			options,
-			check: checkMenu,
-			extra: { anchor },
-			onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
-			onDispose: () => {
-				openMenus.delete(anchor);
-				target.remove();
-			}
-		});
-		openMenus.set(anchor, () => {
-			void Promise.resolve(props.onClose?.()).catch(reportFailure);
-			handle.dispose();
-		});
-		return handle;
-	}
-};
-
-/** The widgets one activation gets: each is also disposed when that activation ends. */
-export function createPluginUi(activation: AbortSignal): PluginUi {
-	function bound<Handle extends { dispose(): void }>(
-		options: WidgetOptions,
-		mount: (options: WidgetOptions) => Handle
-	): Handle {
-		const both = new AbortController();
-		const stop = () => both.abort();
-		const detach = () => {
-			options.signal.removeEventListener('abort', stop);
-			activation.removeEventListener('abort', stop);
-		};
-		if (options.signal.aborted || activation.aborted) both.abort();
-		options.signal.addEventListener('abort', stop, { once: true });
-		activation.addEventListener('abort', stop, { once: true });
-		const handle = mount({ ...options, signal: both.signal });
-		return {
-			...handle,
-			dispose() {
-				detach();
-				handle.dispose();
-			}
-		};
-	}
+/** The six host widgets; one built for an activation also disposes each of them when that activation ends. */
+function widgetsFor(activation?: AbortSignal): PluginUi {
 	return {
 		mountButton: (target, props, options) =>
-			bound(options, (own) => pluginUi.mountButton(target, props, own)),
+			mountWidget({
+				component: PluginButton,
+				target,
+				props,
+				options,
+				activation,
+				check: checkButton
+			}),
 		mountBadge: (target, props, options) =>
-			bound(options, (own) => pluginUi.mountBadge(target, props, own)),
+			mountWidget({
+				component: PluginBadge,
+				target,
+				props,
+				options,
+				activation,
+				check: checkBadge
+			}),
 		mountMarkdown: (target, props, options) =>
-			bound(options, (own) => pluginUi.mountMarkdown(target, props, own)),
+			mountWidget({
+				component: PluginMarkdown,
+				target,
+				props,
+				options,
+				activation,
+				check: checkMarkdown
+			}),
 		mountSettingsRows: (target, props, options) =>
-			bound(options, (own) => pluginUi.mountSettingsRows(target, props, own)),
-		openDialog: (props, options) => bound(options, (own) => pluginUi.openDialog(props, own)),
-		openMenu: (anchor, props, options) =>
-			bound(options, (own) => pluginUi.openMenu(anchor, props, own))
+			mountWidget({
+				component: PluginSettingsRows,
+				target,
+				props,
+				options,
+				activation,
+				check: checkRows
+			}),
+		openDialog(props, options) {
+			const target = overlayHost();
+			return mountWidget({
+				component: PluginDialog,
+				target,
+				props,
+				options,
+				activation,
+				check: checkDialog,
+				onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
+				onDispose: () => target.remove()
+			});
+		},
+		openMenu(anchor, props, options) {
+			const open = openMenus.get(anchor);
+			if (open) {
+				open();
+				return inertHandle;
+			}
+			const target = overlayHost();
+			const handle = mountWidget({
+				component: PluginMenu,
+				target,
+				props,
+				options,
+				activation,
+				check: checkMenu,
+				extra: { anchor },
+				onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
+				onDispose: () => {
+					openMenus.delete(anchor);
+					target.remove();
+				}
+			});
+			openMenus.set(anchor, () => {
+				void Promise.resolve(props.onClose?.()).catch(reportFailure);
+				handle.dispose();
+			});
+			return handle;
+		}
 	};
 }
+
+/** The widgets the host's own pages use. */
+export const pluginUi: PluginUi = widgetsFor();
+
+/** The widgets one plugin activation gets. */
+export const createPluginUi = widgetsFor;

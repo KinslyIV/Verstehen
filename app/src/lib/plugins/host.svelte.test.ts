@@ -113,7 +113,7 @@ test('the_backend_proxy_calls_the_plugin_route_with_the_function_name_and_input'
 	};
 	installed = [plugin('hello')];
 	await syncAndSettle(newHost());
-	expect(callPlugin).toHaveBeenCalledWith('hello', 'total', [1, 2, 3]);
+	expect(callPlugin).toHaveBeenCalledWith('hello', 'total', [1, 2, 3], expect.any(AbortSignal));
 	expect(result).toEqual({ total: 6 });
 });
 
@@ -308,4 +308,37 @@ test('a_backend_call_from_a_disposed_activation_rejects_and_the_new_activation_s
 	await expect(contexts[1]!.backend.total!()).resolves.toBe('ok');
 	expect(callPlugin).toHaveBeenCalledOnce();
 	expect(() => contexts[0]!.cleanup(() => {})).toThrow('no longer active');
+});
+
+test('a_backend_call_finishing_after_the_activation_ended_rejects_and_is_aborted_with_it', async () => {
+	let finish: (value: unknown) => void = () => {};
+	vi.mocked(callPlugin).mockImplementation(() => new Promise((resolve) => (finish = resolve)));
+	let context: PluginFrontendContext | undefined;
+	modules.hello = { activate: (ctx) => void (context = ctx) };
+	installed = [plugin('hello')];
+	const host = newHost();
+	await syncAndSettle(host);
+	const pending = context!.backend.total!();
+	const failed = expect(pending).rejects.toThrow('no longer active');
+	expect(vi.mocked(callPlugin).mock.calls[0]![3]).toBe(context!.signal);
+	installed = [];
+	await syncAndSettle(host);
+	finish('late');
+	await failed;
+});
+
+test('navigation_and_resync_registration_from_an_ended_activation_throw', async () => {
+	let context: PluginFrontendContext | undefined;
+	modules.hello = { activate: (ctx) => void (context = ctx) };
+	installed = [plugin('hello')];
+	const host = newHost();
+	await syncAndSettle(host);
+	installed = [];
+	await syncAndSettle(host);
+	expect(() => context!.app.openView('page')).toThrow('no longer active');
+	expect(() => context!.app.openSession('s1')).toThrow('no longer active');
+	expect(() => context!.app.openHome()).toThrow('no longer active');
+	expect(() => context!.app.openSettings()).toThrow('no longer active');
+	expect(() => context!.onResync(() => {})).toThrow('no longer active');
+	expect(navigation.openView).not.toHaveBeenCalled();
 });

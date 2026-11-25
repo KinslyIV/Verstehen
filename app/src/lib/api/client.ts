@@ -657,10 +657,16 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<Pl
 	).json();
 }
 /** Calls a function the plugin's backend exposed; JSON in, JSON out, and a failure rejects with its message. */
-export async function callPlugin(id: string, name: string, input?: unknown): Promise<unknown> {
+export async function callPlugin(
+	id: string,
+	name: string,
+	input?: unknown,
+	signal?: AbortSignal
+): Promise<unknown> {
 	const response = await request(`${pluginPath(id)}/call/${encodeURIComponent(name)}`, {
 		method: 'POST',
-		body: JSON.stringify(input ?? null)
+		body: JSON.stringify(input ?? null),
+		signal
 	});
 	return response.json();
 }
