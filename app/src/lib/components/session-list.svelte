@@ -167,6 +167,7 @@
 	<SourceDragRow
 		kind="source"
 		id={session.id}
+		name={session.title}
 		enabled={draggable && renaming !== session.id}
 		ondragitem={(item) => drop.drag(item)}
 		{...drop.props(parentId)}
