@@ -78,7 +78,7 @@ DESKTOP_CSP = (
     "default-src 'self'; script-src 'self' 'unsafe-inline' https:; "
     "style-src 'self' 'unsafe-inline' https:; "
     "img-src 'self' data: blob: 'unsafe-inline' https:; "
-    "font-src 'self' 'unsafe-inline' https:; "
+    "font-src 'self' data: 'unsafe-inline' https:; "
     "connect-src 'self' http://127.0.0.1:* 'unsafe-inline' https:"
 )
 

@@ -114,6 +114,7 @@ def main() -> None:
         help="create a paired device and print its bearer token once",
     )
     minting.add_argument("device_name")
+    commands.add_parser("desktop", help="open the desktop window")
     arguments = parser.parse_args()
     if arguments.self_check:
         from verstehen.self_check import run_self_check
@@ -130,6 +131,10 @@ def main() -> None:
         raise SystemExit(
             import_learnharness(arguments.folder, settings, dry_run=arguments.dry_run)
         )
+    if arguments.command == "desktop":
+        from verstehen.desktop.shell import run_desktop
+
+        raise SystemExit(run_desktop())
     if arguments.command == "mint-token":
         try:
             if not arguments.device_name.strip():

@@ -2,3 +2,4 @@ extend = "../../../../ruff.toml"
 
 [lint.flake8-tidy-imports.banned-api]
 "pydantic_ai".msg = "keep stored data independent of Pydantic AI; move agent code into verstehen.teaching or verstehen.providers"
+"PySide6".msg = "keep Qt inside verstehen.desktop"
