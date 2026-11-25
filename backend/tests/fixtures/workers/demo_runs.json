@@ -89,13 +89,13 @@
   },
   {
     "name": "a probe value",
-    "html": "<p>ok é</p>",
+    "html": "<p>ok \u00e9</p>",
     "probe": "document.querySelector('p').textContent",
     "expect": {
       "console_errors": [],
       "page_errors": [],
       "failed_request_urls": [],
-      "probe_result": "ok é",
+      "probe_result": "ok \u00e9",
       "probed": true
     }
   },
@@ -244,6 +244,48 @@
       ],
       "page_errors": [],
       "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a demo that wraps fetch and XHR under common names",
+    "html": "<script>const nativeFetch = window.fetch; window.fetch = (...a) => nativeFetch(...a); const nativeOpen = XMLHttpRequest.prototype.open; const requestUrls = new Map(); const reportFailedRequest = () => {}; const log = console.debug; fetch('data:,ok').then(() => { window.done = true })</script>",
+    "probe": "window.done === true",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a fetch rejected for its input",
+    "html": "<script>fetch('data:,x', { method: 'GET', body: 'x' }).catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a blocked request and an independent failed fetch",
+    "html": "<script>fetch('{origin}/api/health').catch(() => {}).then(() => fetch('http://example.invalid/data.json')).catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "{origin}/api/health",
         "http://example.invalid/data.json"
       ],
       "probe_result": true,
