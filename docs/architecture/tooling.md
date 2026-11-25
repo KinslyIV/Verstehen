@@ -1,7 +1,7 @@
 # Tooling and packaging
 
 Owns how the code is checked, verified, run, built, and released: the Makefile, the custom checks,
-the fake model, the verify flows, the launcher, the desktop entry and self-check, the Arch package, the Android app build and its emulator loop, and CI.
+the fake model, the verify flows, the console entry, the desktop entry and self-check, the Arch package, the Android app build and its emulator loop, and CI.
 
 ## Where things run
 
