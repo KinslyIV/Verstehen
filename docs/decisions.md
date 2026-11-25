@@ -39,17 +39,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   unchanged. The alternative was a server mode without demo checks.
 - **`--self-check` also imports eagerly,** since the desktop bundle's self-check runs a Qt demo
   check; the server bundle's self-check gets slower.
-- **Demo checks block loopback hosts in both runners,** so a checked demo can't reach the app's own
-  origin; server-mode Playwright demos can no longer reach localhost either. A hostname that only
-  resolves to loopback is not caught. The alternative was Qt-only blocking.
 - **Each desktop demo check runs in a shown `QWebEngineView` that never reaches the screen**
   (1280×720, Playwright's viewport), so `requestAnimationFrame`, timers, and `visibilityState`
   behave as in Playwright; a hidden page never fires rAF.
-- **Playwright guards every redirect hop through a CDP `Fetch` handler** (`page.route` sees only
-  the first URL), so the runner is Chromium-only, as it already was. Qt's interceptor blocks
-  redirect hops too, but under CPU load the blocked hop occasionally still reaches the server;
-  the page never gets the response, and the app refuses it without the token cookie. The Qt test
-  no longer asserts the app saw no request.
 - **The mode is resolved once from `--server` and `VERSTEHEN_SERVER=1`;** `desktop` with either
   is refused, and the packaged app refuses server mode however it is selected.
 - **A refused external link tells the page** (`verstehen:link-refused`), and Settings → Tools shows
@@ -64,7 +56,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   and caught fetch/XHR failures read `net::ERR_FAILED` (JavaScript can't see the real reason), a
   load timeout `Timeout 30000ms exceeded.`, a probe error has no stack, and an error-level console
   line starting with `Uncaught` counts as a page error. Aborted requests are not reported. The
-  contract fixtures compare failed requests by URL and reason placeholder.
+  contract fixtures compare failed requests by URL and reason placeholder. Both runners
+  block only schemes other than `http`, `https`, `data`, `blob`, `about`, as LH does (user decision
+  2026-11-25: no localhost block).
 - **Each desktop demo check gets its own off-the-record profile and page,** deleted after it;
   isolation over a small cost per check.
 - **The self-check picks `qt-demo` when PySide6 is importable** (desktop bundle, dev), and
