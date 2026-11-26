@@ -1,4 +1,4 @@
-"""Runs the real desktop entry offscreen and reports which heavy modules loaded, before and after first use."""
+"""Runs the real desktop entry offscreen and reports which heavy modules loaded once Qt is up."""
 
 import json
 import os
@@ -7,6 +7,9 @@ import signal
 import sys
 import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
+
+from verstehen.jobs.workers.visual import render_svg
 
 HEAVY_MODULES = sys.argv[1:]
 
@@ -15,8 +18,7 @@ def report_when_the_app_is_up() -> None:
     while signal.getsignal(signal.SIGTERM) is signal.SIG_DFL:
         time.sleep(0.1)
     at_startup = [name for name in HEAVY_MODULES if name in sys.modules]
-    from verstehen.jobs.workers.visual import render_svg
-
+    ThreadPoolExecutor(1).shutdown()
     png = render_svg('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"/>')
     print(
         json.dumps(

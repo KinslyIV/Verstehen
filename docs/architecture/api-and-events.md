@@ -11,7 +11,7 @@ LearnHarness spec: [storage and events](../learnharness/storage-and-events.md#ev
 
 Backend, `backend/src/verstehen/api/`: one router per area (`auth.py`, `sync.py`, `sync_status.py`,
 `server_setup.py`, `sessions.py`, `jobs.py`, `side_chats.py`, `graph.py`, `providers.py`,
-`chatgpt.py`, `claude_code.py`, `tools.py`, `demo_browser.py` (not mounted on the desktop), `images.py`, `health.py`), `access.py`
+`chatgpt.py`, `claude_code.py`, `tools.py`, `plugins.py`, `demo_browser.py` (not mounted on the desktop), `images.py`, `health.py`), `access.py`
 (`authenticate_server_request`, `request_refusal`), and `deps.py` (services from `app.state`, wired
 in `app.py`).
 
@@ -34,6 +34,7 @@ types stay behind the client.
 | Sync | `POST /api/sync/push`; `GET /api/sync/pull`; `POST /api/sync/images/{sha256}.{ext}` (server mode only; `404` otherwise); `GET /api/sync/status`; `POST /api/sync/now` (laptop mode; `404` in server mode) |
 | Server setup | `GET POST /api/server/install`; `POST /api/server/trust-host`; `POST /api/server/connect`; `POST /api/server/disconnect`; `GET /api/server/accounts/claude-code`; `GET POST /api/server/accounts/chatgpt`; `GET /api/server/accounts/chatgpt/sign-in/{id}`; `DELETE /api/server/accounts/chatgpt/{id}`; `GET /api/server/devices`; `POST /api/server/pairing-code`; `DELETE /api/server/devices/{id}` (laptop mode only; `404` in server mode) |
 | Tools | `GET /api/search-keys`; `PUT DELETE /api/search-keys/{engine}`; `GET /api/demo-browser`; `GET POST /api/demo-browser/download` |
+| Plugins | `GET /api/plugins`; `POST /api/plugins/refresh`; `PUT /api/plugins/{id}/enabled`; `POST /api/plugins/{id}/call/{name}` (JSON in and out); `GET /api/plugins/{id}/files/{path}` (the manifest's `main`, `styles`, and `assets/`). The list reports `error` for a plugins-level problem (an unreadable state file or folder). Plugins load only in the desktop app, or in browser-only mode with `VERSTEHEN_PLUGINS=1`; otherwise the list is empty ([plugins](plugins.md)). |
 | Other | `GET /api/images/{sha256}.{ext}`; `GET /api/health` |
 
 ## Events
@@ -49,7 +50,7 @@ LearnHarness's two-stream model is kept:
   then `data: [DONE]`.
 - **Notifications** (`GET /api/events`): "something changed, refetch". Types: `turn-started`,
   `turn-settled`, `chats-changed`, `compaction-changed`, `jobs-changed`, `side-chats-changed`,
-  `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`, `sync-status-changed`.
+  `graph-changed` (with `revision`), `extractions-changed`, `sync-changed`, `sync-status-changed`, `plugins-changed`, and `plugin-message` (with `plugin_id`, `topic`, `data`).
   The stream starts with a `: ping` comment sent once the subscription is registered, so a client
   sees it accepted before the first event (a server sends response headers with the first chunk)
   and misses nothing published after that; then a ping comment every 25 s without events.

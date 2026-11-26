@@ -234,7 +234,7 @@ class FakeSshBackend:
             return SshCommandResult(exit_status=0, stdout=f"{self.uv_version}\n")
         if 'printf "%s" "$HOME"' in command:
             return SshCommandResult(exit_status=0, stdout="/home/ubuntu")
-        if "python install 3.15" in command:
+        if "python install 3.14" in command:
             return SshCommandResult(exit_status=0, stdout="Installed venv\n")
         if command == SYSTEMD_INVOCATION_COMMAND:
             return SshCommandResult(exit_status=0, stdout=DEPLOYMENT_INVOCATION)
@@ -1036,13 +1036,13 @@ def test_install_checks_user_manager_first_stages_venv_and_mints_in_server_data_
             update_cmd = commands[index("self update")]
             assert "timeout -k 5 25" in update_cmd and "else" not in update_cmd
             assert (
-                index("python install 3.15")
+                index("python install 3.14")
                 < index('rm -rf "$HOME/.local/share/verstehen-server/bundle"')
                 < index("venv.new")
             )
             build = commands[index("venv.new")]
             assert (
-                "venv --managed-python --no-python-downloads --python 3.15" in build
+                "venv --managed-python --no-python-downloads --python 3.14" in build
                 and "import verstehen.cli" in build
                 and "--clear" not in build
             )
@@ -2244,7 +2244,7 @@ def test_install_lock_excludes_another_laptop_until_first_run_finishes(tmp_path:
                     capture_output=True,
                 )
                 return SshCommandResult(exit_status=result.returncode)
-            if "python install 3.15" in command:
+            if "python install 3.14" in command:
                 staging.set()
                 await finish.wait()
             return await super().handle_command(command)
@@ -2887,9 +2887,9 @@ def test_outdated_symlinked_system_uv_skips_self_update_fails_before_upload_and_
                 uv_kind="symlink",
                 uv_version="uv 0.11.25",
                 command_results={
-                    "python install 3.15": SshCommandResult(
+                    "python install 3.14": SshCommandResult(
                         exit_status=1,
-                        stderr="error: No download found for request: cpython-3.15",
+                        stderr="error: No download found for request: cpython-3.14",
                     )
                 },
             )
@@ -2899,7 +2899,7 @@ def test_outdated_symlinked_system_uv_skips_self_update_fails_before_upload_and_
             assert status["state"] == "failed"
             assert status["error_code"] == "install_failed"
             assert "system uv (uv 0.11.25)" in status["error"]
-            assert "Python 3.15" in status["error"]
+            assert "Python 3.14" in status["error"]
             assert not any("self update" in c for c in ssh.commands)
             assert ssh.uploaded == []
             assert any(
@@ -2921,9 +2921,9 @@ def test_outdated_standalone_uv_fails_before_upload_after_failed_self_update_and
                 uv_update_probe="stopped",
                 raise_once={"self update": TimeoutError("network stalled")},
                 command_results={
-                    "python install 3.15": SshCommandResult(
+                    "python install 3.14": SshCommandResult(
                         exit_status=1,
-                        stderr="error: No download found for request: cpython-3.15",
+                        stderr="error: No download found for request: cpython-3.14",
                     )
                 },
             )

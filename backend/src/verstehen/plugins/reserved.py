@@ -1,0 +1,25 @@
+RESERVED_TOOL_NAMES = frozenset(
+    {
+        "probe",
+        "recall",
+        "quiz",
+        "explain",
+        "ask_user_question",
+        "probe_done",
+        "send_to_user",
+        "plan_init",
+        "show_image",
+        "problem",
+        "conclude",
+        "research",
+        "demo",
+        "visual",
+        "pdf",
+        "read",
+        "ls",
+        "find",
+        "grep",
+        "list_sessions",
+        "list_propositions",
+    }
+)

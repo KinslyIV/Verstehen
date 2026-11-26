@@ -3,6 +3,7 @@ import { isJobKind, type JobKind } from '#lib/jobs/jobs.js';
 import { CONCLUDE_TOOL, PROBLEM_TOOL } from '#lib/practice/state.js';
 import { parseJson } from '#lib/questions/question-core.js';
 import { asObject } from '#lib/questions/question-input.js';
+import { isBuiltInTool } from './built-in-tools.js';
 import { sendToUserText } from './delivery.js';
 
 type Assistant = Extract<Entry, { kind: 'assistant' }>;
@@ -13,7 +14,8 @@ export type ResponseItem =
 	| { kind: 'conclude'; args: unknown; toolCallId: string }
 	| { kind: 'tool-retry' }
 	| { kind: 'image'; result?: ToolResult }
-	| { kind: 'job'; jobKind: JobKind; toolCallId: string };
+	| { kind: 'job'; jobKind: JobKind; toolCallId: string }
+	| { kind: 'tool'; name: string; args: unknown; result?: ToolResult; stopped: boolean };
 
 export function responseProse(
 	entry: Assistant,
@@ -30,7 +32,11 @@ export function responseProse(
 		if (part.type === 'text') text += part.text;
 		if (part.type !== 'tool_call') continue;
 		const result = results?.get(part.tool_call_id);
-		if (result?.is_error) {
+		if (!isBuiltInTool(part.tool_name)) {
+			flushText();
+			const stopped = entry.stop_reason === 'aborted' || entry.stop_reason === 'error';
+			items.push({ kind: 'tool', name: part.tool_name, args: part.arguments, result, stopped });
+		} else if (result?.is_error) {
 			if (result.text !== 'Operation aborted' && entry.stop_reason !== 'aborted') {
 				flushText();
 				items.push({ kind: 'tool-retry' });

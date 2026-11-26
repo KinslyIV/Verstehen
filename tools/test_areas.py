@@ -14,6 +14,7 @@ AREAS = (
     "providers",
     "store",
     "sync",
+    "plugins",
     "shell",
 )
 
@@ -57,6 +58,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
         "src/lib/components/settings-accounts.svelte.test.ts",
     ),
     "store": (),
+    "plugins": ("src/lib/plugins/**/*.test.ts",),
     "sync": (
         "src/lib/components/settings-sync.svelte.test.ts",
         "src/lib/components/sync-badge.svelte.test.ts",

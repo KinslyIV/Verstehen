@@ -84,7 +84,28 @@ def check_the_page_is_served(port: int) -> None:
         raise AssertionError("Health without the cookie was not refused")
 
 
+def check_qt_libraries_resolve(app_dir: Path) -> None:
+    """Every shipped library finds the Qt libraries it links to, so the spec's Qt filter dropped none in use."""
+    internal = app_dir / "_internal"
+    env = {**os.environ, "LD_LIBRARY_PATH": str(internal)}
+    files = [*internal.rglob("*.so*"), *internal.rglob("QtWebEngineProcess")]
+    missing = set()
+    for path in files:
+        if path.is_file() and not path.is_symlink():
+            linked = subprocess.run(
+                ["ldd", path], env=env, capture_output=True, text=True
+            )
+            missing |= {
+                f"{path.relative_to(internal)}: {name}"
+                for name in re.findall(r"(libQt6\S+) => not found", linked.stdout)
+            }
+    assert not missing, (
+        f"Qt libraries dropped by verstehen.spec but still linked: {sorted(missing)}"
+    )
+
+
 def smoke(binary: Path) -> None:
+    check_qt_libraries_resolve(binary.parent)
     with tempfile.TemporaryDirectory(prefix="verstehen-smoke-") as directory:
         env = smoke_env(directory)
         subprocess.run([binary, "--self-check"], env=env, check=True, timeout=120)

@@ -1,0 +1,12 @@
+{
+  "apiVersion": 1,
+  "id": "hello",
+  "name": "Hello",
+  "version": "1.0.0",
+  "description": "Greets the learner, and gives the teacher one lookup tool.",
+  "author": "Verstehen tests",
+  "minAppVersion": "0.1.0",
+  "backend": "backend",
+  "main": "main.js",
+  "styles": "styles.css"
+}

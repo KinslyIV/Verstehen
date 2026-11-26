@@ -42,6 +42,7 @@
 	import { modelSolutionForConclude, problemInputForConclude } from '#lib/practice/state.js';
 	import { asObject } from '#lib/questions/question-input.js';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
+	import ToolCallCard from '#lib/teaching/tool-call-card.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
 	import { getPlanPanel } from '#lib/teaching/plan-panel.js';
@@ -474,6 +475,13 @@
 				/>
 			{:else if item.kind === 'probe'}
 				<ProbeAssessment args={item.args} result={item.result} />
+			{:else if item.kind === 'tool'}
+				<ToolCallCard
+					name={item.name}
+					args={item.args}
+					result={item.result}
+					stopped={item.stopped}
+				/>
 			{:else}
 				<p data-testid="tool-retry" class="py-1 text-center text-xs text-muted-foreground">
 					Retrying…

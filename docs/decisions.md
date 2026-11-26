@@ -14,6 +14,27 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Plugins (implementation):**
+
+- **MCP toolsets use `pydantic_ai.mcp.MCPToolset`** over `fastmcp-slim[client]` (the `mcp` extra),
+  because Pydantic AI 2.70 no longer has `MCPServerStdio`. Consequence: PyInstaller collects
+  `fastmcp` and `mcp` explicitly, and in the packaged app a stdio server must be an external
+  command, not a Python script (`sys.executable` is the `verstehen` binary). `make app` was not run.
+- **Plugins load only in the desktop app, or with `VERSTEHEN_PLUGINS=1` in browser-only mode** (the
+  verify flows set it). A plain local API (`make dev`) and server mode load none: its loopback
+  access check has no token, and plugin code is trusted. Alternative: always on locally.
+- **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
+  desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
+  run plugin code on a device that has no plugin folder.
+- **Disabling does not forcefully interrupt a synchronous plugin tool or synchronous `@ctx.expose`
+  handler (decided: cooperative only, as in LearnHarness).** Both run in a worker thread; on disable
+  the waiting caller is cancelled immediately (answering 409 for `@ctx.expose` calls) while the
+  worker thread runs on and its late result is discarded. Alternative: block disable until the
+  worker thread exits. Consequence: a long synchronous tool or exposed handler can still write
+  plugin data after the plugin's cleanups ran.
+- **Plugin warnings reuse `PluginInfo.warnings`** (an agent-turn refusal or failing factory), cleared
+  by the next clean turn.
+
 **Qt shell (implementation):**
 
 - **The desktop server prefers port 28420 and falls back to a random free port.** The page origin
@@ -29,13 +50,11 @@ alternative, and the consequence, until the user reviews them at the end of the 
   text now says "server" instead of "sidecar".
 - **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
   Packaging sets the bundled path.
-- **Heavy imports are function-level; PEP 810 `lazy` is banned (user, 2026-11-25).** PySide6
-  (shiboken6) leaves some lazy names unresolved depending on import order, so `lazy` cannot be
-  trusted in the desktop process; making it eager there would load every SDK at startup. All 26
-  `lazy` imports became imports inside the using function (or `TYPE_CHECKING`), `ruff`
-  `ban-lazy` refuses new ones, `launcher.py` and `desktop/eager.py` are gone (the entry is
-  `verstehen.cli:main` again), and the vendored `claude_code/__init__.py` no longer re-exports
-  (nothing used it). No pytest process imports PySide6; Qt tests run in subprocess probes.
+- **Python stays on 3.14 while the desktop app uses PySide6 (user, 2026-11-25).** Python 3.15's
+  PEP 810 `lazy` imports, the standard library's included, break under shiboken6, which replaces
+  `__import__` and leaves lazy names unresolved (`concurrent.futures.ThreadPoolExecutor`, so
+  `asyncio.to_thread`, failed with "'lazy_import' object is not callable"). Heavy libraries are
+  imported inside the functions that use them instead. Servers get a Python 3.14 venv. No pytest process imports PySide6; Qt tests run in subprocess probes.
 - **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
   has no Playwright, and server mode runs from the server bundle. Source and dev modes are
   unchanged. The alternative was a server mode without demo checks.
@@ -71,6 +90,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
   return 200, `/api/health` without the cookie 403) instead of adding a token hook to the app;
   it ignores zombie `QtWebEngineProcess` children the build container's PID 1 never reaps, and
   sets `--no-sandbox --disable-gpu` only for itself.
+- **The desktop package ships only the Qt it loads, in English and German.** `verstehen.spec`
+  drops Qt libraries nothing links to, `qml/`, the QML debugger, and other languages' Qt and
+  Chromium translations: 277 → 219 MB compressed, 696 → 527 MB installed. Chromium's own texts
+  (such as the spell-check menu) fall back to English in other languages. The smoke test refuses
+  a build where a shipped library links to a dropped one; a library loaded only by name at
+  runtime would show up only when the app runs.
 - **PKGBUILD `depends` is a superset** of the Qt/Chromium runtime libraries (`ldd` found only
   optional plugins missing); trimming waits for the laptop install.
 - **The `desktop` extra is `PySide6-Essentials` + `PySide6-WebEngine`** (6.12 split WebEngine into
@@ -314,9 +339,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
   node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
   Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
-- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
-  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
-  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **The notification stream lives in `NotificationBridge` in the root layout** (gated off `/pair`
+  in remote mode), not the session list or lesson layout, so the phone drawer unmounting the
+  sidebar and navigating to `/settings` keep the stream open. Alternative: keep it in the sidebar
+  or lesson layout; consequence: missed notifications while the drawer is closed or on `/settings`.
 - **Device type by screen size:** the device-name default is "Tablet" when
   `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
   query; consequence: a large foldable's inner screen reads as a tablet.
@@ -347,6 +373,22 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Compaction is always Verstehen's own**, never provider-native.
 
 ## Decided, not yet implemented
+
+**General Chat agent ([plan](plans/chat-agent.md), approved 2026-11-26):**
+
+- **Third session kind (`kind = "chat"`, labeled **Chat**):** sits alongside **Teaching** and
+  **Practice** (`0011_chat_sessions.sql`). Teaching still starts directly with the Prober (no
+  general router in front of it, no in-place transition). No LearnHarness counterpart.
+- **Read-only inspection + 1-click Launch Card:** the Chat agent can read prompts (defaults,
+  overrides, switches), non-secret settings (never keys, tokens, or credentials), sessions and
+  folders, full knowledge-graph nodes and chains, paginated past session transcripts, and a bundled
+  app guide (`teaching/prompts/chat/guide.md`), plus Verstehen's existing learner-file tools and
+  `research`/`pdf` jobs. It never mutates settings, prompts, or folders. `prepare_session` renders
+  an inline 1-click Launch Card (**Start teaching →** / **Start practice →**); nothing is created
+  and no Prober/Practitioner turn runs until the user clicks.
+- **UI, model slot & graph exclusion:** uses the **Main (`strong`)** slot by default (switchable per
+  session), exposes its own prompt segments in **Settings → Prompts**, skips graph extraction and
+  the Chains table, and keeps plugins scoped to `prober`, `teacher`, and `practice`.
 
 **Mobile app and two-way sync ([plan](plans/mobile-and-sync.md)):**
 
@@ -480,6 +522,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **The user never enters a model's context limit.**
 - **ChatGPT model lists are cached** per account for the process's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
+
+### Plugins
+
+- **`@ctx.expose` and `ctx.backend.<name>(input)`** replace LH's `ctx.handle` and `ctx.call`: a
+  backend function is exposed by decorator, and the frontend calls it through a Proxy over one
+  host route, so plugin authors write no endpoints.
+- **A toolset hook** (`register_toolset`, for MCP servers over Pydantic AI's `MCPToolset`) beside
+  `register_tools`; LH has no MCP or toolset hook.
+- **A Python backend and a JS frontend.** LH's backend is JS; here it is a Python package in
+  `dist/backend/` with optional pure-Python `vendor/`, and the host installs nothing.
+- **Desktop only.** Server mode discovers no plugins, paired remote devices run none, and
+  `plugins/` and `plugins-state.json` are not synced. LH has no server or phone mode.
+- **Plugin tool factories are synchronous:** `register_tools(agents, factory)` calls the factory
+  once per turn and takes the tools it returns without awaiting.
+- **Not ported yet from LH's plugin API:** action keyboard shortcuts, the action context's `view`
+  (a session snapshot), and the parts listed as deferred in the [roadmap](roadmap.md).
+- **MCP servers in the packaged app** should be external commands: `sys.executable` is the
+  `verstehen` binary there, so a Python-script server does not start.
 
 ### Frontend
 
