@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-25 (plugins branch `plugins` built, awaiting review).
+> PRs. Last update: 2026-11-26 (plugins PR ready for review).
 
 ## Where we are
 
@@ -68,9 +68,9 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   settings rows), and 4 (worker ownership on cancelled sync import/activate, atomic package admission,
   leaf toolset ownership, worker-thread sync `@ctx.expose`, fenced `turn-settled` observers, and
   complete settings-row validation) are committed; see [plugin authoring](plugin-authoring.md).
-- **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
-  frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
-  was quota-blocked on 2026-11-21 and still needs a fresh run.
+- **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
+  frontend Vitest, and 74 scripted Playwright flows. Live Claude verification (`make verify-live`)
+  was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.
 
 ## Next
 
@@ -78,8 +78,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
    Task 8 (PSS for a demo-free lesson and the 2-demo session; five session switches plus a heap
    snapshot with `VERSTEHEN_DEVTOOLS=1`) and the hand checks: trackpad pinch on the graph,
    folder and file drag-and-drop, and Wayland window flashing and window icon.
-0b. Review the `plugins` branch, run full `make check` and `make verify`, and open its PR into
-   `dev`; the packaged app's MCP toolset behavior (`make app`) is unchecked.
+0b. Review and merge the `plugins` PR into `dev`; the packaged app's MCP toolset behavior
+   (`make app`) is unchecked.
 0a. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
    `dev`; check the sidebar folder drag-and-drop in the installed app by hand.
 1. Merge `release/0.2.0` into `dev`.
@@ -92,4 +92,4 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 ## Open questions
 
 Review the pending [implementation decisions](decisions.md#waiting-for-your-review) from
-LearnHarness import, Mobile & Sync A/C/D, Desktop responsiveness, and M11a.
+LearnHarness import, Mobile & Sync A/C/D, Desktop responsiveness, M11a, and Plugins.

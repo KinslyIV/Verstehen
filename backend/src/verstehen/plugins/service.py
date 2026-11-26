@@ -131,7 +131,12 @@ class PluginService:
             return self.installed()
         for plugin_id in [name for name in self.plugins if name not in folders]:
             plugin = self.plugins[plugin_id]
-            if plugin.context is None and not plugin.queued and plugin.revision is None:
+            if (
+                plugin.context is None
+                and not plugin.queued
+                and plugin.revision is None
+                and plugin.worker is None
+            ):
                 del self.plugins[plugin_id]
             else:
                 self.require_restart(plugin, "removed")
@@ -175,6 +180,7 @@ class PluginService:
         known = self.plugins.get(plugin_id)
         if known and (
             known.queued
+            or known.worker is not None
             or known.revision is not None
             or known.module
             or known.context
