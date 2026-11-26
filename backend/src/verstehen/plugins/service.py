@@ -498,7 +498,9 @@ class PluginService:
                 plugin.root / "data",
                 self.plugin_message,
                 asyncio.get_running_loop(),
-                partial(self.schedule_late_cleanup, plugin),
+            )
+            context.on_late_cleanup = partial(
+                self.schedule_late_cleanup, plugin, context
             )
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
@@ -512,11 +514,11 @@ class PluginService:
                 plugin.revision = revision
                 plugin.files = files
         except asyncio.CancelledError:
-            failures = await context.close() if context else []
+            failures = await self.close_context(context) if context else []
             self.mark_stopped(plugin, failures)
             raise
         except Exception as error:
-            failures = await context.close() if context else []
+            failures = await self.close_context(context) if context else []
             plugin.info.status = "failed"
             plugin.info.error = "; ".join(
                 [failure_text(error), *(f"Cleanup: {text}" for text in failures)]
@@ -525,7 +527,7 @@ class PluginService:
         finally:
             self.activations.pop(plugin.info.id, None)
         if not plugin.info.enabled:
-            failures = await context.close()
+            failures = await self.close_context(context)
             self.mark_stopped(plugin, failures)
             return
         plugin.context = context
@@ -586,7 +588,7 @@ class PluginService:
                     returned = await returned
                 if returned is not None:
                     if context.closed:
-                        await self.run_late_cleanup(plugin, returned)
+                        await self.run_late_cleanup(plugin, context, returned)
                     else:
                         context.cleanup(returned)
             except BaseException as error:
@@ -594,7 +596,7 @@ class PluginService:
             finally:
                 while late := context.take_late_cleanups():
                     for cleanup in reversed(late):
-                        await self.run_late_cleanup(plugin, cleanup)
+                        await self.run_late_cleanup(plugin, context, cleanup)
                 if plugin.worker is current:
                     plugin.worker = None
 
@@ -604,8 +606,10 @@ class PluginService:
         if outcome:
             raise outcome[0]
 
-    def schedule_late_cleanup(self, plugin: InstalledPlugin, cleanup: Cleanup) -> None:
-        task = asyncio.create_task(self.run_late_cleanup(plugin, cleanup))
+    def schedule_late_cleanup(
+        self, plugin: InstalledPlugin, context: PluginContext, cleanup: Cleanup
+    ) -> None:
+        task = asyncio.create_task(self.run_late_cleanup(plugin, context, cleanup))
         plugin.late_cleanups.add(task)
         self.tasks.add(task)
         task.add_done_callback(plugin.late_cleanups.discard)
@@ -622,10 +626,12 @@ class PluginService:
                 break
             await asyncio.wait(pending)
 
-    async def run_late_cleanup(self, plugin: InstalledPlugin, cleanup: Any) -> None:
+    async def run_late_cleanup(
+        self, plugin: InstalledPlugin, context: PluginContext, cleanup: Any
+    ) -> None:
         if not callable(cleanup):
             self.record_late_cleanup_failure(
-                plugin, "Plugin cleanup must be a function"
+                plugin, context, "Plugin cleanup must be a function"
             )
             return
         try:
@@ -639,12 +645,17 @@ class PluginService:
             current = asyncio.current_task()
             if current and current.cancelling():
                 raise
-            self.record_late_cleanup_failure(plugin, "Cancelled")
+            self.record_late_cleanup_failure(plugin, context, "Cancelled")
         except Exception as error:
             logger.exception("Plugin %s late cleanup failed", plugin.info.id)
-            self.record_late_cleanup_failure(plugin, failure_text(error))
+            self.record_late_cleanup_failure(plugin, context, failure_text(error))
 
-    def record_late_cleanup_failure(self, plugin: InstalledPlugin, text: str) -> None:
+    def record_late_cleanup_failure(
+        self, plugin: InstalledPlugin, context: PluginContext, text: str
+    ) -> None:
+        if not context.reported:
+            context.late_failures.append(text)
+            return
         if plugin.context is None and plugin.info.status in ("disabled", "failed"):
             entry = f"Cleanup: {text}"
             plugin.info.status = "failed"
@@ -653,6 +664,13 @@ class PluginService:
             )
             self.plugins_changed()
 
+    async def close_context(self, context: PluginContext) -> list[str]:
+        failures = await context.close()
+        context.reported = True
+        late = list(context.late_failures)
+        context.late_failures.clear()
+        return [*failures, *late]
+
     async def deactivate(self, plugin: InstalledPlugin) -> None:
         """Run the plugin's cleanups; a failing cleanup marks it failed, and stays until its next activation."""
         context, plugin.context = plugin.context, None
@@ -660,7 +678,7 @@ class PluginService:
             if plugin.info.status == "activating":
                 plugin.info.status = "disabled"
             return
-        self.mark_stopped(plugin, await context.close())
+        self.mark_stopped(plugin, await self.close_context(context))
 
     def mark_stopped(self, plugin: InstalledPlugin, failures: list[str]) -> None:
         if plugin.manifest is None:

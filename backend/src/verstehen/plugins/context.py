@@ -91,6 +91,8 @@ class PluginContext:
         self.cleanup_lock = threading.Lock()
         self.cleanups: list[Cleanup] = []
         self.late_cleanups: list[Cleanup] = []
+        self.late_failures: list[str] = []
+        self.reported = False
         self.exposed: dict[str, Exposed] = {}
         self.observers: dict[AppEvent, list[Observer]] = {}
         self.contributions: list[AgentContribution] = []

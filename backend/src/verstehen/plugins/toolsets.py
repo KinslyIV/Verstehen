@@ -50,6 +50,11 @@ class PluginTurn:
         self.report(plugin_id, [f"Added nothing to a {self.agent} turn: {problem}"])
 
 
+def own_cancellation() -> bool:
+    current = asyncio.current_task()
+    return bool(current and current.cancelling())
+
+
 @dataclass
 class PluginToolset(WrapperToolset[None]):
     """One plugin's tools and instructions for a turn. Every listing and call runs as an operation of
@@ -92,6 +97,11 @@ class PluginToolset(WrapperToolset[None]):
             wrapped = await self.context.operate(resolve)
         except Stopped:
             return self
+        except asyncio.CancelledError:
+            if own_cancellation():
+                raise
+            self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
+            return self
         except Exception as error:
             self.turn.drop(self.plugin_id, error)
             return self
@@ -128,8 +138,7 @@ class PluginToolset(WrapperToolset[None]):
                 try:
                     await asyncio.shield(self.closing)
                 except asyncio.CancelledError:
-                    current = asyncio.current_task()
-                    if current and current.cancelling():
+                    if own_cancellation():
                         raise
             self.closing.result()
 
@@ -141,8 +150,7 @@ class PluginToolset(WrapperToolset[None]):
         except Stopped:
             await self.discard_entered(close_entered)
         except asyncio.CancelledError:
-            current = asyncio.current_task()
-            if current and current.cancelling():
+            if own_cancellation():
                 await self.discard_entered(close_entered)
                 raise
             self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
@@ -158,8 +166,7 @@ class PluginToolset(WrapperToolset[None]):
             if result is not None:
                 await result
         except asyncio.CancelledError:
-            current = asyncio.current_task()
-            if current and current.cancelling():
+            if own_cancellation():
                 raise
             self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
         except Exception as error:
@@ -181,8 +188,7 @@ class PluginToolset(WrapperToolset[None]):
                 await result
             return None
         except asyncio.CancelledError:
-            current = asyncio.current_task()
-            if current and current.cancelling():
+            if own_cancellation():
                 raise
             logger.warning(
                 "Plugin %s run toolset cleanup cancelled", self.plugin_id, exc_info=True
@@ -224,6 +230,16 @@ class PluginToolset(WrapperToolset[None]):
             ) from None
         except PASSED_ON:
             raise
+        except asyncio.CancelledError:
+            if own_cancellation():
+                raise
+            logger.warning(
+                "Plugin %s tool %s cancelled", self.plugin_id, name, exc_info=True
+            )
+            failure = f"Tool {name} failed: Cancelled"
+            self.turn.failures[self.plugin_id] = failure
+            self.turn.report(self.plugin_id, [failure])
+            raise ToolFailed(failure) from None
         except Exception as error:
             logger.warning(
                 "Plugin %s tool %s failed", self.plugin_id, name, exc_info=True
@@ -275,6 +291,10 @@ class PluginToolsets(CombinedToolset[None]):
             tools = await member.get_tools(ctx)
         except Stopped:
             raise
+        except asyncio.CancelledError:
+            if own_cancellation():
+                raise
+            return None, "Cancelled"
         except Exception as error:
             return None, failure_text(error)
         clash = next((name for name in tools if name in taken), None)
@@ -307,6 +327,14 @@ class PluginToolsets(CombinedToolset[None]):
         try:
             tools = first if first is not None else await member.get_tools(ctx)
         except Stopped:
+            return {}
+        except asyncio.CancelledError:
+            if own_cancellation():
+                raise
+            logger.warning(
+                "Plugin %s could not list tools: cancelled", member.plugin_id
+            )
+            self.turn.report(member.plugin_id, ["Cancelled"])
             return {}
         except Exception as error:
             logger.warning(

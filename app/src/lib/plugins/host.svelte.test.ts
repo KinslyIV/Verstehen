@@ -518,3 +518,68 @@ test('register_settings_rows_returns_an_updatable_handle_and_rejects_duplicates_
 	});
 	expect(runtime.settings).toBeUndefined();
 });
+
+test('reenable_waits_for_late_cleanup_registered_by_old_handler_during_module_load', async () => {
+	const order: string[] = [];
+	let releaseHandler!: () => void;
+	let releaseLateCleanup!: () => void;
+	let releaseLoad!: () => void;
+	let activations = 0;
+	let loads = 0;
+
+	const host = new PluginHost({
+		load: async (url) => {
+			loads += 1;
+			if (loads === 2) {
+				await new Promise<void>((resolve) => (releaseLoad = resolve));
+			}
+			return modules[url.split('/')[3]]!;
+		},
+		navigation,
+		available: () => true
+	});
+
+	modules.hello = {
+		activate(ctx) {
+			const number = ++activations;
+			order.push(`activate ${number}`);
+			if (number === 1) {
+				ctx.onNotification('tick', async () => {
+					await new Promise<void>((resolve) => (releaseHandler = resolve));
+					ctx.cleanup(async () => {
+						order.push('late-cleanup-start');
+						await new Promise<void>((resolve) => (releaseLateCleanup = resolve));
+						order.push('late-cleanup-end');
+					});
+				});
+			}
+		}
+	};
+
+	installed = [plugin('hello')];
+	await syncAndSettle(host);
+	host.deliver({
+		type: 'plugin-message',
+		session_id: '',
+		plugin_id: 'hello',
+		topic: 'tick',
+		data: null
+	});
+
+	installed = [plugin('hello', { enabled: false, status: 'disabled' })];
+	await syncAndSettle(host);
+
+	installed = [plugin('hello')];
+	await host.sync();
+	await vi.waitFor(() => expect(releaseLoad).toBeTypeOf('function'));
+
+	releaseHandler();
+	await vi.waitFor(() => expect(order).toContain('late-cleanup-start'));
+	releaseLoad();
+	await Promise.resolve();
+	expect(activations).toBe(1);
+
+	releaseLateCleanup();
+	await host.settled();
+	expect(order).toEqual(['activate 1', 'late-cleanup-start', 'late-cleanup-end', 'activate 2']);
+});

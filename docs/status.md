@@ -67,10 +67,11 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   notification bridge, snapshotted public files and revision warnings, async dialog content, updatable
   settings rows), 4 (worker ownership on cancelled sync import/activate, atomic package admission,
   leaf toolset ownership, worker-thread sync `@ctx.expose`, fenced `turn-settled` observers, and
-  complete settings-row validation), and 5 (late `ctx.cleanup`, shared run-toolset closing,
+  complete settings-row validation), 5 (late `ctx.cleanup`, shared run-toolset closing,
   `turn-settled` observer cancellation guard, slider bounds and throwing validator handling, and
-  documented in-process Python / `vendor/` limits) are committed; see
-  [plugin authoring](plugin-authoring.md).
+  documented in-process Python / `vendor/` limits), and 6 (toolset resolver cancellation boundary,
+  late backend cleanup failure capture during teardown, and frontend retiring-runtime drain across
+  module load) are committed; see [plugin authoring](plugin-authoring.md).
 - **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 74 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.

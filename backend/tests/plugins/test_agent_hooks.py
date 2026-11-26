@@ -25,7 +25,7 @@ from verstehen.config import Settings
 from verstehen.plugins.context import PluginContext
 from verstehen.plugins.reserved import RESERVED_TOOL_NAMES
 from verstehen.plugins.service import PluginInfo, PluginService
-from verstehen.plugins.toolsets import PluginToolsets
+from verstehen.plugins.toolsets import PluginToolset, PluginToolsets, PluginTurn
 from verstehen.providers.claude_code import _request
 from verstehen.store.plugins import PluginsStore
 from verstehen.store.settings import ToolSettings
@@ -1098,6 +1098,96 @@ def test_a_run_owned_toolset_enter_cancelled_error_closes_entered_siblings_and_d
         assert warnings_of(service, "agent-hooks") == [
             "Added nothing to a prober turn: Cancelled"
         ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_plugin_resolver_cancellation_drops_plugin_without_aborting_turn(
+    tmp_path: Path,
+):
+    class CancellingResolver(AbstractToolset[None]):
+        def __init__(self, where: str, gate: asyncio.Event | None = None):
+            self.where = where
+            self.gate = gate
+
+        @property
+        def id(self) -> str | None:
+            return None
+
+        async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+            if self.where == "wait" and self.gate is not None:
+                self.gate.set()
+                await asyncio.sleep(3600)
+            if self.where == "for_run":
+                child = asyncio.create_task(asyncio.sleep(3600))
+                child.cancel()
+                await child
+            return self if self.where == "for_run_step" else FunctionToolset([harmless])
+
+        async def for_run_step(self, ctx: RunContext[None]) -> AbstractToolset[None]:
+            if self.where == "for_run_step":
+                child = asyncio.create_task(asyncio.sleep(3600))
+                child.cancel()
+                await child
+            return self
+
+        async def get_tools(self, ctx: RunContext[None]):
+            return {}
+
+        async def call_tool(self, name, tool_args, ctx, tool):
+            raise AssertionError("called unresolved toolset")
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        yield "done"
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        for where in ("for_run", "for_run_step"):
+            turn = PluginTurn("prober", service.set_warnings)
+            plugins = PluginToolsets(
+                [
+                    PluginToolset(
+                        CancellingResolver(where), "agent-hooks", context, turn
+                    )
+                ],
+                turn=turn,
+            )
+            agent = build_prober(
+                FunctionModel(stream_function=respond), "", extra_toolsets=(plugins,)
+            )
+            result = await agent.run("hi")
+            assert result.output == "done"
+            assert warnings_of(service, "agent-hooks") == [
+                "Added nothing to a prober turn: Cancelled"
+            ]
+
+        gate = asyncio.Event()
+        turn = PluginTurn("prober", service.set_warnings)
+        wait_plugins = PluginToolsets(
+            [
+                PluginToolset(
+                    CancellingResolver("wait", gate), "agent-hooks", context, turn
+                )
+            ],
+            turn=turn,
+        )
+        task = asyncio.create_task(
+            build_prober(
+                FunctionModel(stream_function=respond),
+                "",
+                extra_toolsets=(wait_plugins,),
+            ).run("hi")
+        )
+        await gate.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
         await service.close()
 
     asyncio.run(scenario())

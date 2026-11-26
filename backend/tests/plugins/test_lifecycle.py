@@ -1089,3 +1089,48 @@ def test_disabling_while_reenable_waits_for_retiring_worker_cancels_reenable(
         await service.close()
 
     asyncio.run(run())
+
+
+def test_late_cleanup_failure_during_teardown_marks_plugin_failed(tmp_path: Path):
+    install(tmp_path, "lifecycle")
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        context = service.plugins["lifecycle"].context
+        assert context is not None
+        op_started = asyncio.Event()
+        late_ran = asyncio.Event()
+        cleanup_gate = asyncio.Event()
+
+        async def slow_cleanup():
+            await cleanup_gate.wait()
+
+        context.cleanup(slow_cleanup)
+
+        async def failing_late():
+            late_ran.set()
+            raise RuntimeError("late boom")
+
+        async def op():
+            op_started.set()
+            try:
+                await asyncio.sleep(3600)
+            finally:
+                context.cleanup(failing_late)
+
+        running = asyncio.create_task(context.operate(op))
+        await op_started.wait()
+        disabling = asyncio.create_task(service.set_enabled("lifecycle", False))
+        await late_ran.wait()
+        await asyncio.sleep(0)
+        cleanup_gate.set()
+        await asyncio.gather(disabling, running, return_exceptions=True)
+        await service.settled()
+        info = service.plugins["lifecycle"].info
+        assert info.status == "failed"
+        assert info.error == "Cleanup: late boom"
+        await service.close()
+
+    asyncio.run(run())

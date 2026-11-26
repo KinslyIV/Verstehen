@@ -57,10 +57,17 @@ export class PluginHost {
 
 	/** Resolves once every plugin's pending activation and cleanup has finished. */
 	async settled(): Promise<void> {
-		while (this.queues.size) await Promise.all([...this.queues.values()]);
-		for (const set of this.retiring.values())
-			for (const runtime of set)
-				while (runtime.lateCleanups.size) await Promise.all([...runtime.lateCleanups]);
+		while (true) {
+			if (this.queues.size) {
+				await Promise.all([...this.queues.values()]);
+				continue;
+			}
+			const pending = [...this.retiring.values()].flatMap((set) =>
+				[...set].flatMap((runtime) => [...runtime.lateCleanups])
+			);
+			if (!pending.length) break;
+			await Promise.all(pending);
+		}
 	}
 
 	private async reconcile(): Promise<void> {
@@ -109,11 +116,16 @@ export class PluginHost {
 		this.enqueue(id, () => runtime.dispose());
 	}
 
-	private async drainRetiring(id: string): Promise<void> {
+	private async drainRetiring(id: string, clear = false): Promise<void> {
 		const set = this.retiring.get(id);
 		if (!set) return;
+		while (true) {
+			const pending = [...set].flatMap((old) => [...old.lateCleanups]);
+			if (!pending.length) break;
+			await Promise.all(pending);
+		}
+		if (!clear) return;
 		for (const old of [...set]) {
-			while (old.lateCleanups.size) await Promise.all([...old.lateCleanups]);
 			if (!old.cleanups.length && !old.lateCleanups.size) set.delete(old);
 		}
 		if (!set.size) this.retiring.delete(id);
@@ -127,6 +139,7 @@ export class PluginHost {
 			if (!live()) return;
 			if (info.styles) runtime.addCleanup(this.addStyles(info));
 			const module = await this.options.load(pluginFileUrl(info.id, info.main!));
+			await this.drainRetiring(info.id, true);
 			if (!live()) return;
 			if (typeof module?.activate !== 'function')
 				throw new Error('The plugin module does not export an activate function');
