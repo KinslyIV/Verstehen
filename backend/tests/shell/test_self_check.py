@@ -35,6 +35,7 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
         "prompts",
         "qt-demo",
         "claude-agent-sdk",
+        "mcp",
     }
     assert all(check["ok"] and check["detail"] for check in checks)
     assert not (tmp_path / ".local/share/verstehen").exists()
@@ -57,6 +58,7 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
         "check_playwright",
         "check_headless",
         "check_claude",
+        "check_mcp",
     ):
         monkeypatch.setattr(self_check, name, lambda: "checked")
     assert not self_check.run_self_check()
@@ -78,6 +80,7 @@ def test_self_check_runs_playwright_in_the_server_bundle(monkeypatch, capsys):
         "check_playwright",
         "check_headless",
         "check_claude",
+        "check_mcp",
     ):
         monkeypatch.setattr(self_check, name, lambda: "checked")
     assert self_check.run_self_check()

@@ -191,7 +191,8 @@ after its plugin is removed.
 - **MCP servers in the packaged app.** `sys.executable` there is the `verstehen` binary, so an MCP
   toolset should run an external command (`npx`, `uvx`, a binary), not a Python script.
 - **Pydantic AI 2.70:** MCP is `pydantic_ai.mcp.MCPToolset` over `fastmcp-slim`; `MCPServerStdio` no
-  longer exists. PyInstaller does not see `mcp`/`fastmcp` imports, so `verstehen.spec` collects them.
+  longer exists. PyInstaller does not see `mcp`/`fastmcp` imports, so `verstehen.spec` collects
+  them while excluding `mcp.cli` (whose `cli.py` calls `sys.exit(1)` without optional `typer`).
 - **`practice` means the practitioner;** a session's `kind` is `teach|practice` in the API but
   `teaching|practice` in plugin placements, as in LearnHarness.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
