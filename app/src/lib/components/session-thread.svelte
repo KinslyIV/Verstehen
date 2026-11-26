@@ -6,6 +6,7 @@
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
 	import LearnerMessage from '#lib/markdown/learner-message.svelte';
 	import { SessionController } from '#lib/session/controller.svelte.js';
+	import DeferredRow from '#lib/session/deferred-row.svelte';
 	import {
 		OPENING_FAILURE,
 		awaitsOpening,
@@ -70,6 +71,10 @@
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
+	const FIRST_ROWS = 12;
+	const BATCH_ROWS = 6;
+	let revealed = $state(FIRST_ROWS);
+	const deferredRows = $derived(Math.max(0, controller.entries.length - revealed));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion | ActiveProblem>();
@@ -88,6 +93,23 @@
 			reserve = owner && owner === reservedFor ? Math.max(reserve, height) : height;
 			reservedFor = owner;
 		});
+	});
+
+	/** Opening a lesson renders its newest rows' content at once, then older rows' a batch per painted frame. */
+	$effect(() => {
+		const total = controller.entries.length;
+		if (revealed === Infinity || total === 0) return;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const frame = requestAnimationFrame(
+			() =>
+				(timer = setTimeout(() => {
+					revealed = revealed + BATCH_ROWS >= total ? Infinity : revealed + BATCH_ROWS;
+				}))
+		);
+		return () => {
+			cancelAnimationFrame(frame);
+			clearTimeout(timer);
+		};
 	});
 
 	function handleScroll() {
@@ -272,136 +294,142 @@
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
 						{@const graphContext = graphContextOf(entry)}
-						{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
-								<div
-									role="separator"
-									aria-label="History compacted"
-									data-testid="compaction-cut-divider"
-									class="flex items-center gap-3"
-								>
-									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
-									></span>
-									<span
-										class="rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+						<DeferredRow deferred={index < deferredRows}>
+							{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
+									<div
+										role="separator"
+										aria-label="History compacted"
+										data-testid="compaction-cut-divider"
+										class="flex items-center gap-3"
 									>
-										{cutDividerText(dividers.cutBefore.tokensBefore)}
-									</span>
-									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
-									></span>
-								</div>
-							</Scroller.Item>{/if}
-						{#if index === phases.teachAt && !controller.isPractice && !controller.isChat}<Scroller.Item>
-								<PhaseDivider phase="teach" />
-							</Scroller.Item>{/if}
-						{#if entry.kind === 'user'}
-							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
-								<LearnerMessage content={entry.text} />
-							</Scroller.Item>
-						{:else if entry.kind === 'assistant'}
-							{@const thinking = entry.parts
-								.filter((part) => part.type === 'thinking')
-								.map((part) => part.thinking)
-								.join('\n\n')}
-							{@const streaming = entry.entry_id === controller.streamingEntryId}
-							{@const prose = responseProse(entry, results.get(entry.entry_id!), streaming)}
-							{@const malformed = controller.busy
-								? []
-								: controller.questionCalls.filter(
-										(call) => call.messageId === entry.entry_id && !call.question
-									)}
-							{#if thinking || prose.length || malformed.length}
-								{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
-								{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
-								{#if split}<Scroller.Item>
-										{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
-										{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
-									</Scroller.Item>{/if}
+										<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+										></span>
+										<span
+											class="rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+										>
+											{cutDividerText(dividers.cutBefore.tokensBefore)}
+										</span>
+										<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+										></span>
+									</div>
+								</Scroller.Item>{/if}
+							{#if index === phases.teachAt && !controller.isPractice && !controller.isChat}<Scroller.Item>
+									<PhaseDivider phase="teach" />
+								</Scroller.Item>{/if}
+							{#if entry.kind === 'user'}
 								<Scroller.Item
 									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
 								>
-									{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
-									{@render responseItems(
-										entry.entry_id!,
-										prose,
-										split ? problemAt : 0,
-										prose.length,
-										streaming
-									)}
-									{#each malformed as call (call.key)}
-										<MalformedQuestion
-											blocked={controller.questionCalls.some(
-												({ question }) => question !== undefined
-											) || controller.compacting}
-											onretry={() => void controller.retryQuestion(call)}
+									<LearnerMessage content={entry.text} />
+								</Scroller.Item>
+							{:else if entry.kind === 'assistant'}
+								{@const thinking = entry.parts
+									.filter((part) => part.type === 'thinking')
+									.map((part) => part.thinking)
+									.join('\n\n')}
+								{@const streaming = entry.entry_id === controller.streamingEntryId}
+								{@const prose = responseProse(entry, results.get(entry.entry_id!), streaming)}
+								{@const malformed = controller.busy
+									? []
+									: controller.questionCalls.filter(
+											(call) => call.messageId === entry.entry_id && !call.question
+										)}
+								{#if thinking || prose.length || malformed.length}
+									{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
+									{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
+									{#if split}<Scroller.Item>
+											{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
+											{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
+										</Scroller.Item>{/if}
+									<Scroller.Item
+										messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+									>
+										{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
+										{@render responseItems(
+											entry.entry_id!,
+											prose,
+											split ? problemAt : 0,
+											prose.length,
+											streaming
+										)}
+										{#each malformed as call (call.key)}
+											<MalformedQuestion
+												blocked={controller.questionCalls.some(
+													({ question }) => question !== undefined
+												) || controller.compacting}
+												onretry={() => void controller.retryQuestion(call)}
+											/>
+										{/each}
+									</Scroller.Item>
+								{/if}
+								{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
+								{#if segmentId}<Scroller.Item>
+										<SideEntryButton
+											{segmentId}
+											hasHistory={controller.side.hasHistory(segmentId)}
+											onopen={openSide}
 										/>
-									{/each}
+									</Scroller.Item>{/if}
+							{:else if entry.kind === 'marker' && graphContext}
+								<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
+								{@const text = asObject(entry.details)?.text}
+								<Scroller.Item>
+									<ThinkingCard text={typeof text === 'string' ? text : entry.content} />
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'practice-next' && entry.display}
+								<Scroller.Item>
+									<p
+										data-testid="practice-next-line"
+										class="flex items-center justify-center gap-1.5 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+									>
+										<ArrowRight class="size-3" aria-hidden="true" /> Next problem
+									</p>
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display && !controller.isPractice && !controller.isChat}
+								<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
+							{:else if block && entry.kind === 'marker' && entry.display}
+								<Scroller.Item>
+									<button
+										type="button"
+										aria-label="Open the full plan"
+										data-testid="plan-block"
+										class="block w-full rounded-lg p-1 focus-visible:outline-ring"
+										onclick={() => panel?.open()}
+									>
+										<PlanDiagram plan={block} />
+									</button>
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
+								<Scroller.Item>
+									<MarkerCard
+										{entry}
+										inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
+										oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
+										onsenderror={(text) => {
+											controller.draft = text;
+											void controller.send();
+										}}
+									/>
+								</Scroller.Item>
+							{:else if card}
+								<Scroller.Item
+									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+								>
+									<AnsweredCard {...card} />
 								</Scroller.Item>
 							{/if}
-							{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
-							{#if segmentId}<Scroller.Item>
-									<SideEntryButton
-										{segmentId}
-										hasHistory={controller.side.hasHistory(segmentId)}
-										onopen={openSide}
-									/>
-								</Scroller.Item>{/if}
-						{:else if entry.kind === 'marker' && graphContext}
-							<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
-							{@const text = asObject(entry.details)?.text}
-							<Scroller.Item>
-								<ThinkingCard text={typeof text === 'string' ? text : entry.content} />
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-next' && entry.display}
-							<Scroller.Item>
-								<p
-									data-testid="practice-next-line"
-									class="flex items-center justify-center gap-1.5 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
-								>
-									<ArrowRight class="size-3" aria-hidden="true" /> Next problem
-								</p>
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display && !controller.isPractice && !controller.isChat}
-							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
-						{:else if block && entry.kind === 'marker' && entry.display}
-							<Scroller.Item>
-								<button
-									type="button"
-									aria-label="Open the full plan"
-									data-testid="plan-block"
-									class="block w-full rounded-lg p-1 focus-visible:outline-ring"
-									onclick={() => panel?.open()}
-								>
-									<PlanDiagram plan={block} />
-								</button>
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
-							<Scroller.Item>
-								<MarkerCard
-									{entry}
-									inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
-									oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
-									onsenderror={(text) => {
-										controller.draft = text;
-										void controller.send();
-									}}
-								/>
-							</Scroller.Item>
-						{:else if card}
-							<Scroller.Item messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}>
-								<AnsweredCard {...card} />
-							</Scroller.Item>
-						{/if}
-						{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
-							<Scroller.Item>
-								<p
-									data-testid="compaction-moment"
-									class="py-1 text-center text-xs text-muted-foreground/70"
-								>
-									Context compacted
-								</p>
-							</Scroller.Item>
-						{/each}
+							{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
+								<Scroller.Item>
+									<p
+										data-testid="compaction-moment"
+										class="py-1 text-center text-xs text-muted-foreground/70"
+									>
+										Context compacted
+									</p>
+								</Scroller.Item>
+							{/each}
+						</DeferredRow>
 					{/each}
 					{#if controller.compacting}<p
 							data-testid="compacting-indicator"

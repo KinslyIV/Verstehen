@@ -72,7 +72,10 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   documented in-process Python / `vendor/` limits), and 6 (toolset resolver cancellation boundary,
   late backend cleanup failure capture during teardown, and frontend retiring-runtime drain across
   module load) are committed; see [plugin authoring](plugin-authoring.md).
-- **General Chat agent** (branch `t3/general-chat-agent`, ready for PR into `dev`;
+- **Faster lesson opening** (PR #33): a lesson renders its
+  newest 12 rows' content first and older rows' content in batches; first paint of the
+  imported "Learning SIFT" session fell from ~790 ms to ~325 ms on Pixal.
+- **General Chat agent** (branch `t3/general-chat-agent`, PR #34 into `dev`;
   [plan](plans/chat-agent.md)): third session kind (`kind = "chat"`, **Chat**), migration
   `0011_chat_sessions.sql` (widening `sessions.kind` and adding atomic `session_create_requests`),
   `teaching/chat/` with 8 read-only inspection tools (prompts including `side-chat/` override

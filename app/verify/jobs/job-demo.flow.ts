@@ -77,18 +77,32 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	const viewport = page.locator('[data-slot="message-scroller-viewport"]');
 	const box = (await viewport.boundingBox())!;
 	await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+	// Newest rows render first; a reader scrolling up while older rows render keeps their place.
+	const newest = page.getByText('Tutor turn 30');
+	await expect(newest).toBeVisible();
+	await page.mouse.wheel(0, -200);
+	const readTop = async () => (await newest.boundingBox())!.y;
+	let readingAt = await readTop();
+	await expect
+		.poll(async () => readingAt === (readingAt = await readTop()), { intervals: [100] })
+		.toBe(true);
+	await expect(farCard).toBeAttached();
+	expect(await readTop()).toBeCloseTo(readingAt, 0);
 	const scrollTo = async (where: 'start' | 'end') => {
 		await expect
-			.poll(async () => {
-				await page.mouse.wheel(0, where === 'end' ? 4000 : -4000);
-				return viewport.evaluate((element) =>
-					element.scrollTop < 1
-						? 'start'
-						: element.scrollTop + element.clientHeight > element.scrollHeight - 1
-							? 'end'
-							: 'middle'
-				);
-			})
+			.poll(
+				async () => {
+					await page.mouse.wheel(0, where === 'end' ? 4000 : -4000);
+					return viewport.evaluate((element) =>
+						element.scrollTop < 1
+							? 'start'
+							: element.scrollTop + element.clientHeight > element.scrollHeight - 1
+								? 'end'
+								: 'middle'
+					);
+				},
+				{ intervals: [50] }
+			)
 			.toBe(where);
 	};
 	await scrollTo('end');

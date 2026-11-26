@@ -125,6 +125,11 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   (`message-scroller-item.svelte`, intrinsic size 10 rem) so a long lesson mounts fast; LearnHarness
   renders every row ([decisions](../decisions.md)). Chromium anchors the scroll position as
   placeholders take their real height.
+- **Newest rows first:** when a lesson opens, `session-thread.svelte` mounts every row but wraps
+  each entry in a `DeferredRow`; the scroller items of all but the last 12 entries mount empty,
+  and their content renders 6 entries per painted frame. The row count never changes, so the
+  scroller's prepend and append logic stays out of it, and an off-screen row keeps its
+  placeholder size while its content renders, so the scroll position does not move.
 - **Settings → Tools on the desktop:** the Demo browser section is hidden when `/api/health` says
   `desktop: true`, because the desktop checks demos in its own engine ([jobs](jobs.md)).
 - **Settings → Models:** the slot pickers, then a refresh button with a status line (updated, which
