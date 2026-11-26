@@ -337,9 +337,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
   node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
   Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
-- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
-  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
-  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **The notification stream lives in `NotificationBridge` in the root layout** (gated off `/pair`
+  in remote mode), not the session list or lesson layout, so the phone drawer unmounting the
+  sidebar and navigating to `/settings` keep the stream open. Alternative: keep it in the sidebar
+  or lesson layout; consequence: missed notifications while the drawer is closed or on `/settings`.
 - **Device type by screen size:** the device-name default is "Tablet" when
   `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
   query; consequence: a large foldable's inner screen reads as a tablet.

@@ -1,12 +1,16 @@
 import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import type { PluginInfo } from '#lib/api/client.js';
+import { checkRows } from './ui/widgets.svelte.js';
 import type {
 	ActionRegistration,
 	AppEventName,
 	Cleanup,
 	PlacementRegistration,
+	SettingsMountRegistration,
 	SettingsRegistration,
-	ViewRegistration
+	SettingsRowsProps,
+	ViewRegistration,
+	WidgetHandle
 } from './types.js';
 
 const REGISTRATION_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
@@ -73,10 +77,35 @@ export class PluginRuntime {
 		return () => (this.placements = this.placements.filter((item) => item !== frozen));
 	}
 
-	registerSettings(settings: SettingsRegistration): () => void {
+	registerSettings(settings: SettingsRowsProps): WidgetHandle<SettingsRowsProps>;
+	registerSettings(settings: SettingsMountRegistration): () => void;
+	registerSettings(settings: SettingsRegistration): WidgetHandle<SettingsRowsProps> | (() => void);
+	registerSettings(settings: SettingsRegistration): WidgetHandle<SettingsRowsProps> | (() => void) {
 		this.requireLive();
-		if (!settings || !('rows' in settings || typeof settings.mount === 'function'))
-			throw new Error('Invalid settings registration');
+		if (!settings || typeof settings !== 'object') throw new Error('Invalid settings registration');
+		if (this.settings) throw new Error('Plugin settings are already registered');
+		if ('rows' in settings) {
+			checkRows(settings);
+			let owned: SettingsRowsProps = { rows: [...settings.rows] };
+			let active = true;
+			const dispose = () => {
+				if (!active) return;
+				active = false;
+				if (this.settings === owned) this.settings = undefined;
+			};
+			this.settings = owned;
+			return {
+				update: (next) => {
+					if (!active || this.controller.signal.aborted || this.settings !== owned) return;
+					const merged: SettingsRowsProps = { ...owned, ...next };
+					checkRows(merged);
+					owned = { rows: [...merged.rows] };
+					this.settings = owned;
+				},
+				dispose
+			};
+		}
+		if (typeof settings.mount !== 'function') throw new Error('Invalid settings registration');
 		this.settings = settings;
 		return () => {
 			if (this.settings === settings) this.settings = undefined;

@@ -69,17 +69,20 @@ export function activate(ctx) {
   ctx.registerView({ id: 'main', name: 'Title', mount(container, signal) { /* ... */ } });
   ctx.registerAction({ id: 'open', name: 'Open', icon: '<svg…/>', run: (context) => ctx.app.openView('main') });
   ctx.placeAction({ id: 'in-sidebar', actionId: 'open', location: 'sidebar' }); // 'graph' | 'top-bar'
-  ctx.registerSettings({ rows: [...] });   // or { mount(container, signal) }
+  const settings = ctx.registerSettings({ rows: [...] }); // returns { update({ rows }), dispose() }; or { mount(container, signal) } -> () => void
 }
 ```
 
 - Placements: `sidebar`, `graph`, and `top-bar` with `sessions: ['teaching', 'practice']` or
   `views: ['<view id>']`. An action's `run` gets where it was clicked (`context.sessionId` for a
   session). `ctx.refreshActions()` re-reads `disabled`.
-- `ctx.backend.<name>(input)`; `ctx.onNotification(topic, fn)`; `ctx.onResync(fn)`;
-  `ctx.onAppEvent('turn-settled', fn)`; `ctx.app` (`pathname`, `openSession`, `openHome`,
-  `openView`, `openSettings`); `ctx.cleanup(fn)`.
+- `ctx.backend.<name>(input)`; `ctx.onNotification(topic, fn)` and `ctx.onResync(fn)` (delivered
+  across the whole window, including `/settings`; `onResync` fires when the event stream
+  reconnects); `ctx.onAppEvent('turn-settled', fn)`; `ctx.app` (`pathname`, `openSession`,
+  `openHome`, `openView`, `openSettings`); `ctx.cleanup(fn)`.
 - `ctx.ui` widgets match the app's look: `mountButton`, `mountBadge`, `mountMarkdown`,
-  `mountSettingsRows` (each returns `{ update(props), dispose() }`), `openDialog`, `openMenu`. Pass
-  `{ signal }`; aborting it disposes the widget.
-- Files load from `/api/plugins/<id>/files/...`: `main`, `styles`, and `assets/`.
+  `mountSettingsRows`, `openDialog` (`content` may be an `HTMLElement` or a sync/async
+  `(container, signal)` mount returning an optional sync/async cleanup), `openMenu` (each returns
+  `{ update(props), dispose() }`). Pass `{ signal }`; aborting it disposes the widget.
+- Files load from `/api/plugins/<id>/files/...`: `main`, `styles`, and `assets/` (served from the
+  bytes snapshotted when the plugin was first activated).

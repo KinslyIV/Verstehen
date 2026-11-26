@@ -70,9 +70,11 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   in (the function's one parameter), JSON out; an error is a 500 `{error}`, a non-JSON result a
   422, a stopped plugin a 409. The frontend's `ctx.backend.<name>(input)` is a Proxy over that
   route. `ctx.emit(topic, data)` becomes a `plugin-message` notification on `/api/events`;
-  the frontend's `onNotification(topic, fn)` hears only its own plugin's. `onResync` fires after
-  the event stream reconnects. `ctx.on("turn-settled", fn)` observers run after a turn is saved;
-  the frontend's `onAppEvent("turn-settled", fn)` follows the same notification.
+  the frontend's `onNotification(topic, fn)` hears only its own plugin's. `NotificationBridge`
+  mounts in the root layout (`routes/+layout.svelte`, gated off `/pair` in remote mode) so one
+  persistent stream serves lessons, graph, plugin views, and `/settings`. `onResync` fires only
+  when that stream reconnects after a drop. `ctx.on("turn-settled", fn)` observers run after a turn
+  is saved; the frontend's `onAppEvent("turn-settled", fn)` follows the same notification.
 - **Agent hooks** (`PluginService.toolset_for(agent, session_id)`, called by `build_agent` once per
   turn for the agent that turn runs, `None` when no plugin registered anything for it). Targets:
   `prober`, `teacher`, `practice` (the practitioner). Tool factories receive
@@ -127,9 +129,10 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   the top bar. An **action** is registered, then **placed**: `sidebar` (under Knowledge graph),
   `graph` (the graph strip), or `top-bar` for chosen session kinds (`teaching`, `practice`) or for
   the plugin's own views. A failing action shows a dismissible banner. **Settings** is a per-plugin
-  page under Settings → Plugins (`?section=plugins&plugin=<id>`): rows, or a `mount`. Each mount of a
-  view or settings page gets its own child container; the host logs a cleanup that throws or rejects, also
-  one returned after the page was left.
+  page under Settings → Plugins (`?section=plugins&plugin=<id>`): `{ rows }` (returning a
+  `{ update, dispose }` handle that updates rows in place) or `{ mount }` (returning an unregister
+  function). Each mount of a view, dialog, or custom settings page gets its own child container;
+  the host logs a cleanup that throws or rejects, also one returned after the surface was closed.
 - **Served files.** `GET /api/plugins/{id}/files/{path}` serves only the manifest's `main` and
   `styles` and anything under `assets/`, of an active plugin, each segment a plain name, from the
   bytes snapshotted when the plugin was first admitted in this process. Every request still re-checks

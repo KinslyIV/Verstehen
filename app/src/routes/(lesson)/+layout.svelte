@@ -31,7 +31,6 @@
 	import { SIDEBAR_COOKIE_NAME } from '#lib/components/ui/sidebar/constants.js';
 	import DrawerCloser from '#lib/components/drawer-closer.svelte';
 	import SearchShortcut from '#lib/components/search-shortcut.svelte';
-	import NotificationBridge from '#lib/components/notification-bridge.svelte';
 	import ReconnectingLine from '#lib/components/reconnecting-line.svelte';
 	import PluginActions, { type ActionSurface } from '#lib/plugins/plugin-actions.svelte';
 	import { plugins } from '#lib/plugins/plugins.svelte.js';
@@ -173,7 +172,6 @@
 <Sidebar.Provider bind:open={sidebarOpen} class="h-svh overflow-hidden">
 	<DrawerCloser />
 	<SearchShortcut />
-	<NotificationBridge />
 	<Sidebar.Root collapsible="offcanvas">
 		<Sidebar.Header class="gap-5 p-4">
 			<span class="px-2 text-sm font-semibold tracking-tight">Verstehen</span>

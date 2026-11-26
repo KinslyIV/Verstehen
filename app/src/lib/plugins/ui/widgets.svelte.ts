@@ -73,7 +73,7 @@ function checkMarkdown(props: MarkdownProps) {
 	if (typeof props.text !== 'string') throw new TypeError('text must be text');
 }
 
-function checkRows(props: SettingsRowsProps) {
+export function checkRows(props: SettingsRowsProps) {
 	if (!Array.isArray(props.rows)) throw new TypeError('rows must be a list');
 	const keys = new SvelteSet<string>();
 	for (const row of props.rows) {
@@ -127,6 +127,7 @@ interface MountedWidget<Props extends object> {
 	activation?: AbortSignal;
 	check(props: Props): void;
 	extra?: Record<string, unknown>;
+	onMounted?(dismiss: () => void): void;
 	onDismiss?(props: Props): void;
 	onDispose?(): void;
 }
@@ -150,9 +151,11 @@ function mountWidget<Props extends object>(widget: MountedWidget<Props>): Widget
 	};
 	const ondismiss = () => {
 		if (!instance) return;
-		widget.onDismiss?.(props);
+		const current = { ...props };
 		dispose();
+		widget.onDismiss?.(current);
 	};
+	widget.onMounted?.(ondismiss);
 	instance = mount(widget.component, {
 		target: widget.target,
 		props: { props, ondismiss, ...widget.extra }
@@ -171,17 +174,26 @@ function mountWidget<Props extends object>(widget: MountedWidget<Props>): Widget
 
 const reportFailure = (error: unknown) => console.error('Plugin callback failed', error);
 
+function callClose(onClose?: () => void | Promise<void>): void {
+	if (!onClose) return;
+	try {
+		void Promise.resolve(onClose()).catch(reportFailure);
+	} catch (error) {
+		reportFailure(error);
+	}
+}
+
 function overlayHost(): HTMLElement {
 	const host = document.createElement('div');
 	document.body.append(host);
 	return host;
 }
 
-const openMenus = new WeakMap<HTMLElement, () => void>();
 const inertHandle = { update() {}, dispose() {} };
 
 /** The six host widgets; one built for an activation also disposes each of them when that activation ends. */
 function widgetsFor(activation?: AbortSignal): PluginUi {
+	const openMenus = new WeakMap<HTMLElement, () => void>();
 	return {
 		mountButton: (target, props, options) =>
 			mountWidget({
@@ -228,7 +240,7 @@ function widgetsFor(activation?: AbortSignal): PluginUi {
 				options,
 				activation,
 				check: checkDialog,
-				onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
+				onDismiss: (latest) => callClose(latest.onClose),
 				onDispose: () => target.remove()
 			});
 		},
@@ -239,6 +251,7 @@ function widgetsFor(activation?: AbortSignal): PluginUi {
 				return inertHandle;
 			}
 			const target = overlayHost();
+			let dismiss = () => {};
 			const handle = mountWidget({
 				component: PluginMenu,
 				target,
@@ -247,16 +260,14 @@ function widgetsFor(activation?: AbortSignal): PluginUi {
 				activation,
 				check: checkMenu,
 				extra: { anchor },
-				onDismiss: (latest) => void Promise.resolve(latest.onClose?.()).catch(reportFailure),
+				onMounted: (ondismiss) => (dismiss = ondismiss),
+				onDismiss: (latest) => callClose(latest.onClose),
 				onDispose: () => {
 					openMenus.delete(anchor);
 					target.remove();
 				}
 			});
-			openMenus.set(anchor, () => {
-				void Promise.resolve(props.onClose?.()).catch(reportFailure);
-				handle.dispose();
-			});
+			if (!options.signal.aborted && !activation?.aborted) openMenus.set(anchor, dismiss);
 			return handle;
 		}
 	};

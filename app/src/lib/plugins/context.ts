@@ -1,7 +1,12 @@
 import { callPlugin } from '#lib/api/client.js';
 import type { PluginRuntime } from './runtime.svelte.js';
 import { createPluginUi } from './ui/widgets.svelte.js';
-import type { Cleanup, PluginAppControls, PluginFrontendContext } from './types.js';
+import type {
+	Cleanup,
+	PluginAppControls,
+	PluginFrontendContext,
+	SettingsRegistration
+} from './types.js';
 
 export interface Navigation {
 	openSession(id: string): void;
@@ -71,7 +76,8 @@ export function createContext(
 		registerView: (view) => runtime.registerView(view),
 		registerAction: (action) => runtime.registerAction(action),
 		placeAction: (placement) => runtime.placeAction(placement),
-		registerSettings: (settings) => runtime.registerSettings(settings),
+		registerSettings: ((settings: SettingsRegistration) =>
+			runtime.registerSettings(settings)) as PluginFrontendContext['registerSettings'],
 		refreshActions: () => runtime.revision++,
 		onNotification: (topic, listener) => runtime.listen(runtime.notifications, topic, listener),
 		onResync: (listener) => {

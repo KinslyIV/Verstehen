@@ -1,9 +1,8 @@
 <script lang="ts">
 	import type { PluginInfo } from '#lib/api/client.js';
 	import { plugins } from './plugins.svelte.js';
-	import { pluginUi } from './ui/widgets.svelte.js';
 	import { mountSurface } from './surface.js';
-	import type { SettingsRegistration } from './types.js';
+	import PluginSettingsRows from './ui/plugin-settings-rows.svelte';
 
 	let { plugin }: { plugin: PluginInfo } = $props();
 	let container = $state<HTMLElement>();
@@ -12,21 +11,22 @@
 
 	$effect(() => {
 		const target = container;
-		const registration: SettingsRegistration | undefined = settings;
-		if (!target || !registration) return;
+		const registration = settings;
+		if (!target || !registration || 'rows' in registration) return;
 		failure = null;
 		return mountSurface(
 			target,
-			(child, signal) =>
-				'rows' in registration
-					? pluginUi.mountSettingsRows(child, registration, { signal }).dispose
-					: registration.mount(child, signal),
+			(child, signal) => registration.mount(child, signal),
 			(message) => (failure = message)
 		);
 	});
 </script>
 
-{#if settings}
+{#if settings && 'rows' in settings}
+	<div class="mt-4" data-testid="plugin-settings-body">
+		<PluginSettingsRows props={settings} />
+	</div>
+{:else if settings}
 	<div bind:this={container} class="mt-4" data-testid="plugin-settings-body"></div>
 	{#if failure}<p class="mt-2 text-sm text-destructive" role="alert">{failure}</p>{/if}
 {:else}

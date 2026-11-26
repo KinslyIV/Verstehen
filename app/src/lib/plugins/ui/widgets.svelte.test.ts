@@ -257,3 +257,96 @@ test('widgets_mounted_and_left_repeatedly_leave_no_listener_on_the_activation_si
 	expect(attached.size).toBe(0);
 	expect(container.textContent).toBe('');
 });
+
+test('a_dialog_awaits_async_mount_and_async_cleanup_and_catches_cleanup_and_onclose_errors', async () => {
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const events: string[] = [];
+	let releaseMount!: () => void;
+	const dialog = pluginUi.openDialog(
+		{
+			title: 'Async dialog',
+			async content(target) {
+				await new Promise<void>((resolve) => (releaseMount = resolve));
+				target.textContent = 'Async ready';
+				return async () => {
+					await new Promise((resolve) => setTimeout(resolve, 10));
+					events.push('async-cleanup');
+					throw new Error('cleanup boom');
+				};
+			},
+			onClose() {
+				events.push('on-close');
+				throw new Error('onClose sync boom');
+			}
+		},
+		options()
+	);
+	await vi.waitFor(() => expect(releaseMount).toBeTypeOf('function'));
+	releaseMount();
+	await expect.element(page.getByText('Async ready')).toBeVisible();
+	await userEvent.keyboard('{Escape}');
+	await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+	await vi.waitFor(() => expect(events).toEqual(['on-close', 'async-cleanup']));
+	expect(logged).toHaveBeenCalledTimes(2);
+	dialog.dispose();
+
+	let finishLateMount!: () => void;
+	const lateCleanup = vi.fn();
+	const early = pluginUi.openDialog(
+		{
+			title: 'Closed early',
+			async content() {
+				await new Promise<void>((resolve) => (finishLateMount = resolve));
+				return lateCleanup;
+			}
+		},
+		options()
+	);
+	await vi.waitFor(() => expect(finishLateMount).toBeTypeOf('function'));
+	early.dispose();
+	await expect.poll(() => document.querySelector('[role="dialog"]')).toBeNull();
+	finishLateMount();
+	await vi.waitFor(() => expect(lateCleanup).toHaveBeenCalledOnce());
+	logged.mockRestore();
+});
+
+test('same_anchor_menu_dismissal_uses_updated_onclose_and_disposes_even_when_onclose_throws', async () => {
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const anchor = document.createElement('button');
+	anchor.textContent = 'Menu anchor';
+	container.append(anchor);
+	const firstClose = vi.fn();
+	const updatedClose = vi.fn(() => {
+		throw new Error('menu onClose boom');
+	});
+	const handle = pluginUi.openMenu(
+		anchor,
+		{
+			label: 'First menu',
+			items: [{ key: 'a', label: 'Item A', onSelect: () => {} }],
+			onClose: firstClose
+		},
+		options()
+	);
+	await expect.element(page.getByRole('menu', { name: 'First menu' })).toBeVisible();
+	handle.update({ onClose: updatedClose });
+
+	pluginUi.openMenu(anchor, { items: [] }, options());
+	await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull();
+	expect(firstClose).not.toHaveBeenCalled();
+	expect(updatedClose).toHaveBeenCalledOnce();
+	expect(logged).toHaveBeenCalledOnce();
+
+	const reopened = pluginUi.openMenu(
+		anchor,
+		{
+			label: 'Reopened menu',
+			items: [{ key: 'b', label: 'Item B', onSelect: () => {} }]
+		},
+		options()
+	);
+	await expect.element(page.getByRole('menu', { name: 'Reopened menu' })).toBeVisible();
+	reopened.dispose();
+	await expect.poll(() => document.querySelector('[role="menu"]')).toBeNull();
+	logged.mockRestore();
+});

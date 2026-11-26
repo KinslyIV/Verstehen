@@ -74,11 +74,11 @@ export type SettingsRow =
 			validate?(value: number): string | undefined;
 	  });
 
-export type SettingsRegistration =
-	| { rows: SettingsRow[] }
-	| {
-			mount(container: HTMLElement, signal: AbortSignal): void | Cleanup | Promise<void | Cleanup>;
-	  };
+export interface SettingsMountRegistration {
+	mount(container: HTMLElement, signal: AbortSignal): void | Cleanup | Promise<void | Cleanup>;
+}
+
+export type SettingsRegistration = SettingsRowsProps | SettingsMountRegistration;
 
 export interface WidgetHandle<Props> {
 	update(next: Partial<Props>): void;
@@ -131,7 +131,8 @@ export interface SettingsRowsProps {
 }
 
 export type UiContent =
-	HTMLElement | ((container: HTMLElement, signal: AbortSignal) => void | Cleanup);
+	| HTMLElement
+	| ((container: HTMLElement, signal: AbortSignal) => void | Cleanup | Promise<void | Cleanup>);
 
 export interface DialogProps {
 	/** The accessible name; headings belong to the content. */
@@ -200,7 +201,9 @@ export interface PluginFrontendContext {
 	registerView(view: ViewRegistration): () => void;
 	registerAction(action: ActionRegistration): () => void;
 	placeAction(placement: PlacementRegistration): () => void;
-	registerSettings(settings: SettingsRegistration): () => void;
+	registerSettings(settings: SettingsRowsProps): WidgetHandle<SettingsRowsProps>;
+	registerSettings(settings: SettingsMountRegistration): () => void;
+	registerSettings(settings: SettingsRegistration): WidgetHandle<SettingsRowsProps> | (() => void);
 	refreshActions(): void;
 	onNotification(topic: string, listener: (data: unknown) => void): () => void;
 	onResync(listener: () => void): () => void;

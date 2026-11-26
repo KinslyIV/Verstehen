@@ -40,12 +40,15 @@
 	/** Each opened stream rereads the sidebar, covering changes made before it subscribed. */
 	onMount(() => {
 		const lifetime = new AbortController();
+		let initial = true;
 		void live.follow(
 			(signal, opened) =>
 				streamNotifications(relay, signal, () => {
+					const first = initial;
+					initial = false;
 					opened();
 					announce('verstehen:session-list-changed', '');
-					void plugins.sync();
+					if (first) void plugins.sync();
 				}),
 			refetchAll,
 			lifetime.signal

@@ -342,3 +342,63 @@ test('navigation_and_resync_registration_from_an_ended_activation_throw', async 
 	expect(() => context!.onResync(() => {})).toThrow('no longer active');
 	expect(navigation.openView).not.toHaveBeenCalled();
 });
+
+test('register_settings_rows_returns_an_updatable_handle_and_rejects_duplicates_and_bad_updates', async () => {
+	let context: PluginFrontendContext | undefined;
+	modules.hello = { activate: (ctx) => void (context = ctx) };
+	installed = [plugin('hello')];
+	const host = newHost();
+	await syncAndSettle(host);
+	const runtime = host.runtimes.get('hello')!;
+
+	const handle = context!.registerSettings({
+		rows: [{ key: 'enabled', type: 'toggle', label: 'Enabled', value: false, onChange: () => {} }]
+	});
+	expect(() =>
+		context!.registerSettings({
+			rows: [{ key: 'other', type: 'toggle', label: 'Other', value: true, onChange: () => {} }]
+		})
+	).toThrow('Plugin settings are already registered');
+
+	handle.update({
+		rows: [{ key: 'enabled', type: 'toggle', label: 'Enabled', value: true, onChange: () => {} }]
+	});
+	expect(runtime.settings && 'rows' in runtime.settings && runtime.settings.rows[0]?.value).toBe(
+		true
+	);
+
+	expect(() =>
+		handle.update({
+			rows: [
+				{ key: 'dup', type: 'toggle', label: 'A', value: true, onChange: () => {} },
+				{ key: 'dup', type: 'toggle', label: 'B', value: false, onChange: () => {} }
+			]
+		})
+	).toThrow('Duplicate row key');
+	expect(runtime.settings && 'rows' in runtime.settings && runtime.settings.rows[0]?.key).toBe(
+		'enabled'
+	);
+
+	handle.dispose();
+	handle.dispose();
+	expect(runtime.settings).toBeUndefined();
+	handle.update({
+		rows: [{ key: 'enabled', type: 'toggle', label: 'Enabled', value: false, onChange: () => {} }]
+	});
+	expect(runtime.settings).toBeUndefined();
+
+	const unregister = context!.registerSettings({ mount: () => {} });
+	expect(runtime.settings).toBeDefined();
+	unregister();
+	expect(runtime.settings).toBeUndefined();
+
+	const activeHandle = context!.registerSettings({
+		rows: [{ key: 'enabled', type: 'toggle', label: 'Enabled', value: false, onChange: () => {} }]
+	});
+	installed = [];
+	await syncAndSettle(host);
+	activeHandle.update({
+		rows: [{ key: 'enabled', type: 'toggle', label: 'Enabled', value: true, onChange: () => {} }]
+	});
+	expect(runtime.settings).toBeUndefined();
+});
