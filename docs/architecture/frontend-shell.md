@@ -14,7 +14,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | Path | What it holds |
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
-| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching` and `Practice` buttons, the `Teaching | Practice | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
+| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching`, `Practice`, and `Chat` buttons, the `Teaching | Practice | Chat | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
 | `src/lib/components/session-list.svelte`, `sidebar-folder-row.svelte`, `new-folder-row.svelte`, `lib/graph/source-directory.svelte.ts`, `source-drop.svelte.ts` | the sidebar folder tree: rows, folder menu, drag and drop, and the shared directory reader |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
 | `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, and Sync on the desktop or Connection in remote mode (`?section=sync` deep-links; the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
@@ -38,9 +38,10 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **Look:** sleek and minimal, modeled on T3 Code. Tailwind v4, shadcn-svelte on bits-ui,
   tailwind-variants, `@lucide/svelte`. Dark by default; Dark / Light / System through mode-watcher,
   saved in localStorage and applied before first paint.
-- **New sessions:** `/session/new` is the teaching screen and `/session/new?mode=practice` the
-  practice one; the `Teach | Practice` toggle navigates between them without remounting, so the
-  draft and the picked nodes stay. The kind filter is remembered in `localStorage`.
+- **New sessions:** `/session/new` is the teaching screen, `/session/new?mode=practice` the
+  practice one, and `/session/new?mode=chat` the general chat one; the `Teach | Practice | Chat`
+  toggle navigates between them without remounting, so the draft and picked nodes stay (`NodePicker`
+  hides in `chat` mode). The 4-way kind filter is remembered in `localStorage`.
 - **Sidebar refresh:** session notifications update the list and its pending practice indicators.
   Sync-status notifications refresh the badge and Settings → Sync.
 - **Sidebar folders:** `session-list.svelte` draws `flattenSessionTree(buildSessionTree(...))`
@@ -51,7 +52,7 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   snapshot; a failed read keeps the last directory, and with none the list is flat and offers no
   folder controls. Folder rows (`sidebar-folder-row.svelte`) only open or close on click; the open
   set is saved in `localStorage` (`verstehen-sidebar-open-folders`). Right-click or long-press opens
-  Rename, New subfolder, New teaching here, New practice here, and Delete, which is enabled only when `folderHoldsNoSources` and then
+  Rename, New subfolder, New teaching here, New practice here, New chat here, and Delete, which is enabled only when `folderHoldsNoSources` and then
   sends `delete-folder-tree` for that folder; the server recomputes the subtree in its transaction
   and removes all of it or answers 409. Drag payload and drop
   rules are Chains' (`SourceDrop`, shared with the chains table); `layout.coarse` turns `draggable`

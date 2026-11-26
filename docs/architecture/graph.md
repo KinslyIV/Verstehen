@@ -71,11 +71,14 @@ Frontend, `app/src/lib/graph/` and the `/graph` route:
   this session added). Deletion waits up to ten seconds for the session's extraction to wind down.
 - **Prober graph tools** (`list_sessions`, `list_propositions`) exist only while extraction and
   `agent.graph_tools` are both on; the practitioner gets the same two tools under the same gate.
-- **Practice sessions never extract.** `POST /api/graph/coverage/extract` refuses them with 400,
-  their detail has `coverage = null`, and the UI hides the coverage ring and the session menu's
-  coverage block. Picks started in practice mode add the same `graph-context` marker, shown as the
-  collapsed Graph context card. The chains table leaves out sources whose `session_kind` is
-  `practice`, and the summary view counts practice sessions on their own row.
+- **Non-teaching sessions (`practice` and `chat`) never extract.** `POST /api/graph/coverage/extract`
+  refuses them with 400, their detail has `coverage = null`, and the UI hides the coverage ring, the
+  session menu's coverage block, and the Delete dialog's graph-traces option. Picks started in
+  practice mode add the same `graph-context` marker, shown as the collapsed Graph context card. The
+  chains table leaves out sources whose `session_kind` is not `teach`, and the summary view counts
+  practice sessions on their own row. The Chat agent reads the canonical derived graph (`get_graph`)
+  via `list_graph_nodes` and `read_graph_node` and validates `prepare_session` picks against
+  `MAX_GRAPH_CONTEXT_PICKS` (64).
 
 ## Data and events
 
