@@ -93,6 +93,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 3. Review the pending [implementation decisions](decisions.md#waiting-for-your-review).
 4. Continue M11 (remaining [LH catch-up list](roadmap.md#lh-catch-up), activity dock, themes,
    later providers) and open [known gaps](roadmap.md#known-gaps).
+5. Implement the **General Chat agent** ([plan](plans/chat-agent.md), approved 2026-11-26) on Pixal
+   in a new branch off `dev`.
 
 ## Open questions
 

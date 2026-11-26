@@ -374,6 +374,22 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 ## Decided, not yet implemented
 
+**General Chat agent ([plan](plans/chat-agent.md), approved 2026-11-26):**
+
+- **Third session kind (`kind = "chat"`, labeled **Chat**):** sits alongside **Teaching** and
+  **Practice** (`0011_chat_sessions.sql`). Teaching still starts directly with the Prober (no
+  general router in front of it, no in-place transition). No LearnHarness counterpart.
+- **Read-only inspection + 1-click Launch Card:** the Chat agent can read prompts (defaults,
+  overrides, switches), non-secret settings (never keys, tokens, or credentials), sessions and
+  folders, full knowledge-graph nodes and chains, paginated past session transcripts, and a bundled
+  app guide (`teaching/prompts/chat/guide.md`), plus Verstehen's existing learner-file tools and
+  `research`/`pdf` jobs. It never mutates settings, prompts, or folders. `prepare_session` renders
+  an inline 1-click Launch Card (**Start teaching →** / **Start practice →**); nothing is created
+  and no Prober/Practitioner turn runs until the user clicks.
+- **UI, model slot & graph exclusion:** uses the **Main (`strong`)** slot by default (switchable per
+  session), exposes its own prompt segments in **Settings → Prompts**, skips graph extraction and
+  the Chains table, and keeps plugins scoped to `prober`, `teacher`, and `practice`.
+
 **Mobile app and two-way sync ([plan](plans/mobile-and-sync.md)):**
 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
