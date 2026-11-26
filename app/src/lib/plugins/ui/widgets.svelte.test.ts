@@ -160,7 +160,7 @@ test('number_rows_refuse_values_outside_their_range', async () => {
 	expect(onChange).toHaveBeenCalledWith(4);
 });
 
-test('invalid_settings_rows_are_rejected_before_mounting', () => {
+test('invalid_settings_rows_are_rejected_before_mounting', async () => {
 	expect(() =>
 		pluginUi.mountSettingsRows(
 			container,
@@ -168,7 +168,91 @@ test('invalid_settings_rows_are_rejected_before_mounting', () => {
 			options()
 		)
 	).toThrow('Duplicate row key');
+	const badRows: [unknown, string][] = [
+		[null, 'A row must be an object'],
+		[{ ...toggleRow(() => {}), disabled: 'yes' }, 'disabled must be boolean'],
+		[{ ...toggleRow(() => {}), description: 42 }, 'description must be text'],
+		[
+			{
+				key: 'dd',
+				type: 'dropdown',
+				label: 'Mode',
+				value: 'a',
+				options: [null],
+				onChange: () => {}
+			},
+			'options need string value and label'
+		],
+		[
+			{
+				key: 'dd',
+				type: 'dropdown',
+				label: 'Mode',
+				value: 'a',
+				options: [{ value: 'a', label: 123 }],
+				onChange: () => {}
+			},
+			'options need string value and label'
+		],
+		[
+			{
+				key: 'dd',
+				type: 'dropdown',
+				label: 'Mode',
+				value: 'a',
+				options: [
+					{ value: 'a', label: 'A' },
+					{ value: 'a', label: 'Again' }
+				],
+				onChange: () => {}
+			},
+			'duplicate option value'
+		],
+		[
+			{ key: 'n', type: 'number', label: 'N', value: 1, min: Number.NaN, onChange: () => {} },
+			'min must be a finite number'
+		],
+		[
+			{
+				key: 'n',
+				type: 'slider',
+				label: 'N',
+				value: 1,
+				max: Number.POSITIVE_INFINITY,
+				onChange: () => {}
+			},
+			'max must be a finite number'
+		],
+		[
+			{ key: 'n', type: 'number', label: 'N', value: 1, step: Number.NaN, onChange: () => {} },
+			'step must be a finite number'
+		],
+		[
+			{ key: 'n', type: 'number', label: 'N', value: 1, min: 5, max: 2, onChange: () => {} },
+			'min exceeds max'
+		],
+		[
+			{ key: 'n', type: 'slider', label: 'N', value: 1, step: 0, onChange: () => {} },
+			'step must be positive'
+		],
+		[
+			{ key: 'n', type: 'number', label: 'N', value: 1, step: -1, onChange: () => {} },
+			'step must be positive'
+		]
+	];
+	for (const [bad, reason] of badRows) {
+		expect(() =>
+			pluginUi.mountSettingsRows(container, { rows: [bad as SettingsRow] }, options())
+		).toThrow(reason);
+	}
 	expect(container.textContent).toBe('');
+
+	const handle = pluginUi.mountSettingsRows(container, { rows: [toggleRow(() => {})] }, options());
+	await expect.element(page.getByRole('switch', { name: 'Enabled' })).toBeVisible();
+	for (const [bad, reason] of badRows) {
+		expect(() => handle.update({ rows: [bad as SettingsRow] })).toThrow(reason);
+	}
+	await expect.element(page.getByRole('switch', { name: 'Enabled' })).toBeVisible();
 });
 
 test('a_dialog_shows_its_content_closes_on_escape_and_tells_the_plugin', async () => {

@@ -131,23 +131,31 @@ export class PluginHost {
 	/** Hands a server notification to the plugins that listen for it. */
 	deliver(event: Notification): void {
 		if (event.type === 'plugins-changed') void this.sync();
-		else if (event.type === 'plugin-message' && event.plugin_id && event.topic)
-			this.notify(this.runtimes.get(event.plugin_id)?.notifications.get(event.topic), event.data);
-		else if (event.type === 'turn-settled' && event.session_id)
+		else if (event.type === 'plugin-message' && event.plugin_id && event.topic) {
+			const runtime = this.runtimes.get(event.plugin_id);
+			if (runtime) this.notify(runtime, runtime.notifications.get(event.topic), event.data);
+		} else if (event.type === 'turn-settled' && event.session_id)
 			for (const runtime of this.runtimes.values())
-				this.notify(runtime.appEvents.get('turn-settled'), event.session_id);
+				this.notify(runtime, runtime.appEvents.get('turn-settled'), event.session_id);
 	}
 
 	/** After the event stream reconnects: plugins refetch what they show, and the list is reread. */
 	resync(): void {
-		for (const runtime of this.runtimes.values()) this.notify(runtime.resyncs, undefined);
+		for (const runtime of this.runtimes.values()) this.notify(runtime, runtime.resyncs, undefined);
 		void this.sync();
 	}
 
-	private notify(listeners: Set<(value: never) => void> | undefined, value: unknown): void {
+	private notify(
+		runtime: PluginRuntime,
+		listeners: Set<(value: never) => void | Promise<void>> | undefined,
+		value: unknown
+	): void {
 		for (const listener of [...(listeners ?? [])]) {
+			if (runtime.controller.signal.aborted) break;
 			try {
-				listener(value as never);
+				void Promise.resolve(listener(value as never)).catch((error) =>
+					console.error('Plugin listener failed', error)
+				);
 			} catch (error) {
 				console.error('Plugin listener failed', error);
 			}

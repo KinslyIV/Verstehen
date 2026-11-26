@@ -131,7 +131,7 @@ test('notifications_reach_plugins_on_non_lesson_pages_and_resync_fires_only_on_r
 	const runtime = new PluginRuntime(info);
 	const received: unknown[] = [];
 	const resynced = vi.fn();
-	runtime.listen(runtime.notifications, 'tick', (data) => received.push(data));
+	runtime.listen(runtime.notifications, 'tick', (data) => void received.push(data));
 	runtime.resyncs.add(resynced);
 	plugins.runtimes.set('hello', runtime);
 

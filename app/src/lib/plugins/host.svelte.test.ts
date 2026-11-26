@@ -123,13 +123,13 @@ test('messages_reach_only_listeners_of_that_plugin_and_topic_and_resync_fires_af
 	const settled = vi.fn();
 	modules.hello = {
 		activate(ctx) {
-			ctx.onNotification('progress', (data) => seen.push(data));
+			ctx.onNotification('progress', (data) => void seen.push(data));
 			ctx.onResync(resynced);
 			ctx.onAppEvent('turn-settled', settled);
 		}
 	};
 	modules.other = {
-		activate: (ctx) => void ctx.onNotification('progress', () => seen.push('wrong'))
+		activate: (ctx) => void ctx.onNotification('progress', () => void seen.push('wrong'))
 	};
 	installed = [plugin('hello'), plugin('other')];
 	const host = newHost();
@@ -155,15 +155,28 @@ test('messages_reach_only_listeners_of_that_plugin_and_topic_and_resync_fires_af
 	expect(resynced).toHaveBeenCalledOnce();
 });
 
-test('a_listener_that_throws_does_not_stop_the_others', async () => {
-	vi.spyOn(console, 'error').mockImplementation(() => {});
-	const second = vi.fn();
+test('a_listener_that_throws_or_rejects_does_not_stop_the_others', async () => {
+	const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+	const secondNotif = vi.fn();
+	const secondResync = vi.fn();
+	const secondEvent = vi.fn();
 	modules.hello = {
 		activate(ctx) {
 			ctx.onNotification('go', () => {
-				throw new Error('bad listener');
+				throw new Error('sync bad listener');
 			});
-			ctx.onNotification('go', second);
+			ctx.onNotification('go', async () => {
+				throw new Error('async bad notification');
+			});
+			ctx.onNotification('go', secondNotif);
+			ctx.onResync(async () => {
+				throw new Error('async bad resync');
+			});
+			ctx.onResync(secondResync);
+			ctx.onAppEvent('turn-settled', async () => {
+				throw new Error('async bad app event');
+			});
+			ctx.onAppEvent('turn-settled', secondEvent);
 		}
 	};
 	installed = [plugin('hello')];
@@ -176,7 +189,13 @@ test('a_listener_that_throws_does_not_stop_the_others', async () => {
 		topic: 'go',
 		data: 1
 	});
-	expect(second).toHaveBeenCalledWith(1);
+	host.deliver({ type: 'turn-settled', session_id: 's1' });
+	host.resync();
+	expect(secondNotif).toHaveBeenCalledWith(1);
+	expect(secondEvent).toHaveBeenCalledWith('s1');
+	expect(secondResync).toHaveBeenCalledOnce();
+	await vi.waitFor(() => expect(logged).toHaveBeenCalledTimes(4));
+	logged.mockRestore();
 });
 
 test('registration_refuses_unregistered_actions_duplicates_and_unscoped_top_bar_placements', async () => {
@@ -375,6 +394,66 @@ test('register_settings_rows_returns_an_updatable_handle_and_rejects_duplicates_
 			]
 		})
 	).toThrow('Duplicate row key');
+	expect(() =>
+		handle.update({
+			rows: [
+				{
+					key: 'dd',
+					type: 'dropdown',
+					label: 'Mode',
+					value: 'a',
+					options: [
+						{ value: 'a', label: 'A' },
+						{ value: 'a', label: 'Dup' }
+					],
+					onChange: () => {}
+				}
+			]
+		})
+	).toThrow('duplicate option value');
+	expect(() =>
+		handle.update({
+			rows: [
+				{
+					key: 'num',
+					type: 'number',
+					label: 'Num',
+					value: 3,
+					min: 10,
+					max: 5,
+					onChange: () => {}
+				}
+			]
+		})
+	).toThrow('min exceeds max');
+	expect(() =>
+		handle.update({
+			rows: [
+				{
+					key: 'num',
+					type: 'slider',
+					label: 'Num',
+					value: 3,
+					step: 0,
+					onChange: () => {}
+				}
+			]
+		})
+	).toThrow('step must be positive');
+	expect(() =>
+		context!.registerSettings({
+			rows: [
+				{
+					key: 'num',
+					type: 'number',
+					label: 'Num',
+					value: 1,
+					min: Number.NaN,
+					onChange: () => {}
+				}
+			]
+		})
+	).toThrow('Plugin settings are already registered');
 	expect(runtime.settings && 'rows' in runtime.settings && runtime.settings.rows[0]?.key).toBe(
 		'enabled'
 	);

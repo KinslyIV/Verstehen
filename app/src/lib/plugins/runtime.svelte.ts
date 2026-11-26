@@ -30,9 +30,12 @@ export class PluginRuntime {
 	revision = $state(0);
 	readonly controller = new AbortController();
 	readonly cleanups: Cleanup[] = [];
-	readonly notifications = new SvelteMap<string, Set<(data: unknown) => void>>();
-	readonly resyncs = new SvelteSet<() => void>();
-	readonly appEvents = new SvelteMap<AppEventName, Set<(sessionId: string) => void>>();
+	readonly notifications = new SvelteMap<string, Set<(data: unknown) => void | Promise<void>>>();
+	readonly resyncs = new SvelteSet<() => void | Promise<void>>();
+	readonly appEvents = new SvelteMap<
+		AppEventName,
+		Set<(sessionId: string) => void | Promise<void>>
+	>();
 
 	constructor(public info: PluginInfo) {}
 

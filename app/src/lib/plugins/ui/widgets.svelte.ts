@@ -74,10 +74,12 @@ function checkMarkdown(props: MarkdownProps) {
 }
 
 export function checkRows(props: SettingsRowsProps) {
-	if (!Array.isArray(props.rows)) throw new TypeError('rows must be a list');
+	if (!props || typeof props !== 'object' || !Array.isArray(props.rows))
+		throw new TypeError('rows must be a list');
 	const keys = new SvelteSet<string>();
 	for (const row of props.rows) {
-		checkText(row?.key, 'A row key');
+		if (!row || typeof row !== 'object') throw new TypeError('A row must be an object');
+		checkText(row.key, 'A row key');
 		checkText(row.label, 'A row label');
 		if (keys.has(row.key)) throw new TypeError(`Duplicate row key: ${row.key}`);
 		keys.add(row.key);
@@ -85,6 +87,12 @@ export function checkRows(props: SettingsRowsProps) {
 			throw new TypeError('A row onChange must be a function');
 		if (row.validate !== undefined && typeof row.validate !== 'function')
 			throw new TypeError('A row validate must be a function');
+		if (row.disabled !== undefined && typeof row.disabled !== 'boolean')
+			throw new TypeError(`Row ${row.key} disabled must be boolean`);
+		if (row.description !== undefined && typeof row.description !== 'string')
+			throw new TypeError(`Row ${row.key} description must be text`);
+		if (!['toggle', 'text', 'dropdown', 'number', 'slider'].includes(row.type))
+			throw new TypeError(`Unknown row type: ${row.type}`);
 		const valueType =
 			row.type === 'toggle'
 				? 'boolean'
@@ -93,10 +101,34 @@ export function checkRows(props: SettingsRowsProps) {
 					: 'number';
 		if (typeof row.value !== valueType || (valueType === 'number' && !Number.isFinite(row.value)))
 			throw new TypeError(`Row ${row.key} needs a ${valueType} value`);
-		if (row.type === 'dropdown' && !Array.isArray(row.options))
-			throw new TypeError(`Row ${row.key} needs options`);
-		if (!['toggle', 'text', 'dropdown', 'number', 'slider'].includes(row.type))
-			throw new TypeError(`Unknown row type: ${row.type}`);
+		if (row.type === 'dropdown') {
+			if (!Array.isArray(row.options)) throw new TypeError(`Row ${row.key} needs options`);
+			const values = new SvelteSet<string>();
+			for (const option of row.options) {
+				if (
+					!option ||
+					typeof option !== 'object' ||
+					typeof option.value !== 'string' ||
+					typeof option.label !== 'string'
+				)
+					throw new TypeError(`Row ${row.key} options need string value and label`);
+				if (values.has(option.value))
+					throw new TypeError(`Row ${row.key} has duplicate option value: ${option.value}`);
+				values.add(option.value);
+			}
+		} else if (row.type === 'number' || row.type === 'slider') {
+			for (const bound of ['min', 'max', 'step'] as const) {
+				if (
+					row[bound] !== undefined &&
+					(typeof row[bound] !== 'number' || !Number.isFinite(row[bound]))
+				)
+					throw new TypeError(`Row ${row.key} ${bound} must be a finite number`);
+			}
+			if (row.min !== undefined && row.max !== undefined && row.min > row.max)
+				throw new TypeError(`Row ${row.key} min exceeds max`);
+			if (row.step !== undefined && row.step <= 0)
+				throw new TypeError(`Row ${row.key} step must be positive`);
+		}
 	}
 }
 

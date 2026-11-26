@@ -205,9 +205,12 @@ export interface PluginFrontendContext {
 	registerSettings(settings: SettingsMountRegistration): () => void;
 	registerSettings(settings: SettingsRegistration): WidgetHandle<SettingsRowsProps> | (() => void);
 	refreshActions(): void;
-	onNotification(topic: string, listener: (data: unknown) => void): () => void;
-	onResync(listener: () => void): () => void;
-	onAppEvent(event: AppEventName, listener: (sessionId: string) => void): () => void;
+	onNotification(topic: string, listener: (data: unknown) => void | Promise<void>): () => void;
+	onResync(listener: () => void | Promise<void>): () => void;
+	onAppEvent(
+		event: AppEventName,
+		listener: (sessionId: string) => void | Promise<void>
+	): () => void;
 	cleanup(fn: Cleanup): void;
 }
 

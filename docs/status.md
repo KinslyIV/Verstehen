@@ -62,8 +62,12 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   and MCP-toolset hooks for the prober, teacher, and practitioner, and views, actions, settings
   pages, and `ctx.ui` widgets, with Settings → Plugins. Desktop only. Steps 1–6 and review rounds 1
   (lifecycle locks, tool boundary and reserved names, thread card for plugin tool calls, frontend
-  lifetimes) and 2 (non-blocking startup, whole-plugin admission with instructions through the toolset,
-  disable fencing, strict state file, no symlinks, activation-bound bridge calls) are committed; see [plugin authoring](plugin-authoring.md).
+  lifetimes), 2 (non-blocking startup, whole-plugin admission with instructions through the toolset,
+  disable fencing, strict state file, no symlinks, activation-bound bridge calls), 3 (root-mounted
+  notification bridge, snapshotted public files and revision warnings, async dialog content, updatable
+  settings rows), and 4 (worker ownership on cancelled sync import/activate, atomic package admission,
+  leaf toolset ownership, worker-thread sync `@ctx.expose`, fenced `turn-settled` observers, and
+  complete settings-row validation) are committed; see [plugin authoring](plugin-authoring.md).
 - **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and still needs a fresh run.

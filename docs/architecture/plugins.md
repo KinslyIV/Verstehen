@@ -60,21 +60,27 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   serialized by a per-plugin lock and converge on the latest saved choice: an activation that finds
   the plugin disabled meanwhile closes its own context instead of publishing it. A failing `activate` or cleanup
   marks only that plugin `failed` with the error.
-- **Backend activation:** a plugin being started is `activating`. `load_backend` re-checks the
-  backend path for symlinks and imports the package once per process, `vendor/` goes on
-  `sys.path` while the plugin runs, then `activate(ctx)` runs: the import and a synchronous
-  `activate` in a worker thread (`ctx.emit` hops back to the loop), an `async` one on the loop (it
-  must not block); a returned function is a cleanup. MCP toolsets are started right after `activate`, so one that cannot start fails the
-  plugin.
+- **Backend activation:** a plugin being started is `activating`. On first admission (`plugin.revision is None`),
+  `snapshot_package` re-validates `dist/` (checking compatibility, entries, and symlinks without running plugin code),
+  computes the package revision, and snapshots public files (`main`, `styles`, `assets/**`). `load_backend`
+  imports the package once per process and immediately pins `module`, `revision`, and `files` together (so even if
+  `activate` fails, Refresh detects on-disk edits with `Restart required` and re-enabling never mixes a v1 module
+  with v2 frontend bytes). `vendor/` goes on `sys.path` while the plugin runs, then `activate(ctx)` runs: the import
+  and a synchronous `activate` run in a host-tracked worker task (`InstalledPlugin.worker`, awaited before any re-enable
+  or shutdown `forget_backend`, and running any late-returned cleanup if cancelled while the thread was running;
+  `ctx.emit` hops back to the loop and re-checks `closed`), an `async` one on the loop (it must not block); a returned
+  function is a cleanup. MCP toolsets are started right after `activate`, so one that cannot start fails the plugin.
 - **The bridge.** `@ctx.expose` functions are called by `POST /api/plugins/{id}/call/{name}`: JSON
   in (the function's one parameter), JSON out; an error is a 500 `{error}`, a non-JSON result a
-  422, a stopped plugin a 409. The frontend's `ctx.backend.<name>(input)` is a Proxy over that
+  422, a stopped plugin a 409. Synchronous `@ctx.expose` handlers run in a worker thread (`asyncio.to_thread`) inside
+  the context's operation boundary, so they do not stall the event loop and disabling returns 409 immediately. The frontend's `ctx.backend.<name>(input)` is a Proxy over that
   route. `ctx.emit(topic, data)` becomes a `plugin-message` notification on `/api/events`;
   the frontend's `onNotification(topic, fn)` hears only its own plugin's. `NotificationBridge`
   mounts in the root layout (`routes/+layout.svelte`, gated off `/pair` in remote mode) so one
   persistent stream serves lessons, graph, plugin views, and `/settings`. `onResync` fires only
   when that stream reconnects after a drop. `ctx.on("turn-settled", fn)` observers run after a turn
-  is saved; the frontend's `onAppEvent("turn-settled", fn)` follows the same notification.
+  is saved, fenced inside `context.operate` (with sync observers in a worker thread) so disabling cancels
+  an observer in flight and skips remaining observers; the frontend's `onAppEvent("turn-settled", fn)` follows the same notification (sync and async listener errors on `onNotification`, `onResync`, and `onAppEvent` are caught and logged).
 - **Agent hooks** (`PluginService.toolset_for(agent, session_id)`, called by `build_agent` once per
   turn for the agent that turn runs, `None` when no plugin registered anything for it). Targets:
   `prober`, `teacher`, `practice` (the practitioner). Tool factories receive
@@ -101,11 +107,15 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   (`Plugin <id> is no longer running`). Exposed bridge calls are operations of the context the call
   captured, so disabling cancels them first and a call that finishes after the plugin stopped is a 409.
   `PluginToolset.for_run` and `for_run_step` also run inside the boundary: a failure drops the
-  plugin from the rest of the turn with a warning. A run enters only the toolsets `for_run` made
-  new, not the plugin's own (the context owns those, so an MCP process stops with disable).
-  Synchronous tools run in a worker thread and are not interrupted by disable: the late result is
-  discarded, and the plugin should keep them quick (LearnHarness is cooperative only too).
-  Teardown is shielded: cancelling `close` again does not cut the cleanups short, and a cleanup's
+  plugin from the rest of the turn with a warning. A run enters only the leaf toolsets `for_run` made
+  new (recursively unwrapping `CombinedToolset` and `WrapperToolset`), not the plugin's own (the context
+  owns those, so an MCP process is never double-entered and stops with disable); run-owned toolsets are
+  also closed on mid-turn disable and any `__aexit__` error is contained at the plugin boundary.
+  Synchronous tools and synchronous `@ctx.expose` handlers run in a worker thread and are not forcefully
+  interrupted by disable: the late result is discarded (409 for bridge calls), and the plugin should keep
+  them quick (LearnHarness is cooperative only too).
+  Teardown is shielded: cancelling `close` again does not cut the cleanups short, callback-raised
+  `CancelledError`s are recorded as cleanup failures without aborting remaining cleanups, and a cleanup's
   error stays on the plugin until its next activation.
 - **Tool boundary.** A plugin tool that raises is logged on the plugin and returned to the model as a
   failed tool result (`Tool <name> failed: …`, also shown as a plugin warning); the turn goes on.

@@ -26,10 +26,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
   desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
   run plugin code on a device that has no plugin folder.
-- **Disabling does not interrupt a synchronous plugin tool (decided: cooperative only, as in
-  LearnHarness).** Its worker thread runs on and the late result is discarded. Alternative: track the
-  worker until it exits and wait for it on disable. Consequence: a long synchronous tool can still
-  write plugin data after the plugin's cleanups ran.
+- **Disabling does not forcefully interrupt a synchronous plugin tool or synchronous `@ctx.expose`
+  handler (decided: cooperative only, as in LearnHarness).** Both run in a worker thread; on disable
+  the waiting caller is cancelled immediately (answering 409 for `@ctx.expose` calls) while the
+  worker thread runs on and its late result is discarded. Alternative: block disable until the
+  worker thread exits. Consequence: a long synchronous tool or exposed handler can still write
+  plugin data after the plugin's cleanups ran.
 - **Plugin warnings reuse `PluginInfo.warnings`** (an agent-turn refusal or failing factory), cleared
   by the next clean turn.
 
