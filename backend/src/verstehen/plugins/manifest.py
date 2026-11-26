@@ -1,5 +1,6 @@
 import hashlib
 import json
+import mimetypes
 import os
 import re
 from pathlib import Path
@@ -105,13 +106,87 @@ def package_revision(dist: Path) -> str:
     digest = hashlib.sha256()
     for directory, names, files in os.walk(dist):
         names[:] = sorted(name for name in names if name != "__pycache__")
+        for folder in names:
+            link = Path(directory, folder)
+            if link.is_symlink():
+                raise PluginInvalid(
+                    f"Unsafe plugin entry: {link.relative_to(dist)} is a symlink"
+                )
         for name in sorted(files):
             path = Path(directory, name)
+            if path.is_symlink():
+                raise PluginInvalid(
+                    f"Unsafe plugin entry: {path.relative_to(dist)} is a symlink"
+                )
             digest.update(f"{path.relative_to(dist)}:{path.stat().st_size}:".encode())
             with path.open("rb") as stream:
                 while chunk := stream.read(1 << 20):
                     digest.update(chunk)
     return digest.hexdigest()
+
+
+def content_type(path: Path) -> str:
+    if path.suffix == ".js":
+        return "text/javascript; charset=utf-8"
+    guessed = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
+    return f"{guessed}; charset=utf-8" if guessed.startswith("text/") else guessed
+
+
+def read_public_file(
+    dist: Path, resolved_dist: Path, relative: str
+) -> tuple[bytes, str]:
+    """Read one allowlisted public file under `dist/`, refusing symlinks, bad segments, or escapes."""
+    parts = relative.split("/")
+    if not all(ENTRY_PATTERN.match(part) for part in parts):
+        raise PluginInvalid(f"Unsafe plugin entry: {relative}")
+    current = dist
+    for index, part in enumerate(parts):
+        current = current / part
+        if current.is_symlink():
+            raise PluginInvalid(f"Unsafe plugin entry: {relative} is a symlink")
+        if index == len(parts) - 1:
+            if not current.is_file():
+                raise PluginInvalid(f"Missing plugin entry: {relative}")
+        elif not current.is_dir():
+            raise PluginInvalid(f"Unsafe plugin entry: {relative}")
+    if not current.resolve().is_relative_to(resolved_dist):
+        raise PluginInvalid(f"Unsafe plugin entry: {relative}")
+    return current.read_bytes(), content_type(current)
+
+
+def snapshot_package(
+    root: Path, manifest: PluginManifest
+) -> tuple[str, dict[str, tuple[bytes, str]]]:
+    """Hash `dist/` and snapshot all public files (`main`, `styles`, `assets/**`), refusing symlinks."""
+    if root.is_symlink() or not root.is_dir():
+        raise PluginInvalid("Unsafe plugin directory")
+    dist = root / "dist"
+    if dist.is_symlink() or not dist.is_dir():
+        raise PluginInvalid("Unsafe plugin dist directory: symlinks are not allowed")
+    resolved_dist = dist.resolve()
+    files: dict[str, tuple[bytes, str]] = {}
+    for entry in (manifest.main, manifest.styles):
+        if entry:
+            files[entry] = read_public_file(dist, resolved_dist, entry)
+    assets = dist / "assets"
+    if assets.is_symlink():
+        raise PluginInvalid("Unsafe plugin entry: assets is a symlink")
+    if assets.exists():
+        if not assets.is_dir():
+            raise PluginInvalid("Unsafe plugin entry: assets")
+        for current, folders, names in os.walk(assets):
+            folders.sort()
+            for folder in folders:
+                path = Path(current, folder)
+                rel = path.relative_to(dist).as_posix()
+                if not ENTRY_PATTERN.match(folder):
+                    raise PluginInvalid(f"Unsafe plugin entry: {rel}")
+                if path.is_symlink():
+                    raise PluginInvalid(f"Unsafe plugin entry: {rel} is a symlink")
+            for name in sorted(names):
+                rel = Path(current, name).relative_to(dist).as_posix()
+                files[rel] = read_public_file(dist, resolved_dist, rel)
+    return package_revision(dist), files
 
 
 def validate_package(root: Path, app_version: str) -> PluginManifest:

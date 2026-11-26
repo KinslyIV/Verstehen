@@ -1,7 +1,6 @@
 import asyncio
 import inspect
 import logging
-import mimetypes
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -27,6 +26,7 @@ from verstehen.plugins.manifest import (
     PluginManifest,
     check_backend_unlinked,
     package_revision,
+    snapshot_package,
     validate_package,
 )
 from verstehen.plugins.toolsets import PluginToolset, PluginToolsets, PluginTurn
@@ -69,6 +69,7 @@ class InstalledPlugin:
     context: PluginContext | None = None
     queued: int = 0
     revision: str | None = None
+    files: dict[str, tuple[bytes, str]] | None = None
     restart: str | None = None
     turn_warnings: list[str] = field(default_factory=list)
 
@@ -128,7 +129,7 @@ class PluginService:
             return self.installed()
         for plugin_id in [name for name in self.plugins if name not in folders]:
             plugin = self.plugins[plugin_id]
-            if plugin.context is None and not plugin.queued:
+            if plugin.context is None and not plugin.queued and plugin.revision is None:
                 del self.plugins[plugin_id]
             else:
                 self.require_restart(plugin, "removed")
@@ -142,12 +143,12 @@ class PluginService:
         return self.installed()
 
     async def check_unchanged(self, plugin: InstalledPlugin) -> None:
-        """Warn that a restart is needed when the files of a running plugin differ from what it admitted."""
-        if plugin.revision is None or plugin.context is None:
+        """Warn that a restart is needed when the files of an admitted plugin differ from what it loaded."""
+        if plugin.revision is None:
             return
         try:
             current = await asyncio.to_thread(package_revision, plugin.root / "dist")
-        except OSError:
+        except OSError, PluginInvalid:
             current = None
         if current != plugin.revision:
             self.require_restart(plugin, "changed")
@@ -166,12 +167,13 @@ class PluginService:
             self.plugins_changed()
 
     def rescan(self, plugin_id: str, root: Path) -> InstalledPlugin | None:
-        """Replace a folder's package with a fresh read, unless work is queued for it or it already runs.
+        """Replace a folder's package with a fresh read, unless work is queued for it or it was admitted.
         The enable choice is read here and nothing awaits before it is used.
         """
         known = self.plugins.get(plugin_id)
         if known and (
             known.queued
+            or known.revision is not None
             or known.module
             or known.context
             or known.info.status == "failed"
@@ -245,15 +247,15 @@ class PluginService:
         except ValidationError:
             return PluginRefused(422, f"Plugin function {name} did not return JSON")
 
-    def file(self, plugin_id: str, path: str) -> tuple[Path, str] | PluginRefused:
+    def file(self, plugin_id: str, path: str) -> tuple[bytes, str] | PluginRefused:
         """Resolve a public file of an active plugin: its `main`, `styles`, or anything under `assets/`.
-        The folder is checked again on every request, so a file swapped for a link out of `dist/` is refused.
+        Serves the bytes snapshotted at activation after re-checking that no segment became a symlink.
         """
         plugin = self.plugins.get(plugin_id)
         if plugin is None:
             return unknown_plugin(plugin_id)
         manifest = plugin.manifest
-        if manifest is None or plugin.info.status != "active":
+        if manifest is None or plugin.info.status != "active" or plugin.files is None:
             return PluginRefused(409, f"Plugin {plugin_id} is not active")
         parts = path.split("/")
         public = path in (manifest.main, manifest.styles) or (
@@ -274,7 +276,10 @@ class PluginService:
             return PluginRefused(404, "Plugin file is not public")
         if not current.is_file():
             return PluginRefused(404, "Unknown plugin file")
-        return current, content_type(current)
+        admitted = plugin.files.get(path)
+        if admitted is None:
+            return PluginRefused(404, "Unknown plugin file")
+        return admitted
 
     async def turn_settled(self, session_id: str) -> None:
         """Tell every running plugin's `turn-settled` observers; their failures are only logged."""
@@ -343,6 +348,8 @@ class PluginService:
                 await self.deactivate(plugin)
                 forget_backend(plugin.info.id)
                 plugin.module = None
+                plugin.revision = None
+                plugin.files = None
 
     def read_package(self, root: Path, enabled: bool) -> InstalledPlugin:
         try:
@@ -419,7 +426,11 @@ class PluginService:
         if task:
             self.activations[manifest.id] = task
         try:
-            plugin.revision = await asyncio.to_thread(package_revision, dist)
+            admitted = (
+                await asyncio.to_thread(snapshot_package, plugin.root, manifest)
+                if plugin.revision is None
+                else None
+            )
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
                 add_vendor(manifest, dist, context)
@@ -446,8 +457,9 @@ class PluginService:
             failures = await context.close()
             self.mark_stopped(plugin, failures)
             return
+        if admitted is not None:
+            plugin.revision, plugin.files = admitted
         plugin.context = context
-        plugin.restart = None
         self.sync_warnings(plugin)
         plugin.info.status = "active"
         plugin.info.error = None
@@ -508,10 +520,3 @@ async def run_activate(module: ModuleType, context: PluginContext) -> None:
 
 def unknown_plugin(plugin_id: str) -> PluginRefused:
     return PluginRefused(404, f"Unknown plugin: {plugin_id}")
-
-
-def content_type(path: Path) -> str:
-    if path.suffix == ".js":
-        return "text/javascript; charset=utf-8"
-    guessed = mimetypes.guess_type(path.name)[0] or "application/octet-stream"
-    return f"{guessed}; charset=utf-8" if guessed.startswith("text/") else guessed

@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Body, Depends
 from pydantic import BaseModel, JsonValue
-from starlette.responses import FileResponse, JSONResponse
+from starlette.responses import JSONResponse, Response
 
 from verstehen.api.deps import get_plugin_service
 from verstehen.api.sessions import ApiError
@@ -76,14 +76,14 @@ async def call_plugin(
     return JSONResponse(result)
 
 
-@router.get("/api/plugins/{plugin_id}/files/{path:path}", response_class=FileResponse)
+@router.get("/api/plugins/{plugin_id}/files/{path:path}", response_class=Response)
 async def get_plugin_file(
     plugin_id: str, path: str, plugin_service: PluginServiceDependency
 ):
     result = plugin_service.file(plugin_id, path)
     if isinstance(result, PluginRefused):
         return refusal(result)
-    file, media_type = result
-    return FileResponse(
-        file, media_type=media_type, headers={"Cache-Control": "no-cache"}
+    data, media_type = result
+    return Response(
+        content=data, media_type=media_type, headers={"Cache-Control": "no-cache"}
     )

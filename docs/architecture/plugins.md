@@ -131,8 +131,9 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   view or settings page gets its own child container; the host logs a cleanup that throws or rejects, also
   one returned after the page was left.
 - **Served files.** `GET /api/plugins/{id}/files/{path}` serves only the manifest's `main` and
-  `styles` and anything under `assets/`, of an active plugin, each segment a plain name. Every request
-  re-checks the plugin folder, `dist/`, and each segment for symlinks and that the resolved file is
+  `styles` and anything under `assets/`, of an active plugin, each segment a plain name, from the
+  bytes snapshotted when the plugin was first admitted in this process. Every request still re-checks
+  the plugin folder, `dist/`, and each segment on disk for symlinks and that the resolved file stays
   inside `dist/`. The manifest refuses a `backend` folder named `assets`, `manifest.json`, or the
   `main` or `styles` entry.
 - **Startup and shutdown.** Discovery is synchronous and quick; persisted activations then run as
@@ -164,10 +165,9 @@ after its plugin is removed.
 
 ## Traps
 
-- **The files route serves the disk,** not the bytes seen at activation; a changed `main.js` is
-  served as changed, and Refresh only warns that a restart is needed.
-- **Changed plugin code needs a restart** (the backend module is cached; `main.js` is imported
-  once per window and cached by the browser until reload).
+- **Changed plugin code needs a restart** (the backend module and served public file bytes are
+  pinned on first activation; `main.js` is imported once per window and cached by the browser until
+  reload, and Refresh warns `Restart required` when `dist/` changes on disk).
 - **MCP servers in the packaged app.** `sys.executable` there is the `verstehen` binary, so an MCP
   toolset should run an external command (`npx`, `uvx`, a binary), not a Python script.
 - **Pydantic AI 2.70:** MCP is `pydantic_ai.mcp.MCPToolset` over `fastmcp-slim`; `MCPServerStdio` no

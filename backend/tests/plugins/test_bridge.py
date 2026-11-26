@@ -255,3 +255,55 @@ def test_a_dist_replaced_by_a_link_after_activation_serves_nothing(tmp_path: Pat
         base = "/api/plugins/bridge/files/"
         assert client.get(base + "main.js").status_code == 404
         assert client.get(base + "assets/logo.svg").status_code == 404
+
+
+def test_served_files_are_pinned_to_the_bytes_admitted_at_activation(tmp_path: Path):
+    with client_for(tmp_path) as client:
+        enable(client)
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        base = "/api/plugins/bridge/files/"
+        main_before = client.get(base + "main.js").text
+        styles_before = client.get(base + "styles.css").text
+        logo_before = client.get(base + "assets/logo.svg").text
+        (dist / "main.js").write_text("export function activate() { return 'edited'; }")
+        (dist / "styles.css").write_text(".bridge { color: red; }")
+        (dist / "assets" / "logo.svg").write_text("<svg>edited</svg>")
+        (dist / "assets" / "added.svg").write_text("<svg>new</svg>")
+        assert client.get(base + "main.js").text == main_before
+        assert client.get(base + "styles.css").text == styles_before
+        assert client.get(base + "assets/logo.svg").text == logo_before
+        assert client.get(base + "assets/added.svg").status_code == 404
+        refreshed = client.post("/api/plugins/refresh").json()["plugins"][0]
+        assert refreshed["warnings"] == ["Restart required: plugin package changed"]
+
+
+def test_a_symlink_inside_assets_before_activation_fails_activation(tmp_path: Path):
+    with client_for(tmp_path) as client:
+        secret = tmp_path / "plugins" / "bridge" / "data" / "secret.txt"
+        (tmp_path / "plugins" / "bridge" / "dist" / "assets" / "link.txt").symlink_to(
+            secret
+        )
+        info = enable(client)
+        assert info["status"] == "failed"
+        assert "symlink" in info["error"]
+        assert (
+            client.get("/api/plugins/bridge/files/assets/link.txt").status_code == 409
+        )
+
+
+def test_re_enabling_after_on_disk_edits_keeps_admitted_bytes_and_restart_warning(
+    tmp_path: Path,
+):
+    with client_for(tmp_path) as client:
+        enable(client)
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        base = "/api/plugins/bridge/files/"
+        main_before = client.get(base + "main.js").text
+        enable(client, False)
+        (dist / "main.js").write_text("export function activate() { return 'edited'; }")
+        refreshed = client.post("/api/plugins/refresh").json()["plugins"][0]
+        assert refreshed["warnings"] == ["Restart required: plugin package changed"]
+        reenabled = enable(client, True)
+        assert reenabled["status"] == "active"
+        assert reenabled["warnings"] == ["Restart required: plugin package changed"]
+        assert client.get(base + "main.js").text == main_before
