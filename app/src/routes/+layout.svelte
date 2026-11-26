@@ -5,6 +5,7 @@
 	import { page } from '$app/state';
 	import { clientMode } from '#lib/api/connection.js';
 	import { models } from '#lib/models/catalog.svelte.js';
+	import NotificationBridge from '#lib/components/notification-bridge.svelte';
 	import SystemBars from '#lib/components/system-bars.svelte';
 	import { onAndroidBack } from '#lib/session/android-back.js';
 	import type { LayoutProps } from './$types';
@@ -27,5 +28,6 @@
 
 <ModeWatcher defaultMode="dark" />
 <SystemBars />
+{#if !remote || !pairing}<NotificationBridge />{/if}
 
 {@render children()}

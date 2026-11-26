@@ -31,6 +31,7 @@ from pydantic_ai.tools import (
     ToolDefinition,
     ToolReturn,
 )
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.store.entries import Entry
 from verstehen.teaching.practice.healing import (
@@ -328,6 +329,7 @@ def build_practitioner(
     gate: PracticeGate | None = None,
     graph_nodes: GraphNodesLookup | None = None,
     extra_tools: tuple[Tool[None], ...] = (),
+    extra_toolsets: tuple[AbstractToolset[None], ...] = (),
     extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
     """Build the practice agent with problem and conclude tools and turn-scoped gate."""
@@ -361,5 +363,6 @@ def build_practitioner(
         model_settings=settings,
         tools=tools,
         output_type=[str, DeferredToolRequests],
+        toolsets=extra_toolsets,
         capabilities=capabilities,
     )

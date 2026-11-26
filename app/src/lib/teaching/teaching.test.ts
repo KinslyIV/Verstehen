@@ -157,6 +157,23 @@ test.each(['send_to_user', 'probe', 'probe_done', 'plan_init', 'read'])(
 	}
 );
 
+test('a_tool_that_is_not_built_in_renders_as_a_card_even_after_an_error_or_an_abort', () => {
+	const entry = call('hello_lookup', { word: 'slope' });
+	const ok = { ...result, tool_name: 'hello_lookup', tool_call_id: 'hello_lookup', text: 'ok' };
+	const failed = { ...ok, text: 'Tool hello_lookup failed: boom', is_error: true };
+	const card = { kind: 'tool', name: 'hello_lookup', args: { word: 'slope' }, stopped: false };
+	expect(responseProse(entry, new Map([['hello_lookup', ok]]), false)).toEqual([
+		{ ...card, result: ok }
+	]);
+	expect(responseProse(entry, new Map([['hello_lookup', failed]]), false)).toEqual([
+		{ ...card, result: failed }
+	]);
+	expect(responseProse(entry, undefined, true)).toEqual([{ ...card, result: undefined }]);
+	expect(responseProse({ ...entry, stop_reason: 'aborted' }, undefined, false)).toEqual([
+		{ ...card, result: undefined, stopped: true }
+	]);
+});
+
 test('probe_done_refusal_keeps_its_assessment_card', () => {
 	const refusal = { ...result, details: { ok: false, error: 'A question is still open.' } };
 	expect(responseProse(call('probe_done', {}), new Map([['probe_done', refusal]]), false)).toEqual([

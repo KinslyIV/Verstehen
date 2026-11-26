@@ -61,23 +61,33 @@ def demo_html(fixture: dict, server: str) -> str:
     return html.replace("{server}", server)
 
 
+def unordered(result: dict) -> dict:
+    """The lists of a result sorted: the browser reports failures as they arrive, in no fixed order."""
+    lists = ("console_errors", "page_errors", "failed_request_urls")
+    return {**result, **{name: sorted(result[name]) for name in lists}}
+
+
 def expected(fixture: dict, reason: str, server: str) -> dict:
     """The fixture's result with the runner's wording of a network failure and the server filled in."""
     text = json.dumps(fixture["expect"])
-    return json.loads(text.replace("{reason}", reason).replace("{server}", server))
+    return unordered(
+        json.loads(text.replace("{reason}", reason).replace("{server}", server))
+    )
 
 
 def summarize(result: dict) -> dict:
     """A result as the fixtures state it: failed requests by URL, since browsers word the reason differently."""
-    return {
-        "console_errors": result["console_errors"],
-        "page_errors": result["page_errors"],
-        "failed_request_urls": [
-            failed.rsplit(" (", 1)[0] for failed in result["failed_requests"]
-        ],
-        "probe_result": result["probe_result"],
-        "probed": result["probed"],
-    }
+    return unordered(
+        {
+            "console_errors": result["console_errors"],
+            "page_errors": result["page_errors"],
+            "failed_request_urls": [
+                failed.rsplit(" (", 1)[0] for failed in result["failed_requests"]
+            ],
+            "probe_result": result["probe_result"],
+            "probed": result["probed"],
+        }
+    )
 
 
 @pytest.fixture(scope="module")

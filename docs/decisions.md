@@ -14,6 +14,27 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**Plugins (implementation):**
+
+- **MCP toolsets use `pydantic_ai.mcp.MCPToolset`** over `fastmcp-slim[client]` (the `mcp` extra),
+  because Pydantic AI 2.70 no longer has `MCPServerStdio`. Consequence: PyInstaller collects
+  `fastmcp` and `mcp` explicitly, and in the packaged app a stdio server must be an external
+  command, not a Python script (`sys.executable` is the `verstehen` binary). `make app` was not run.
+- **Plugins load only in the desktop app, or with `VERSTEHEN_PLUGINS=1` in browser-only mode** (the
+  verify flows set it). A plain local API (`make dev`) and server mode load none: its loopback
+  access check has no token, and plugin code is trusted. Alternative: always on locally.
+- **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
+  desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
+  run plugin code on a device that has no plugin folder.
+- **Disabling does not forcefully interrupt a synchronous plugin tool or synchronous `@ctx.expose`
+  handler (decided: cooperative only, as in LearnHarness).** Both run in a worker thread; on disable
+  the waiting caller is cancelled immediately (answering 409 for `@ctx.expose` calls) while the
+  worker thread runs on and its late result is discarded. Alternative: block disable until the
+  worker thread exits. Consequence: a long synchronous tool or exposed handler can still write
+  plugin data after the plugin's cleanups ran.
+- **Plugin warnings reuse `PluginInfo.warnings`** (an agent-turn refusal or failing factory), cleared
+  by the next clean turn.
+
 **Qt shell (implementation):**
 
 - **The desktop server prefers port 28420 and falls back to a random free port.** The page origin
@@ -318,9 +339,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
   node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
   Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
-- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
-  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
-  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **The notification stream lives in `NotificationBridge` in the root layout** (gated off `/pair`
+  in remote mode), not the session list or lesson layout, so the phone drawer unmounting the
+  sidebar and navigating to `/settings` keep the stream open. Alternative: keep it in the sidebar
+  or lesson layout; consequence: missed notifications while the drawer is closed or on `/settings`.
 - **Device type by screen size:** the device-name default is "Tablet" when
   `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
   query; consequence: a large foldable's inner screen reads as a tablet.
@@ -484,6 +506,24 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **The user never enters a model's context limit.**
 - **ChatGPT model lists are cached** per account for the process's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
+
+### Plugins
+
+- **`@ctx.expose` and `ctx.backend.<name>(input)`** replace LH's `ctx.handle` and `ctx.call`: a
+  backend function is exposed by decorator, and the frontend calls it through a Proxy over one
+  host route, so plugin authors write no endpoints.
+- **A toolset hook** (`register_toolset`, for MCP servers over Pydantic AI's `MCPToolset`) beside
+  `register_tools`; LH has no MCP or toolset hook.
+- **A Python backend and a JS frontend.** LH's backend is JS; here it is a Python package in
+  `dist/backend/` with optional pure-Python `vendor/`, and the host installs nothing.
+- **Desktop only.** Server mode discovers no plugins, paired remote devices run none, and
+  `plugins/` and `plugins-state.json` are not synced. LH has no server or phone mode.
+- **Plugin tool factories are synchronous:** `register_tools(agents, factory)` calls the factory
+  once per turn and takes the tools it returns without awaiting.
+- **Not ported yet from LH's plugin API:** action keyboard shortcuts, the action context's `view`
+  (a session snapshot), and the parts listed as deferred in the [roadmap](roadmap.md).
+- **MCP servers in the packaged app** should be external commands: `sys.executable` is the
+  `verstehen` binary there, so a Python-script server does not start.
 
 ### Frontend
 

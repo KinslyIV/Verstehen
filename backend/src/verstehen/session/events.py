@@ -2,7 +2,7 @@ import asyncio
 from collections.abc import AsyncGenerator
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from verstehen.store.entries import (
     AssistantEntry,
@@ -39,10 +39,15 @@ class Notification(BaseModel):
         "extractions-changed",
         "sync-changed",
         "sync-status-changed",
+        "plugins-changed",
+        "plugin-message",
     ]
     session_id: str = ""
     revision: int | None = None
     running: bool | None = None
+    plugin_id: str | None = None
+    topic: str | None = None
+    data: JsonValue = None
     from_sync: bool = Field(default=False, exclude=True)
 
 

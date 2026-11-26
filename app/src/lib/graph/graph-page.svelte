@@ -3,6 +3,7 @@
 	import { Dumbbell, ListTree, Waypoints } from '@lucide/svelte';
 	import { resolve } from '$app/paths';
 	import { Button } from '#lib/components/ui/button/index.js';
+	import PluginActions from '#lib/plugins/plugin-actions.svelte';
 	import type { Pt } from './canvas.js';
 	import ChainTable from './chain-table.svelte';
 	import DeleteNodeDialog from './delete-node-dialog.svelte';
@@ -213,6 +214,7 @@
 						Chains
 					</button>
 				</div>
+				<PluginActions surface={{ kind: 'graph' }} />
 				<ImportNotes
 					importing={notesImport.snapshot.importing}
 					onfiles={(files) => notesImport.add(files)}

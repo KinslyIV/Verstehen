@@ -8,6 +8,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import ToolReturn
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.store.settings import Quizzing
 from verstehen.teaching.questions.tools import QuestionAgent, build_question_agent
@@ -34,6 +35,7 @@ def build_prober(
     *,
     question_pending: Callable[[], bool] = lambda: False,
     extra_tools: tuple[Tool[None], ...] = (),
+    extra_toolsets: tuple[AbstractToolset[None], ...] = (),
     deliver_prose: bool = False,
     extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
@@ -43,6 +45,7 @@ def build_prober(
         settings,
         ("recall" if quizzing == "free" else "probe", "ask_user_question"),
         extra_tools=(*extra_tools, probe_done_tool(question_pending)),
+        extra_toolsets=extra_toolsets,
         deliver_prose=deliver_prose,
         extra_capabilities=extra_capabilities,
     )

@@ -31,6 +31,7 @@ is updated in the same commit.
 | Component test (Vitest browser mode) | [`enter_sends_but_shift_enter_keeps_a_newline`](../app/src/lib/components/composer.svelte.test.ts) |
 | Lesson route-group layout | [`(lesson)/+layout.svelte`](../app/src/routes/(lesson)/+layout.svelte) owns shell state and renders page children; settings stays outside the group. |
 | Lesson component test harness | [`lesson-test-harness.svelte`](../app/src/routes/lesson-test-harness.svelte) wraps a page in the lesson layout. |
+| Plugin (backend, frontend, settings, agent tool) | [`fixtures/plugins/hello`](../backend/tests/fixtures/plugins/hello/dist): one exposed function, a teacher tool, a view, sidebar and session actions, and a settings page; the verify flows copy it with `test.use({ plugins: ['hello'] })`. Authors: [plugin authoring](plugin-authoring.md). |
 | Verify flow | [`shell-layout.flow.ts`](../app/verify/shell/shell-layout.flow.ts) |
 | Fake-model script | [`session-new-and-stream.json`](../app/verify/scripts/session-new-and-stream.json) streams replies. Optional first-reply `title` feeds `fake-title` independently. `ScriptReply.usage` specifies token counts. A summary consumes the next lesson reply. |
 | API client function | [`getSession`](../app/src/lib/api/client.ts) (generated types stay behind the client; JSON and SSE are same-origin; remote mode adds the bearer header) |

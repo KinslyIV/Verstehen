@@ -55,8 +55,18 @@ async function connectionReturns() {
 }
 
 beforeEach(() => {
-	// The reconnect backoff must wait for resume, however slow the test runs.
-	vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+	vi.spyOn(live, 'wait').mockImplementation(
+		(_attempt, signal) =>
+			new Promise<void>((done) => {
+				const finish = () => {
+					stopOnResume();
+					signal.removeEventListener('abort', finish);
+					done();
+				};
+				const stopOnResume = live.onResume(finish);
+				signal.addEventListener('abort', finish);
+			})
+	);
 	mode.current = 'remote';
 	streamFailsOnce();
 	vi.mocked(api.getSettings).mockReset().mockResolvedValue(stored);
@@ -80,7 +90,7 @@ beforeEach(() => {
 	vi.mocked(api.browserDownload).mockReset().mockResolvedValue({ state: 'idle' });
 });
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => vi.restoreAllMocks());
 
 test('lesson_loads_once_the_connection_returns_after_a_failed_first_read', async () => {
 	vi.mocked(api.getSettings).mockRejectedValueOnce(offline());

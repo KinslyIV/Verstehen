@@ -1,9 +1,11 @@
 import asyncio
+import importlib.metadata
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from pydantic import JsonValue
 from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
@@ -20,6 +22,7 @@ from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
+from verstehen.api.plugins import router as plugins_router
 from verstehen.api.prompts import router as prompts_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.server_setup import router as server_setup_router
@@ -39,6 +42,7 @@ from verstehen.jobs.workers.browser import (
     playwright_runner_provider,
 )
 from verstehen.jobs.workers.headless import DemoRunner
+from verstehen.plugins.service import PluginService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -66,6 +70,7 @@ from verstehen.store.entries import EntriesStore
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
+from verstehen.store.plugins import PluginsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
@@ -296,6 +301,30 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 delete_graph_session,
                 check_graph_session,
             )
+
+            def plugins_changed() -> None:
+                notifications.publish(Notification(type="plugins-changed"))
+
+            def plugin_message(plugin_id: str, topic: str, data: JsonValue) -> None:
+                notifications.publish(
+                    Notification(
+                        type="plugin-message",
+                        plugin_id=plugin_id,
+                        topic=topic,
+                        data=data,
+                    )
+                )
+
+            plugin_service = PluginService(
+                PluginsStore(settings.data_dir),
+                settings.data_dir / "plugins",
+                importlib.metadata.version("verstehen"),
+                settings.plugins,
+                plugins_changed,
+                plugin_message,
+            )
+            app.state.plugin_service = plugin_service
+
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
@@ -314,6 +343,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 graph_store,
                 prompt_edit_lock,
                 settings.provider_events,
+                plugin_service,
             )
 
             app.state.job_service = JobService(
@@ -358,10 +388,21 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
             else:
                 database.on_sync_write = sync_service.notify_local_change
                 sync_service.start()
+
+            async def watch_settled_turns() -> None:
+                async for event in notifications.subscribe():
+                    if event and event.type == "turn-settled" and event.session_id:
+                        await plugin_service.turn_settled(event.session_id)
+
             turn_service.delivery_service.start_watching()
+            settled_watcher = asyncio.create_task(watch_settled_turns())
             try:
+                await plugin_service.discover()
                 yield
             finally:
+                settled_watcher.cancel()
+                await runtimes.close()
+                await plugin_service.close()
                 await server_oauth_service.close()
                 await server_install_service.close()
                 await sync_service.close()
@@ -371,7 +412,6 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 await job_runner.close()
                 if browser_download_service:
                     await browser_download_service.close()
-                await runtimes.close()
                 await title_service.close()
                 claude_code_adapter.close()
                 await chatgpt_sign_in_service.close()
@@ -455,6 +495,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
     app.include_router(jobs_router)
     app.include_router(side_chats_router)
     app.include_router(prompts_router)
+    app.include_router(plugins_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)

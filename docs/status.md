@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-25 (Qt shell branch `qt-shell` ready for review).
+> PRs. Last update: 2026-11-26 (plugins PR ready for review).
 
 ## Where we are
 
@@ -56,9 +56,25 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   imported inside the functions that use them; Python is back on 3.14, since PySide6 breaks
   Python 3.15's PEP 810 `lazy` imports, the standard library's included.
   The package ships only the Qt it loads, in English and German (219 MB, 527 MB installed).
-- **Test organization & verification:** 9-area test separation (`AREA=`) across backend pytest,
-  frontend Vitest, and 69 scripted Playwright flows. Live Claude verification (`make verify-live`)
-  was quota-blocked on 2026-11-21 and still needs a fresh run.
+- **Plugins** (branch `plugins`, not yet merged; [plan](plans/plugins.md)): community plugins from
+  `<data dir>/plugins/<id>/`, each with an optional Python backend and JS frontend: discovery and
+  enable state, backend activation and cleanup, the `@ctx.expose` bridge and events, prompt, tool,
+  and MCP-toolset hooks for the prober, teacher, and practitioner, and views, actions, settings
+  pages, and `ctx.ui` widgets, with Settings → Plugins. Desktop only. Steps 1–6 and review rounds 1
+  (lifecycle locks, tool boundary and reserved names, thread card for plugin tool calls, frontend
+  lifetimes), 2 (non-blocking startup, whole-plugin admission with instructions through the toolset,
+  disable fencing, strict state file, no symlinks, activation-bound bridge calls), 3 (root-mounted
+  notification bridge, snapshotted public files and revision warnings, async dialog content, updatable
+  settings rows), 4 (worker ownership on cancelled sync import/activate, atomic package admission,
+  leaf toolset ownership, worker-thread sync `@ctx.expose`, fenced `turn-settled` observers, and
+  complete settings-row validation), 5 (late `ctx.cleanup`, shared run-toolset closing,
+  `turn-settled` observer cancellation guard, slider bounds and throwing validator handling, and
+  documented in-process Python / `vendor/` limits), and 6 (toolset resolver cancellation boundary,
+  late backend cleanup failure capture during teardown, and frontend retiring-runtime drain across
+  module load) are committed; see [plugin authoring](plugin-authoring.md).
+- **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
+  frontend Vitest, and 74 scripted Playwright flows. Live Claude verification (`make verify-live`)
+  was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.
 
 ## Next
 
@@ -66,6 +82,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
    Task 8 (PSS for a demo-free lesson and the 2-demo session; five session switches plus a heap
    snapshot with `VERSTEHEN_DEVTOOLS=1`) and the hand checks: trackpad pinch on the graph,
    folder and file drag-and-drop, and Wayland window flashing and window icon.
+0b. Review and merge the `plugins` PR into `dev`; the packaged app's MCP toolset behavior
+   (`make app`) is unchecked.
 0a. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
    `dev`; check the sidebar folder drag-and-drop in the installed app by hand.
 1. Merge `release/0.2.0` into `dev`.
@@ -78,4 +96,4 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 ## Open questions
 
 Review the pending [implementation decisions](decisions.md#waiting-for-your-review) from
-LearnHarness import, Mobile & Sync A/C/D, Desktop responsiveness, and M11a.
+LearnHarness import, Mobile & Sync A/C/D, Desktop responsiveness, M11a, and Plugins.

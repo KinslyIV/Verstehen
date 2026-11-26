@@ -1,5 +1,6 @@
 from fastapi import Request
 
+from verstehen.plugins.service import PluginService
 from verstehen.session.sessions import SessionService
 from verstehen.session.stats import StatsService
 from verstehen.session.turns import TurnService
@@ -25,3 +26,7 @@ def get_side_chat_service(request: Request) -> SideChatService:
 
 def get_stats_service(request: Request) -> StatsService:
     return request.app.state.stats_service
+
+
+def get_plugin_service(request: Request) -> PluginService:
+    return request.app.state.plugin_service

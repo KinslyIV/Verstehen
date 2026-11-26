@@ -31,8 +31,9 @@
 	import { SIDEBAR_COOKIE_NAME } from '#lib/components/ui/sidebar/constants.js';
 	import DrawerCloser from '#lib/components/drawer-closer.svelte';
 	import SearchShortcut from '#lib/components/search-shortcut.svelte';
-	import NotificationBridge from '#lib/components/notification-bridge.svelte';
 	import ReconnectingLine from '#lib/components/reconnecting-line.svelte';
+	import PluginActions, { type ActionSurface } from '#lib/plugins/plugin-actions.svelte';
+	import { plugins } from '#lib/plugins/plugins.svelte.js';
 	import { layout } from '#lib/layout/tiers.svelte.js';
 	import { cn } from '#lib/utils.js';
 
@@ -53,9 +54,33 @@
 	const tablet = $derived(layout.tier === 'tablet');
 	let watched = $state.raw<SessionController>();
 	const onGraph = $derived(page.route.id === '/(lesson)/graph');
-	const shownPhoneTab = $derived(phone && !onGraph ? phoneTab : null);
+	const onPluginView = $derived(page.route.id === '/(lesson)/plugin/[id]/[view]');
+	const onSession = $derived(page.route.id === '/(lesson)/session/[id]');
+	const noPanel = $derived(onGraph || onPluginView);
+	const shownPhoneTab = $derived(phone && !noPanel ? phoneTab : null);
+	const pluginViewName = $derived(
+		plugins.runtimes.get(page.params.id ?? '')?.views.find((view) => view.id === page.params.view)
+			?.name
+	);
 	const heading = $derived(
-		onGraph ? 'Knowledge graph' : page.params.id ? (watched?.record?.title ?? '') : 'New session'
+		onGraph
+			? 'Knowledge graph'
+			: onPluginView
+				? (pluginViewName ?? '')
+				: page.params.id
+					? (watched?.record?.title ?? '')
+					: 'New session'
+	);
+	const topBarSurface = $derived<ActionSurface | undefined>(
+		onPluginView
+			? { kind: 'plugin-view', pluginId: page.params.id!, viewId: page.params.view! }
+			: onSession && watched?.record
+				? {
+						kind: 'session',
+						sessionId: page.params.id!,
+						sessionKind: watched.record.kind === 'practice' ? 'practice' : 'teaching'
+					}
+				: undefined
 	);
 	const plan = $derived(watched?.plan);
 	const statuses = $derived(
@@ -147,7 +172,6 @@
 <Sidebar.Provider bind:open={sidebarOpen} class="h-svh overflow-hidden">
 	<DrawerCloser />
 	<SearchShortcut />
-	<NotificationBridge />
 	<Sidebar.Root collapsible="offcanvas">
 		<Sidebar.Header class="gap-5 p-4">
 			<span class="px-2 text-sm font-semibold tracking-tight">Verstehen</span>
@@ -175,6 +199,7 @@
 			>
 				<Waypoints class="size-4" /> Knowledge graph
 			</Button>
+			<PluginActions surface={{ kind: 'sidebar' }} />
 		</Sidebar.Header>
 		<Sidebar.Content class="gap-1 p-3">
 			<SessionList />
@@ -217,7 +242,7 @@
 					{shownPhoneTab ? tabs.find((tab) => tab.value === shownPhoneTab)?.label : heading}
 				</span>
 				{#if shownPhoneTab}<span class="flex-1"></span>{/if}
-				{#if !onGraph}
+				{#if !noPanel}
 					<div role="group" aria-label="Right panel" class="flex shrink-0 gap-0.5">
 						{#each tabs as { value, label, icon: Icon } (value)}
 							<Button
@@ -233,8 +258,12 @@
 					</div>
 				{/if}
 			{:else}
+				{#if onPluginView}<span class="px-2 text-sm font-medium" data-testid="plugin-view-title">
+						{heading}
+					</span>{/if}
 				<span class="flex-1"></span>
-				{#if !onGraph}<Button
+				{#if topBarSurface}<PluginActions surface={topBarSurface} />{/if}
+				{#if !noPanel}<Button
 						variant="ghost"
 						size="icon"
 						aria-label="Toggle right panel"
@@ -246,6 +275,21 @@
 			{/if}
 		</header>
 		<ReconnectingLine />
+		{#if plugins.actionFailure}
+			<div
+				role="alert"
+				class="flex shrink-0 items-center gap-3 border-b bg-destructive/10 px-4 py-2 text-xs text-destructive"
+				data-testid="plugin-action-failure"
+			>
+				<span class="min-w-0 flex-1 break-words">
+					{plugins.actionFailure.plugin}: {plugins.actionFailure.action} failed — {plugins
+						.actionFailure.message}
+				</span>
+				<Button variant="ghost" size="xs" onclick={() => (plugins.actionFailure = null)}>
+					Dismiss
+				</Button>
+			</div>
+		{/if}
 
 		<div class="relative min-h-0 flex-1">
 			<div class="h-full" inert={shownPhoneTab ? true : undefined}>
@@ -262,7 +306,7 @@
 					>
 						{@render children()}
 					</Resizable.Pane>
-					{#if panelOpen && !onGraph && !phone}
+					{#if panelOpen && !noPanel && !phone}
 						<Resizable.Handle aria-label="Resize right panel" />
 						<Resizable.Pane
 							id="right-panel"

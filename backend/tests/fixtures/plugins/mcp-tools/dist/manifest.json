@@ -1,0 +1,8 @@
+{
+  "apiVersion": 1,
+  "id": "mcp-tools",
+  "name": "MCP tools",
+  "version": "1.0.0",
+  "minAppVersion": "0.1.0",
+  "backend": "backend"
+}
