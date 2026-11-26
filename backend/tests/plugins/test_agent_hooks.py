@@ -880,6 +880,95 @@ def test_a_toolset_resolved_after_the_plugin_stopped_is_not_entered(tmp_path: Pa
     assert tracked.events == []
 
 
+class CountingToolset(FunctionToolset[None]):
+    """Counts active `__aenter__` / `__aexit__` pairs like an MCP server reference count."""
+
+    def __init__(self, fail_exit: bool = False):
+        super().__init__([harmless])
+        self.count = 0
+        self.max_count = 0
+        self.fail_exit = fail_exit
+
+    async def __aenter__(self):
+        self.count += 1
+        self.max_count = max(self.max_count, self.count)
+        return self
+
+    async def __aexit__(self, *args):
+        self.count -= 1
+        if self.fail_exit:
+            raise RuntimeError("exit boom")
+
+
+def test_a_combined_toolset_wrapping_a_counting_toolset_is_not_double_entered_and_stops_on_disable(
+    tmp_path: Path,
+):
+    counting = CountingToolset()
+
+    async def respond(
+        messages: list[ModelMessage], info: AgentInfo
+    ) -> AsyncIterator[str | dict[int, DeltaToolCall]]:
+        yield "done"
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        wrapped = CombinedToolset([counting])
+        context.register_toolset(["prober"], wrapped)
+        await context.start_toolsets()
+        assert counting.count == 1
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        run = run_context()
+        resolved = await plugins.for_run(run)
+        async with resolved:
+            assert counting.count == 1
+            assert counting.max_count == 1
+            await service.set_enabled("agent-hooks", False)
+            assert counting.count == 0
+        assert counting.count == 0
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_run_owned_toolset_closes_on_mid_turn_disable_and_contains_exit_errors(
+    tmp_path: Path,
+):
+    mid_turn = CountingToolset()
+    failing_exit = CountingToolset(fail_exit=True)
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        context.register_toolset(["prober"], ResolvesPerRun(mid_turn))
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        resolved = await plugins.for_run(run_context())
+        async with resolved:
+            assert mid_turn.count == 1
+            await service.set_enabled("agent-hooks", False)
+            assert mid_turn.count == 0
+        assert mid_turn.count == 0
+
+        await enabled(service, "agent-hooks")
+        result = await run_prober_with(service, ResolvesPerRun(failing_exit))
+        assert result.output == "done"
+        assert failing_exit.count == 0
+        assert warnings_of(service, "agent-hooks") == [
+            "Added nothing to a prober turn: exit boom"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
 @contextmanager
 def client_for(
     tmp_path: Path, plugin: str, replies: list[dict]

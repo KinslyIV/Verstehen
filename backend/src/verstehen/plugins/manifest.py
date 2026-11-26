@@ -155,14 +155,11 @@ def read_public_file(
 
 
 def snapshot_package(
-    root: Path, manifest: PluginManifest
-) -> tuple[str, dict[str, tuple[bytes, str]]]:
-    """Hash `dist/` and snapshot all public files (`main`, `styles`, `assets/**`), refusing symlinks."""
-    if root.is_symlink() or not root.is_dir():
-        raise PluginInvalid("Unsafe plugin directory")
+    root: Path, app_version: str
+) -> tuple[PluginManifest, str, dict[str, tuple[bytes, str]]]:
+    """Validate `dist/`, hash it, and snapshot all public files (`main`, `styles`, `assets/**`)."""
+    manifest = validate_package(root, app_version)
     dist = root / "dist"
-    if dist.is_symlink() or not dist.is_dir():
-        raise PluginInvalid("Unsafe plugin dist directory: symlinks are not allowed")
     resolved_dist = dist.resolve()
     files: dict[str, tuple[bytes, str]] = {}
     for entry in (manifest.main, manifest.styles):
@@ -186,7 +183,7 @@ def snapshot_package(
             for name in sorted(names):
                 rel = Path(current, name).relative_to(dist).as_posix()
                 files[rel] = read_public_file(dist, resolved_dist, rel)
-    return package_revision(dist), files
+    return manifest, package_revision(dist), files
 
 
 def validate_package(root: Path, app_version: str) -> PluginManifest:

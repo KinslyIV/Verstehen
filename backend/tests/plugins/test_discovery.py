@@ -186,7 +186,7 @@ def test_a_backend_swapped_for_a_link_before_import_is_not_imported(tmp_path: Pa
         return service.plugins["greeter"].info
 
     info = asyncio.run(run())
-    assert info.status == "failed" and "symlink" in str(info.error)
+    assert info.status == "invalid" and "symlink" in str(info.error)
     assert not marker.exists()
 
 

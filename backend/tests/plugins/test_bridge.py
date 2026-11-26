@@ -284,11 +284,112 @@ def test_a_symlink_inside_assets_before_activation_fails_activation(tmp_path: Pa
             secret
         )
         info = enable(client)
-        assert info["status"] == "failed"
+        assert info["status"] == "invalid"
         assert "symlink" in info["error"]
         assert (
             client.get("/api/plugins/bridge/files/assets/link.txt").status_code == 409
         )
+
+
+def test_a_failing_activation_pins_v1_module_revision_and_public_bytes(tmp_path: Path):
+    with client_for(tmp_path) as client:
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        base = "/api/plugins/bridge/files/"
+        main_v1 = (dist / "main.js").read_text()
+        (dist / "backend" / "__init__.py").write_text(
+            "VALUE = 'v1'\n"
+            "SHOULD_FAIL = True\n"
+            "def activate(ctx):\n"
+            "    if SHOULD_FAIL:\n"
+            "        raise RuntimeError('v1 failed')\n"
+            "    @ctx.expose\n"
+            "    def version():\n"
+            "        return VALUE\n"
+        )
+        failed = enable(client, True)
+        assert (failed["status"], failed["error"]) == ("failed", "v1 failed")
+        (dist / "main.js").write_text("export function activate() { return 'v2'; }")
+        (dist / "backend" / "__init__.py").write_text(
+            "VALUE = 'v2'\ndef activate(ctx):\n    @ctx.expose\n    def version():\n        return VALUE\n"
+        )
+        refreshed = client.post("/api/plugins/refresh").json()["plugins"][0]
+        assert refreshed["warnings"] == ["Restart required: plugin package changed"]
+        service = app_of(client).state.plugin_service
+        module = service.plugins["bridge"].module
+        assert module is not None
+        module.SHOULD_FAIL = False  # pyrefly: ignore
+        enable(client, False)
+        active = enable(client, True)
+        assert active["status"] == "active"
+        assert active["warnings"] == ["Restart required: plugin package changed"]
+        assert client.get(base + "main.js").text == main_v1
+        assert call(client, "version").json() == "v1"
+
+
+def test_a_package_made_incompatible_after_discovery_is_refused_as_invalid_before_import(
+    tmp_path: Path,
+):
+    with client_for(tmp_path) as client:
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        marker = tmp_path / "imported"
+        (dist / "backend" / "__init__.py").write_text(
+            f"open({str(marker)!r}, 'w').close()\ndef activate(ctx): ...\n"
+        )
+        manifest = json.loads((dist / "manifest.json").read_text())
+        manifest["minAppVersion"] = "9.9.9"
+        (dist / "manifest.json").write_text(json.dumps(manifest))
+        info = enable(client, True)
+        assert info["status"] == "invalid"
+        assert "Requires Verstehen 9.9.9 or newer" in info["error"]
+        assert not marker.exists()
+
+
+def test_a_blocking_sync_exposed_function_runs_off_the_loop_and_disabling_returns_409(
+    tmp_path: Path,
+):
+    with client_for(tmp_path) as client:
+        dist = tmp_path / "plugins" / "bridge" / "dist"
+        gate = tmp_path / "release_call"
+        started = tmp_path / "call_started"
+        (dist / "backend" / "__init__.py").write_text(
+            "import time\n"
+            "from pathlib import Path\n"
+            "def activate(ctx):\n"
+            "    @ctx.expose\n"
+            "    def slow_sync():\n"
+            f"        Path({str(started)!r}).write_text('1')\n"
+            f"        while not Path({str(gate)!r}).exists():\n"
+            "            time.sleep(0.01)\n"
+            "        return 'done'\n"
+        )
+        enable(client, True)
+        portal = client.portal
+        assert portal is not None
+        app = app_of(client)
+
+        async def scenario():
+            import asyncio
+
+            calling = asyncio.create_task(
+                app.state.plugin_service.call("bridge", "slow_sync", None)
+            )
+            for _ in range(200):
+                if started.exists():
+                    break
+                await asyncio.sleep(0.01)
+            assert started.exists()
+            t0 = time.monotonic()
+            info = await app.state.plugin_service.set_enabled("bridge", False)
+            elapsed = time.monotonic() - t0
+            result = await calling
+            gate.write_text("1")
+            return info, elapsed, result
+
+        info, elapsed, result = portal.call(scenario)
+        assert elapsed < 0.5
+        assert info.status == "disabled"
+        assert client.get("/api/health").status_code == 200
+        assert result.status == 409
 
 
 def test_re_enabling_after_on_disk_edits_keeps_admitted_bytes_and_restart_warning(

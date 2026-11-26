@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Awaitable, Callable, Iterator, Sequence
 from contextlib import AsyncExitStack
 from dataclasses import dataclass, field, replace
 from functools import partial
@@ -12,7 +12,13 @@ from pydantic_ai.messages import InstructionPart
 from pydantic_ai.toolsets import AbstractToolset, CombinedToolset, WrapperToolset
 from pydantic_ai.toolsets.abstract import ToolsetTool
 
-from verstehen.plugins.context import AgentName, PluginContext, Stopped, failure_text
+from verstehen.plugins.context import (
+    AgentName,
+    Cleanup,
+    PluginContext,
+    Stopped,
+    failure_text,
+)
 from verstehen.plugins.reserved import RESERVED_TOOL_NAMES
 
 logger = logging.getLogger(__name__)
@@ -57,15 +63,20 @@ class PluginToolset(WrapperToolset[None]):
     problem: str | None = None
     resolved_here: list[AbstractToolset[None]] = field(default_factory=list)
     entered: AsyncExitStack | None = field(init=False, default=None)
+    stop_entered: Cleanup | None = field(init=False, default=None)
 
     async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
         resolved = await self.resolving(lambda: self.wrapped.for_run(ctx))
         if resolved is self:
             return self
         assert isinstance(resolved, PluginToolset)
-        return replace(
-            resolved, resolved_here=new_toolsets(self.wrapped, resolved.wrapped)
-        )
+        owned_ids = {id(ts) for ts in leaf_toolsets(self.wrapped)}
+        resolved_here: list[AbstractToolset[None]] = []
+        for ts in leaf_toolsets(resolved.wrapped):
+            if id(ts) not in owned_ids:
+                owned_ids.add(id(ts))
+                resolved_here.append(ts)
+        return replace(resolved, resolved_here=resolved_here)
 
     async def for_run_step(self, ctx: RunContext[None]) -> AbstractToolset[None]:
         return await self.resolving(lambda: self.wrapped.for_run_step(ctx))
@@ -87,6 +98,8 @@ class PluginToolset(WrapperToolset[None]):
 
     async def __aenter__(self) -> Self:
         """Enter only the toolsets this run's `for_run` made new; the plugin's own are entered by its context."""
+        if not self.resolved_here:
+            return self
         try:
             async with AsyncExitStack() as stack:
                 for toolset in self.resolved_here:
@@ -94,15 +107,38 @@ class PluginToolset(WrapperToolset[None]):
                         partial(stack.enter_async_context, toolset)
                     )
                 self.entered = stack.pop_all()
+
+                async def close_entered() -> None:
+                    active, self.entered = self.entered, None
+                    self.stop_entered = None
+                    if active is not None:
+                        await active.aclose()
+
+                self.stop_entered = close_entered
+                self.context.cleanups.append(close_entered)
         except Stopped:
-            pass
+            if self.entered is not None:
+                active, self.entered = self.entered, None
+                await active.aclose()
         except Exception as error:
             self.turn.drop(self.plugin_id, error)
         return self
 
     async def __aexit__(self, *args: Any) -> bool | None:
+        stop, self.stop_entered = self.stop_entered, None
+        if stop is not None and stop in self.context.cleanups:
+            self.context.cleanups.remove(stop)
         stack, self.entered = self.entered, None
-        return await stack.__aexit__(*args) if stack else None
+        if stack is None:
+            return None
+        try:
+            return await stack.__aexit__(*args)
+        except Exception as error:
+            logger.warning(
+                "Plugin %s run toolset cleanup failed", self.plugin_id, exc_info=True
+            )
+            self.turn.drop(self.plugin_id, error)
+            return None
 
     async def get_tools(self, ctx: RunContext[None]) -> Tools:
         return await self.context.operate(
@@ -249,12 +285,18 @@ class PluginToolsets(CombinedToolset[None]):
         ] or None
 
 
-def new_toolsets(
-    old: AbstractToolset[None], resolved: AbstractToolset[None]
-) -> list[AbstractToolset[None]]:
-    """The toolsets of `resolved` that are not the ones `old` held: what `for_run` made for this run."""
-    if isinstance(old, CombinedToolset) and isinstance(resolved, CombinedToolset):
-        return [
-            new for new, was in zip(resolved.toolsets, old.toolsets) if new is not was
-        ]
-    return []
+def leaf_toolsets(toolset: AbstractToolset[None]) -> Iterator[AbstractToolset[None]]:
+    """Yield the leaf toolsets that own `__aenter__` resources inside `CombinedToolset` and `WrapperToolset`."""
+    if (
+        isinstance(toolset, CombinedToolset)
+        and type(toolset).__aenter__ is CombinedToolset.__aenter__
+    ):
+        for child in toolset.toolsets:
+            yield from leaf_toolsets(child)
+    elif (
+        isinstance(toolset, WrapperToolset)
+        and type(toolset).__aenter__ is WrapperToolset.__aenter__
+    ):
+        yield from leaf_toolsets(toolset.wrapped)
+    else:
+        yield toolset

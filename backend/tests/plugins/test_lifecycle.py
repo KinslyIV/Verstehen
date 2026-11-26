@@ -724,3 +724,191 @@ def test_refresh_marks_a_running_plugin_whose_files_changed_or_vanished(
         await service.close()
 
     asyncio.run(run())
+
+
+def test_disabling_during_sync_activate_runs_late_cleanup_and_serializes_reenable(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "lifecycle")
+    gate1 = tmp_path / "gate1"
+    cleanup_done = tmp_path / "cleanup_done"
+    (root / "dist" / "backend" / "__init__.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "runs = 0\n"
+        "def activate(ctx):\n"
+        "    global runs\n"
+        "    runs += 1\n"
+        "    run_no = runs\n"
+        "    log = ctx.data_directory / 'events.txt'\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'start-{run_no}\\n')\n"
+        "    if run_no == 1:\n"
+        f"        while not Path({str(gate1)!r}).exists():\n"
+        "            time.sleep(0.01)\n"
+        "        ctx.emit('late', 'dropped')\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'end-{run_no}\\n')\n"
+        "    def cleanup():\n"
+        "        with log.open('a') as f:\n"
+        "            f.write(f'cleanup-{run_no}\\n')\n"
+        "        if run_no == 1:\n"
+        f"            Path({str(cleanup_done)!r}).write_text('1')\n"
+        "    return cleanup\n"
+    )
+    messages: list[tuple[str, str, object]] = []
+    service = PluginService(
+        PluginsStore(tmp_path),
+        tmp_path / "plugins",
+        "0.2.0",
+        True,
+        lambda: None,
+        lambda plugin_id, topic, data: messages.append((plugin_id, topic, data)),
+    )
+
+    async def run():
+        await service.discover()
+        await service.set_enabled("lifecycle", True)
+        await until(lambda: (root / "data" / "events.txt").exists())
+        t0 = time.monotonic()
+        off = await service.set_enabled("lifecycle", False)
+        assert time.monotonic() - t0 < 0.5
+        assert isinstance(off, PluginInfo) and off.status == "disabled"
+        await service.set_enabled("lifecycle", True)
+        await asyncio.sleep(0.05)
+        assert events(root) == ["start-1"]
+        gate1.write_text("1")
+        await service.settled()
+        assert service.plugins["lifecycle"].info.status == "active"
+        assert events(root) == ["start-1", "end-1", "cleanup-1", "start-2", "end-2"]
+        assert messages == []
+        await service.close()
+
+    asyncio.run(run())
+    assert events(root) == [
+        "start-1",
+        "end-1",
+        "cleanup-1",
+        "start-2",
+        "end-2",
+        "cleanup-2",
+    ]
+
+
+def test_cancelling_during_slow_sync_import_does_not_double_import_or_corrupt_modules(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "lifecycle")
+    gate = tmp_path / "import_gate"
+    started = tmp_path / "import_started"
+    count_file = tmp_path / "import_count"
+    (root / "dist" / "backend" / "__init__.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        f"c = Path({str(count_file)!r})\n"
+        "n = int(c.read_text()) + 1 if c.exists() else 1\n"
+        "c.write_text(str(n))\n"
+        f"Path({str(started)!r}).write_text('1')\n"
+        f"while not Path({str(gate)!r}).exists():\n"
+        "    time.sleep(0.01)\n"
+        "def activate(ctx):\n"
+        "    (ctx.data_directory / 'events.txt').write_text(f'activated-{n}\\n')\n"
+    )
+    service = new_service(tmp_path)
+
+    async def run():
+        await service.discover()
+        await service.set_enabled("lifecycle", True)
+        await until(started.exists)
+        await service.set_enabled("lifecycle", False)
+        await service.set_enabled("lifecycle", True)
+        await asyncio.sleep(0.05)
+        assert count_file.read_text() == "1"
+        gate.write_text("1")
+        await service.settled()
+        assert service.plugins["lifecycle"].info.status == "active"
+        assert count_file.read_text() == "1"
+        assert events(root) == ["activated-1"]
+        await service.close()
+        assert "verstehen_plugins.lifecycle" not in sys.modules
+
+    asyncio.run(run())
+
+
+def test_a_cleanup_raising_cancelled_error_unwinds_remaining_cleanups_and_marks_failed(
+    tmp_path: Path,
+):
+    install(tmp_path, "lifecycle")
+    install(tmp_path, "greeter")
+    ran: list[str] = []
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        await toggle(service, "greeter", True)
+        ctx1 = service.plugins["lifecycle"].context
+        ctx2 = service.plugins["greeter"].context
+        assert ctx1 is not None and ctx2 is not None
+        ctx1.cleanups.clear()
+        ctx1.cleanup(lambda: ran.append("older"))
+
+        async def cancelling_cleanup():
+            ran.append("cancelling")
+            task = asyncio.create_task(asyncio.sleep(3600))
+            task.cancel()
+            await task
+
+        ctx1.cleanup(cancelling_cleanup)
+        ctx2.cleanup(lambda: ran.append("greeter-cleaned"))
+        info = await toggle(service, "lifecycle", False)
+        assert (info.status, info.error) == ("failed", "Cleanup: Cancelled")
+        assert ran == ["cancelling", "older"]
+        await toggle(service, "lifecycle", True)
+        ctx1_again = service.plugins["lifecycle"].context
+        assert ctx1_again is not None
+        ctx1_again.cleanup(cancelling_cleanup)
+        await service.close()
+        assert "greeter-cleaned" in ran
+
+    asyncio.run(run())
+
+
+def test_disabling_fences_turn_settled_observers_in_flight_and_skips_later_ones(
+    tmp_path: Path,
+):
+    install(tmp_path, "lifecycle")
+    order: list[str] = []
+    started = asyncio.Event()
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        context = service.plugins["lifecycle"].context
+        assert context is not None
+        context.cleanups.clear()
+        context.cleanup(lambda: order.append("cleanup"))
+
+        async def first_observer(session_id: str) -> None:
+            order.append(f"first-start:{session_id}")
+            started.set()
+            try:
+                await asyncio.sleep(3600)
+            except asyncio.CancelledError:
+                order.append("first-cancelled")
+                raise
+
+        def second_observer(session_id: str) -> None:
+            order.append(f"second:{session_id}")
+
+        context.on("turn-settled", first_observer)
+        context.on("turn-settled", second_observer)
+        settling = asyncio.create_task(service.turn_settled("s1"))
+        await started.wait()
+        await toggle(service, "lifecycle", False)
+        await settling
+        assert order == ["first-start:s1", "first-cancelled", "cleanup"]
+        await service.close()
+
+    asyncio.run(run())

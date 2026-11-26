@@ -133,7 +133,11 @@ class PluginContext:
         if self.loop is None or self.in_loop():
             self.publish(self.id, topic, data)
         else:
-            self.loop.call_soon_threadsafe(self.publish, self.id, topic, data)
+            self.loop.call_soon_threadsafe(self.publish_live, topic, data)
+
+    def publish_live(self, topic: str, data: JsonValue) -> None:
+        if not self.closed:
+            self.publish(self.id, topic, data)
 
     def in_loop(self) -> bool:
         try:
@@ -249,6 +253,11 @@ class PluginContext:
                 result = self.cleanups.pop()()
                 if inspect.isawaitable(result):
                     await result
+            except asyncio.CancelledError:
+                current = asyncio.current_task()
+                if current and current.cancelling():
+                    raise
+                failures.append("Cancelled")
             except Exception as error:
                 failures.append(failure_text(error))
         return failures

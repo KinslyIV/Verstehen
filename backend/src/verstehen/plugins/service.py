@@ -4,9 +4,10 @@ import logging
 import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
 from types import ModuleType
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter, ValidationError
 from pydantic_ai import Tool
@@ -67,6 +68,7 @@ class InstalledPlugin:
     manifest: PluginManifest | None = None
     module: ModuleType | None = None
     context: PluginContext | None = None
+    worker: asyncio.Task[None] | None = None
     queued: int = 0
     revision: str | None = None
     files: dict[str, tuple[bytes, str]] | None = None
@@ -230,9 +232,15 @@ class PluginService:
             return PluginRefused(404, f"Unknown plugin function: {name}")
 
         async def invoke():
-            result = (
-                exposed.function(value) if exposed.takes_input else exposed.function()
+            call_fn = (
+                partial(exposed.function, value)
+                if exposed.takes_input
+                else exposed.function
             )
+            if inspect.iscoroutinefunction(exposed.function):
+                result = await call_fn()
+            else:
+                result = await asyncio.to_thread(call_fn)
             return await result if inspect.isawaitable(result) else result
 
         try:
@@ -285,13 +293,24 @@ class PluginService:
         """Tell every running plugin's `turn-settled` observers; their failures are only logged."""
         for plugin in list(self.plugins.values()):
             context = plugin.context
-            for observer in list(
-                context.observers.get("turn-settled", []) if context else []
-            ):
-                try:
-                    result = observer(session_id)
+            if context is None or context.closed:
+                continue
+            for observer in list(context.observers.get("turn-settled", [])):
+                if context.closed:
+                    break
+
+                async def invoke(obs=observer):
+                    if inspect.iscoroutinefunction(obs):
+                        result = await obs(session_id)
+                    else:
+                        result = await asyncio.to_thread(obs, session_id)
                     if inspect.isawaitable(result):
                         await result
+
+                try:
+                    await context.operate(invoke)
+                except Stopped:
+                    break
                 except Exception:
                     logger.exception(
                         "Plugin %s turn-settled observer failed", plugin.info.id
@@ -346,6 +365,11 @@ class PluginService:
         for plugin in self.plugins.values():
             async with self.lock_for(plugin.info.id):
                 await self.deactivate(plugin)
+                while plugin.worker is not None and not plugin.worker.done():
+                    try:
+                        await asyncio.shield(plugin.worker)
+                    except asyncio.CancelledError:
+                        continue
                 forget_backend(plugin.info.id)
                 plugin.module = None
                 plugin.revision = None
@@ -412,57 +436,173 @@ class PluginService:
         """Import the backend once, call its `activate(ctx)`, and mark the plugin active or failed.
         A choice to disable made meanwhile closes this activation's own context instead of publishing it.
         """
-        manifest = plugin.manifest
-        assert manifest is not None
-        dist = plugin.root / "dist"
-        context = PluginContext(
-            manifest.id,
-            dist,
-            plugin.root / "data",
-            self.plugin_message,
-            asyncio.get_running_loop(),
-        )
         task = asyncio.current_task()
         if task:
-            self.activations[manifest.id] = task
+            self.activations[plugin.info.id] = task
+        context: PluginContext | None = None
         try:
-            admitted = (
-                await asyncio.to_thread(snapshot_package, plugin.root, manifest)
-                if plugin.revision is None
-                else None
+            if plugin.worker is not None and not plugin.worker.done():
+                await asyncio.shield(plugin.worker)
+            if plugin.revision is None:
+                try:
+                    manifest, revision, files = await asyncio.to_thread(
+                        snapshot_package, plugin.root, self.app_version
+                    )
+                except PluginInvalid as error:
+                    plugin.manifest = None
+                    plugin.info.status = "invalid"
+                    plugin.info.error = str(error)
+                    return
+                plugin.manifest = manifest
+                plugin.info.name = manifest.name
+                plugin.info.version = manifest.version
+                plugin.info.description = manifest.description
+                plugin.info.author = manifest.author
+                plugin.info.main = manifest.main
+                plugin.info.styles = manifest.styles
+            else:
+                manifest = plugin.manifest
+                assert manifest is not None
+                revision, files = plugin.revision, plugin.files
+            dist = plugin.root / "dist"
+            context = PluginContext(
+                manifest.id,
+                dist,
+                plugin.root / "data",
+                self.plugin_message,
+                asyncio.get_running_loop(),
             )
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
                 add_vendor(manifest, dist, context)
                 if plugin.module is None:
                     check_backend_unlinked(dist, manifest.backend)
-                    plugin.module = await asyncio.to_thread(
-                        load_backend, manifest, dist
-                    )
-                await run_activate(plugin.module, context)
+                    await self.import_backend(plugin, manifest, dist, revision, files)
+                await self.run_activate(plugin, context)
                 await context.start_toolsets()
+            elif plugin.revision is None:
+                plugin.revision = revision
+                plugin.files = files
         except asyncio.CancelledError:
-            self.mark_stopped(plugin, await context.close())
+            failures = await context.close() if context else []
+            self.mark_stopped(plugin, failures)
             raise
         except Exception as error:
-            failures = await context.close()
+            failures = await context.close() if context else []
             plugin.info.status = "failed"
             plugin.info.error = "; ".join(
                 [failure_text(error), *(f"Cleanup: {text}" for text in failures)]
             )
             return
         finally:
-            self.activations.pop(manifest.id, None)
+            self.activations.pop(plugin.info.id, None)
         if not plugin.info.enabled:
             failures = await context.close()
             self.mark_stopped(plugin, failures)
             return
-        if admitted is not None:
-            plugin.revision, plugin.files = admitted
         plugin.context = context
         self.sync_warnings(plugin)
         plugin.info.status = "active"
         plugin.info.error = None
+
+    async def import_backend(
+        self,
+        plugin: InstalledPlugin,
+        manifest: PluginManifest,
+        dist: Path,
+        revision: str | None,
+        files: dict[str, tuple[bytes, str]] | None,
+    ) -> None:
+        outcome: list[BaseException] = []
+
+        async def load() -> None:
+            current = asyncio.current_task()
+            try:
+                module = await asyncio.to_thread(load_backend, manifest, dist)
+                plugin.module = module
+                if plugin.revision is None:
+                    plugin.revision = revision
+                    plugin.files = files
+            except BaseException as error:
+                outcome.append(error)
+            finally:
+                if plugin.worker is current:
+                    plugin.worker = None
+
+        worker = asyncio.create_task(load())
+        plugin.worker = worker
+        await asyncio.shield(worker)
+        if outcome:
+            raise outcome[0]
+
+    async def run_activate(
+        self, plugin: InstalledPlugin, context: PluginContext
+    ) -> None:
+        """Call the backend's `activate(ctx)`: a synchronous one in a worker thread, so it cannot block the app."""
+        assert plugin.module is not None
+        activate = getattr(plugin.module, "activate", None)
+        if not callable(activate):
+            raise TypeError("Plugin backend must export activate(ctx)")
+        if inspect.iscoroutinefunction(activate):
+            returned = await activate(context)
+            if returned is not None:
+                context.cleanup(returned)
+            return
+        outcome: list[BaseException] = []
+
+        async def run_sync() -> None:
+            current = asyncio.current_task()
+            try:
+                returned = await asyncio.to_thread(activate, context)
+                if inspect.isawaitable(returned):
+                    returned = await returned
+                if returned is not None:
+                    if context.closed:
+                        await self.run_late_cleanup(plugin, returned)
+                    else:
+                        context.cleanup(returned)
+            except BaseException as error:
+                outcome.append(error)
+            finally:
+                if plugin.worker is current:
+                    plugin.worker = None
+
+        worker = asyncio.create_task(run_sync())
+        plugin.worker = worker
+        await asyncio.shield(worker)
+        if outcome:
+            raise outcome[0]
+
+    async def run_late_cleanup(self, plugin: InstalledPlugin, cleanup: Any) -> None:
+        if not callable(cleanup):
+            self.record_late_cleanup_failure(
+                plugin, "Plugin cleanup must be a function"
+            )
+            return
+        try:
+            if inspect.iscoroutinefunction(cleanup):
+                result = await cleanup()
+            else:
+                result = await asyncio.to_thread(cleanup)
+            if inspect.isawaitable(result):
+                await result
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current and current.cancelling():
+                raise
+            self.record_late_cleanup_failure(plugin, "Cancelled")
+        except Exception as error:
+            logger.exception("Plugin %s late cleanup failed", plugin.info.id)
+            self.record_late_cleanup_failure(plugin, failure_text(error))
+
+    def record_late_cleanup_failure(self, plugin: InstalledPlugin, text: str) -> None:
+        if plugin.context is None and plugin.info.status in ("disabled", "failed"):
+            entry = f"Cleanup: {text}"
+            plugin.info.status = "failed"
+            plugin.info.error = (
+                f"{plugin.info.error}; {entry}" if plugin.info.error else entry
+            )
+            self.plugins_changed()
 
     async def deactivate(self, plugin: InstalledPlugin) -> None:
         """Run the plugin's cleanups; a failing cleanup marks it failed, and stays until its next activation."""
@@ -501,21 +641,6 @@ def build_contributions(
         if item.toolset is not None:
             toolsets.append(item.toolset)
     return instructions, [FunctionToolset(tools), *toolsets]
-
-
-async def run_activate(module: ModuleType, context: PluginContext) -> None:
-    """Call the backend's `activate(ctx)`: a synchronous one in a worker thread, so it cannot block the app."""
-    activate = getattr(module, "activate", None)
-    if not callable(activate):
-        raise TypeError("Plugin backend must export activate(ctx)")
-    if inspect.iscoroutinefunction(activate):
-        returned = await activate(context)
-    else:
-        returned = await asyncio.to_thread(activate, context)
-        if inspect.isawaitable(returned):
-            returned = await returned
-    if returned is not None:
-        context.cleanup(returned)
 
 
 def unknown_plugin(plugin_id: str) -> PluginRefused:
