@@ -159,6 +159,15 @@ def check_claude() -> str:
     return f"{sdk}; claude {command_version([cli, '--version'])}"
 
 
+def check_mcp() -> str:
+    """Prove the MCP client stack used by plugin toolsets is bundled and importable."""
+    from pydantic_ai.mcp import MCPToolset
+
+    fastmcp = importlib.metadata.version("fastmcp-slim")
+    mcp = importlib.metadata.version("mcp")
+    return f"{MCPToolset.__name__}; fastmcp-slim {fastmcp}, mcp {mcp}"
+
+
 def run_self_check() -> bool:
     demo_checks = (
         [("qt-demo", check_qt_demo)]
@@ -173,6 +182,7 @@ def run_self_check() -> bool:
         ("prompts", check_prompts),
         *demo_checks,
         ("claude-agent-sdk", check_claude),
+        ("mcp", check_mcp),
     ]
     results = []
     for name, check in checks:

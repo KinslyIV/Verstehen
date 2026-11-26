@@ -11,6 +11,13 @@ datas = collect_data_files(
 datas += [(str(spa), "spa"), (str(root.parent / "packaging" / "icons"), "icons")]
 datas += copy_metadata("verstehen", recursive=True)
 hiddenimports = collect_submodules("uvicorn") + ["pydantic_ai.mcp"]
+
+
+def kept_submodule(name: str) -> bool:
+    """Skip optional CLI submodules that exit on import without extra dependencies."""
+    return name != "mcp.cli" and not name.startswith("mcp.cli.")
+
+
 for package in (
     "asyncssh",
     "cryptography",
@@ -21,7 +28,11 @@ for package in (
     "pypdfium2_raw",
     "resvg_py",
 ):
-    data, binary, hidden = collect_all(package)
+    data, binary, hidden = collect_all(
+        package,
+        filter_submodules=kept_submodule,
+        exclude_datas=["cli", "cli/*"] if package == "mcp" else None,
+    )
     datas += [entry for entry in data if not entry[0].endswith("_bundled/claude")]
     binaries += [entry for entry in binary if not entry[0].endswith("_bundled/claude")]
     hiddenimports += hidden
@@ -54,7 +65,7 @@ def shipped(destination: str) -> bool:
 
 a = Analysis([str(root / "packaging/entrypoint.py")], pathex=[str(root / "src")],
              binaries=binaries, datas=datas, hiddenimports=hiddenimports,
-             excludes=["playwright"])
+             excludes=["playwright", "mcp.cli"])
 a.binaries = [entry for entry in a.binaries if shipped(entry[0])]
 a.datas = [entry for entry in a.datas if shipped(entry[0])]
 pyz = PYZ(a.pure)

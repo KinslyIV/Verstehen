@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-26 (plugins PR ready for review).
+> PRs. Last update: 2026-11-26 (PyInstaller mcp.cli packaging fix).
 
 ## Where we are
 
@@ -56,7 +56,7 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   imported inside the functions that use them; Python is back on 3.14, since PySide6 breaks
   Python 3.15's PEP 810 `lazy` imports, the standard library's included.
   The package ships only the Qt it loads, in English and German (219 MB, 527 MB installed).
-- **Plugins** (branch `plugins`, not yet merged; [plan](plans/plugins.md)): community plugins from
+- **Plugins** (PR #30; [plan](plans/plugins.md)): community plugins from
   `<data dir>/plugins/<id>/`, each with an optional Python backend and JS frontend: discovery and
   enable state, backend activation and cleanup, the `@ctx.expose` bridge and events, prompt, tool,
   and MCP-toolset hooks for the prober, teacher, and practitioner, and views, actions, settings
@@ -82,8 +82,9 @@ Merged into `dev` and queued for `0.2.0` on `main`:
    Task 8 (PSS for a demo-free lesson and the 2-demo session; five session switches plus a heap
    snapshot with `VERSTEHEN_DEVTOOLS=1`) and the hand checks: trackpad pinch on the graph,
    folder and file drag-and-drop, and Wayland window flashing and window icon.
-0b. Review and merge the `plugins` PR into `dev`; the packaged app's MCP toolset behavior
-   (`make app`) is unchecked.
+0b. Review and merge the `fix/pyinstaller-mcp-cli` PR into `dev`; `make app` builds cleanly
+   and `--self-check` verifies `MCPToolset` imports (live external MCP servers in the installed
+   desktop app still need a hand check).
 0a. Review the UX polish branch, run full `make check` and `make verify`, and open its PR into
    `dev`; check the sidebar folder drag-and-drop in the installed app by hand.
 1. Merge `release/0.2.0` into `dev`.
