@@ -10,6 +10,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.teaching.phases import probe_done_result_ids
 from verstehen.teaching.plan.history import result_tree
 from verstehen.teaching.plan.tree import PlanTree
 from verstehen.teaching.practice.schemas import (
@@ -26,7 +27,7 @@ MAX_TRANSCRIPT_LIMIT = 50
 MAX_TRANSCRIPT_CHARS = 24_000
 MAX_TRANSCRIPT_TITLE_CHARS = 500
 BASE64_DATA_URL_RE = re.compile(
-    r"data:[^\s,\"')>\]]*;base64,[A-Za-z0-9+/=_-]+",
+    r"data:[^\s,\"')>\]]*;base64,(?:[A-Za-z0-9+/=_-]|%[0-9A-Fa-f]{2})+",
     re.IGNORECASE,
 )
 
@@ -84,6 +85,13 @@ def _extract_readable_items(entries: Sequence[Entry]) -> list[str]:
     succeeded_calls: set[str] = set()
     plan_trees: dict[str, PlanTree] = {}
     failed_outputs = failed_output_call_ids(entries)
+    accepted_probe_results = probe_done_result_ids(entries)
+    accepted_probe_dones = {
+        entry.tool_call_id
+        for entry in entries
+        if isinstance(entry, ToolResultEntry)
+        and entry.entry_id in accepted_probe_results
+    }
     answerable_questions = {
         call.part.tool_call_id
         for call in question_calls_of(entries)
@@ -116,9 +124,14 @@ def _extract_readable_items(entries: Sequence[Entry]) -> list[str]:
                         blocks.append(plan_line)
                 elif (
                     part.tool_name == "probe_done"
-                    and part.tool_call_id in succeeded_calls
+                    and part.tool_call_id in accepted_probe_dones
                 ):
-                    summary = args.get("summary")
+                    assessment = args.get("assessment")
+                    summary = (
+                        assessment.get("summary")
+                        if isinstance(assessment, dict)
+                        else None
+                    )
                     if isinstance(summary, str) and summary.strip():
                         blocks.append(f"[PROBE CONCLUDED] {summary.strip()}")
                     else:

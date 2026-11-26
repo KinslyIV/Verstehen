@@ -23,3 +23,8 @@ CREATE TRIGGER delete_session_usage AFTER DELETE ON sessions
 BEGIN
     DELETE FROM usage WHERE session_id = OLD.id;
 END;
+
+CREATE TABLE session_create_requests (
+    request_id TEXT PRIMARY KEY,
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE
+);

@@ -430,3 +430,13 @@ def test_create_session_is_idempotent_for_client_request_id(tmp_path: Path):
         assert second.status_code == 200
         assert first.json()["id"] == second.json()["id"]
         assert len(client.get("/api/sessions").json()["sessions"]) == 1
+
+    restarted = create_app(Settings(tmp_path))
+    with TestClient(restarted, base_url="http://localhost") as client2:
+        third = client2.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        assert third.status_code == 200
+        assert third.json()["id"] == first.json()["id"]
+        assert len(client2.get("/api/sessions").json()["sessions"]) == 1

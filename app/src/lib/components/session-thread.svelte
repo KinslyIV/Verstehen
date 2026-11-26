@@ -459,7 +459,7 @@
 			{:else if item.kind === 'probe'}
 				<ProbeAssessment args={item.args} result={item.result} />
 			{:else if item.kind === 'prepared-session'}
-				<PrepareSessionCard result={item.result} />
+				<PrepareSessionCard result={item.result} sessionId={id} />
 			{:else if item.kind === 'tool'}
 				<ToolCallCard
 					name={item.name}

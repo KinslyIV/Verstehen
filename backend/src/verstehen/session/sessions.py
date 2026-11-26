@@ -1,5 +1,4 @@
 import asyncio
-from collections import OrderedDict
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -83,7 +82,6 @@ class SessionService:
         self.side_chat_service = side_chat_service
         self.extraction_service = extraction_service
         self.graph_store = graph_store
-        self._create_requests: OrderedDict[str, str] = OrderedDict()
         self._create_locks: dict[str, asyncio.Lock] = {}
 
     async def list(self) -> List[ListedSession]:
@@ -135,21 +133,17 @@ class SessionService:
         lock = self._create_locks.setdefault(request_id, asyncio.Lock())
         try:
             async with lock:
-                existing_id = self._create_requests.get(request_id)
-                if existing_id is not None:
-                    existing = await self.sessions_store.get(existing_id)
-                    if existing is not None:
-                        self._create_requests.move_to_end(request_id)
-                        return existing
-                result = await self._create_once(
-                    title, pick, graph_context, kind, folder_id
+                existing = await self.sessions_store.get_by_create_request(request_id)
+                if existing is not None:
+                    return existing
+                return await self._create_once(
+                    title,
+                    pick,
+                    graph_context,
+                    kind,
+                    folder_id,
+                    client_request_id=request_id,
                 )
-                if isinstance(result, Session):
-                    self._create_requests[request_id] = result.id
-                    self._create_requests.move_to_end(request_id)
-                    while len(self._create_requests) > 256:
-                        self._create_requests.popitem(last=False)
-                return result
         finally:
             if self._create_locks.get(request_id) is lock and not lock.locked():
                 del self._create_locks[request_id]
@@ -161,6 +155,7 @@ class SessionService:
         graph_context: GraphContext | None = None,
         kind: SessionKind = "teach",
         folder_id: str | None = None,
+        client_request_id: str | None = None,
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -171,7 +166,9 @@ class SessionService:
             pick = (await self.resolver_service.settings_store.read()).models.strong
         title = title_from_prompt(title or "Untitled session")
         if folder_id is None:
-            session = await self.sessions_store.create(title, pick, kind)
+            session = await self.sessions_store.create(
+                title, pick, kind, client_request_id=client_request_id
+            )
         else:
             session = self.sessions_store.new_session(title, pick, kind)
             async with self.graph_store.transaction_with_connection() as (
@@ -183,7 +180,9 @@ class SessionService:
                 ledger.organization.placements[session.id] = SourcePlacement(
                     folder_id=folder_id
                 )
-                await self.sessions_store.insert(connection, session)
+                await self.sessions_store.insert(
+                    connection, session, client_request_id=client_request_id
+                )
         if graph_context is not None and graph_context.propositions:
             await self.entries_store.append(
                 session.id,

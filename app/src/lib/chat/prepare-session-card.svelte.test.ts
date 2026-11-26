@@ -195,6 +195,35 @@ test('clearOpeningNotice_removes_the_stored_notice_without_losing_the_opening_pr
 	expect(readOpening('s_notice')).toEqual({ text: 'Start here', attempted: true });
 });
 
+test('persists_launch_request_ids_across_remount_until_navigation_succeeds', async () => {
+	vi.mocked(api.createSession)
+		.mockRejectedValueOnce(new Error('Network dropped'))
+		.mockResolvedValueOnce({ id: 's_persisted' } as never);
+
+	const props = {
+		sessionId: 'chat_1',
+		result: makeResult({
+			kind: 'teach',
+			title: 'Topology',
+			opening_prompt: 'Start topology.',
+			propositions: []
+		})
+	};
+
+	const first = await render(PrepareSessionCard, props);
+	await first.getByTestId('prepare-session-start').click();
+	await expect.element(first.getByTestId('prepare-session-error')).toBeVisible();
+	const firstReqId = vi.mocked(api.createSession).mock.calls[0]?.[5];
+	expect(typeof firstReqId).toBe('string');
+	first.unmount();
+
+	const second = await render(PrepareSessionCard, props);
+	await second.getByTestId('prepare-session-start').click();
+	await expect.poll(() => navigated.hrefs.length).toBe(1);
+	expect(vi.mocked(api.createSession).mock.calls[1]?.[5]).toBe(firstReqId);
+	expect(sessionStorage.getItem('verstehen.prepare-launch.chat_1.tc_1')).toBeNull();
+});
+
 test('shows_an_inline_error_when_session_creation_fails', async () => {
 	vi.mocked(api.createSession).mockRejectedValueOnce(
 		new api.ApiError(503, undefined, 'Database is busy.')

@@ -667,7 +667,9 @@ def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Pa
                     UserEntry(
                         text=(
                             f"Look at ![diagram](data:image/png;base64,{fake_b64}) "
-                            f"and data:text/plain;charset=utf-8;base64,{fake_b64} please."
+                            f"and data:text/plain;charset=utf-8;base64,{fake_b64} "
+                            "and data:application/octet-stream;base64,%2Bw%3D%3D "
+                            "and data:image/png;base64,ABCD%2BEF%3D%3D please."
                         )
                     )
                 ],
@@ -687,8 +689,10 @@ def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Pa
             assert not results["rq2"].is_error
             b64_data = json.loads(results["rq2"].text)
             item_text = b64_data["items"][0]["text"]
-            assert item_text.count("[base64 data URL omitted]") == 2
+            assert item_text.count("[base64 data URL omitted]") == 4
             assert fake_b64 not in item_text
+            assert "%2Bw%3D%3D" not in item_text
+            assert "ABCD%2BEF%3D%3D" not in item_text
 
             assert not results["rq3"].is_error
             assert len(results["rq3"].text) <= 24_000
@@ -772,6 +776,48 @@ def test_read_session_omits_rejected_tool_calls_and_failed_open_questions(
                         ],
                         stop_reason="aborted",
                     ),
+                    AssistantEntry(
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="probe_rej",
+                                tool_name="probe_done",
+                                arguments={
+                                    "assessment": {
+                                        "summary": "Should not appear.",
+                                        "strands": [],
+                                    }
+                                },
+                            ),
+                        ]
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="probe_rej",
+                        tool_name="probe_done",
+                        text='{"ok":false,"error":"question still open"}',
+                        details={"ok": False, "error": "question still open"},
+                        is_error=False,
+                    ),
+                    AssistantEntry(
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="probe_ok",
+                                tool_name="probe_done",
+                                arguments={
+                                    "assessment": {
+                                        "summary": "Ready for derivatives.",
+                                        "strands": [],
+                                    }
+                                },
+                            ),
+                        ]
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="probe_ok",
+                        tool_name="probe_done",
+                        text="Probe complete.",
+                        details={"ok": True},
+                        is_error=False,
+                    ),
                 ],
             )
             sid = await chat_session(service)
@@ -780,7 +826,10 @@ def test_read_session_omits_rejected_tool_calls_and_failed_open_questions(
             res = next(e for e in entries if isinstance(e, ToolResultEntry))
             assert not res.is_error
             data = json.loads(res.text)
-            assert data["total"] == 0
+            assert data["total"] == 1
+            assert data["items"][0]["text"] == (
+                "[ASSISTANT] [PROBE CONCLUDED] Ready for derivatives."
+            )
 
     asyncio.run(scenario())
 

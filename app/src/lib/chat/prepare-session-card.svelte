@@ -16,7 +16,7 @@
 		statement: string;
 	}
 
-	let { result }: { result: ToolResult } = $props();
+	let { result, sessionId }: { result: ToolResult; sessionId?: string } = $props();
 
 	const details = $derived(asObject(result.details));
 	const kind = $derived<'teach' | 'practice'>(details?.kind === 'practice' ? 'practice' : 'teach');
@@ -59,6 +59,46 @@
 	let created: { callId: string; id: string; note: string | null } | undefined;
 	let requestIds: { callId: string; primary: string; fallback: string } | undefined;
 
+	function launchStorageKey(callId: string): string {
+		return `verstehen.prepare-launch.${sessionId ?? ''}.${callId}`;
+	}
+
+	function resolveRequestIds(callId: string): {
+		callId: string;
+		primary: string;
+		fallback: string;
+	} {
+		if (requestIds?.callId === callId) return requestIds;
+		try {
+			const stored = JSON.parse(sessionStorage.getItem(launchStorageKey(callId)) ?? 'null');
+			if (typeof stored?.primary === 'string' && typeof stored?.fallback === 'string') {
+				requestIds = { callId, primary: stored.primary, fallback: stored.fallback };
+				return requestIds;
+			}
+		} catch {
+			// Ignore unreadable storage and mint fresh IDs.
+		}
+		requestIds = { callId, primary: crypto.randomUUID(), fallback: crypto.randomUUID() };
+		try {
+			sessionStorage.setItem(
+				launchStorageKey(callId),
+				JSON.stringify({ primary: requestIds.primary, fallback: requestIds.fallback })
+			);
+		} catch {
+			// Ignore storage errors; in-memory IDs still guard same-mount retries.
+		}
+		return requestIds;
+	}
+
+	function clearStoredRequestIds(callId: string): void {
+		requestIds = undefined;
+		try {
+			sessionStorage.removeItem(launchStorageKey(callId));
+		} catch {
+			// Ignore storage errors after navigation completes.
+		}
+	}
+
 	async function start() {
 		if (!openingPrompt || busy) return;
 		busy = true;
@@ -71,26 +111,13 @@
 				return;
 			}
 			if (created?.callId !== result.tool_call_id) {
-				if (requestIds?.callId !== result.tool_call_id) {
-					requestIds = {
-						callId: result.tool_call_id,
-						primary: crypto.randomUUID(),
-						fallback: crypto.randomUUID()
-					};
-				}
+				const ids = resolveRequestIds(result.tool_call_id);
 				const sessionTitle = title ?? openingPrompt;
 				const graphContext = propositions.length ? { propositions } : undefined;
 				let res: { id: string };
 				let fallbackNote: string | null = null;
 				try {
-					res = await createSession(
-						sessionTitle,
-						null,
-						graphContext,
-						kind,
-						folderId,
-						requestIds.primary
-					);
+					res = await createSession(sessionTitle, null, graphContext, kind, folderId, ids.primary);
 				} catch (cause) {
 					if (cause instanceof ApiError && cause.status === 400 && folderId) {
 						res = await createSession(
@@ -99,7 +126,7 @@
 							graphContext,
 							kind,
 							undefined,
-							requestIds.fallback
+							ids.fallback
 						);
 						fallbackNote = `${cause.message} Started at the top level instead.`;
 					} else {
@@ -111,6 +138,7 @@
 			}
 			stashOpening(created.id, openingPrompt, false, created.note);
 			await goto(resolve('/(lesson)/session/[id]', { id: created.id }));
+			clearStoredRequestIds(result.tool_call_id);
 		} catch (cause) {
 			if (cause instanceof ApiError && cause.code === 'models_not_configured') setup = true;
 			else if (cause instanceof ApiError) error = cause.reason ?? cause.message;

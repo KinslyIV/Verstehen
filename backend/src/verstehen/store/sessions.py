@@ -94,9 +94,19 @@ class SessionsStore:
             thinking_level=pick.thinking_level if pick else None,
         )
 
-    async def insert(self, connection: Connection, session: Session) -> None:
+    async def insert(
+        self,
+        connection: Connection,
+        session: Session,
+        client_request_id: str | None = None,
+    ) -> None:
         """Insert and sync-log a session inside a transaction the caller holds."""
         await insert_session(connection, session)
+        if client_request_id:
+            await connection.execute(
+                "INSERT INTO session_create_requests (request_id, session_id) VALUES (?, ?)",
+                (client_request_id, session.id),
+            )
         await append_sync_log(
             connection,
             entity="session",
@@ -112,11 +122,27 @@ class SessionsStore:
         title: str,
         pick: ModelPick | None = None,
         kind: SessionKind = "teach",
+        client_request_id: str | None = None,
     ) -> Session:
         session = self.new_session(title, pick, kind)
         async with self.database.transaction() as connection:
-            await self.insert(connection, session)
+            await self.insert(connection, session, client_request_id=client_request_id)
         return session
+
+    async def get_by_create_request(self, request_id: str) -> Session | None:
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT s.id, s.title, s.kind, s.created_at, s.updated_at, "
+                "s.model_account, s.model_id, s.thinking_level "
+                "FROM session_create_requests r "
+                "JOIN sessions s ON s.id = r.session_id "
+                "WHERE r.request_id = ?",
+                (request_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        if row is None:
+            return None
+        return Session.model_validate(dict(zip(Session.model_fields, row)))
 
     async def get(self, session_id: str) -> Session | None:
         async with self.database.read() as connection:
