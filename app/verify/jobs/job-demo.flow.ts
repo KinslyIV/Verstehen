@@ -90,16 +90,19 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	expect(await readTop()).toBeCloseTo(readingAt, 0);
 	const scrollTo = async (where: 'start' | 'end') => {
 		await expect
-			.poll(async () => {
-				await page.mouse.wheel(0, where === 'end' ? 4000 : -4000);
-				return viewport.evaluate((element) =>
-					element.scrollTop < 1
-						? 'start'
-						: element.scrollTop + element.clientHeight > element.scrollHeight - 1
-							? 'end'
-							: 'middle'
-				);
-			})
+			.poll(
+				async () => {
+					await page.mouse.wheel(0, where === 'end' ? 4000 : -4000);
+					return viewport.evaluate((element) =>
+						element.scrollTop < 1
+							? 'start'
+							: element.scrollTop + element.clientHeight > element.scrollHeight - 1
+								? 'end'
+								: 'middle'
+					);
+				},
+				{ intervals: [50] }
+			)
 			.toBe(where);
 	};
 	await scrollTo('end');
