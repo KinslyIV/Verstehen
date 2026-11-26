@@ -148,9 +148,12 @@ test('messages_reach_only_listeners_of_that_plugin_and_topic_and_resync_fires_af
 		topic: 'elsewhere',
 		data: 2
 	});
-	host.deliver({ type: 'turn-settled', session_id: 's1' });
+	host.deliver({ type: 'turn-settled', session_id: 's_chat', kind: 'chat' });
+	expect(settled).not.toHaveBeenCalled();
+	host.deliver({ type: 'turn-settled', session_id: 's1', kind: 'teach' });
 	host.resync();
 	expect(seen).toEqual([{ n: 1 }]);
+	expect(settled).toHaveBeenCalledOnce();
 	expect(settled).toHaveBeenCalledWith('s1');
 	expect(resynced).toHaveBeenCalledOnce();
 });

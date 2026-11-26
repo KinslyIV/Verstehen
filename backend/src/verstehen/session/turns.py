@@ -9,6 +9,7 @@ from pydantic import BaseModel, JsonValue, TypeAdapter
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
+from verstehen.graph.context import MAX_GRAPH_CONTEXT_PICKS
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
@@ -48,7 +49,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
-from verstehen.store.graph import GraphStore
+from verstehen.store.graph import GraphChain, GraphLedger, GraphNode, GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import SessionKind, SessionsStore
@@ -579,6 +580,12 @@ class TurnService:
             async def default_search_keys() -> ChatSearchKeysStatus:
                 return ChatSearchKeysStatus(tavily=False, brave=False)
 
+            def derive_graph(
+                ledger: GraphLedger,
+            ) -> tuple[list[GraphNode], list[GraphChain]]:
+                derived = get_graph(ledger)
+                return derived.nodes, derived.chains
+
             return build_chat(
                 model,
                 instructions,
@@ -592,9 +599,11 @@ class TurnService:
                         read_session_by_id=self.sessions_store.get,
                         read_entries=self.entries_store.list,
                         read_ledger=self.graph_store.read,
+                        derive_graph=derive_graph,
                         read_accounts_status=self.accounts_status or default_accounts,
                         read_search_keys_status=self.search_keys_status
                         or default_search_keys,
+                        max_proposition_picks=MAX_GRAPH_CONTEXT_PICKS,
                     ),
                     *files,
                     *job_tools(dispatcher, settings.tools, prober=True),
@@ -951,7 +960,7 @@ class TurnService:
                 probe_run.publish(TurnEvent(type="error", error_text=error_text))
             runtime.end_handoff()
         self.notifications.publish(
-            Notification(type="turn-settled", session_id=session_id)
+            Notification(type="turn-settled", session_id=session_id, kind="teach")
         )
 
     async def pump_deliveries(self, session_id: str) -> None:
@@ -977,7 +986,11 @@ class TurnService:
                 state.runtime.begin_handoff()
         if not reserve_handoff:
             self.notifications.publish(
-                Notification(type="turn-settled", session_id=state.session_id)
+                Notification(
+                    type="turn-settled",
+                    session_id=state.session_id,
+                    kind=state.session_kind,
+                )
             )
 
 

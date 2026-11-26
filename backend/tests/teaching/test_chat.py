@@ -528,12 +528,158 @@ def test_read_session_enforces_character_cap(tmp_path: Path):
             entries = await service.entries_store.list(sid)
             res = next(e for e in entries if isinstance(e, ToolResultEntry))
             assert not res.is_error
-            assert len(res.text) < 26_000
+            assert len(res.text) <= 24_000
             data = json.loads(res.text)
             assert data["total"] == 10
             assert data["returned"] < 10
             assert data["truncated_by_char_cap"] is True
             assert data["next_offset"] == data["returned"]
+
+    asyncio.run(scenario())
+
+
+def test_read_session_reads_plan_from_result_tree_and_omits_failed_or_aborted_send_to_user(
+    tmp_path: Path,
+):
+    async def scenario():
+        model, _ = scripted_stream(
+            calls(("read_session", {"session_id": "s_plan"}, "rp1")),
+            "Inspected plan session.",
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            plan_sess = await service.sessions_store.create("Plan Lesson", kind="teach")
+            async with service.sessions_store.database.transaction() as conn:
+                await conn.execute(
+                    "UPDATE sessions SET id = 's_plan' WHERE id = ?", (plan_sess.id,)
+                )
+            await service.entries_store.append(
+                "s_plan",
+                [
+                    UserEntry(text="Teach derivatives"),
+                    AssistantEntry(
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="plan_1",
+                                tool_name="plan_init",
+                                arguments={
+                                    "mermaid": "graph TD\n  A[Limits] --> B[Derivatives]"
+                                },
+                            ),
+                            ToolCallPart(
+                                tool_call_id="send_ok",
+                                tool_name="send_to_user",
+                                arguments={"message": "Delivered explanation."},
+                            ),
+                            ToolCallPart(
+                                tool_call_id="send_err",
+                                tool_name="send_to_user",
+                                arguments={"message": "Failed explanation hidden."},
+                            ),
+                        ]
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="plan_1",
+                        tool_name="plan_init",
+                        text="Plan initialized",
+                        details={
+                            "ok": True,
+                            "tree": {
+                                "nodes": [
+                                    {"id": "A", "title": "Limits"},
+                                    {"id": "B", "title": "Derivatives"},
+                                ],
+                                "edges": [{"from": "A", "to": "B"}],
+                                "version": 1,
+                            },
+                        },
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="send_ok",
+                        tool_name="send_to_user",
+                        text="Sent",
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="send_err",
+                        tool_name="send_to_user",
+                        text="Tool error",
+                        is_error=True,
+                    ),
+                    AssistantEntry(
+                        stop_reason="aborted",
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="send_aborted",
+                                tool_name="send_to_user",
+                                arguments={"message": "Aborted explanation hidden."},
+                            )
+                        ],
+                    ),
+                ],
+            )
+            sid = await chat_session(service)
+            await run_turn(service, sid, TurnInput(type="text", text="Read plan"))
+            entries = await service.entries_store.list(sid)
+            res = next(e for e in entries if isinstance(e, ToolResultEntry))
+            assert not res.is_error
+            data = json.loads(res.text)
+            texts = "\n".join(item["text"] for item in data["items"])
+            assert "[PLAN] Limits → Derivatives" in texts
+            assert "Delivered explanation." in texts
+            assert "Failed explanation hidden." not in texts
+            assert "Aborted explanation hidden." not in texts
+
+    asyncio.run(scenario())
+
+
+def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Path):
+    async def scenario():
+        model, _ = scripted_stream(
+            calls(
+                ("read_session", {"session_id": "s_quotes"}, "rq1"),
+                ("read_session", {"session_id": "s_b64"}, "rq2"),
+            ),
+            "Done.",
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            s1 = await service.sessions_store.create("Quotes", kind="teach")
+            s2 = await service.sessions_store.create("Base64", kind="teach")
+            async with service.sessions_store.database.transaction() as conn:
+                await conn.execute(
+                    "UPDATE sessions SET id = 's_quotes' WHERE id = ?", (s1.id,)
+                )
+                await conn.execute(
+                    "UPDATE sessions SET id = 's_b64' WHERE id = ?", (s2.id,)
+                )
+            await service.entries_store.append(
+                "s_quotes",
+                [UserEntry(text='"' * 18_000)],
+            )
+            fake_b64 = "A" * 5000
+            await service.entries_store.append(
+                "s_b64",
+                [
+                    UserEntry(
+                        text=f"Look at ![diagram](data:image/png;base64,{fake_b64}) please."
+                    )
+                ],
+            )
+            sid = await chat_session(service)
+            await run_turn(service, sid, TurnInput(type="text", text="Check"))
+            entries = await service.entries_store.list(sid)
+            results = {
+                e.tool_call_id: e for e in entries if isinstance(e, ToolResultEntry)
+            }
+            assert not results["rq1"].is_error
+            assert len(results["rq1"].text) <= 24_000
+            q_data = json.loads(results["rq1"].text)
+            assert q_data["truncated_by_char_cap"] is True
+            assert q_data["returned"] == 1
+
+            assert not results["rq2"].is_error
+            b64_data = json.loads(results["rq2"].text)
+            item_text = b64_data["items"][0]["text"]
+            assert "[base64 data URL omitted]" in item_text
+            assert fake_b64 not in item_text
 
     asyncio.run(scenario())
 
@@ -642,5 +788,61 @@ def test_prepare_session_validates_inputs_streams_details_and_writes_no_session(
                 p for p in requests[-1][-1].parts if isinstance(p, ToolReturnPart)
             ]
             assert [p.tool_call_id for p in return_parts] == ["p_ok"]
+
+    asyncio.run(scenario())
+
+
+def test_prepare_session_rejects_more_than_64_unique_propositions(tmp_path: Path):
+    async def scenario():
+        over_limit = [f"n_{i}" for i in range(65)]
+        at_limit_with_dups = [f"n_{i}" for i in range(64)] + ["n_0", "n_1"]
+        model, _ = scripted_stream(
+            calls(
+                (
+                    "prepare_session",
+                    {
+                        "kind": "teach",
+                        "opening_prompt": "Too many nodes",
+                        "proposition_ids": over_limit,
+                    },
+                    "p_too_many",
+                ),
+                (
+                    "prepare_session",
+                    {
+                        "kind": "teach",
+                        "opening_prompt": "Exact 64 unique nodes",
+                        "proposition_ids": at_limit_with_dups,
+                    },
+                    "p_64",
+                ),
+            ),
+            "Checked limits.",
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            now = "2026-11-26T00:00:00+00:00"
+            async with service.graph_store.transaction() as ledger:
+                for i in range(65):
+                    ledger.nodes.append(
+                        GraphNode(
+                            id=f"n_{i}",
+                            name=f"Node {i}",
+                            statement=f"Statement {i}",
+                            provenance=[ProvenancePoint(session_id="s1")],
+                            created_at=now,
+                        )
+                    )
+            sid = await chat_session(service)
+            await run_turn(service, sid, TurnInput(type="text", text="Limit test"))
+            entries = await service.entries_store.list(sid)
+            results = {
+                e.tool_call_id: e for e in entries if isinstance(e, ToolResultEntry)
+            }
+            assert results["p_too_many"].is_error
+            assert "at most 64 unique propositions" in results["p_too_many"].text
+            assert not results["p_64"].is_error
+            assert isinstance(results["p_64"].details, dict)
+            propositions = results["p_64"].details["propositions"]
+            assert isinstance(propositions, list) and len(propositions) == 64
 
     asyncio.run(scenario())

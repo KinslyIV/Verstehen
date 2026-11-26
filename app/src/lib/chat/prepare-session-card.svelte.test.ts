@@ -130,8 +130,51 @@ test('renders_practice_card_and_falls_back_to_top_level_when_the_folder_was_dele
 	await expect
 		.element(screen.getByTestId('prepare-session-folder-note'))
 		.toHaveTextContent('Folder no longer exists. Started at the top level instead.');
-	expect(readOpening('s_prac_1')?.text).toBe('Drill me on the chain rule.');
+	expect(readOpening('s_prac_1')).toEqual({
+		text: 'Drill me on the chain rule.',
+		attempted: false,
+		notice: 'Folder no longer exists. Started at the top level instead.'
+	});
 	expect(navigated.hrefs).toEqual(['/session/s_prac_1']);
+});
+
+test('does_not_show_deleted_folder_notice_when_fallback_creation_fails_and_retries_without_duplicate_post', async () => {
+	const { goto } = await import('$app/navigation');
+	vi.mocked(api.createSession)
+		.mockRejectedValueOnce(new api.ApiError(400, undefined, 'Folder no longer exists.'))
+		.mockRejectedValueOnce(new api.ApiError(503, undefined, 'Server overloaded.'))
+		.mockRejectedValueOnce(new api.ApiError(400, undefined, 'Folder no longer exists.'))
+		.mockResolvedValueOnce({ id: 's_retry_1' } as never);
+
+	const screen = await render(PrepareSessionCard, {
+		result: makeResult({
+			kind: 'teach',
+			title: 'Calculus',
+			opening_prompt: 'Explain limits.',
+			folder_id: 'f_gone',
+			folder_name: 'Old Folder',
+			propositions: []
+		})
+	});
+
+	const startBtn = screen.getByTestId('prepare-session-start');
+	await startBtn.click();
+
+	await expect
+		.element(screen.getByTestId('prepare-session-error'))
+		.toHaveTextContent('Server overloaded.');
+	await expect.element(screen.getByTestId('prepare-session-folder-note')).not.toBeInTheDocument();
+
+	vi.mocked(goto).mockRejectedValueOnce(new Error('Navigation aborted'));
+	await startBtn.click();
+
+	await expect.poll(() => vi.mocked(api.createSession).mock.calls.length).toBe(4);
+	await expect.element(screen.getByTestId('prepare-session-error')).toBeVisible();
+
+	await startBtn.click();
+	await expect.poll(() => navigated.hrefs.length).toBe(1);
+	expect(vi.mocked(api.createSession).mock.calls.length).toBe(4);
+	expect(navigated.hrefs).toEqual(['/session/s_retry_1']);
 });
 
 test('shows_an_inline_error_when_session_creation_fails', async () => {

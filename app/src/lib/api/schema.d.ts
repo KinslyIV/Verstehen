@@ -2169,6 +2169,8 @@ export interface components {
 			 * @default
 			 */
 			session_id: string;
+			/** Kind */
+			kind?: ('teach' | 'practice' | 'chat') | null;
 			/** Revision */
 			revision?: number | null;
 			/** Running */

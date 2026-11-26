@@ -108,33 +108,6 @@ def _folder_subtree(org: SourceOrganization, root_id: str) -> set[str]:
     return found
 
 
-def _derive_nodes_and_chains(
-    ledger: GraphLedger,
-) -> tuple[list[GraphNode], list[GraphChain]]:
-    nodes: dict[str, GraphNode] = {}
-    for line in ledger.nodes:
-        if line.id not in nodes:
-            nodes[line.id] = line.model_copy(deep=True)
-            continue
-        node = nodes[line.id]
-        for wording in [line.statement, *line.aliases]:
-            if wording and wording not in node.aliases:
-                node.aliases.append(wording)
-        for point in line.provenance:
-            if point not in node.provenance:
-                node.provenance.append(point)
-    chains: dict[str, GraphChain] = {}
-    for line in ledger.chains:
-        key = "+".join(sorted(line.premises)) + ">" + line.conclusion
-        if key not in chains:
-            chains[key] = line.model_copy(deep=True)
-        else:
-            for point in line.provenance:
-                if point not in chains[key].provenance:
-                    chains[key].provenance.append(point)
-    return list(nodes.values()), list(chains.values())
-
-
 def _parse_guide_sections(markdown: str) -> dict[str, str]:
     sections: dict[str, str] = {}
     matches = list(re.finditer(r"^##\s+(.+?)\s*$", markdown, flags=re.MULTILINE))
@@ -155,8 +128,10 @@ def chat_tools(
     read_session_by_id: Callable[[str], Awaitable[Session | None]],
     read_entries: Callable[[str], Awaitable[list[Entry]]],
     read_ledger: Callable[[], Awaitable[GraphLedger]],
+    derive_graph: Callable[[GraphLedger], tuple[list[GraphNode], list[GraphChain]]],
     read_accounts_status: Callable[[], Awaitable[Sequence[ChatAccountStatus]]],
     read_search_keys_status: Callable[[], Awaitable[ChatSearchKeysStatus]],
+    max_proposition_picks: int = 64,
 ) -> tuple[Tool[None], ...]:
     """Build the 9 read-only inspection and session-preparation tools for the Chat agent."""
 
@@ -365,7 +340,7 @@ def chat_tools(
 
         sessions_by_id = {s.id: s for s in sessions}
         sources_by_id = {src.id: src for src in ledger.sources}
-        nodes, _ = _derive_nodes_and_chains(ledger)
+        nodes, _ = derive_graph(ledger)
         q = query.strip().lower() if query and query.strip() else None
         sid_filter = session_id.strip() if session_id and session_id.strip() else None
 
@@ -444,7 +419,7 @@ def chat_tools(
     ) -> str:
         ledger = await read_ledger()
         sessions = await read_sessions()
-        nodes, chains = _derive_nodes_and_chains(ledger)
+        nodes, chains = derive_graph(ledger)
         target_id = resolve_target_id(node_id, nodes)
         if target_id is None:
             raise ToolFailed(
@@ -668,7 +643,7 @@ def chat_tools(
         if proposition_ids:
             if ledger is None:
                 ledger = await read_ledger()
-            nodes, _ = _derive_nodes_and_chains(ledger)
+            nodes, _ = derive_graph(ledger)
             nodes_by_id = {n.id: n for n in nodes}
             seen_ids: set[str] = set()
             unknown: list[str] = []
@@ -685,6 +660,10 @@ def chat_tools(
             if unknown:
                 raise ToolFailed(
                     f"Unknown proposition_ids: {unknown}. Call list_graph_nodes to find valid proposition IDs."
+                )
+            if len(resolved_props) > max_proposition_picks:
+                raise ToolFailed(
+                    f"Too many proposition_ids ({len(resolved_props)}); at most {max_proposition_picks} unique propositions can seed a session's Graph context."
                 )
 
         payload = PrepareSessionPayload(

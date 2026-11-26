@@ -106,6 +106,7 @@ class SideChatService:
         announce: Callable[[str], None],
         session_lock: Callable[[str], asyncio.Lock],
         provider_events: bool = False,
+        prompt_edit_lock: asyncio.Lock | None = None,
     ):
         self.sessions_store = sessions_store
         self.entries_store = entries_store
@@ -118,6 +119,7 @@ class SideChatService:
         self.announce = announce
         self.session_lock = session_lock
         self.provider_events = provider_events
+        self.prompt_edit_lock = prompt_edit_lock or asyncio.Lock()
         self.runs: dict[tuple[str, str], SideRun] = {}
         self.closing = False
 
@@ -147,7 +149,7 @@ class SideChatService:
         except ResolutionError as error:
             return SideChatRefused(503, error.envelope())
         instructions = await compose_side_chat_instructions(
-            self.settings_store, self.data_dir
+            self.settings_store, self.data_dir, self.prompt_edit_lock
         )
         async with self.session_lock(session_id):
             if self.closing or await self.sessions_store.get(session_id) is None:

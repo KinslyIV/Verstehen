@@ -76,6 +76,7 @@
 	let dockHeight = $state(0);
 	let reserve = $state(0);
 	let reservedFor: string | undefined;
+	let folderNotice = $state<string | null>(null);
 	const dockOwner = $derived(pending?.key ?? controller.activeProblem?.toolCallId);
 
 	/** The transcript's bottom reserve: the dock's tallest height while one question or problem owns it. */
@@ -154,11 +155,12 @@
 		void (async () => {
 			await controller.load();
 			const opening = readOpening(id);
+			if (opening?.notice) folderNotice = opening.notice;
 			if (opening && controller.record && awaitsOpening(controller.entries) && !controller.busy) {
 				controller.draft = opening.text;
 				if (!opening.attempted) {
 					try {
-						stashOpening(id, opening.text, true);
+						stashOpening(id, opening.text, true, opening.notice);
 						await controller.send();
 					} catch {
 						controller.error = OPENING_FAILURE;
@@ -501,6 +503,14 @@
 				aria-hidden="true"
 				class="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-linear-to-t from-background to-transparent"
 			></div>
+			{#if folderNotice}<div
+					role="status"
+					data-testid="session-folder-notice"
+					class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 pb-1 text-xs text-muted-foreground max-md:px-4"
+				>
+					<span>{folderNotice}</span>
+					<Button variant="ghost" size="xs" onclick={() => (folderNotice = null)}>Dismiss</Button>
+				</div>{/if}
 			{#if controller.error}<div
 					role="alert"
 					class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"

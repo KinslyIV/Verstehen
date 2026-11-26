@@ -673,20 +673,30 @@ def test_side_instructions_use_exact_fragments_and_only_shared_enabled_overrides
             ) == "\n\n---\n\n".join(
                 (PROMPTS_DIR / key).read_text().strip() for key in keys
             )
-            for key in (keys[0], keys[1]):
+            for key, text in ((keys[0], "SIDE OVERRIDE"), (keys[1], "SHARED OVERRIDE")):
                 path = tmp_path / "prompts" / key
                 path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_text("OVERRIDE")
+                path.write_text(text)
+            secret = tmp_path / "secret.md"
+            secret.write_text("SECRET SYMLINK")
+            (tmp_path / "prompts" / keys[4]).symlink_to(secret)
             await service.settings_store.set(
-                "agent.prompts", {keys[0]: True, keys[1]: True}
+                "agent.prompts",
+                {keys[0]: True, keys[1]: True, keys[4]: True},
             )
             instructions = await compose_side_chat_instructions(
-                service.settings_store, tmp_path
+                service.settings_store, tmp_path, service.prompt_edit_lock
             )
-            assert (
-                instructions.startswith((PROMPTS_DIR / keys[0]).read_text().strip())
-                and instructions.count("OVERRIDE") == 1
+            assert instructions.startswith("SIDE OVERRIDE\n\n---\n\nSHARED OVERRIDE")
+            assert "SECRET SYMLINK" not in instructions
+            assert instructions.endswith((PROMPTS_DIR / keys[4]).read_text().strip())
+
+            await service.settings_store.set("agent.prompts", {keys[1]: True})
+            disabled_side = await compose_side_chat_instructions(
+                service.settings_store, tmp_path, service.prompt_edit_lock
             )
+            assert disabled_side.startswith((PROMPTS_DIR / keys[0]).read_text().strip())
+            assert "SHARED OVERRIDE" in disabled_side
 
     asyncio.run(scenario())
 

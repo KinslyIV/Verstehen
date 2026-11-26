@@ -166,7 +166,7 @@ export class PluginHost {
 		else if (event.type === 'plugin-message' && event.plugin_id && event.topic) {
 			const runtime = this.runtimes.get(event.plugin_id);
 			if (runtime) this.notify(runtime, runtime.notifications.get(event.topic), event.data);
-		} else if (event.type === 'turn-settled' && event.session_id)
+		} else if (event.type === 'turn-settled' && event.session_id && event.kind !== 'chat')
 			for (const runtime of this.runtimes.values())
 				this.notify(runtime, runtime.appEvents.get('turn-settled'), event.session_id);
 	}

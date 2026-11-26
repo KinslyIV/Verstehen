@@ -56,6 +56,7 @@
 	let setup = $state(false);
 	let error = $state<string | null>(null);
 	let folderNote = $state<string | null>(null);
+	let created: { callId: string; id: string; note: string | null } | undefined;
 
 	async function start() {
 		if (!openingPrompt || busy) return;
@@ -68,20 +69,25 @@
 				setup = true;
 				return;
 			}
-			const sessionTitle = title ?? openingPrompt;
-			const graphContext = propositions.length ? { propositions } : undefined;
-			let created: { id: string };
-			try {
-				created = await createSession(sessionTitle, null, graphContext, kind, folderId);
-			} catch (cause) {
-				if (cause instanceof ApiError && cause.status === 400 && folderId) {
-					folderNote = `${cause.message} Started at the top level instead.`;
-					created = await createSession(sessionTitle, null, graphContext, kind, undefined);
-				} else {
-					throw cause;
+			if (created?.callId !== result.tool_call_id) {
+				const sessionTitle = title ?? openingPrompt;
+				const graphContext = propositions.length ? { propositions } : undefined;
+				let res: { id: string };
+				let fallbackNote: string | null = null;
+				try {
+					res = await createSession(sessionTitle, null, graphContext, kind, folderId);
+				} catch (cause) {
+					if (cause instanceof ApiError && cause.status === 400 && folderId) {
+						res = await createSession(sessionTitle, null, graphContext, kind, undefined);
+						fallbackNote = `${cause.message} Started at the top level instead.`;
+					} else {
+						throw cause;
+					}
 				}
+				created = { callId: result.tool_call_id, id: res.id, note: fallbackNote };
+				folderNote = fallbackNote;
 			}
-			stashOpening(created.id, openingPrompt);
+			stashOpening(created.id, openingPrompt, false, created.note);
 			await goto(resolve('/(lesson)/session/[id]', { id: created.id }));
 		} catch (cause) {
 			if (cause instanceof ApiError && cause.code === 'models_not_configured') setup = true;

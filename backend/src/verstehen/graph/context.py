@@ -4,6 +4,8 @@ from verstehen.graph.model import get_graph
 from verstehen.store.entries import MarkerEntry
 from verstehen.store.graph import GraphStore
 
+MAX_GRAPH_CONTEXT_PICKS = 64
+
 
 class GraphContextPick(BaseModel):
     id: str
@@ -21,7 +23,7 @@ async def graph_context_message(
 ) -> MarkerEntry:
     graph = get_graph(await graph_store.read())
     nodes = {n.id: n for n in graph.nodes}
-    picks = context.propositions[:64]
+    picks = context.propositions[:MAX_GRAPH_CONTEXT_PICKS]
     selected = {p.id for p in picks if p.id in nodes}
     included = [
         c

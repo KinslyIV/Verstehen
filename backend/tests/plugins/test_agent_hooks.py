@@ -303,6 +303,7 @@ def test_every_built_in_tool_name_is_reserved():
         read_session_by_id=Mock(),
         read_entries=Mock(),
         read_ledger=Mock(),
+        derive_graph=Mock(),
         read_accounts_status=Mock(),
         read_search_keys_status=Mock(),
     )
@@ -1262,3 +1263,37 @@ def test_a_turn_calls_a_plugin_tool_and_saves_its_result(
         detail = client.get(url).json()
     assert result in json.dumps(detail["entries"])
     assert detail["turn_in_flight"] is False
+
+
+def test_chat_turn_does_not_invoke_plugin_turn_settled_observers(tmp_path: Path):
+    marker = tmp_path / "plugins" / "bridge" / "data" / "settled.txt"
+    replies = [
+        {"role": "chat", "text": "Chat reply"},
+        {"role": "prober", "text": "Teach reply"},
+    ]
+    with client_for(tmp_path, "bridge", replies) as client:
+        info = client.put("/api/plugins/bridge/enabled", json={"enabled": True}).json()
+        while info["status"] == "activating":
+            time.sleep(0.02)
+            listed = client.get("/api/plugins").json()["plugins"]
+            info = next(item for item in listed if item["id"] == "bridge")
+        assert info["status"] == "active"
+
+        chat_id = client.post("/api/sessions", json={"kind": "chat"}).json()["id"]
+        client.post(
+            f"/api/sessions/{chat_id}/input", json={"type": "text", "text": "hello"}
+        )
+        client.get(f"/api/sessions/{chat_id}/stream")
+        time.sleep(0.1)
+        assert not marker.exists()
+
+        teach_id = client.post("/api/sessions", json={"kind": "teach"}).json()["id"]
+        client.post(
+            f"/api/sessions/{teach_id}/input", json={"type": "text", "text": "hello"}
+        )
+        client.get(f"/api/sessions/{teach_id}/stream")
+        for _ in range(100):
+            if marker.exists():
+                break
+            time.sleep(0.02)
+        assert marker.exists() and marker.read_text() == teach_id

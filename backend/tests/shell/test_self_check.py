@@ -115,3 +115,22 @@ def test_self_check_fails_when_chat_guide_is_missing(monkeypatch, tmp_path):
     monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
     with pytest.raises(RuntimeError, match="chat/guide.md is missing"):
         self_check.check_prompts()
+
+
+def test_self_check_fails_when_chat_has_only_guide_without_numbered_fragments(
+    monkeypatch, tmp_path
+):
+    from verstehen import self_check
+    from verstehen.teaching import prompts
+
+    (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
+        folder = tmp_path / directory
+        folder.mkdir()
+        (folder / "00-base.md").write_text("prompt", encoding="utf-8")
+    chat_dir = tmp_path / "chat"
+    chat_dir.mkdir()
+    (chat_dir / "guide.md").write_text("# Guide", encoding="utf-8")
+    monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="No chat prompt fragments are bundled"):
+        self_check.check_prompts()

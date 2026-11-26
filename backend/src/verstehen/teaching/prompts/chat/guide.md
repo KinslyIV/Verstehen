@@ -11,7 +11,7 @@ Verstehen is an AI learning application with a persistent knowledge graph. It of
 
 - **Starting a session**: Click **Teaching**, **Practice**, or **Chat** at the top of the left sidebar, or switch modes on `/session/new` (`Teach | Practice | Chat`). Right-clicking (or long-pressing on touch) a folder in the sidebar offers **New teaching here**, **New practice here**, and **New chat here**.
 - **Sidebar filter & search**: Filter sessions by **Teaching**, **Practice**, **Chat**, or **All**. Use the **Search…** box (`Ctrl+Shift+F` / `Cmd+Shift+F`) to fuzzy-search session titles; arrow keys walk matches and `Enter` opens the selected row.
-- **Folders**: Click the folder-plus button beside the kind filter to create a folder. Drag sessions or folders to reorganize them, or right-click a session and choose **Move to folder**. Empty folder trees can be deleted from the folder context menu.
+- **Folders**: Click the folder-plus button beside the **Search…** box to create a folder. Drag sessions or folders to reorganize them, or right-click a session and choose **Move to folder**. Empty folder trees can be deleted from the folder context menu.
 - **Keyboard shortcuts**:
   - `Ctrl+B` / `Cmd+B`: Toggle the left sidebar.
   - `Ctrl+Shift+F` / `Cmd+Shift+F`: Open sidebar and focus session title search.
@@ -22,10 +22,11 @@ Verstehen is an AI learning application with a persistent knowledge graph. It of
 
 ## right-panel-and-side-chat
 
-The right panel in a session contains up to four tabs:
+The right panel in a session contains four tabs (**Plan**, **Jobs**, **Side chat**, and **Activity**):
 - **Plan**: Shows the live lesson dependency graph (`plan_init`) in Teaching sessions, highlighting visited and current nodes. Supports zoom, pan, and fit.
 - **Jobs**: Lists running and completed background jobs (`research`, `pdf`, `demo`, `visual`) and active graph extractions for the session, with elapsed time, cost label, and an **End** button to abort a running job.
 - **Side chat**: Lets the learner ask clarification questions anchored to any teaching segment or text selection (select assistant text → click **Ask**, up to 4,000 characters) without derailing the main thread. A separate helper answers using the foreground model (with open question answer keys and open problem solutions hidden), and new exchanges are delivered to the main agent on its next turn as hidden context updates.
+- **Activity**: Activity tab in the right panel (currently a placeholder showing `Nothing yet`).
 - **Stats bar**: Shown beneath the composer or dock (`41k / 200k · CLI`). Clicking it opens **Session stats** with last-call context tokens, cache hit rate, subscription/usage totals, and a per-turn breakdown.
 
 ## knowledge-graph
@@ -62,7 +63,7 @@ Open the knowledge graph from **Knowledge graph** in the left sidebar (`/graph`)
 **Settings → Lesson** (`/settings?section=lesson`):
 - **Quizzing**: Choose **Multiple choice** (`probe` / `quiz` with options and confidence slider) or **Free recall** (`recall` / `explain` where the learner types an open explanation graded against the agent's committed answer).
 - **Compaction limit**: Token threshold at which older session history is summarized into a compaction checkpoint (default `150,000`, minimum `32,000`).
-- **File access** (desktop/local only): Controls learner-file tools (`read`, `ls`, `find`, `grep`), `pdf` jobs, and `show_image`. By default unrestricted within the learner's home directory (excluding sensitive paths like `~/.ssh`, credentials, and `.env` files); enabling **Restrict file access to specific folders** limits access to the explicitly listed absolute/`~/` folder paths.
+- **File access** (desktop/local only): Controls learner-file tools (`read`, `ls`, `find`, `grep`), `pdf` jobs, and `show_image`. Relative paths (and `~/...`) resolve against the learner's home directory (which is also the default root when `path` is omitted). By default file access is unrestricted, permitting paths inside home as well as absolute paths outside home, subject to protected-path checks that always block sensitive locations (such as `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.claude`, browser profiles, Verstehen/LearnHarness credential files, and `.env` / `.env.*` files). Enabling **Restrict file access to specific folders** limits access to the explicitly listed allowed folder subtrees (while still enforcing protected-path denials).
 
 ## settings-prompts
 

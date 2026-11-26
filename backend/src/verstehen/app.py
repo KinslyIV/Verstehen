@@ -221,6 +221,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 side_chats_changed,
                 lambda session_id: runtimes.get(session_id).lock,
                 settings.provider_events,
+                prompt_edit_lock,
             )
 
             def graph_changed(revision: int) -> None:
@@ -413,7 +414,12 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
 
             async def watch_settled_turns() -> None:
                 async for event in notifications.subscribe():
-                    if event and event.type == "turn-settled" and event.session_id:
+                    if (
+                        event
+                        and event.type == "turn-settled"
+                        and event.session_id
+                        and event.kind != "chat"
+                    ):
                         await plugin_service.turn_settled(event.session_id)
 
             turn_service.delivery_service.start_watching()
