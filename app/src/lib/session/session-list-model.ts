@@ -1,10 +1,11 @@
 import type { SessionItem } from '#lib/api/client.js';
 import { timeAgo } from './time-ago.js';
 
-export type KindFilter = 'teach' | 'practice' | 'all';
+export type KindFilter = 'teach' | 'practice' | 'chat' | 'all';
 export const kindFilters: { value: KindFilter; label: string }[] = [
 	{ value: 'teach', label: 'Teaching' },
 	{ value: 'practice', label: 'Practice' },
+	{ value: 'chat', label: 'Chat' },
 	{ value: 'all', label: 'All' }
 ];
 const storageKey = 'verstehen-session-kind-filter';

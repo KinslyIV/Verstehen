@@ -47,7 +47,8 @@
 		prompts = {
 			teacher: update(prompts.teacher),
 			prober: update(prompts.prober),
-			practice: update(prompts.practice)
+			practice: update(prompts.practice),
+			chat: update(prompts.chat)
 		};
 	}
 

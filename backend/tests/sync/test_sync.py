@@ -96,6 +96,7 @@ def test_two_way_sync_all_entities_images_and_prompts(tmp_path: Path):
             l_settings = SettingsStore(l_db)
 
             session = await l_sessions.create("Quantum Mechanics")
+            chat_session = await l_sessions.create("General Chat", kind="chat")
             img_bytes = b"\x89PNG\r\n\x1a\nfake-png-payload-for-sync"
             img_sha = hashlib.sha256(img_bytes).hexdigest()
             save_verified_image(laptop_app.state.data_dir, img_sha, "png", img_bytes)
@@ -198,6 +199,9 @@ def test_two_way_sync_all_entities_images_and_prompts(tmp_path: Path):
             synced_session = await s_sessions.get(session.id)
             assert synced_session is not None
             assert synced_session.title == "Quantum Mechanics"
+            synced_chat = await s_sessions.get(chat_session.id)
+            assert synced_chat is not None
+            assert (synced_chat.title, synced_chat.kind) == ("General Chat", "chat")
             assert len(await s_entries.list(session.id)) == 2
             assert (await s_views.list(session.id)) == {tool_entry.entry_id: True}
             assert len(await s_side.list(session.id)) == 1

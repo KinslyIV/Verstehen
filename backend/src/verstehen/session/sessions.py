@@ -176,16 +176,16 @@ class SessionService:
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
                 None
-                if session.kind == "practice"
+                if session.kind != "teach"
                 else await self.extraction_service.coverage(session_id, entries),
             )
 
     async def coverage(self, session_id: str) -> SessionCoverage | None | Refused:
-        """Coverage alone, for refreshes that need no transcript; practice sessions have none."""
+        """Coverage alone, for refreshes that need no transcript; non-teaching sessions have none."""
         session = await self.sessions_store.get(session_id)
         if session is None:
             return Refused(404, {"error": "Not found"})
-        if session.kind == "practice":
+        if session.kind != "teach":
             return None
         return await self.extraction_service.coverage(session_id)
 

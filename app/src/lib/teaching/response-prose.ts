@@ -12,6 +12,7 @@ export type ResponseItem =
 	| { kind: 'probe'; args: unknown; result?: ToolResult }
 	| { kind: 'problem'; statement: string }
 	| { kind: 'conclude'; args: unknown; toolCallId: string }
+	| { kind: 'prepared-session'; result: ToolResult }
 	| { kind: 'tool-retry' }
 	| { kind: 'image'; result?: ToolResult }
 	| { kind: 'job'; jobKind: JobKind; toolCallId: string }
@@ -57,6 +58,9 @@ export function responseProse(
 		} else if (part.tool_name === 'probe_done') {
 			flushText();
 			items.push({ kind: 'probe', args: part.arguments, result });
+		} else if (result && part.tool_name === 'prepare_session') {
+			flushText();
+			items.push({ kind: 'prepared-session', result });
 		} else if (
 			part.tool_name === 'send_to_user' &&
 			entry.stop_reason !== 'aborted' &&

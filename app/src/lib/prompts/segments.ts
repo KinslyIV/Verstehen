@@ -3,7 +3,8 @@ import type { PromptSegment, PromptSegments } from '#lib/api/client.js';
 const agents = [
 	{ id: 'teacher', label: 'Teacher' },
 	{ id: 'prober', label: 'Prober' },
-	{ id: 'practice', label: 'Practice' }
+	{ id: 'practice', label: 'Practice' },
+	{ id: 'chat', label: 'Chat' }
 ] as const;
 
 export type PromptSection = {
@@ -23,7 +24,7 @@ function joinNames(names: string[]): string {
 	return names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0];
 }
 
-/** Teacher, Prober, Practice, then each shared fragment once with the agents that use it. */
+/** Teacher, Prober, Practice, Chat, then each shared fragment once with the agents that use it. */
 export function sectionedSegments(view: PromptSegments): PromptSection[] {
 	const shared = new Map<string, PromptSegment>();
 	for (const { id } of agents)

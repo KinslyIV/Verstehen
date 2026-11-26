@@ -37,18 +37,20 @@ test('sections_list_each_agent_then_shared_fragments_once_with_their_users', () 
 			segment('shared/10-voice.md', true),
 			segment('shared/20-question-tools.md', true)
 		],
-		practice: [segment('practice/00-base.md'), segment('shared/10-voice.md', true)]
+		practice: [segment('practice/00-base.md'), segment('shared/10-voice.md', true)],
+		chat: [segment('chat/00-base.md'), segment('shared/10-voice.md', true)]
 	};
 	const sections = sectionedSegments(view);
 	expect(sections.map((section) => [section.id, section.segments.map((s) => s.path)])).toEqual([
 		['teacher', ['teacher/20-teaching.md']],
 		['prober', ['prober/10-probe-doctrine.md']],
 		['practice', ['practice/00-base.md']],
+		['chat', ['chat/00-base.md']],
 		['shared', ['system-prompt.md', 'shared/10-voice.md', 'shared/20-question-tools.md']]
 	]);
-	expect(sections[3].segments.map((s) => s.usage)).toEqual([
+	expect(sections[4].segments.map((s) => s.usage)).toEqual([
 		'Used by Teacher and Prober',
-		'Used by Teacher, Prober and Practice',
+		'Used by Teacher, Prober, Practice and Chat',
 		'Used by Teacher and Prober'
 	]);
 });

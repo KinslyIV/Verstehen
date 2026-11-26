@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Dumbbell, FolderPlus, LoaderCircle, Search } from '@lucide/svelte';
+	import { Dumbbell, FolderPlus, LoaderCircle, MessageSquare, Search } from '@lucide/svelte';
 	import type { SessionItem } from '#lib/api/client.js';
 	import { Input } from '#lib/components/ui/input/index.js';
 	import * as ContextMenu from '#lib/components/ui/context-menu/index.js';
@@ -152,7 +152,7 @@
 	function moveSession(id: string, parentId: string | null) {
 		folders.change({ action: 'move', kind: 'source', id, parent_id: parentId }).catch(() => {});
 	}
-	function startSessionIn(folderId: string, mode: 'teach' | 'practice') {
+	function startSessionIn(folderId: string, mode: 'teach' | 'practice' | 'chat') {
 		// eslint-disable-next-line svelte/no-navigation-without-resolve
 		void goto(resolve('/(lesson)/session/new') + newSessionQuery(mode, folderId));
 	}
@@ -214,6 +214,9 @@
 							/>{/if}
 						{#if session.kind === 'practice'}<Dumbbell
 								aria-label="Practice session"
+								class="size-3.5 shrink-0 text-muted-foreground/70"
+							/>{:else if session.kind === 'chat'}<MessageSquare
+								aria-label="Chat session"
 								class="size-3.5 shrink-0 text-muted-foreground/70"
 							/>{/if}
 					</a>
@@ -330,7 +333,7 @@
 					aria-pressed={filter === option.value}
 					data-testid={`kind-filter-${option.value}`}
 					class={cn(
-						'flex-1 rounded-sm px-2 py-1 text-xs transition-colors',
+						'flex-1 rounded-sm px-1.5 py-1 text-xs transition-colors',
 						filter === option.value
 							? 'bg-accent text-foreground'
 							: 'text-muted-foreground hover:text-foreground'

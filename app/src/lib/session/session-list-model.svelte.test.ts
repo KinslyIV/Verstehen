@@ -27,16 +27,23 @@ const session = (patch: Partial<SessionItem> = {}): SessionItem => ({
 beforeEach(() => localStorage.clear());
 
 test('the_kind_filter_keeps_all_sessions_or_only_one_kind', () => {
-	const sessions = [session({ id: 'a' }), session({ id: 'b', kind: 'practice' })];
-	expect(sessions.filter(kindIncludes('all'))).toHaveLength(2);
+	const sessions = [
+		session({ id: 'a' }),
+		session({ id: 'b', kind: 'practice' }),
+		session({ id: 'c', kind: 'chat' })
+	];
+	expect(sessions.filter(kindIncludes('all'))).toHaveLength(3);
 	expect(sessions.filter(kindIncludes('teach')).map(({ id }) => id)).toEqual(['a']);
 	expect(sessions.filter(kindIncludes('practice')).map(({ id }) => id)).toEqual(['b']);
+	expect(sessions.filter(kindIncludes('chat')).map(({ id }) => id)).toEqual(['c']);
 });
 
 test('the_kind_filter_defaults_to_all_and_survives_reloads', () => {
 	expect(readKindFilter()).toBe('all');
 	saveKindFilter('practice');
 	expect(readKindFilter()).toBe('practice');
+	saveKindFilter('chat');
+	expect(readKindFilter()).toBe('chat');
 	localStorage.setItem('verstehen-session-kind-filter', 'nonsense');
 	expect(readKindFilter()).toBe('all');
 });

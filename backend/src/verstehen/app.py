@@ -83,6 +83,7 @@ from verstehen.sync.provision import (
     ServerProxy,
 )
 from verstehen.sync.service import SyncService
+from verstehen.teaching.chat import ChatAccountStatus, ChatSearchKeysStatus
 
 DESKTOP_CSP = (
     "default-src 'self'; script-src 'self' 'unsafe-inline' https:; "
@@ -325,6 +326,25 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
             )
             app.state.plugin_service = plugin_service
 
+            async def read_accounts_status() -> list[ChatAccountStatus]:
+                return [
+                    ChatAccountStatus(
+                        id=account.id,
+                        label=account.label,
+                        kind=account.kind,
+                        usable=account.usable,
+                    )
+                    for account in await accounts_service.list()
+                ]
+
+            async def read_search_keys_status() -> ChatSearchKeysStatus:
+                status = await app.state.search_keys_service.status()
+                return ChatSearchKeysStatus(
+                    tavily=status.tavily.present,
+                    brave=status.brave.present,
+                    effective_engine=status.effective_engine,
+                )
+
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
@@ -344,6 +364,8 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 prompt_edit_lock,
                 settings.provider_events,
                 plugin_service,
+                accounts_status=read_accounts_status,
+                search_keys_status=read_search_keys_status,
             )
 
             app.state.job_service = JobService(

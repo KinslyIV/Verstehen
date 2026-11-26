@@ -100,6 +100,18 @@ def test_self_check_fails_when_a_prompt_directory_is_missing(monkeypatch, tmp_pa
     from verstehen.teaching import prompts
 
     (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    (tmp_path / "chat").mkdir()
+    (tmp_path / "chat" / "guide.md").write_text("# Guide", encoding="utf-8")
     monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
     with pytest.raises(RuntimeError, match="No prober prompt fragments"):
+        self_check.check_prompts()
+
+
+def test_self_check_fails_when_chat_guide_is_missing(monkeypatch, tmp_path):
+    from verstehen import self_check
+    from verstehen.teaching import prompts
+
+    (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="chat/guide.md is missing"):
         self_check.check_prompts()

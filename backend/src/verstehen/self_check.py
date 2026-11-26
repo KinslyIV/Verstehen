@@ -69,8 +69,10 @@ def check_prompts() -> str:
 
     if not (PROMPTS_DIR / "system-prompt.md").is_file():
         raise RuntimeError("system-prompt.md is missing")
+    if not (PROMPTS_DIR / "chat" / "guide.md").is_file():
+        raise RuntimeError("chat/guide.md is missing")
     counts = {}
-    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
+    for directory in ("prober", "teacher", "shared", "practice", "chat", "side-chat"):
         counts[directory] = len(list((PROMPTS_DIR / directory).glob("*.md")))
         if not counts[directory]:
             raise RuntimeError(f"No {directory} prompt fragments are bundled")

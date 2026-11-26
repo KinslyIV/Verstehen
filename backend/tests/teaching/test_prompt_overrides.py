@@ -23,6 +23,7 @@ from verstehen.sync.prompt_overrides import (
 from verstehen.sync.prompts import make_prompt_tx_hooks, write_prompt_file
 from verstehen.sync.service import SyncService
 from verstehen.teaching.prompts import (
+    CHAT_SHARED_FRAGMENTS,
     PRACTICE_SHARED_FRAGMENTS,
     PROMPTS_DIR,
     compose_instructions,
@@ -52,10 +53,12 @@ def write_override(data_dir: Path, path: str, text: str) -> None:
 def test_listing_shows_each_agents_fragments_with_shipped_defaults(tmp_path: Path):
     with desktop_client(tmp_path) as client:
         listing = client.get("/api/prompts", headers=HEADERS).json()
-    for kind in ("prober", "teacher", "practice"):
+    for kind in ("prober", "teacher", "practice", "chat"):
         assert [segment["path"] for segment in listing[kind]] == segment_keys(kind)
     practice_shared = {s["path"] for s in listing["practice"] if s["shared"]}
     assert practice_shared == {f"shared/{name}" for name in PRACTICE_SHARED_FRAGMENTS}
+    chat_shared = {s["path"] for s in listing["chat"] if s["shared"]}
+    assert chat_shared == {f"shared/{name}" for name in CHAT_SHARED_FRAGMENTS}
     assert segment_of(listing, "teacher", SEGMENT) == {
         "path": SEGMENT,
         "source_text": (PROMPTS_DIR / SEGMENT).read_text(),
@@ -65,6 +68,8 @@ def test_listing_shows_each_agents_fragments_with_shipped_defaults(tmp_path: Pat
     }
     assert segment_of(listing, "teacher", "system-prompt.md")["shared"] is True
     assert "system-prompt.md" not in {s["path"] for s in listing["practice"]}
+    assert "system-prompt.md" not in {s["path"] for s in listing["chat"]}
+    assert "chat/guide.md" not in {s["path"] for s in listing["chat"]}
 
 
 def test_existing_override_files_load_and_resolve_by_switch_and_readability(
@@ -103,19 +108,32 @@ def test_save_writes_the_file_and_activation_makes_the_agent_compose_it(
         )
         listing = client.get("/api/prompts", headers=HEADERS).json()
         assert segment_of(listing, "teacher", SEGMENT)["enabled"] is True
+        chat_saved = client.put(
+            "/api/prompts/chat/00-base.md/override",
+            json={"text": "CUSTOM CHAT BASE"},
+            headers=HEADERS,
+        )
+        assert chat_saved.status_code == 200
+        client.put(
+            "/api/prompts/chat/00-base.md/enabled",
+            json={"enabled": True},
+            headers=HEADERS,
+        )
     assert (tmp_path / "prompts" / SEGMENT).read_text() == "NEW"
 
-    async def composed() -> tuple[str, str]:
+    async def composed() -> tuple[str, str, str]:
         async with open_database(tmp_path / "verstehen.db") as database:
             store = SettingsStore(database)
             return (
                 await compose_instructions(store, tmp_path, "teacher", asyncio.Lock()),
                 await compose_instructions(store, tmp_path, "prober", asyncio.Lock()),
+                await compose_instructions(store, tmp_path, "chat", asyncio.Lock()),
             )
 
-    teacher, prober = asyncio.run(composed())
+    teacher, prober, chat = asyncio.run(composed())
     assert "NEW" in teacher
     assert "NEW" not in prober
+    assert "CUSTOM CHAT BASE" in chat
 
 
 def test_prompt_editor_does_not_read_or_activate_symlinked_overrides(tmp_path: Path):

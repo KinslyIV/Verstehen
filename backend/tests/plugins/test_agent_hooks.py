@@ -29,6 +29,7 @@ from verstehen.plugins.toolsets import PluginToolset, PluginToolsets, PluginTurn
 from verstehen.providers.claude_code import _request
 from verstehen.store.plugins import PluginsStore
 from verstehen.store.settings import ToolSettings
+from verstehen.teaching.chat import build_chat, chat_tools
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.graph_tools import prober_graph_tools
 from verstehen.teaching.images import show_image_tool
@@ -294,6 +295,17 @@ def test_every_built_in_tool_name_is_reserved():
         plan_tool(lambda tree: None),
         show_image_tool(settings, Path(".")),
     )
+    chat_built_ins = chat_tools(
+        settings_store=settings,
+        data_dir=Path("."),
+        prompt_edit_lock=asyncio.Lock(),
+        read_sessions=Mock(),
+        read_session_by_id=Mock(),
+        read_entries=Mock(),
+        read_ledger=Mock(),
+        read_accounts_status=Mock(),
+        read_search_keys_status=Mock(),
+    )
     agents = (
         [
             build_prober(
@@ -307,7 +319,10 @@ def test_every_built_in_tool_name_is_reserved():
             )
             for mode in ("choice", "free")
         ]
-        + [build_practitioner(TestModel(), "", extra_tools=extra)]
+        + [
+            build_practitioner(TestModel(), "", extra_tools=extra),
+            build_chat(TestModel(), "", extra_tools=(*extra, *chat_built_ins)),
+        ]
     )
 
     async def names() -> set[str]:
@@ -316,7 +331,7 @@ def test_every_built_in_tool_name_is_reserved():
             found.update(await CombinedToolset(agent.toolsets).get_tools(run_context()))
         return found
 
-    assert asyncio.run(names()) <= RESERVED_TOOL_NAMES
+    assert asyncio.run(names()) == RESERVED_TOOL_NAMES
 
 
 def test_the_frontend_hides_and_cards_tools_by_the_same_reserved_names():

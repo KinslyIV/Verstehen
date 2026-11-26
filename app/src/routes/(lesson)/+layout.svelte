@@ -12,6 +12,7 @@
 		Dumbbell,
 		ListChecks,
 		MessageCircleQuestion,
+		MessageSquare,
 		PanelRight,
 		Plus,
 		Settings,
@@ -74,7 +75,7 @@
 	const topBarSurface = $derived<ActionSurface | undefined>(
 		onPluginView
 			? { kind: 'plugin-view', pluginId: page.params.id!, viewId: page.params.view! }
-			: onSession && watched?.record
+			: onSession && watched?.record && watched.record.kind !== 'chat'
 				? {
 						kind: 'session',
 						sessionId: page.params.id!,
@@ -189,6 +190,13 @@
 					class="justify-start gap-2"
 				>
 					<Dumbbell class="size-4" /> Practice
+				</Button>
+				<Button
+					href={`${resolve('/(lesson)/session/new')}?mode=chat`}
+					variant="outline"
+					class="col-span-2 justify-start gap-2"
+				>
+					<MessageSquare class="size-4" /> Chat
 				</Button>
 			</div>
 			<Button

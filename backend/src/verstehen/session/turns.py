@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal
@@ -55,6 +55,13 @@ from verstehen.store.sessions import SessionKind, SessionsStore
 from verstehen.store.settings import Settings, SettingsStore, ToolSettings
 from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
+from verstehen.teaching.chat import (
+    PREPARE_SESSION_TOOL,
+    ChatAccountStatus,
+    ChatSearchKeysStatus,
+    build_chat,
+    chat_tools,
+)
 from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.graph_tools import prober_graph_tools
@@ -103,6 +110,7 @@ STREAMED_RESULT_TOOLS = (
     "send_to_user",
     PRACTICE_PROBLEM_TOOL,
     PRACTICE_CONCLUDE_TOOL,
+    PREPARE_SESSION_TOOL,
     *ACKNOWLEDGEMENTS,
 )
 logger = logging.getLogger(__name__)
@@ -150,9 +158,11 @@ class TurnState:
     for_handoff: bool = False
 
     @property
-    def role(self) -> Literal["teacher", "prober", "practice"]:
+    def role(self) -> Literal["teacher", "prober", "practice", "chat"]:
         if self.session_kind == "practice":
             return "practice"
+        if self.session_kind == "chat":
+            return "chat"
         return "teacher" if has_probe_done(self.entries) else "prober"
 
 
@@ -204,8 +214,13 @@ class TurnService:
         prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
         plugin_service: PluginService | None = None,
+        accounts_status: Callable[[], Awaitable[Sequence[ChatAccountStatus]]]
+        | None = None,
+        search_keys_status: Callable[[], Awaitable[ChatSearchKeysStatus]] | None = None,
     ):
         self.plugin_service = plugin_service
+        self.accounts_status = accounts_status
+        self.search_keys_status = search_keys_status
         self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
@@ -519,7 +534,7 @@ class TurnService:
         )
         plugins = (
             await self.plugin_service.toolset_for(role, state.session_id)
-            if self.plugin_service
+            if self.plugin_service and role != "chat"
             else None
         )
         state.agent = self.build_role_agent(
@@ -556,6 +571,36 @@ class TurnService:
             self.data_dir,
         )
         updates = ContextUpdates(lambda: self.take_context_updates(state))
+        if role == "chat":
+
+            async def default_accounts() -> Sequence[ChatAccountStatus]:
+                return ()
+
+            async def default_search_keys() -> ChatSearchKeysStatus:
+                return ChatSearchKeysStatus(tavily=False, brave=False)
+
+            return build_chat(
+                model,
+                instructions,
+                state.resolved.settings,
+                extra_tools=(
+                    *chat_tools(
+                        settings_store=self.settings_store,
+                        data_dir=self.data_dir,
+                        prompt_edit_lock=self.prompt_edit_lock,
+                        read_sessions=self.sessions_store.list,
+                        read_session_by_id=self.sessions_store.get,
+                        read_entries=self.entries_store.list,
+                        read_ledger=self.graph_store.read,
+                        read_accounts_status=self.accounts_status or default_accounts,
+                        read_search_keys_status=self.search_keys_status
+                        or default_search_keys,
+                    ),
+                    *files,
+                    *job_tools(dispatcher, settings.tools, prober=True),
+                ),
+                extra_capabilities=(updates,),
+            )
         if role == "practice":
 
             async def list_sessions() -> str:
@@ -856,8 +901,10 @@ class TurnService:
         await self.entries_store.append(state.session_id, [*entries, *markers])
         state.runtime.delivery.discard(entry.entry_id for entry in entries)
         self.notify_changed(state.session_id)
-        reserve_handoff = not self.runtimes.closing and handoff_owed(
-            [*state.entries, *entries]
+        reserve_handoff = (
+            not self.runtimes.closing
+            and state.session_kind == "teach"
+            and handoff_owed([*state.entries, *entries])
         )
         if reserve_handoff:
             await self.finish(state, reserve_handoff=True)

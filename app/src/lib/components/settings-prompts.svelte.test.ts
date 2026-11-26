@@ -34,7 +34,8 @@ beforeEach(() => {
 	vi.mocked(api.getPrompts).mockImplementation(async () => ({
 		teacher: [segment(TEACHING), segment(VOICE, true)],
 		prober: [segment('prober/10-probe-doctrine.md'), segment(VOICE, true)],
-		practice: [segment('practice/00-base.md')]
+		practice: [segment('practice/00-base.md')],
+		chat: [segment('chat/00-base.md')]
 	}));
 	vi.mocked(api.savePromptOverride).mockImplementation(async (path, text) => {
 		overrides[path] = text;
@@ -54,6 +55,7 @@ test('prompts_group_teacher_prober_practice_then_shared_with_their_users', async
 	await expect.element(screen.getByTestId('prompt-section-teacher')).toBeVisible();
 	await expect.element(screen.getByTestId('prompt-section-prober')).toBeVisible();
 	await expect.element(screen.getByTestId('prompt-section-practice')).toBeVisible();
+	await expect.element(screen.getByTestId('prompt-section-chat')).toBeVisible();
 	const shared = screen.getByTestId('prompt-section-shared');
 	await expect.element(shared.getByText('Used by Teacher and Prober')).toBeVisible();
 	const row = screen.getByTestId(`prompt-row-${TEACHING}`);
@@ -213,7 +215,8 @@ const deferred = <T>() => {
 const prompts = (): api.PromptSegments => ({
 	teacher: [segment(TEACHING), segment(VOICE, true)],
 	prober: [segment('prober/10-probe-doctrine.md'), segment(VOICE, true)],
-	practice: [segment('practice/00-base.md')]
+	practice: [segment('practice/00-base.md')],
+	chat: [segment('chat/00-base.md')]
 });
 
 test('a_background_refresh_after_a_write_never_clears_or_dims_the_list', async () => {
@@ -278,7 +281,7 @@ test('an_out_of_date_read_is_aborted_and_cannot_overwrite_a_newer_one', async ()
 		.toBeChecked();
 	expect(signals[0]?.aborted).toBe(true);
 	expect(signals[1]?.aborted).toBe(false);
-	first.resolve({ teacher: [], prober: [], practice: [] });
+	first.resolve({ teacher: [], prober: [], practice: [], chat: [] });
 	await new Promise((resolve) => setTimeout(resolve, 30));
 	await expect
 		.element(screen.getByRole('switch', { name: 'Use your override for Teaching' }))

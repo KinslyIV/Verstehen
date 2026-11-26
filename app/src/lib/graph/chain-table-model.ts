@@ -50,7 +50,7 @@ export function sourceNodeSets(
 	return membership;
 }
 
-/** The source groups for the table: chains grouped by their conclusion's birth, searched and sorted; practice sessions are left out. */
+/** The source groups for the table: chains grouped by their conclusion's birth, searched and sorted; non-teaching sessions are left out. */
 export function buildGroups(input: {
 	nodes: GraphNode[];
 	storedChains: GraphChain[];
@@ -61,11 +61,13 @@ export function buildGroups(input: {
 	const { nodes, storedChains, directory, query, sort } = input;
 	const byId = new Map(nodes.map((node) => [node.id, node]));
 	const sources = new Map(directory.sources.map((source) => [source.id, source]));
-	const practiceSources = new Set(
-		directory.sources.filter((source) => source.session_kind === 'practice').map(({ id }) => id)
+	const nonTeachSources = new Set(
+		directory.sources
+			.filter((source) => source.session_kind && source.session_kind !== 'teach')
+			.map(({ id }) => id)
 	);
 	const chains = chainsForSelection(nodes, storedChains).filter(
-		(chain) => !practiceSources.has(birthOf(byId.get(chain.conclusion)) ?? '')
+		(chain) => !nonTeachSources.has(birthOf(byId.get(chain.conclusion)) ?? '')
 	);
 	const searching = query.trim() !== '';
 	const matchesSource = (birth: string) =>
@@ -92,7 +94,7 @@ export function buildGroups(input: {
 
 	const map = new Map<string, ClusterGroup>();
 	for (const source of directory.sources) {
-		if (practiceSources.has(source.id) || (searching && !matchesSource(source.id))) continue;
+		if (nonTeachSources.has(source.id) || (searching && !matchesSource(source.id))) continue;
 		map.set(source.id, {
 			key: source.id,
 			birth: source.id,

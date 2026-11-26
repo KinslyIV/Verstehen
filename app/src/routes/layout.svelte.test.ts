@@ -121,6 +121,9 @@ test('sidebar_buttons_open_a_teaching_or_practice_session_screen', async () => {
 	await expect
 		.element(screen.getByRole('link', { name: 'Practice', exact: true }).first())
 		.toHaveAttribute('href', '/session/new?mode=practice');
+	await expect
+		.element(screen.getByRole('link', { name: 'Chat', exact: true }).first())
+		.toHaveAttribute('href', '/session/new?mode=chat');
 	await expect.element(screen.getByRole('heading', { name: 'New session' })).toBeVisible();
 });
 

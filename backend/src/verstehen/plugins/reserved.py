@@ -21,5 +21,14 @@ RESERVED_TOOL_NAMES = frozenset(
         "grep",
         "list_sessions",
         "list_propositions",
+        "list_prompts",
+        "read_prompt",
+        "read_settings",
+        "list_sessions_and_folders",
+        "list_graph_nodes",
+        "read_graph_node",
+        "read_session",
+        "read_app_guide",
+        "prepare_session",
     }
 )

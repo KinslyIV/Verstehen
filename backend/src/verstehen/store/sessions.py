@@ -12,7 +12,7 @@ from verstehen.store.graph import GraphLedger, GraphStore, read_ledger, write_le
 from verstehen.store.settings import ModelPick, ThinkingLevel
 from verstehen.store.sync_log import append_sync_log, record_tombstone
 
-SessionKind = Literal["teach", "practice"]
+SessionKind = Literal["teach", "practice", "chat"]
 
 
 class Session(BaseModel):
