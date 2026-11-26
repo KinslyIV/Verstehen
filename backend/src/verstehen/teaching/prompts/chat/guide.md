@@ -49,13 +49,13 @@ Open the knowledge graph from **Knowledge graph** in the left sidebar (`/graph`)
   - **Main (`strong`)**: Used by Prober, Teacher, Practitioner, Chat agent, and Side chat helper. Overridable per session via the composer model pill (`Ctrl+K`).
   - **Cheap (`cheap`)**: Used by background workers (Researcher, Demo builder, Graph Extractor, Graph Auditor, and automatic session Title generator).
   - **Vision (`vision`)**: Must support image input; used by Visual maker and PDF reader workers.
-- Each slot picks an account, model, and optional thinking level (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Click **Refresh models** to force a catalog refresh across accounts.
+- Each slot picks an account, model, and optional thinking level (`minimal`, `low`, `medium`, `high`, `xhigh`, `max`). Click **Refresh model lists** to force a catalog refresh across accounts.
 
 ## settings-accounts
 
 **Settings → Accounts** (`/settings?section=accounts`):
-- **Claude Code**: Uses the locally installed `claude` CLI subscription (`opus`, `sonnet`, `haiku`). Shows installation state, binary path, version, and a **Background calls** toggle (controls whether automatic extraction, compaction, and background jobs may use Claude Code).
-- **ChatGPT**: Connects one or more ChatGPT Plus/Pro/Team accounts via OAuth sign-in. Supports **Add account**, **Sign in again**, **Remove**, and a **Background calls** toggle.
+- **Claude Code**: Uses the locally installed `claude` CLI subscription (`opus`, `sonnet`, `haiku`). Shows installation state, binary path, version, and an **Allow background use** toggle (controls whether automatic extraction, compaction, and background jobs may use Claude Code).
+- **ChatGPT**: Connects one or more ChatGPT Plus/Pro/Team accounts via OAuth sign-in. Supports **Add account**, **Sign in again**, **Remove**, and an **Allow background use** toggle.
 - On a remote/mobile client, Accounts is read-only and managed from the laptop under **Settings → Sync**.
 
 ## settings-lesson

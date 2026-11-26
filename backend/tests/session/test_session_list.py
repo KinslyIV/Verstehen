@@ -440,3 +440,41 @@ def test_create_session_is_idempotent_for_client_request_id(tmp_path: Path):
         assert third.status_code == 200
         assert third.json()["id"] == first.json()["id"]
         assert len(client2.get("/api/sessions").json()["sessions"]) == 1
+
+
+def test_create_session_rolls_back_request_id_if_graph_context_append_fails(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        service = app.state.session_service
+        original = service.entries_store.append_in_transaction
+        should_fail = True
+
+        async def flaky_append(*args, **kwargs):
+            nonlocal should_fail
+            if should_fail:
+                should_fail = False
+                raise RuntimeError("interrupted mid-transaction")
+            return await original(*args, **kwargs)
+
+        service.entries_store.append_in_transaction = flaky_append
+        payload = {
+            "title": "Calculus",
+            "client_request_id": "req-graph-atomic",
+            "graph_context": {
+                "propositions": [
+                    {"id": "n1", "name": "Slope", "statement": "Rise over run"}
+                ]
+            },
+        }
+        with pytest.raises(RuntimeError, match="interrupted mid-transaction"):
+            client.post("/api/sessions", json=payload)
+
+        assert client.get("/api/sessions").json()["sessions"] == []
+
+        retry = client.post("/api/sessions", json=payload)
+        assert retry.status_code == 200
+        detail = client.get(f"/api/sessions/{retry.json()['id']}").json()
+        assert len(detail["entries"]) == 1
+        assert detail["entries"][0]["marker_type"] == "graph-context"

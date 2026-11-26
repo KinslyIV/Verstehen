@@ -27,7 +27,7 @@ MAX_TRANSCRIPT_LIMIT = 50
 MAX_TRANSCRIPT_CHARS = 24_000
 MAX_TRANSCRIPT_TITLE_CHARS = 500
 BASE64_DATA_URL_RE = re.compile(
-    r"data:[^\s,\"')>\]]*;base64,(?:[A-Za-z0-9+/=_-]|%[0-9A-Fa-f]{2})+",
+    r"data:[^\s,\"')>\]]*;base64,[A-Za-z0-9+/=_%-]+",
     re.IGNORECASE,
 )
 

@@ -162,49 +162,58 @@ class EntriesStore:
     async def append_compaction(self, marker: MarkerEntry, usage: UsageRecord) -> None:
         await self._append(usage.session_id, [marker], usage)
 
+    async def append_in_transaction(
+        self,
+        connection: Connection,
+        session_id: str,
+        entries: List[Entry],
+        usage: UsageRecord | None = None,
+    ) -> None:
+        validated = [ENTRY.validate_python(entry) for entry in entries]
+        inserted = False
+        for entry in validated:
+            did_insert = await insert_entry(connection, session_id, entry)
+            if did_insert:
+                inserted = True
+                await append_sync_log(
+                    connection,
+                    entity="entry",
+                    op="upsert",
+                    entity_id=entry.entry_id,
+                    session_id=session_id,
+                    payload={
+                        "session_id": session_id,
+                        "entry_id": entry.entry_id,
+                        "kind": entry.kind,
+                        "payload": json.loads(ENTRY.dump_json(entry).decode()),
+                        "created_at": entry.created_at.isoformat(),
+                    },
+                )
+            job_id = delivered_job_id(entry)
+            if job_id is not None:
+                await mark_delivered(connection, job_id, log_sync=True)
+        if inserted:
+            await connection.execute(
+                "UPDATE sessions SET updated_at = ? WHERE id = ?",
+                (datetime.now(UTC).isoformat(), session_id),
+            )
+            if usage is not None:
+                if await insert_usage(connection, usage):
+                    await append_sync_log(
+                        connection,
+                        entity="usage",
+                        op="upsert",
+                        entity_id=usage.request_id,
+                        session_id=usage.session_id,
+                        payload=usage.model_dump(mode="json"),
+                    )
+            self.database.mark_sync_dirty()
+
     async def _append(
         self, session_id: str, entries: List[Entry], usage: UsageRecord | None = None
     ) -> None:
-        validated = [ENTRY.validate_python(entry) for entry in entries]
         async with self.database.transaction() as connection:
-            inserted = False
-            for entry in validated:
-                did_insert = await insert_entry(connection, session_id, entry)
-                if did_insert:
-                    inserted = True
-                    await append_sync_log(
-                        connection,
-                        entity="entry",
-                        op="upsert",
-                        entity_id=entry.entry_id,
-                        session_id=session_id,
-                        payload={
-                            "session_id": session_id,
-                            "entry_id": entry.entry_id,
-                            "kind": entry.kind,
-                            "payload": json.loads(ENTRY.dump_json(entry).decode()),
-                            "created_at": entry.created_at.isoformat(),
-                        },
-                    )
-                job_id = delivered_job_id(entry)
-                if job_id is not None:
-                    await mark_delivered(connection, job_id, log_sync=True)
-            if inserted:
-                await connection.execute(
-                    "UPDATE sessions SET updated_at = ? WHERE id = ?",
-                    (datetime.now(UTC).isoformat(), session_id),
-                )
-                if usage is not None:
-                    if await insert_usage(connection, usage):
-                        await append_sync_log(
-                            connection,
-                            entity="usage",
-                            op="upsert",
-                            entity_id=usage.request_id,
-                            session_id=usage.session_id,
-                            payload=usage.model_dump(mode="json"),
-                        )
-                self.database.mark_sync_dirty()
+            await self.append_in_transaction(connection, session_id, entries, usage)
 
     async def list(self, session_id: str) -> List[Entry]:
         async with self.database.read() as connection:

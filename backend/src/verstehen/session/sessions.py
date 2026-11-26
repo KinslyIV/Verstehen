@@ -165,12 +165,22 @@ class SessionService:
         else:
             pick = (await self.resolver_service.settings_store.read()).models.strong
         title = title_from_prompt(title or "Untitled session")
+        context_marker = (
+            await graph_context_message(graph_context, self.graph_store)
+            if graph_context is not None and graph_context.propositions
+            else None
+        )
+        session = self.sessions_store.new_session(title, pick, kind)
         if folder_id is None:
-            session = await self.sessions_store.create(
-                title, pick, kind, client_request_id=client_request_id
-            )
+            async with self.sessions_store.database.transaction() as connection:
+                await self.sessions_store.insert(
+                    connection, session, client_request_id=client_request_id
+                )
+                if context_marker is not None:
+                    await self.entries_store.append_in_transaction(
+                        connection, session.id, [context_marker]
+                    )
         else:
-            session = self.sessions_store.new_session(title, pick, kind)
             async with self.graph_store.transaction_with_connection() as (
                 connection,
                 ledger,
@@ -183,11 +193,10 @@ class SessionService:
                 await self.sessions_store.insert(
                     connection, session, client_request_id=client_request_id
                 )
-        if graph_context is not None and graph_context.propositions:
-            await self.entries_store.append(
-                session.id,
-                [await graph_context_message(graph_context, self.graph_store)],
-            )
+                if context_marker is not None:
+                    await self.entries_store.append_in_transaction(
+                        connection, session.id, [context_marker]
+                    )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
         )
