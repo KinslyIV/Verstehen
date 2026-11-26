@@ -49,7 +49,9 @@ def activate(ctx):  # sync or async; may return a cleanup function
   plugin is disabled is cancelled (or its late worker-thread result is discarded), and its reply is a 409.
 - A synchronous `activate` runs in a worker thread, so it may block; `ctx.register_*`, `ctx.on`,
   `ctx.cleanup` and `ctx.emit` are safe from it. An `async def activate` runs on the app's event
-  loop and must not block (use `await`, `asyncio.to_thread` or a sync `activate`).
+  loop and must not block (use `await`, `asyncio.to_thread` or a sync `activate`). If `activate` is
+  still finishing after the plugin is disabled, a late `ctx.cleanup(fn)` or returned cleanup runs
+  immediately instead of throwing, and re-enabling waits for it.
 - Agent names: `prober`, `teacher`, `practice` (the practitioner). Hooks only add; a tool whose name
   clashes with any built-in tool or another plugin's tool is refused, and your plugin adds no tools
   and no instructions to that turn (Settings → Plugins shows the warning). A plugin that is disabled
@@ -57,9 +59,12 @@ def activate(ctx):  # sync or async; may return a cleanup function
   `@ctx.expose` function runs in a worker thread and is not forcefully interrupted by disable (as in
   LearnHarness): keep it quick, or make it `async`. A tool that raises gives the model an error
   message; the turn goes on.
-- Dependencies: the standard library, what Verstehen bundles, and pure-Python code in
-  `backend/vendor/`. Nothing is installed for you. An MCP toolset in the packaged app should run an
-  external command, not a Python script.
+- Dependencies and imports: Python backends import directly from `dist/<backend>/` in-process (module-cached;
+  changing files on disk while running requires a restart, and lazy Python imports read from `dist/` on disk).
+  You can use the standard library, what Verstehen bundles, and pure-Python code in `backend/vendor/`
+  (which appends to the shared process `sys.path`/`sys.modules` across plugins — vendor under a
+  plugin-private package name if you need isolation from another plugin's dependency version).
+  Nothing is installed for you. An MCP toolset in the packaged app should run an external command, not a Python script.
 
 ## Frontend
 

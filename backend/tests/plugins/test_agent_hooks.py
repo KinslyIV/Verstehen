@@ -969,6 +969,111 @@ def test_a_run_owned_toolset_closes_on_mid_turn_disable_and_contains_exit_errors
     asyncio.run(scenario())
 
 
+class GatedToolset(FunctionToolset[None]):
+    """A run-owned toolset that coordinates `__aenter__` and `__aexit__` via events."""
+
+    def __init__(
+        self,
+        enter_started: asyncio.Event | None = None,
+        enter_gate: asyncio.Event | None = None,
+        exit_started: asyncio.Event | None = None,
+        exit_gate: asyncio.Event | None = None,
+        cancel_on_exit: bool = False,
+    ):
+        super().__init__([harmless])
+        self.enter_started = enter_started
+        self.enter_gate = enter_gate
+        self.exit_started = exit_started
+        self.exit_gate = exit_gate
+        self.cancel_on_exit = cancel_on_exit
+        self.active = False
+        self.exits = 0
+
+    async def __aenter__(self):
+        if self.enter_started:
+            self.enter_started.set()
+        if self.enter_gate:
+            await self.enter_gate.wait()
+        self.active = True
+        return self
+
+    async def __aexit__(self, *args):
+        self.exits += 1
+        if self.exit_started:
+            self.exit_started.set()
+        if self.exit_gate:
+            await self.exit_gate.wait()
+        self.active = False
+        if self.cancel_on_exit:
+            child = asyncio.create_task(asyncio.sleep(3600))
+            child.cancel()
+            await child
+
+
+def test_disable_waits_for_in_flight_run_toolset_exit_and_partial_enter_and_contains_exit_cancelled_error(
+    tmp_path: Path,
+):
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+
+        exit_started = asyncio.Event()
+        exit_gate = asyncio.Event()
+        slow_exit = GatedToolset(exit_started=exit_started, exit_gate=exit_gate)
+        context.register_toolset(["prober"], ResolvesPerRun(slow_exit))
+        plugins = await service.toolset_for("prober", "s1")
+        assert plugins is not None
+        resolved = await plugins.for_run(run_context())
+        await resolved.__aenter__()
+        assert slow_exit.active is True
+        exiting = asyncio.create_task(resolved.__aexit__(None, None, None))
+        await exit_started.wait()
+        disabling = asyncio.create_task(service.set_enabled("agent-hooks", False))
+        await asyncio.sleep(0.02)
+        assert not disabling.done()
+        exit_gate.set()
+        await asyncio.gather(exiting, disabling)
+        assert slow_exit.active is False
+        assert slow_exit.exits == 1
+
+        await enabled(service, "agent-hooks")
+        context = service.plugins["agent-hooks"].context
+        assert context is not None
+        context.contributions.clear()
+        enter2_started = asyncio.Event()
+        enter2_gate = asyncio.Event()
+        first = GatedToolset()
+        second = GatedToolset(enter_started=enter2_started, enter_gate=enter2_gate)
+        context.register_toolset(
+            ["prober"], ResolvesPerRun(CombinedToolset([first, second]))
+        )
+        plugins2 = await service.toolset_for("prober", "s1")
+        assert plugins2 is not None
+        resolved2 = await plugins2.for_run(run_context())
+        entering = asyncio.create_task(resolved2.__aenter__())
+        await enter2_started.wait()
+        assert first.active is True
+        await service.set_enabled("agent-hooks", False)
+        assert first.active is False
+        assert first.exits == 1
+        await entering
+
+        await enabled(service, "agent-hooks")
+        cancelling_exit = GatedToolset(cancel_on_exit=True)
+        result = await run_prober_with(service, ResolvesPerRun(cancelling_exit))
+        assert result.output == "done"
+        assert cancelling_exit.active is False
+        assert warnings_of(service, "agent-hooks") == [
+            "Added nothing to a prober turn: Cancelled"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
 @contextmanager
 def client_for(
     tmp_path: Path, plugin: str, replies: list[dict]

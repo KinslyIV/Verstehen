@@ -78,14 +78,17 @@ class PluginContext:
         data_directory: Path,
         publish: Publish,
         loop: asyncio.AbstractEventLoop | None = None,
+        on_late_cleanup: Callable[[Cleanup], None] | None = None,
     ):
         self.id = plugin_id
         self.directory = directory
         self.data_directory = data_directory
         self.publish = publish
         self.loop = loop
+        self.on_late_cleanup = on_late_cleanup
         self.teardown: asyncio.Future[list[str]] | None = None
         self.cleanups: list[Cleanup] = []
+        self.late_cleanups: list[Cleanup] = []
         self.exposed: dict[str, Exposed] = {}
         self.observers: dict[AppEvent, list[Observer]] = {}
         self.contributions: list[AgentContribution] = []
@@ -96,8 +99,30 @@ class PluginContext:
         """Run `cleanup` when the plugin is disabled or the app stops, last registered first."""
         if not callable(cleanup):
             raise TypeError("Plugin cleanup must be a function")
-        self.require_live()
-        self.cleanups.append(cleanup)
+        if not self.closed:
+            self.cleanups.append(cleanup)
+            return
+        if self.on_late_cleanup is not None:
+            if self.loop is not None and not self.in_loop():
+                self.late_cleanups.append(cleanup)
+                self.loop.call_soon_threadsafe(self.drain_late_cleanups)
+            else:
+                self.on_late_cleanup(cleanup)
+            return
+        self.late_cleanups.append(cleanup)
+        try:
+            result = cleanup()
+            if inspect.isawaitable(result):
+                if self.loop is not None and not self.in_loop():
+                    self.loop.call_soon_threadsafe(asyncio.ensure_future, result)
+                else:
+                    asyncio.ensure_future(result)
+        except Exception:
+            pass
+
+    def drain_late_cleanups(self) -> None:
+        while self.late_cleanups and self.on_late_cleanup is not None:
+            self.on_late_cleanup(self.late_cleanups.pop(0))
 
     @overload
     def expose(self, function: Function) -> Function: ...

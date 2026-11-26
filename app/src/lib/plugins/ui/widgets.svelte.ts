@@ -124,7 +124,11 @@ export function checkRows(props: SettingsRowsProps) {
 				)
 					throw new TypeError(`Row ${row.key} ${bound} must be a finite number`);
 			}
-			if (row.min !== undefined && row.max !== undefined && row.min > row.max)
+			if (row.type === 'slider') {
+				const min = row.min ?? 0;
+				const max = row.max ?? 100;
+				if (min > max) throw new TypeError(`Row ${row.key} min exceeds max`);
+			} else if (row.min !== undefined && row.max !== undefined && row.min > row.max)
 				throw new TypeError(`Row ${row.key} min exceeds max`);
 			if (row.step !== undefined && row.step <= 0)
 				throw new TypeError(`Row ${row.key} step must be positive`);

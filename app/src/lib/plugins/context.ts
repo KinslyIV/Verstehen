@@ -86,10 +86,6 @@ export function createContext(
 			return () => runtime.resyncs.delete(listener);
 		},
 		onAppEvent: (event, listener) => runtime.listen(runtime.appEvents, event, listener),
-		cleanup: (fn: Cleanup) => {
-			if (typeof fn !== 'function') throw new TypeError('A cleanup must be a function');
-			runtime.requireLive();
-			runtime.cleanups.push(fn);
-		}
+		cleanup: (fn: Cleanup) => runtime.addCleanup(fn)
 	};
 }

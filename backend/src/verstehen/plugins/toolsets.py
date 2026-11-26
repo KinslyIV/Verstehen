@@ -64,6 +64,7 @@ class PluginToolset(WrapperToolset[None]):
     resolved_here: list[AbstractToolset[None]] = field(default_factory=list)
     entered: AsyncExitStack | None = field(init=False, default=None)
     stop_entered: Cleanup | None = field(init=False, default=None)
+    closing: asyncio.Task[None] | None = field(init=False, default=None)
 
     async def for_run(self, ctx: RunContext[None]) -> AbstractToolset[None]:
         resolved = await self.resolving(lambda: self.wrapped.for_run(ctx))
@@ -100,45 +101,86 @@ class PluginToolset(WrapperToolset[None]):
         """Enter only the toolsets this run's `for_run` made new; the plugin's own are entered by its context."""
         if not self.resolved_here:
             return self
-        try:
-            async with AsyncExitStack() as stack:
-                for toolset in self.resolved_here:
-                    await self.context.operate(
-                        partial(stack.enter_async_context, toolset)
-                    )
-                self.entered = stack.pop_all()
+        stack = AsyncExitStack()
+        await stack.__aenter__()
+        self.entered = stack
 
-                async def close_entered() -> None:
-                    active, self.entered = self.entered, None
-                    self.stop_entered = None
-                    if active is not None:
-                        await active.aclose()
-
-                self.stop_entered = close_entered
-                self.context.cleanups.append(close_entered)
-        except Stopped:
-            if self.entered is not None:
-                active, self.entered = self.entered, None
+        async def finish() -> None:
+            active, self.entered = self.entered, None
+            if active is not None:
                 await active.aclose()
+
+        async def close_entered() -> None:
+            if self.closing is None:
+                self.closing = asyncio.create_task(finish())
+            while not self.closing.done():
+                try:
+                    await asyncio.shield(self.closing)
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current and current.cancelling():
+                        raise
+            self.closing.result()
+
+        self.stop_entered = close_entered
+        self.context.cleanups.append(close_entered)
+        try:
+            for toolset in self.resolved_here:
+                await self.context.operate(partial(stack.enter_async_context, toolset))
+        except Stopped:
+            await self.discard_entered(close_entered)
         except Exception as error:
             self.turn.drop(self.plugin_id, error)
+            await self.discard_entered(close_entered)
         return self
 
+    async def discard_entered(self, close_entered: Cleanup) -> None:
+        try:
+            result = close_entered()
+            if result is not None:
+                await result
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current and current.cancelling():
+                raise
+            self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
+        except Exception as error:
+            self.turn.drop(self.plugin_id, error)
+        finally:
+            if self.stop_entered is close_entered:
+                self.stop_entered = None
+            if close_entered in self.context.cleanups:
+                self.context.cleanups.remove(close_entered)
+
     async def __aexit__(self, *args: Any) -> bool | None:
-        stop, self.stop_entered = self.stop_entered, None
-        if stop is not None and stop in self.context.cleanups:
-            self.context.cleanups.remove(stop)
-        stack, self.entered = self.entered, None
-        if stack is None:
+        stop = self.stop_entered
+        if stop is None:
             return None
         try:
-            return await stack.__aexit__(*args)
+            result = stop()
+            if result is not None:
+                await result
+            return None
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current and current.cancelling():
+                raise
+            logger.warning(
+                "Plugin %s run toolset cleanup cancelled", self.plugin_id, exc_info=True
+            )
+            self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
+            return None
         except Exception as error:
             logger.warning(
                 "Plugin %s run toolset cleanup failed", self.plugin_id, exc_info=True
             )
             self.turn.drop(self.plugin_id, error)
             return None
+        finally:
+            if self.stop_entered is stop:
+                self.stop_entered = None
+            if stop in self.context.cleanups:
+                self.context.cleanups.remove(stop)
 
     async def get_tools(self, ctx: RunContext[None]) -> Tools:
         return await self.context.operate(

@@ -1,4 +1,4 @@
-import { SvelteMap } from 'svelte/reactivity';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 import {
 	listPlugins,
 	pluginFileUrl,
@@ -32,6 +32,7 @@ export class PluginHost {
 	error = $state<string | null>(null);
 	actionFailure = $state<ActionFailure | null>(null);
 	readonly runtimes = new SvelteMap<string, PluginRuntime>();
+	private readonly retiring = new SvelteMap<string, SvelteSet<PluginRuntime>>();
 	private readonly queues = new SvelteMap<string, Promise<void>>();
 	private syncing: Promise<void> | undefined;
 	private resyncRequested = false;
@@ -57,6 +58,9 @@ export class PluginHost {
 	/** Resolves once every plugin's pending activation and cleanup has finished. */
 	async settled(): Promise<void> {
 		while (this.queues.size) await Promise.all([...this.queues.values()]);
+		for (const set of this.retiring.values())
+			for (const runtime of set)
+				while (runtime.lateCleanups.size) await Promise.all([...runtime.lateCleanups]);
 	}
 
 	private async reconcile(): Promise<void> {
@@ -98,21 +102,36 @@ export class PluginHost {
 
 	private remove(id: string, runtime: PluginRuntime): void {
 		this.runtimes.delete(id);
+		const set = this.retiring.get(id) ?? new SvelteSet<PluginRuntime>();
+		set.add(runtime);
+		this.retiring.set(id, set);
 		runtime.retire();
 		this.enqueue(id, () => runtime.dispose());
+	}
+
+	private async drainRetiring(id: string): Promise<void> {
+		const set = this.retiring.get(id);
+		if (!set) return;
+		for (const old of [...set]) {
+			while (old.lateCleanups.size) await Promise.all([...old.lateCleanups]);
+			if (!old.cleanups.length && !old.lateCleanups.size) set.delete(old);
+		}
+		if (!set.size) this.retiring.delete(id);
 	}
 
 	private async activate(runtime: PluginRuntime): Promise<void> {
 		const { info } = runtime;
 		const live = () => !runtime.controller.signal.aborted;
 		try {
-			if (info.styles) runtime.cleanups.push(this.addStyles(info));
+			await this.drainRetiring(info.id);
+			if (!live()) return;
+			if (info.styles) runtime.addCleanup(this.addStyles(info));
 			const module = await this.options.load(pluginFileUrl(info.id, info.main!));
 			if (!live()) return;
 			if (typeof module?.activate !== 'function')
 				throw new Error('The plugin module does not export an activate function');
 			const returned = await module.activate(createContext(runtime, this.options.navigation));
-			if (typeof returned === 'function') runtime.cleanups.push(returned);
+			if (typeof returned === 'function') runtime.addCleanup(returned);
 		} catch (error) {
 			if (live()) runtime.failure = messageOf(error);
 			await runtime.dispose();

@@ -175,6 +175,7 @@ def test_disabling_closes_the_context_and_keeps_the_data_folder(
     tmp_path: Path, service: PluginService
 ):
     root = install(tmp_path, "lifecycle")
+    late: list[str] = []
 
     async def run():
         await service.discover()
@@ -183,8 +184,9 @@ def test_disabling_closes_the_context_and_keeps_the_data_folder(
         assert context is not None
         await toggle(service, "lifecycle", False)
         assert service.plugins["lifecycle"].context is None
-        with pytest.raises(RuntimeError, match="no longer active"):
-            context.cleanup(lambda: None)
+        context.cleanup(lambda: late.append("ran"))
+        await service.settled()
+        assert late == ["ran"]
         with pytest.raises(RuntimeError, match="no longer active"):
             context.require_live()
 
@@ -909,6 +911,132 @@ def test_disabling_fences_turn_settled_observers_in_flight_and_skips_later_ones(
         await toggle(service, "lifecycle", False)
         await settling
         assert order == ["first-start:s1", "first-cancelled", "cleanup"]
+        await service.close()
+
+    asyncio.run(run())
+
+
+def test_late_ctx_cleanup_in_sync_and_async_activate_runs_before_reenable(
+    tmp_path: Path,
+):
+    sync_root = install(tmp_path, "lifecycle")
+    async_root = install(tmp_path, "greeter")
+    sync_gate = tmp_path / "sync_gate"
+    async_gate = tmp_path / "async_gate"
+    (sync_root / "dist" / "backend" / "__init__.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "runs = 0\n"
+        "def activate(ctx):\n"
+        "    global runs\n"
+        "    runs += 1\n"
+        "    run_no = runs\n"
+        "    log = ctx.data_directory / 'events.txt'\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'start-{run_no}\\n')\n"
+        "    if run_no == 1:\n"
+        f"        while not Path({str(sync_gate)!r}).exists():\n"
+        "            time.sleep(0.01)\n"
+        "    def late_cleanup():\n"
+        "        time.sleep(0.02)\n"
+        "        with log.open('a') as f:\n"
+        "            f.write(f'cleanup-{run_no}\\n')\n"
+        "    ctx.cleanup(late_cleanup)\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'end-{run_no}\\n')\n"
+    )
+    (async_root / "dist" / "backend" / "__init__.py").write_text(
+        "import asyncio\n"
+        "from pathlib import Path\n"
+        "runs = 0\n"
+        "async def activate(ctx):\n"
+        "    global runs\n"
+        "    runs += 1\n"
+        "    run_no = runs\n"
+        "    log = ctx.data_directory / 'events.txt'\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'start-{run_no}\\n')\n"
+        "    if run_no == 1:\n"
+        "        try:\n"
+        f"            while not Path({str(async_gate)!r}).exists():\n"
+        "                await asyncio.sleep(0.01)\n"
+        "        finally:\n"
+        "            async def late_cleanup():\n"
+        "                await asyncio.sleep(0.02)\n"
+        "                with log.open('a') as f:\n"
+        "                    f.write(f'cleanup-{run_no}\\n')\n"
+        "            ctx.cleanup(late_cleanup)\n"
+        "    else:\n"
+        "        def clean_two():\n"
+        "            with log.open('a') as f:\n"
+        "                f.write(f'cleanup-{run_no}\\n')\n"
+        "        ctx.cleanup(clean_two)\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'end-{run_no}\\n')\n"
+    )
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await service.set_enabled("lifecycle", True)
+        await service.set_enabled("greeter", True)
+        await until(lambda: (sync_root / "data" / "events.txt").exists())
+        await until(lambda: (async_root / "data" / "events.txt").exists())
+        await service.set_enabled("lifecycle", False)
+        await service.set_enabled("greeter", False)
+        await service.set_enabled("lifecycle", True)
+        await service.set_enabled("greeter", True)
+        sync_gate.write_text("1")
+        async_gate.write_text("1")
+        await service.settled()
+        assert events(sync_root) == [
+            "start-1",
+            "end-1",
+            "cleanup-1",
+            "start-2",
+            "end-2",
+        ]
+        assert events(async_root) == ["start-1", "cleanup-1", "start-2", "end-2"]
+        await service.close()
+
+    asyncio.run(run())
+
+
+def test_a_turn_settled_observer_raising_cancelled_error_does_not_abort_other_observers(
+    tmp_path: Path,
+):
+    install(tmp_path, "lifecycle")
+    install(tmp_path, "greeter")
+    seen: list[str] = []
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await toggle(service, "lifecycle", True)
+        await toggle(service, "greeter", True)
+        ctx1 = service.plugins["greeter"].context
+        ctx2 = service.plugins["lifecycle"].context
+        assert ctx1 is not None and ctx2 is not None
+
+        async def cancelling_observer(session_id: str) -> None:
+            seen.append(f"cancelling:{session_id}")
+            child = asyncio.create_task(asyncio.sleep(3600))
+            child.cancel()
+            await child
+
+        ctx1.on("turn-settled", cancelling_observer)
+        ctx1.on("turn-settled", lambda s: seen.append(f"after:{s}"))
+        ctx2.on("turn-settled", lambda s: seen.append(f"lifecycle:{s}"))
+        await service.turn_settled("s1")
+        await service.turn_settled("s2")
+        assert seen == [
+            "cancelling:s1",
+            "after:s1",
+            "lifecycle:s1",
+            "cancelling:s2",
+            "after:s2",
+            "lifecycle:s2",
+        ]
         await service.close()
 
     asyncio.run(run())

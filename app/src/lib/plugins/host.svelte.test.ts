@@ -326,7 +326,44 @@ test('a_backend_call_from_a_disposed_activation_rejects_and_the_new_activation_s
 	expect(callPlugin).not.toHaveBeenCalled();
 	await expect(contexts[1]!.backend.total!()).resolves.toBe('ok');
 	expect(callPlugin).toHaveBeenCalledOnce();
-	expect(() => contexts[0]!.cleanup(() => {})).toThrow('no longer active');
+	const lateCleanup = vi.fn();
+	contexts[0]!.cleanup(lateCleanup);
+	expect(lateCleanup).toHaveBeenCalledOnce();
+});
+
+test('late_ctx_cleanup_after_disable_runs_and_reenable_waits_for_async_late_cleanup', async () => {
+	const order: string[] = [];
+	let releaseActivate!: () => void;
+	let releaseCleanup!: () => void;
+	let activations = 0;
+	modules.hello = {
+		async activate(ctx) {
+			const number = ++activations;
+			order.push(`activate ${number}`);
+			if (number === 1) {
+				await new Promise<void>((resolve) => (releaseActivate = resolve));
+				ctx.cleanup(async () => {
+					order.push('late-cleanup-start');
+					await new Promise<void>((resolve) => (releaseCleanup = resolve));
+					order.push('late-cleanup-end');
+				});
+			}
+		}
+	};
+	installed = [plugin('hello')];
+	const host = newHost();
+	await host.sync();
+	await vi.waitFor(() => expect(activations).toBe(1));
+	installed = [plugin('hello', { enabled: false, status: 'disabled' })];
+	await host.sync();
+	releaseActivate();
+	await vi.waitFor(() => expect(order).toContain('late-cleanup-start'));
+	installed = [plugin('hello')];
+	await host.sync();
+	expect(activations).toBe(1);
+	releaseCleanup();
+	await host.settled();
+	expect(order).toEqual(['activate 1', 'late-cleanup-start', 'late-cleanup-end', 'activate 2']);
 });
 
 test('a_backend_call_finishing_after_the_activation_ended_rejects_and_is_aborted_with_it', async () => {

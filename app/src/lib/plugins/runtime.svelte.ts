@@ -30,6 +30,7 @@ export class PluginRuntime {
 	revision = $state(0);
 	readonly controller = new AbortController();
 	readonly cleanups: Cleanup[] = [];
+	readonly lateCleanups = new SvelteSet<Promise<void>>();
 	readonly notifications = new SvelteMap<string, Set<(data: unknown) => void | Promise<void>>>();
 	readonly resyncs = new SvelteSet<() => void | Promise<void>>();
 	readonly appEvents = new SvelteMap<
@@ -124,6 +125,23 @@ export class PluginRuntime {
 		return () => listeners.delete(listener);
 	}
 
+	addCleanup(fn: Cleanup): void {
+		if (typeof fn !== 'function') throw new TypeError('A cleanup must be a function');
+		if (!this.controller.signal.aborted) {
+			this.cleanups.push(fn);
+			return;
+		}
+		try {
+			const pending = Promise.resolve(fn()).catch((error) =>
+				console.error(`Plugin ${this.info.id} cleanup failed`, error)
+			);
+			this.lateCleanups.add(pending);
+			void pending.finally(() => this.lateCleanups.delete(pending));
+		} catch (error) {
+			console.error(`Plugin ${this.info.id} cleanup failed`, error);
+		}
+	}
+
 	/** Aborts the plugin's signal and drops everything it registered, at once. */
 	retire(): void {
 		this.controller.abort();
@@ -146,5 +164,6 @@ export class PluginRuntime {
 				console.error(`Plugin ${this.info.id} cleanup failed`, error);
 			}
 		}
+		while (this.lateCleanups.size) await Promise.all([...this.lateCleanups]);
 	}
 }

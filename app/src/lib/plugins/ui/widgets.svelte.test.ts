@@ -141,6 +141,26 @@ test('a_validation_failure_shows_inline_without_saving_and_a_thrown_save_shows_i
 	);
 	await page.getByRole('switch', { name: 'Enabled' }).nth(1).click();
 	await expect.element(page.getByText('Disk full')).toBeVisible();
+
+	const throwingValidate = document.createElement('div');
+	container.append(throwingValidate);
+	const onValidatedChange = vi.fn();
+	pluginUi.mountSettingsRows(
+		throwingValidate,
+		{
+			rows: [
+				toggleRow(onValidatedChange, () => {
+					throw new Error('Validator exploded');
+				})
+			]
+		},
+		options()
+	);
+	await page.getByRole('switch', { name: 'Enabled' }).nth(2).click();
+	await expect
+		.element(page.getByRole('alert').filter({ hasText: 'Validator exploded' }))
+		.toBeVisible();
+	expect(onValidatedChange).not.toHaveBeenCalled();
 });
 
 test('number_rows_refuse_values_outside_their_range', async () => {
@@ -229,6 +249,14 @@ test('invalid_settings_rows_are_rejected_before_mounting', async () => {
 		],
 		[
 			{ key: 'n', type: 'number', label: 'N', value: 1, min: 5, max: 2, onChange: () => {} },
+			'min exceeds max'
+		],
+		[
+			{ key: 'n', type: 'slider', label: 'N', value: 150, min: 150, onChange: () => {} },
+			'min exceeds max'
+		],
+		[
+			{ key: 'n', type: 'slider', label: 'N', value: -10, max: -10, onChange: () => {} },
 			'min exceeds max'
 		],
 		[

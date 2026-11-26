@@ -16,6 +16,7 @@ from pydantic_ai.toolsets import AbstractToolset, CombinedToolset, FunctionTools
 from verstehen.plugins.context import (
     AgentContribution,
     AgentName,
+    Cleanup,
     PluginContext,
     PluginTurnContext,
     Stopped,
@@ -69,6 +70,7 @@ class InstalledPlugin:
     module: ModuleType | None = None
     context: PluginContext | None = None
     worker: asyncio.Task[None] | None = None
+    late_cleanups: set[asyncio.Task[None]] = field(default_factory=set)
     queued: int = 0
     revision: str | None = None
     files: dict[str, tuple[bytes, str]] | None = None
@@ -136,6 +138,7 @@ class PluginService:
                 and not plugin.queued
                 and plugin.revision is None
                 and plugin.worker is None
+                and not plugin.late_cleanups
             ):
                 del self.plugins[plugin_id]
             else:
@@ -181,6 +184,7 @@ class PluginService:
         if known and (
             known.queued
             or known.worker is not None
+            or known.late_cleanups
             or known.revision is not None
             or known.module
             or known.context
@@ -317,6 +321,13 @@ class PluginService:
                     await context.operate(invoke)
                 except Stopped:
                     break
+                except asyncio.CancelledError:
+                    current = asyncio.current_task()
+                    if current and current.cancelling():
+                        raise
+                    logger.exception(
+                        "Plugin %s turn-settled observer cancelled", plugin.info.id
+                    )
                 except Exception:
                     logger.exception(
                         "Plugin %s turn-settled observer failed", plugin.info.id
@@ -371,11 +382,7 @@ class PluginService:
         for plugin in self.plugins.values():
             async with self.lock_for(plugin.info.id):
                 await self.deactivate(plugin)
-                while plugin.worker is not None and not plugin.worker.done():
-                    try:
-                        await asyncio.shield(plugin.worker)
-                    except asyncio.CancelledError:
-                        continue
+                await self.wait_background(plugin)
                 forget_backend(plugin.info.id)
                 plugin.module = None
                 plugin.revision = None
@@ -447,8 +454,7 @@ class PluginService:
             self.activations[plugin.info.id] = task
         context: PluginContext | None = None
         try:
-            if plugin.worker is not None and not plugin.worker.done():
-                await asyncio.shield(plugin.worker)
+            await self.wait_background(plugin)
             if plugin.revision is None:
                 try:
                     manifest, revision, files = await asyncio.to_thread(
@@ -477,6 +483,7 @@ class PluginService:
                 plugin.root / "data",
                 self.plugin_message,
                 asyncio.get_running_loop(),
+                partial(self.schedule_late_cleanup, plugin),
             )
             if manifest.backend:
                 context.data_directory.mkdir(parents=True, exist_ok=True)
@@ -567,9 +574,13 @@ class PluginService:
                         await self.run_late_cleanup(plugin, returned)
                     else:
                         context.cleanup(returned)
+                while context.late_cleanups:
+                    await self.run_late_cleanup(plugin, context.late_cleanups.pop())
             except BaseException as error:
                 outcome.append(error)
             finally:
+                while context.late_cleanups:
+                    await self.run_late_cleanup(plugin, context.late_cleanups.pop())
                 if plugin.worker is current:
                     plugin.worker = None
 
@@ -578,6 +589,30 @@ class PluginService:
         await asyncio.shield(worker)
         if outcome:
             raise outcome[0]
+
+    def schedule_late_cleanup(self, plugin: InstalledPlugin, cleanup: Cleanup) -> None:
+        task = asyncio.create_task(self.run_late_cleanup(plugin, cleanup))
+        plugin.late_cleanups.add(task)
+        self.tasks.add(task)
+        task.add_done_callback(plugin.late_cleanups.discard)
+        task.add_done_callback(self.tasks.discard)
+
+    async def wait_background(self, plugin: InstalledPlugin) -> None:
+        while True:
+            worker = plugin.worker
+            if worker is not None and not worker.done():
+                try:
+                    await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    continue
+                continue
+            pending = [task for task in plugin.late_cleanups if not task.done()]
+            if not pending:
+                break
+            try:
+                await asyncio.shield(asyncio.gather(*pending, return_exceptions=True))
+            except asyncio.CancelledError:
+                continue
 
     async def run_late_cleanup(self, plugin: InstalledPlugin, cleanup: Any) -> None:
         if not callable(cleanup):

@@ -9,23 +9,25 @@
 
 	/** Validates, then saves; the row shows a failure inline and keeps showing the plugin's own value. */
 	async function change(row: SettingsRow, value: boolean | string | number) {
-		const problem = (row.validate as ((value: unknown) => string | undefined) | undefined)?.(value);
-		errors[row.key] = problem;
-		if (problem) return;
-		if (row.type === 'number' || row.type === 'slider') {
-			if (typeof value !== 'number' || !Number.isFinite(value)) {
-				errors[row.key] = 'Enter a number';
-				return;
-			}
-			if (
-				(row.min !== undefined && value < row.min) ||
-				(row.max !== undefined && value > row.max)
-			) {
-				errors[row.key] = `Enter a number from ${row.min ?? '−∞'} to ${row.max ?? '∞'}`;
-				return;
-			}
-		}
 		try {
+			const problem = (row.validate as ((value: unknown) => string | undefined) | undefined)?.(
+				value
+			);
+			errors[row.key] = problem;
+			if (problem) return;
+			if (row.type === 'number' || row.type === 'slider') {
+				if (typeof value !== 'number' || !Number.isFinite(value)) {
+					errors[row.key] = 'Enter a number';
+					return;
+				}
+				if (
+					(row.min !== undefined && value < row.min) ||
+					(row.max !== undefined && value > row.max)
+				) {
+					errors[row.key] = `Enter a number from ${row.min ?? '−∞'} to ${row.max ?? '∞'}`;
+					return;
+				}
+			}
 			const saving = (row.onChange as (value: unknown) => void | Promise<void>)(value);
 			if (saving instanceof Promise) {
 				pending[row.key] = true;

@@ -67,9 +67,11 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   `activate` fails, Refresh detects on-disk edits with `Restart required` and re-enabling never mixes a v1 module
   with v2 frontend bytes). `vendor/` goes on `sys.path` while the plugin runs, then `activate(ctx)` runs: the import
   and a synchronous `activate` run in a host-tracked worker task (`InstalledPlugin.worker`, awaited before any re-enable
-  or shutdown `forget_backend`, and running any late-returned cleanup if cancelled while the thread was running;
-  `ctx.emit` hops back to the loop and re-checks `closed`), an `async` one on the loop (it must not block); a returned
-  function is a cleanup. MCP toolsets are started right after `activate`, so one that cannot start fails the plugin.
+  or shutdown `forget_backend`, and running any late-returned or late-registered `ctx.cleanup` if cancelled while `activate`
+  was running; `ctx.emit` hops back to the loop and re-checks `closed`), an `async` one on the loop (it must not block); a
+  returned function is a cleanup, and a late `ctx.cleanup(fn)` after the context closed runs `fn` immediately as a tracked
+  late cleanup (awaited before re-enabling or shutdown) instead of throwing. MCP toolsets are started right after `activate`,
+  so one that cannot start fails the plugin.
 - **The bridge.** `@ctx.expose` functions are called by `POST /api/plugins/{id}/call/{name}`: JSON
   in (the function's one parameter), JSON out; an error is a 500 `{error}`, a non-JSON result a
   422, a stopped plugin a 409. Synchronous `@ctx.expose` handlers run in a worker thread (`asyncio.to_thread`) inside
@@ -129,7 +131,8 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   registrations immediately, then runs cleanups newest first on that queue. Everything on `ctx`
   is bound to the activation: `ctx.backend` calls carry the activation's signal and reject if the
   activation ended meanwhile (also when the reply arrives late), registrations, `ctx.app` navigation,
-  `onResync` and `ctx.cleanup` from an ended activation throw, and `ctx.ui` widgets are also disposed
+  and `onResync` from an ended activation throw, a late `ctx.cleanup(fn)` runs `fn` right away and is
+  awaited before re-enabling, and `ctx.ui` widgets are also disposed
   when the activation ends. A widget listens to its own signal and the activation's and detaches both
   however it ends (dismissed, disposed, or either signal aborted).
 - **Tool calls in the thread.** A tool call whose name is not a built-in tool (`built-in-tools.ts`,
@@ -179,8 +182,12 @@ after its plugin is removed.
 ## Traps
 
 - **Changed plugin code needs a restart** (the backend module and served public file bytes are
-  pinned on first activation; `main.js` is imported once per window and cached by the browser until
-  reload, and Refresh warns `Restart required` when `dist/` changes on disk).
+  pinned on first activation, and Python backends import directly from `dist/<backend>/` in-process
+  so lazy Python imports read from `dist/` on disk; `main.js` is imported once per window and cached
+  by the browser until reload, and Refresh warns `Restart required` when `dist/` changes on disk).
+- **Shared Python process and `vendor/`.** `backend/vendor/` appends to the shared process `sys.path`
+  and `sys.modules` across plugins while the plugin runs; if two plugins need conflicting versions of
+  a dependency, vendor it under a plugin-private package name.
 - **MCP servers in the packaged app.** `sys.executable` there is the `verstehen` binary, so an MCP
   toolset should run an external command (`npx`, `uvx`, a binary), not a Python script.
 - **Pydantic AI 2.70:** MCP is `pydantic_ai.mcp.MCPToolset` over `fastmcp-slim`; `MCPServerStdio` no
