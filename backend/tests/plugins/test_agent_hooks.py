@@ -295,6 +295,8 @@ def test_every_built_in_tool_name_is_reserved():
         plan_tool(lambda tree: None),
         show_image_tool(settings, Path(".")),
     )
+    from verstehen.graph.context import MAX_GRAPH_CONTEXT_PICKS
+
     chat_built_ins = chat_tools(
         settings_store=settings,
         data_dir=Path("."),
@@ -306,6 +308,7 @@ def test_every_built_in_tool_name_is_reserved():
         derive_graph=Mock(),
         read_accounts_status=Mock(),
         read_search_keys_status=Mock(),
+        max_proposition_picks=MAX_GRAPH_CONTEXT_PICKS,
     )
     agents = (
         [

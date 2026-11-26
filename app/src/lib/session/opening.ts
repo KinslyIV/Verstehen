@@ -30,6 +30,16 @@ export function readOpening(
 	}
 }
 
+export function clearOpeningNotice(id: string): void {
+	const current = readOpening(id);
+	if (!current?.notice) return;
+	try {
+		stashOpening(id, current.text, current.attempted);
+	} catch {
+		return;
+	}
+}
+
 /** A session still awaits its opening message when it holds nothing but a graph-context marker. */
 export function awaitsOpening(entries: Entry[]): boolean {
 	return entries.every((entry) => entry.kind === 'marker' && entry.marker_type === 'graph-context');

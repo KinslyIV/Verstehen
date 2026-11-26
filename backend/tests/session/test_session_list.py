@@ -403,3 +403,30 @@ def test_creating_into_a_deleted_folder_leaves_no_session_and_a_readable_directo
         assert refused.status_code == 400
         assert client.get("/api/sessions").json()["sessions"] == []
         assert client.get("/api/graph/sources").status_code == 200
+
+
+def test_create_session_is_idempotent_for_client_request_id(tmp_path: Path):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        refused = client.post(
+            "/api/sessions",
+            json={
+                "title": "Missing folder",
+                "folder_id": "folder_missing",
+                "client_request_id": "req-missing",
+            },
+        )
+        assert refused.status_code == 400
+
+        first = client.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        second = client.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["id"] == second.json()["id"]
+        assert len(client.get("/api/sessions").json()["sessions"]) == 1

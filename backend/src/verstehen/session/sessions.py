@@ -1,4 +1,5 @@
 import asyncio
+from collections import OrderedDict
 from collections.abc import AsyncGenerator
 from contextlib import aclosing
 from dataclasses import dataclass
@@ -82,6 +83,8 @@ class SessionService:
         self.side_chat_service = side_chat_service
         self.extraction_service = extraction_service
         self.graph_store = graph_store
+        self._create_requests: OrderedDict[str, str] = OrderedDict()
+        self._create_locks: dict[str, asyncio.Lock] = {}
 
     async def list(self) -> List[ListedSession]:
         sessions = await self.sessions_store.list()
@@ -118,6 +121,40 @@ class SessionService:
         return scan_problem(entries).problem is not None
 
     async def create(
+        self,
+        title: str | None,
+        pick: ModelPick | None = None,
+        graph_context: GraphContext | None = None,
+        kind: SessionKind = "teach",
+        folder_id: str | None = None,
+        client_request_id: str | None = None,
+    ) -> Session | Refused:
+        request_id = client_request_id.strip() if client_request_id else None
+        if not request_id:
+            return await self._create_once(title, pick, graph_context, kind, folder_id)
+        lock = self._create_locks.setdefault(request_id, asyncio.Lock())
+        try:
+            async with lock:
+                existing_id = self._create_requests.get(request_id)
+                if existing_id is not None:
+                    existing = await self.sessions_store.get(existing_id)
+                    if existing is not None:
+                        self._create_requests.move_to_end(request_id)
+                        return existing
+                result = await self._create_once(
+                    title, pick, graph_context, kind, folder_id
+                )
+                if isinstance(result, Session):
+                    self._create_requests[request_id] = result.id
+                    self._create_requests.move_to_end(request_id)
+                    while len(self._create_requests) > 256:
+                        self._create_requests.popitem(last=False)
+                return result
+        finally:
+            if self._create_locks.get(request_id) is lock and not lock.locked():
+                del self._create_locks[request_id]
+
+    async def _create_once(
         self,
         title: str | None,
         pick: ModelPick | None = None,

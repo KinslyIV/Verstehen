@@ -2118,6 +2118,8 @@ export interface components {
 			graph_context?: components['schemas']['GraphContext'] | null;
 			/** Folder Id */
 			folder_id?: string | null;
+			/** Client Request Id */
+			client_request_id?: string | null;
 		};
 		/** NodeDeleted */
 		NodeDeleted: {

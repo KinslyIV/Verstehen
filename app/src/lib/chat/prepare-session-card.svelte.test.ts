@@ -3,7 +3,7 @@ import { render } from 'vitest-browser-svelte';
 import * as api from '#lib/api/client.js';
 import { models } from '#lib/models/catalog.svelte.js';
 import { testCatalog, testSettings } from '#lib/models/test-fixtures.js';
-import { readOpening } from '#lib/session/opening.js';
+import { clearOpeningNotice, readOpening, stashOpening } from '#lib/session/opening.js';
 import PrepareSessionCard from './prepare-session-card.svelte';
 
 const navigated = vi.hoisted(() => ({ hrefs: [] as string[] }));
@@ -82,7 +82,8 @@ test('renders_teach_card_metadata_and_starts_a_new_teaching_session_with_folder_
 		null,
 		{ propositions },
 		'teach',
-		'f_calc'
+		'f_calc',
+		expect.any(String)
 	);
 	expect(readOpening('s_teach_1')).toEqual({
 		text: 'Help me connect secant slopes to derivatives.',
@@ -118,15 +119,20 @@ test('renders_practice_card_and_falls_back_to_top_level_when_the_folder_was_dele
 		null,
 		undefined,
 		'practice',
-		'f_gone'
+		'f_gone',
+		expect.any(String)
 	]);
 	expect(vi.mocked(api.createSession).mock.calls[1]).toEqual([
 		'Drill me on the chain rule.',
 		null,
 		undefined,
 		'practice',
-		undefined
+		undefined,
+		expect.any(String)
 	]);
+	expect(vi.mocked(api.createSession).mock.calls[0]?.[5]).not.toBe(
+		vi.mocked(api.createSession).mock.calls[1]?.[5]
+	);
 	await expect
 		.element(screen.getByTestId('prepare-session-folder-note'))
 		.toHaveTextContent('Folder no longer exists. Started at the top level instead.');
@@ -174,7 +180,19 @@ test('does_not_show_deleted_folder_notice_when_fallback_creation_fails_and_retri
 	await startBtn.click();
 	await expect.poll(() => navigated.hrefs.length).toBe(1);
 	expect(vi.mocked(api.createSession).mock.calls.length).toBe(4);
+	expect(vi.mocked(api.createSession).mock.calls[0]?.[5]).toBe(
+		vi.mocked(api.createSession).mock.calls[2]?.[5]
+	);
+	expect(vi.mocked(api.createSession).mock.calls[1]?.[5]).toBe(
+		vi.mocked(api.createSession).mock.calls[3]?.[5]
+	);
 	expect(navigated.hrefs).toEqual(['/session/s_retry_1']);
+});
+
+test('clearOpeningNotice_removes_the_stored_notice_without_losing_the_opening_prompt', () => {
+	stashOpening('s_notice', 'Start here', true, 'Folder no longer exists.');
+	clearOpeningNotice('s_notice');
+	expect(readOpening('s_notice')).toEqual({ text: 'Start here', attempted: true });
 });
 
 test('shows_an_inline_error_when_session_creation_fails', async () => {

@@ -9,6 +9,7 @@
 	import {
 		OPENING_FAILURE,
 		awaitsOpening,
+		clearOpeningNotice,
 		readOpening,
 		stashOpening
 	} from '#lib/session/opening.js';
@@ -509,7 +510,16 @@
 					class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 pb-1 text-xs text-muted-foreground max-md:px-4"
 				>
 					<span>{folderNotice}</span>
-					<Button variant="ghost" size="xs" onclick={() => (folderNotice = null)}>Dismiss</Button>
+					<Button
+						variant="ghost"
+						size="xs"
+						onclick={() => {
+							folderNotice = null;
+							clearOpeningNotice(id);
+						}}
+					>
+						Dismiss
+					</Button>
 				</div>{/if}
 			{#if controller.error}<div
 					role="alert"

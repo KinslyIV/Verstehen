@@ -637,18 +637,24 @@ def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Pa
             calls(
                 ("read_session", {"session_id": "s_quotes"}, "rq1"),
                 ("read_session", {"session_id": "s_b64"}, "rq2"),
+                ("read_session", {"session_id": "s_long_title"}, "rq3"),
             ),
             "Done.",
         )
         async with turn_service_context(tmp_path, model) as (service, _):
             s1 = await service.sessions_store.create("Quotes", kind="teach")
             s2 = await service.sessions_store.create("Base64", kind="teach")
+            s3 = await service.sessions_store.create("T", kind="teach")
             async with service.sessions_store.database.transaction() as conn:
                 await conn.execute(
                     "UPDATE sessions SET id = 's_quotes' WHERE id = ?", (s1.id,)
                 )
                 await conn.execute(
                     "UPDATE sessions SET id = 's_b64' WHERE id = ?", (s2.id,)
+                )
+                await conn.execute(
+                    "UPDATE sessions SET id = 's_long_title', title = ? WHERE id = ?",
+                    ("T" * 24_000, s3.id),
                 )
             await service.entries_store.append(
                 "s_quotes",
@@ -659,7 +665,10 @@ def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Pa
                 "s_b64",
                 [
                     UserEntry(
-                        text=f"Look at ![diagram](data:image/png;base64,{fake_b64}) please."
+                        text=(
+                            f"Look at ![diagram](data:image/png;base64,{fake_b64}) "
+                            f"and data:text/plain;charset=utf-8;base64,{fake_b64} please."
+                        )
                     )
                 ],
             )
@@ -678,8 +687,100 @@ def test_read_session_caps_escaped_json_and_strips_base64_data_urls(tmp_path: Pa
             assert not results["rq2"].is_error
             b64_data = json.loads(results["rq2"].text)
             item_text = b64_data["items"][0]["text"]
-            assert "[base64 data URL omitted]" in item_text
+            assert item_text.count("[base64 data URL omitted]") == 2
             assert fake_b64 not in item_text
+
+            assert not results["rq3"].is_error
+            assert len(results["rq3"].text) <= 24_000
+            t_data = json.loads(results["rq3"].text)
+            assert t_data["title"].endswith("…")
+
+    asyncio.run(scenario())
+
+
+def test_read_session_omits_rejected_tool_calls_and_failed_open_questions(
+    tmp_path: Path,
+):
+    async def scenario():
+        model, _ = scripted_stream(
+            calls(("read_session", {"session_id": "s_rej"}, "r_rej")),
+            "Checked.",
+        )
+        async with turn_service_context(tmp_path, model) as (service, _):
+            s = await service.sessions_store.create("Rejected", kind="teach")
+            async with service.sessions_store.database.transaction() as conn:
+                await conn.execute(
+                    "UPDATE sessions SET id = 's_rej' WHERE id = ?", (s.id,)
+                )
+            await service.entries_store.append(
+                "s_rej",
+                [
+                    AssistantEntry(
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="prep_err",
+                                tool_name="prepare_session",
+                                arguments={
+                                    "kind": "teach",
+                                    "opening_prompt": "Rejected card prompt",
+                                },
+                            ),
+                            ToolCallPart(
+                                tool_call_id="prob_err",
+                                tool_name="problem",
+                                arguments={"statement": "Rejected problem"},
+                            ),
+                            ToolCallPart(
+                                tool_call_id="conc_err",
+                                tool_name="conclude",
+                                arguments={"outcome": "solved", "verdict": "Rejected"},
+                            ),
+                        ]
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="prep_err",
+                        tool_name="prepare_session",
+                        text="Unknown folder_id",
+                        is_error=True,
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="prob_err",
+                        tool_name="problem",
+                        text="Invalid problem",
+                        is_error=True,
+                    ),
+                    ToolResultEntry(
+                        tool_call_id="conc_err",
+                        tool_name="conclude",
+                        text="No active problem",
+                        is_error=True,
+                    ),
+                    AssistantEntry(
+                        parts=[
+                            ToolCallPart(
+                                tool_call_id="q_aborted",
+                                tool_name="probe",
+                                arguments={
+                                    "question": "Aborted question?",
+                                    "options": [
+                                        {"label": "A", "value": "a"},
+                                        {"label": "B", "value": "b"},
+                                    ],
+                                    "correctAnswer": "a",
+                                },
+                            ),
+                        ],
+                        stop_reason="aborted",
+                    ),
+                ],
+            )
+            sid = await chat_session(service)
+            await run_turn(service, sid, TurnInput(type="text", text="Read rejected"))
+            entries = await service.entries_store.list(sid)
+            res = next(e for e in entries if isinstance(e, ToolResultEntry))
+            assert not res.is_error
+            data = json.loads(res.text)
+            assert data["total"] == 0
 
     asyncio.run(scenario())
 
@@ -708,6 +809,15 @@ def test_prepare_session_validates_inputs_streams_details_and_writes_no_session(
                     },
                     "p_bad_node",
                 ),
+                (
+                    "prepare_session",
+                    {
+                        "kind": "teach",
+                        "opening_prompt": "Name should not match",
+                        "proposition_ids": ["Chain rule"],
+                    },
+                    "p_name_rejected",
+                ),
             ),
             calls(
                 (
@@ -717,7 +827,7 @@ def test_prepare_session_validates_inputs_streams_details_and_writes_no_session(
                         "title": "Eigenvectors",
                         "opening_prompt": "Teach me eigenvectors from linear maps",
                         "folder_id": "f_math",
-                        "proposition_ids": ["Chain rule"],
+                        "proposition_ids": ["n_chain"],
                     },
                     "p_ok",
                 ),
@@ -758,6 +868,8 @@ def test_prepare_session_validates_inputs_streams_details_and_writes_no_session(
             assert "Unknown folder_id" in results["p_bad_folder"].text
             assert results["p_bad_node"].is_error
             assert "Unknown proposition_ids" in results["p_bad_node"].text
+            assert results["p_name_rejected"].is_error
+            assert "Unknown proposition_ids" in results["p_name_rejected"].text
 
             ok = results["p_ok"]
             assert not ok.is_error

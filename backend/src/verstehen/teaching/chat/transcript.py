@@ -18,13 +18,15 @@ from verstehen.teaching.practice.schemas import (
 )
 from verstehen.teaching.prose import failed_output_call_ids, teacher_prose
 from verstehen.teaching.questions.inputs import QuestionAnswer
+from verstehen.teaching.questions.pending import question_calls_of
 from verstehen.teaching.questions.validation import QUESTION_SCHEMAS, parse_json
 
 DEFAULT_TRANSCRIPT_LIMIT = 30
 MAX_TRANSCRIPT_LIMIT = 50
 MAX_TRANSCRIPT_CHARS = 24_000
+MAX_TRANSCRIPT_TITLE_CHARS = 500
 BASE64_DATA_URL_RE = re.compile(
-    r"data:[^\s,;\"')>\]]*;base64,[A-Za-z0-9+/=_-]+",
+    r"data:[^\s,\"')>\]]*;base64,[A-Za-z0-9+/=_-]+",
     re.IGNORECASE,
 )
 
@@ -79,14 +81,18 @@ def _format_question_answer(result: ToolResultEntry) -> str | None:
 
 
 def _extract_readable_items(entries: Sequence[Entry]) -> list[str]:
-    answered_calls: set[str] = set()
+    succeeded_calls: set[str] = set()
     plan_trees: dict[str, PlanTree] = {}
     failed_outputs = failed_output_call_ids(entries)
+    answerable_questions = {
+        call.part.tool_call_id
+        for call in question_calls_of(entries)
+        if call.status == "answerable"
+    }
     for entry in entries:
         if isinstance(entry, ToolResultEntry) and not entry.is_error:
-            if entry.tool_name in QUESTION_SCHEMAS:
-                answered_calls.add(entry.tool_call_id)
-            elif (tree := result_tree(entry)) is not None:
+            succeeded_calls.add(entry.tool_call_id)
+            if (tree := result_tree(entry)) is not None:
                 plan_trees[entry.tool_call_id] = tree
 
     items: list[str] = []
@@ -108,27 +114,39 @@ def _extract_readable_items(entries: Sequence[Entry]) -> list[str]:
                     tree = plan_trees.pop(part.tool_call_id, None)
                     if tree is not None and (plan_line := _format_plan(tree)):
                         blocks.append(plan_line)
-                elif part.tool_name == "probe_done":
+                elif (
+                    part.tool_name == "probe_done"
+                    and part.tool_call_id in succeeded_calls
+                ):
                     summary = args.get("summary")
                     if isinstance(summary, str) and summary.strip():
                         blocks.append(f"[PROBE CONCLUDED] {summary.strip()}")
                     else:
                         blocks.append("[PROBE CONCLUDED]")
-                elif part.tool_name == PRACTICE_PROBLEM_TOOL:
+                elif (
+                    part.tool_name == PRACTICE_PROBLEM_TOOL
+                    and part.tool_call_id in succeeded_calls
+                ):
                     stmt = args.get("statement")
                     if isinstance(stmt, str) and stmt.strip():
                         blocks.append(f"[PROBLEM] {stmt.strip()}")
-                elif part.tool_name == PRACTICE_CONCLUDE_TOOL:
+                elif (
+                    part.tool_name == PRACTICE_CONCLUDE_TOOL
+                    and part.tool_call_id in succeeded_calls
+                ):
                     outcome = args.get("outcome", "")
                     verdict = args.get("verdict", "")
                     blocks.append(f"[CONCLUDED ({outcome})] {verdict}".strip())
-                elif part.tool_name == "prepare_session":
+                elif (
+                    part.tool_name == "prepare_session"
+                    and part.tool_call_id in succeeded_calls
+                ):
                     kind = args.get("kind", "teach")
                     prompt = args.get("opening_prompt", "")
                     blocks.append(f"[PREPARED SESSION ({kind})] {prompt}".strip())
                 elif (
                     part.tool_name in QUESTION_SCHEMAS
-                    and part.tool_call_id not in answered_calls
+                    and part.tool_call_id in answerable_questions
                 ):
                     q = args.get("question")
                     if isinstance(q, str) and q.strip():
@@ -210,15 +228,19 @@ def format_session_transcript(
     truncated_item = False
     index = start
     end = min(total, start + clamped_limit)
+    safe_title = _strip_data_urls(title)
+    if len(safe_title) > MAX_TRANSCRIPT_TITLE_CHARS:
+        safe_title = safe_title[: MAX_TRANSCRIPT_TITLE_CHARS - 1] + "…"
 
-    def render(
+    def render_with_title(
+        candidate_title: str,
         candidate_page: list[dict[str, object]],
         next_idx: int,
         was_truncated: bool,
     ) -> str:
         return _serialize_transcript(
             session_id=session_id,
-            title=title,
+            title=candidate_title,
             kind=kind,
             total=total,
             offset=start,
@@ -227,6 +249,26 @@ def format_session_transcript(
             truncated=was_truncated or (next_idx < end),
             page=candidate_page,
         )
+
+    if len(render_with_title(safe_title, [], start, True)) > max_chars:
+        low, high = 0, len(safe_title)
+        while low < high:
+            mid = (low + high + 1) // 2
+            trial_title = (
+                (safe_title[:mid] + "…") if mid < len(safe_title) else safe_title
+            )
+            if len(render_with_title(trial_title, [], start, True)) <= max_chars:
+                low = mid
+            else:
+                high = mid - 1
+        safe_title = (safe_title[:low] + "…") if low > 0 else ""
+
+    def render(
+        candidate_page: list[dict[str, object]],
+        next_idx: int,
+        was_truncated: bool,
+    ) -> str:
+        return render_with_title(safe_title, candidate_page, next_idx, was_truncated)
 
     while index < end:
         text = items[index]

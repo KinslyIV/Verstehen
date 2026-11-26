@@ -124,9 +124,12 @@ test('chat-session', async ({ page, request, seedGraph, allowTeardownAborts }) =
 	await page.getByRole('button', { name: 'Toggle Sidebar' }).click();
 	const filterGroup = page.getByTestId('session-kind-filter');
 	await expect(filterGroup).toBeVisible();
-	const filterBox = (await filterGroup.boundingBox())!;
-	expect(filterBox.x).toBeGreaterThanOrEqual(0);
-	expect(filterBox.x + filterBox.width).toBeLessThanOrEqual(360);
+	await expect
+		.poll(async () => {
+			const box = await filterGroup.boundingBox();
+			return box ? box.x >= 0 && box.x + box.width <= 360 : false;
+		})
+		.toBe(true);
 	await page.screenshot({
 		path: test.info().outputPath('phone-sidebar-filter.png'),
 		animations: 'disabled'

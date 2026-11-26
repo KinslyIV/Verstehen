@@ -131,7 +131,7 @@ def chat_tools(
     derive_graph: Callable[[GraphLedger], tuple[list[GraphNode], list[GraphChain]]],
     read_accounts_status: Callable[[], Awaitable[Sequence[ChatAccountStatus]]],
     read_search_keys_status: Callable[[], Awaitable[ChatSearchKeysStatus]],
-    max_proposition_picks: int = 64,
+    max_proposition_picks: int,
 ) -> tuple[Tool[None], ...]:
     """Build the 9 read-only inspection and session-preparation tools for the Chat agent."""
 
@@ -648,12 +648,12 @@ def chat_tools(
             seen_ids: set[str] = set()
             unknown: list[str] = []
             for raw_id in proposition_ids:
-                tid = resolve_target_id(raw_id, nodes)
-                if tid is None:
+                clean_id = raw_id.strip()
+                n = nodes_by_id.get(clean_id)
+                if n is None:
                     unknown.append(raw_id)
-                elif tid not in seen_ids:
-                    seen_ids.add(tid)
-                    n = nodes_by_id[tid]
+                elif n.id not in seen_ids:
+                    seen_ids.add(n.id)
                     resolved_props.append(
                         PreparedProposition(id=n.id, name=n.name, statement=n.statement)
                     )

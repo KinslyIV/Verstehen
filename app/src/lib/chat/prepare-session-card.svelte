@@ -57,6 +57,7 @@
 	let error = $state<string | null>(null);
 	let folderNote = $state<string | null>(null);
 	let created: { callId: string; id: string; note: string | null } | undefined;
+	let requestIds: { callId: string; primary: string; fallback: string } | undefined;
 
 	async function start() {
 		if (!openingPrompt || busy) return;
@@ -70,15 +71,36 @@
 				return;
 			}
 			if (created?.callId !== result.tool_call_id) {
+				if (requestIds?.callId !== result.tool_call_id) {
+					requestIds = {
+						callId: result.tool_call_id,
+						primary: crypto.randomUUID(),
+						fallback: crypto.randomUUID()
+					};
+				}
 				const sessionTitle = title ?? openingPrompt;
 				const graphContext = propositions.length ? { propositions } : undefined;
 				let res: { id: string };
 				let fallbackNote: string | null = null;
 				try {
-					res = await createSession(sessionTitle, null, graphContext, kind, folderId);
+					res = await createSession(
+						sessionTitle,
+						null,
+						graphContext,
+						kind,
+						folderId,
+						requestIds.primary
+					);
 				} catch (cause) {
 					if (cause instanceof ApiError && cause.status === 400 && folderId) {
-						res = await createSession(sessionTitle, null, graphContext, kind, undefined);
+						res = await createSession(
+							sessionTitle,
+							null,
+							graphContext,
+							kind,
+							undefined,
+							requestIds.fallback
+						);
 						fallbackNote = `${cause.message} Started at the top level instead.`;
 					} else {
 						throw cause;
