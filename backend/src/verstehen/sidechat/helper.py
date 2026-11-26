@@ -21,26 +21,23 @@ from verstehen.providers.fake import script_role
 from verstehen.providers.resolve import ResolvedModel
 from verstehen.sidechat.turns import SideModelTurn
 from verstehen.store.settings import SettingsStore
-from verstehen.teaching.prompts import PROMPTS_DIR, fragment_text, join_fragments
-
-SHARED_FRAGMENTS = (
-    "shared/10-voice.md",
-    "shared/15-accuracy.md",
-    "shared/40-formatting.md",
+from verstehen.teaching.prompts import (
+    fragment_text,
+    join_fragments,
+    side_chat_segment_keys,
 )
 
 
 async def compose_side_chat_instructions(
-    settings_store: SettingsStore, data_dir: Path
+    settings_store: SettingsStore,
+    data_dir: Path,
+    edit_lock: asyncio.Lock | None = None,
 ) -> str:
-    switches = await settings_store.get("agent.prompts")
-    keys = ("side-chat/00-base.md", *SHARED_FRAGMENTS, "side-chat/90-style.md")
-    return join_fragments(
-        PROMPTS_DIR.joinpath(key).read_text(encoding="utf-8")
-        if key not in SHARED_FRAGMENTS
-        else fragment_text(key, switches, data_dir)
-        for key in keys
-    )
+    async with edit_lock or asyncio.Lock():
+        switches = await settings_store.get("agent.prompts")
+        return join_fragments(
+            fragment_text(key, switches, data_dir) for key in side_chat_segment_keys()
+        )
 
 
 class SideAnswerModel(WrapperModel):

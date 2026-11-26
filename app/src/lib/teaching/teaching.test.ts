@@ -195,6 +195,35 @@ test('problem_and_conclude_calls_pair_with_their_clean_results', () => {
 	]);
 });
 
+test('prepare_session_emits_a_prepared_session_card_on_clean_result_and_retries_on_error', () => {
+	const entry = call('prepare_session', {
+		kind: 'teach',
+		opening_prompt: 'Teach me limits.'
+	});
+	const prepared = {
+		...result,
+		tool_call_id: 'prepare_session',
+		tool_name: 'prepare_session',
+		text: 'Launch card prepared.',
+		details: {
+			kind: 'teach',
+			title: 'Limits',
+			opening_prompt: 'Teach me limits.',
+			folder_id: null,
+			folder_name: null,
+			propositions: []
+		}
+	};
+	expect(responseProse(entry, new Map([['prepare_session', prepared]]), false)).toEqual([
+		{ kind: 'prepared-session', result: prepared }
+	]);
+	expect(responseProse(entry, undefined, true)).toEqual([]);
+	const failed = { ...prepared, is_error: true, text: 'Unknown folder_id' };
+	expect(responseProse(entry, new Map([['prepare_session', failed]]), false)).toEqual([
+		{ kind: 'tool-retry' }
+	]);
+});
+
 test('file_access_composes_the_switch_and_folder_list_independently', () => {
 	expect(isFileAccessFolder('relative')).toBe(false);
 	expect(isFileAccessFolder('/tmp/\0')).toBe(false);

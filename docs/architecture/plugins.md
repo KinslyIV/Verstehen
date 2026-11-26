@@ -80,8 +80,8 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   the frontend's `onNotification(topic, fn)` hears only its own plugin's. `NotificationBridge`
   mounts in the root layout (`routes/+layout.svelte`, gated off `/pair` in remote mode) so one
   persistent stream serves lessons, graph, plugin views, and `/settings`. `onResync` fires only
-  when that stream reconnects after a drop. `ctx.on("turn-settled", fn)` observers run after a turn
-  is saved, fenced inside `context.operate` (with sync observers in a worker thread) so disabling cancels
+  when that stream reconnects after a drop. `ctx.on("turn-settled", fn)` observers run after a teaching or practice turn
+  is saved (skipped when `event.kind == "chat"` on both backend and frontend), fenced inside `context.operate` (with sync observers in a worker thread) so disabling cancels
   an observer in flight and skips remaining observers; the frontend's `onAppEvent("turn-settled", fn)` follows the same notification (sync and async listener errors on `onNotification`, `onResync`, and `onAppEvent` are caught and logged).
 - **Agent hooks** (`PluginService.toolset_for(agent, session_id)`, called by `build_agent` once per
   turn for the agent that turn runs, `None` when no plugin registered anything for it). Targets:
@@ -193,8 +193,10 @@ after its plugin is removed.
 - **Pydantic AI 2.70:** MCP is `pydantic_ai.mcp.MCPToolset` over `fastmcp-slim`; `MCPServerStdio` no
   longer exists. PyInstaller does not see `mcp`/`fastmcp` imports, so `verstehen.spec` collects
   them while excluding `mcp.cli` (whose `cli.py` calls `sys.exit(1)` without optional `typer`).
-- **`practice` means the practitioner;** a session's `kind` is `teach|practice` in the API but
-  `teaching|practice` in plugin placements, as in LearnHarness.
+- **`practice` means the practitioner;** a session's `kind` is `teach|practice|chat` in the API,
+  `teaching|practice` in plugin placements (`chat` sessions pass `topBarSurface = undefined` and
+  never run plugin hooks), as in LearnHarness. All 9 built-in Chat tools are listed in
+  `plugins/reserved.py` and `built-in-tools.ts`.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
 
 ## Tests

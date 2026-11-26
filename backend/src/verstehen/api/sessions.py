@@ -71,6 +71,7 @@ class SessionInput(TitleInput):
 
 class NewSessionInput(SessionInput):
     folder_id: str | None = None
+    client_request_id: str | None = None
 
 
 class SessionItem(BaseModel):
@@ -182,6 +183,7 @@ async def create_session(
         body.graph_context,
         kind=body.kind,
         folder_id=body.folder_id,
+        client_request_id=body.client_request_id,
     )
     if isinstance(session, Refused):
         return JSONResponse(session.reason, status_code=session.status)

@@ -107,6 +107,7 @@ def test_compaction_and_side_answers_are_turns_but_titles_and_workers_are_not():
             call("w#1", 4, role="researcher"),
             call("e#1", 5, role="extractor"),
             call("p#1", 6, role="practice"),
+            call("c#1", 7, role="chat"),
         ]
     )
     assert [turn.role for turn in result.turns] == [
@@ -114,6 +115,7 @@ def test_compaction_and_side_answers_are_turns_but_titles_and_workers_are_not():
         "compaction",
         "sideQuestion",
         "practice",
+        "chat",
     ]
 
 

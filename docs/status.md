@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-26 (`faster-session-open` branch ready for review).
+> PRs. Last update: 2026-11-26 (General Chat agent).
 
 ## Where we are
 
@@ -72,11 +72,20 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   documented in-process Python / `vendor/` limits), and 6 (toolset resolver cancellation boundary,
   late backend cleanup failure capture during teardown, and frontend retiring-runtime drain across
   module load) are committed; see [plugin authoring](plugin-authoring.md).
-- **Faster lesson opening** (branch `faster-session-open`, not yet merged): a lesson renders its
+- **Faster lesson opening** (PR #33): a lesson renders its
   newest 12 rows' content first and older rows' content in batches; first paint of the
   imported "Learning SIFT" session fell from ~790 ms to ~325 ms on Pixal.
+- **General Chat agent** (branch `t3/general-chat-agent`, PR #34 into `dev`;
+  [plan](plans/chat-agent.md)): third session kind (`kind = "chat"`, **Chat**), migration
+  `0011_chat_sessions.sql` (widening `sessions.kind` and adding atomic `session_create_requests`),
+  `teaching/chat/` with 8 read-only inspection tools (prompts including `side-chat/` override
+  wiring, non-secret settings/account/search-key status, sessions/folders, canonical graph
+  nodes/chains, paginated base64-scrubbed transcripts, and bundled `guide.md`) plus
+  `prepare_session` streaming a 1-click `PrepareSessionCard` with idempotent launch retries,
+  learner-file tools and `research`/`pdf` jobs, 4-way sidebar filter, `/session/new?mode=chat`,
+  **Settings → Prompts** `Chat` section, graph/plugin exclusions, and `chat-session.flow.ts`.
 - **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
-  frontend Vitest, and 74 scripted Playwright flows. Live Claude verification (`make verify-live`)
+  frontend Vitest, and 75 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.
 
 ## Next
@@ -96,8 +105,8 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 3. Review the pending [implementation decisions](decisions.md#waiting-for-your-review).
 4. Continue M11 (remaining [LH catch-up list](roadmap.md#lh-catch-up), activity dock, themes,
    later providers) and open [known gaps](roadmap.md#known-gaps).
-5. Implement the **General Chat agent** ([plan](plans/chat-agent.md), approved 2026-11-26) on Pixal
-   in a new branch off `dev`.
+5. Review and merge the **General Chat agent** PR (`t3/general-chat-agent` → `dev`; delete
+   [plan](plans/chat-agent.md) on merge).
 
 ## Open questions
 

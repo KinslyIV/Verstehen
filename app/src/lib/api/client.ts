@@ -185,12 +185,20 @@ export async function createSession(
 	model?: ModelPick | null,
 	graph_context?: GraphContext,
 	kind: SessionKind = 'teach',
-	folder_id?: string
+	folder_id?: string,
+	client_request_id?: string
 ): Promise<components['schemas']['Created']> {
 	return (
 		await request('/api/sessions', {
 			method: 'POST',
-			body: JSON.stringify({ title, model, graph_context, kind, folder_id })
+			body: JSON.stringify({
+				title,
+				model,
+				graph_context,
+				kind,
+				folder_id,
+				...(client_request_id ? { client_request_id } : {})
+			})
 		})
 	).json();
 }

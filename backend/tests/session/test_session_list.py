@@ -403,3 +403,78 @@ def test_creating_into_a_deleted_folder_leaves_no_session_and_a_readable_directo
         assert refused.status_code == 400
         assert client.get("/api/sessions").json()["sessions"] == []
         assert client.get("/api/graph/sources").status_code == 200
+
+
+def test_create_session_is_idempotent_for_client_request_id(tmp_path: Path):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        refused = client.post(
+            "/api/sessions",
+            json={
+                "title": "Missing folder",
+                "folder_id": "folder_missing",
+                "client_request_id": "req-missing",
+            },
+        )
+        assert refused.status_code == 400
+
+        first = client.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        second = client.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert first.json()["id"] == second.json()["id"]
+        assert len(client.get("/api/sessions").json()["sessions"]) == 1
+
+    restarted = create_app(Settings(tmp_path))
+    with TestClient(restarted, base_url="http://localhost") as client2:
+        third = client2.post(
+            "/api/sessions",
+            json={"title": "Calculus", "client_request_id": "req-1"},
+        )
+        assert third.status_code == 200
+        assert third.json()["id"] == first.json()["id"]
+        assert len(client2.get("/api/sessions").json()["sessions"]) == 1
+
+
+def test_create_session_rolls_back_request_id_if_graph_context_append_fails(
+    tmp_path: Path,
+):
+    app = create_app(Settings(tmp_path))
+    with TestClient(app, base_url="http://localhost") as client:
+        service = app.state.session_service
+        original = service.entries_store.append_in_transaction
+        should_fail = True
+
+        async def flaky_append(*args, **kwargs):
+            nonlocal should_fail
+            if should_fail:
+                should_fail = False
+                raise RuntimeError("interrupted mid-transaction")
+            return await original(*args, **kwargs)
+
+        service.entries_store.append_in_transaction = flaky_append
+        payload = {
+            "title": "Calculus",
+            "client_request_id": "req-graph-atomic",
+            "graph_context": {
+                "propositions": [
+                    {"id": "n1", "name": "Slope", "statement": "Rise over run"}
+                ]
+            },
+        }
+        with pytest.raises(RuntimeError, match="interrupted mid-transaction"):
+            client.post("/api/sessions", json=payload)
+
+        assert client.get("/api/sessions").json()["sessions"] == []
+
+        retry = client.post("/api/sessions", json=payload)
+        assert retry.status_code == 200
+        detail = client.get(f"/api/sessions/{retry.json()['id']}").json()
+        assert len(detail["entries"]) == 1
+        assert detail["entries"][0]["marker_type"] == "graph-context"

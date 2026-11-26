@@ -15,27 +15,62 @@ PRACTICE_SHARED_FRAGMENTS = (
     "35-side-conversations.md",
     "40-formatting.md",
 )
+CHAT_SHARED_FRAGMENTS = (
+    "10-voice.md",
+    "15-accuracy.md",
+    "30-learner-files.md",
+    "35-side-conversations.md",
+    "40-formatting.md",
+)
+SIDE_CHAT_FRAGMENTS = (
+    "side-chat/00-base.md",
+    "shared/10-voice.md",
+    "shared/15-accuracy.md",
+    "shared/40-formatting.md",
+    "side-chat/90-style.md",
+)
 
 
-PromptKind = Literal["prober", "teacher", "practice"]
-PROMPT_KINDS: tuple[PromptKind, ...] = ("prober", "teacher", "practice")
+PromptKind = Literal["prober", "teacher", "practice", "chat"]
+PROMPT_KINDS: tuple[PromptKind, ...] = ("prober", "teacher", "practice", "chat")
 
 
 def segment_keys(kind: PromptKind) -> list[str]:
     """The prompt fragment keys an agent composes, in order."""
-    keys = [] if kind == "practice" else ["system-prompt.md"]
+    keys = [] if kind in ("practice", "chat") else ["system-prompt.md"]
     for folder in (kind, "shared"):
         keys.extend(
             f"{folder}/{path.name}"
             for path in sorted((PROMPTS_DIR / folder).iterdir())
             if FRAGMENT_RE.fullmatch(path.name)
             and (
-                kind != "practice"
-                or folder != "shared"
-                or path.name in PRACTICE_SHARED_FRAGMENTS
+                folder != "shared"
+                or (
+                    kind not in ("practice", "chat")
+                    or (kind == "practice" and path.name in PRACTICE_SHARED_FRAGMENTS)
+                    or (kind == "chat" and path.name in CHAT_SHARED_FRAGMENTS)
+                )
             )
         )
     return keys
+
+
+def side_chat_segment_keys() -> list[str]:
+    """The prompt fragment keys the side-chat helper composes, in order."""
+    return list(SIDE_CHAT_FRAGMENTS)
+
+
+def all_segment_agents() -> dict[str, list[str]]:
+    """Every known prompt segment key mapped to the agents that compose it."""
+    agents: dict[str, list[str]] = {}
+    for kind in ("teacher", "prober", "practice", "chat"):
+        for key in segment_keys(kind):
+            agents.setdefault(key, []).append(kind)
+    for key in side_chat_segment_keys():
+        row = agents.setdefault(key, [])
+        if "side-chat" not in row:
+            row.append("side-chat")
+    return agents
 
 
 def is_shared_segment(key: str) -> bool:

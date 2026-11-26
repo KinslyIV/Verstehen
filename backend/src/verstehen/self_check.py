@@ -65,13 +65,24 @@ def check_regex() -> str:
 
 
 def check_prompts() -> str:
-    from verstehen.teaching.prompts import PROMPTS_DIR
+    from verstehen.teaching.prompts import FRAGMENT_RE, PROMPTS_DIR
 
     if not (PROMPTS_DIR / "system-prompt.md").is_file():
         raise RuntimeError("system-prompt.md is missing")
+    if not (PROMPTS_DIR / "chat" / "guide.md").is_file():
+        raise RuntimeError("chat/guide.md is missing")
     counts = {}
-    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
-        counts[directory] = len(list((PROMPTS_DIR / directory).glob("*.md")))
+    for directory in ("prober", "teacher", "shared", "practice", "chat", "side-chat"):
+        folder = PROMPTS_DIR / directory
+        counts[directory] = (
+            sum(
+                1
+                for path in folder.iterdir()
+                if path.is_file() and FRAGMENT_RE.fullmatch(path.name)
+            )
+            if folder.is_dir()
+            else 0
+        )
         if not counts[directory]:
             raise RuntimeError(f"No {directory} prompt fragments are bundled")
     return ", ".join(f"{name} {count}" for name, count in counts.items())

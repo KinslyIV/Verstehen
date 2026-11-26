@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { ArrowRight, Dumbbell, LoaderCircle } from '@lucide/svelte';
+	import { ArrowRight, Dumbbell, LoaderCircle, MessageSquare } from '@lucide/svelte';
 	import * as Scroller from '#lib/components/ui/message-scroller/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
@@ -10,6 +10,7 @@
 	import {
 		OPENING_FAILURE,
 		awaitsOpening,
+		clearOpeningNotice,
 		readOpening,
 		stashOpening
 	} from '#lib/session/opening.js';
@@ -42,6 +43,7 @@
 	import { modelSolutionForConclude, problemInputForConclude } from '#lib/practice/state.js';
 	import { asObject } from '#lib/questions/question-input.js';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
+	import PrepareSessionCard from '#lib/chat/prepare-session-card.svelte';
 	import ToolCallCard from '#lib/teaching/tool-call-card.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
@@ -80,6 +82,7 @@
 	let dockHeight = $state(0);
 	let reserve = $state(0);
 	let reservedFor: string | undefined;
+	let folderNotice = $state<string | null>(null);
 	const dockOwner = $derived(pending?.key ?? controller.activeProblem?.toolCallId);
 
 	/** The transcript's bottom reserve: the dock's tallest height while one question or problem owns it. */
@@ -175,11 +178,12 @@
 		void (async () => {
 			await controller.load();
 			const opening = readOpening(id);
+			if (opening?.notice) folderNotice = opening.notice;
 			if (opening && controller.record && awaitsOpening(controller.entries) && !controller.busy) {
 				controller.draft = opening.text;
 				if (!opening.attempted) {
 					try {
-						stashOpening(id, opening.text, true);
+						stashOpening(id, opening.text, true, opening.notice);
 						await controller.send();
 					} catch {
 						controller.error = OPENING_FAILURE;
@@ -250,6 +254,12 @@
 					class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
 				>
 					<Dumbbell class="size-3" aria-hidden="true" /> Practice
+				</span>{:else if controller.isChat}<span
+					data-testid="phase-chip"
+					data-phase="chat"
+					class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+				>
+					<MessageSquare class="size-3" aria-hidden="true" /> Chat
 				</span>{:else}<span
 					data-testid="phase-chip"
 					data-phase={phase}
@@ -265,6 +275,7 @@
 		</div>{/if}
 	<Scroller.Provider
 		autoScroll={controller.isPractice ||
+			controller.isChat ||
 			controller.questionCalls.length > 0 ||
 			cards.size > 0 ||
 			phase !== 'probe'}
@@ -302,7 +313,7 @@
 										></span>
 									</div>
 								</Scroller.Item>{/if}
-							{#if index === phases.teachAt && !controller.isPractice}<Scroller.Item>
+							{#if index === phases.teachAt && !controller.isPractice && !controller.isChat}<Scroller.Item>
 									<PhaseDivider phase="teach" />
 								</Scroller.Item>{/if}
 							{#if entry.kind === 'user'}
@@ -375,7 +386,7 @@
 										<ArrowRight class="size-3" aria-hidden="true" /> Next problem
 									</p>
 								</Scroller.Item>
-							{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
+							{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display && !controller.isPractice && !controller.isChat}
 								<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
 							{:else if block && entry.kind === 'marker' && entry.display}
 								<Scroller.Item>
@@ -475,6 +486,8 @@
 				/>
 			{:else if item.kind === 'probe'}
 				<ProbeAssessment args={item.args} result={item.result} />
+			{:else if item.kind === 'prepared-session'}
+				<PrepareSessionCard result={item.result} sessionId={id} />
 			{:else if item.kind === 'tool'}
 				<ToolCallCard
 					name={item.name}
@@ -519,6 +532,23 @@
 				aria-hidden="true"
 				class="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-linear-to-t from-background to-transparent"
 			></div>
+			{#if folderNotice}<div
+					role="status"
+					data-testid="session-folder-notice"
+					class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 pb-1 text-xs text-muted-foreground max-md:px-4"
+				>
+					<span>{folderNotice}</span>
+					<Button
+						variant="ghost"
+						size="xs"
+						onclick={() => {
+							folderNotice = null;
+							clearOpeningNotice(id);
+						}}
+					>
+						Dismiss
+					</Button>
+				</div>{/if}
 			{#if controller.error}<div
 					role="alert"
 					class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"

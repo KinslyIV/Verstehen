@@ -14,7 +14,7 @@ from verstehen.store.entries import AssistantEntry, EntriesStore, Entry
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.usage import UsageRecord, UsageStore
 
-TURN_ROLES = ("prober", "teacher", "practice", "compaction", "sideQuestion")
+TURN_ROLES = ("prober", "teacher", "practice", "chat", "compaction", "sideQuestion")
 
 
 class TurnStats(BaseModel):

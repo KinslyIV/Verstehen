@@ -52,7 +52,7 @@
 				{session.title}
 			</Dialog.Description>
 		</Dialog.Header>
-		{#if session.kind === 'practice'}<p class="text-sm text-muted-foreground">
+		{#if session.kind !== 'teach'}<p class="text-sm text-muted-foreground">
 				This permanently removes the session and its background jobs. This cannot be undone.
 			</p>{:else}<p class="text-sm text-muted-foreground">
 				This permanently removes the session — its messages, background jobs, and extraction

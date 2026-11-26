@@ -465,19 +465,27 @@ def test_chains_table_delete_blocks_concurrent_extraction_after_session_delete(
         assert [s["id"] for s in directory["sources"]] == [s2]
 
 
-def test_practice_session_omits_coverage_and_refuses_manual_extraction(tmp_path: Path):
+@pytest.mark.parametrize(
+    ("kind", "expected_error"),
+    [
+        ("practice", "Practice sessions do not run graph extraction"),
+        ("chat", "Chat sessions do not run graph extraction"),
+    ],
+)
+def test_non_teach_session_omits_coverage_and_refuses_manual_extraction(
+    tmp_path: Path, kind: str, expected_error: str
+):
     app = create_app(Settings(tmp_path))
     with TestClient(app, headers={"host": "localhost"}) as client:
-        practice_id = client.post(
-            "/api/sessions", json={"title": "Drill", "kind": "practice"}
+        session_id = client.post(
+            "/api/sessions", json={"title": "Non-teach", "kind": kind}
         ).json()["id"]
-        detail = client.get(f"/api/sessions/{practice_id}").json()
-        assert detail["kind"] == "practice"
+        detail = client.get(f"/api/sessions/{session_id}").json()
+        assert detail["kind"] == kind
         assert detail["coverage"] is None
+        assert client.get(f"/api/sessions/{session_id}/coverage").json() is None
         response = client.post(
-            "/api/graph/coverage/extract", json={"session_id": practice_id}
+            "/api/graph/coverage/extract", json={"session_id": session_id}
         )
         assert response.status_code == 400
-        assert (
-            response.json()["error"] == "Practice sessions do not run graph extraction"
-        )
+        assert response.json()["error"] == expected_error

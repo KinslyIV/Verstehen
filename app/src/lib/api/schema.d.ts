@@ -2113,11 +2113,13 @@ export interface components {
 			 * @default teach
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			model?: components['schemas']['ModelPick'] | null;
 			graph_context?: components['schemas']['GraphContext'] | null;
 			/** Folder Id */
 			folder_id?: string | null;
+			/** Client Request Id */
+			client_request_id?: string | null;
 		};
 		/** NodeDeleted */
 		NodeDeleted: {
@@ -2169,6 +2171,8 @@ export interface components {
 			 * @default
 			 */
 			session_id: string;
+			/** Kind */
+			kind?: ('teach' | 'practice' | 'chat') | null;
 			/** Revision */
 			revision?: number | null;
 			/** Running */
@@ -2379,6 +2383,8 @@ export interface components {
 			teacher: components['schemas']['PromptSegment'][];
 			/** Practice */
 			practice: components['schemas']['PromptSegment'][];
+			/** Chat */
+			chat: components['schemas']['PromptSegment'][];
 		};
 		/** PromptSwitched */
 		PromptSwitched: {
@@ -2738,7 +2744,7 @@ export interface components {
 			 * @default teach
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			/**
 			 * Created At
 			 * Format: date-time
@@ -2787,7 +2793,7 @@ export interface components {
 			 * @default teach
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			model?: components['schemas']['ModelPick'] | null;
 			graph_context?: components['schemas']['GraphContext'] | null;
 		};
@@ -2801,7 +2807,7 @@ export interface components {
 			 * Kind
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			/**
 			 * Updated At
 			 * Format: date-time

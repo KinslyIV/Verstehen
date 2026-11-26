@@ -44,18 +44,21 @@ test('session_delete_with_the_box_checked_removes_the_graph_traces', async () =>
 	expect(deleteSession).toHaveBeenLastCalledWith('s1', 'delete-nodes');
 });
 
-test('a_practice_session_delete_offers_no_graph_traces_and_preserves_the_graph', async () => {
-	vi.mocked(deleteSession).mockReset().mockResolvedValue();
-	const screen = await render(DeleteSessionDialog, {
-		session: { ...session, kind: 'practice' },
-		onclose: vi.fn(),
-		ondeleted: vi.fn()
-	});
-	await expect.element(screen.getByText(TRACES_COPY.title)).not.toBeInTheDocument();
-	await expect.element(screen.getByText(/extraction records/)).not.toBeInTheDocument();
-	await screen.getByRole('button', { name: 'Delete', exact: true }).click();
-	expect(deleteSession).toHaveBeenLastCalledWith('s1', 'preserve-graph');
-});
+test.each(['practice', 'chat'] as const)(
+	'a_%s_session_delete_offers_no_graph_traces_and_preserves_the_graph',
+	async (kind) => {
+		vi.mocked(deleteSession).mockReset().mockResolvedValue();
+		const screen = await render(DeleteSessionDialog, {
+			session: { ...session, kind },
+			onclose: vi.fn(),
+			ondeleted: vi.fn()
+		});
+		await expect.element(screen.getByText(TRACES_COPY.title)).not.toBeInTheDocument();
+		await expect.element(screen.getByText(/extraction records/)).not.toBeInTheDocument();
+		await screen.getByRole('button', { name: 'Delete', exact: true }).click();
+		expect(deleteSession).toHaveBeenLastCalledWith('s1', 'preserve-graph');
+	}
+);
 
 test('session_delete_failure_shows_the_server_line_and_try_again_repeats_the_request', async () => {
 	vi.mocked(deleteSession)

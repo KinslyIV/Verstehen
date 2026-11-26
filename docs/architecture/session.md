@@ -48,9 +48,16 @@ Frontend, `app/src/`:
   prober and teacher. A pending problem dismissal is turned into a synthetic `conclude` pair ahead
   of the next input, projection renders `practice-thinking` and `practice-next` as learner
   messages and skips `problem-dismissed`, and settlement skips extraction.
-- **Create.** `POST /api/sessions` takes `kind`, and optionally `folder_id` (`NewSessionInput`):
-  the new session is placed in that folder in the same call, and an unknown folder answers 400
-  "Folder no longer exists." before anything is created.
+- **Chat sessions** (`kind = "chat"`) run the `chat` role (the strong slot) with the read-only
+  inspection tools, `prepare_session` (in `STREAMED_RESULT_TOOLS` so Launch Card metadata streams
+  live), learner-file tools, and `research`/`pdf` jobs. `TurnService` skips plugin toolsets and
+  probe handoffs for `chat`, `SessionService` reports `coverage = None`, and `turn-settled` carries
+  `kind` so plugin observers ignore Chat turns while sidebar/stats refresh normally.
+- **Create.** `POST /api/sessions` takes `kind`, and optionally `folder_id` and `client_request_id`
+  (`NewSessionInput`): the new session, its folder placement (if any), its `graph-context` marker
+  (if any), and the `session_create_requests` receipt commit in one SQLite transaction. An unknown
+  folder answers 400 "Folder no longer exists." without caching the request id; retrying a
+  committed `client_request_id` returns the existing session without creating a duplicate.
 - **Write-ahead.** The input is saved before inference, so a crash never loses what the learner
   sent. A refusal from `validate`, `model_gate`, or the claim saves nothing; an exception in a
   later stage (for example `build_agent`) returns 500 after the input is already saved.
@@ -104,7 +111,7 @@ fine pointer at 768 px and wider, once there is at least one tick.
 
 `GET /api/sessions/{id}/stats` reads, never writes (404 for an unknown session).
 - **Turns.** One per LH `appendTurnUsage` site, from the usage rows with the roles `prober`,
-  `teacher`, `practice` (a run), `compaction` (the summary, request id = the marker's entry id), and
+  `teacher`, `practice`, `chat` (a run), `compaction` (the summary, request id = the marker's entry id), and
   `sideQuestion` (the answer); titles, workers, and extraction are left out. `TurnRun.id` is
   passed to `UsageModel`, which names each call `<run id>#<n>`, so a run's calls group by the
   prefix (the LearnHarness import already writes `<turn id>#<n>`). A row without `#`, as saved

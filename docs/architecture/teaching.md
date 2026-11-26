@@ -1,6 +1,6 @@
 # Teaching and questions
 
-Owns what the tutor is: the prober, teacher, and practitioner agents, their prompts, the question
+Owns what the tutor is: the prober, teacher, practitioner, and general chat agents, their prompts, the question
 and practice tools and answers, the phase and plan rules, `send_to_user`, the learner-file and image tools, and the
 pure compaction logic. It knows nothing about HTTP or SQLite: it gets what it needs as arguments
 and callbacks from `session/`.
@@ -15,10 +15,11 @@ Backend, `backend/src/verstehen/teaching/`:
 | File | What it holds |
 |---|---|
 | `prober.py`, `teacher.py` | `build_prober` (with `probe_done` and its assessment) and `build_teacher`; both use `build_question_agent` |
-| `prompts.py`, `prompts/` | `segment_keys` (an agent's fragments in order), `compose_instructions`, and shipped/override reading (`source_text`, `read_override`, `fragment_text`, `join_fragments`); LH's prompt tree, copied (`system-prompt.md`, `prober/`, `teacher/`, `shared/`, `side-chat/`, `practice/`) |
+| `prompts.py`, `prompts/` | `segment_keys` (an agent's fragments in order), `compose_instructions`, `side_chat_segment_keys`, `all_segment_agents`, and shipped/override reading (`source_text`, `read_override`, `fragment_text`, `join_fragments`); LH's prompt tree plus `chat/` (`00-base.md`, `10-tools.md`, and unnumbered bundled `guide.md`) |
 | `questions/` | `tools.py` (`QuestionTools`: validation and the retry limit, `defer_question`), `schemas.py`, `validation.py`, `pending.py` (pending detection, dismissal and recovery tails, `needs_continuation`), `inputs.py` (answers, dismissals, recovery, the model-facing compact answer) |
-| `prompts/` | `segments.ts` (segment names, the Teacher/Prober/Practice/Shared sections) and `segment-dialog.svelte` (view default, edit with Markdown or Preview, save and activate, delete, discard confirmation); `components/settings-prompts.svelte` is the Settings section that lists them |
+| `prompts/` | `segments.ts` (segment names, the Teacher/Prober/Practice/Chat/Shared sections) and `segment-dialog.svelte` (view default, edit with Markdown or Preview, save and activate, delete, discard confirmation); `components/settings-prompts.svelte` is the Settings section that lists them |
 | `practice/` | the practitioner: `schemas.py` (`problem` and `conclude` inputs, ack texts), `healing.py` (weak-model argument healing, target id resolution against the whole graph), `state.py` (derived folds: active problem, pending dismissal, model solution), `tools.py` (`PracticeGate`, both tools, `build_practitioner`) |
+| `chat/` | the general chat agent: `agent.py` (`build_chat`, `ConversationToolErrors`), `tools.py` (`chat_tools`: 8 read-only inspection tools + `prepare_session` using injected readers and the shared `MAX_GRAPH_CONTEXT_PICKS` limit), `schemas.py` (`PrepareSessionPayload`), `transcript.py` (`format_session_transcript` with serialized JSON char cap and base64 scrubbing) |
 | `phases.py` | `has_probe_done`, `phase_at`, `handoff_owed`, tagged plan nodes |
 | `handoff.py` | `HANDOFF_TEXT`, the probe-handoff marker's model text |
 | `plan/` | `plan_init` (`tool.py`), the tree and statuses (`tree.py`), Mermaid parsing, `current_plan` and plan blocks (`history.py`) |
@@ -36,6 +37,7 @@ Frontend, `app/src/lib/`:
 
 | Folder | What it holds |
 |---|---|
+| `chat/` | `prepare-session-card.svelte`: inline 1-click Launch Card for `prepare_session` tool calls (kind badge, title, folder chip, picked node chips, opening prompt preview, deleted-folder fallback, and idempotent launch request IDs persisted in `sessionStorage` until navigation) |
 | `practice/` | `state.ts` (mirrors `practice/state.py`), `practice-dock.svelte` (statement and YOUR THINKING field, replaces the composer while a problem is active), `problem-card.svelte`, `thinking-card.svelte`, `conclude-card.svelte` with `metadata-popover.svelte` |
 | `questions/` | `question-dock.svelte` (replaces the composer while a question is pending), `answered-card.svelte`, `question-core.ts` (LH's `buildAnswer`, grading, shuffle, pending detection), keyboard rules, confidence inputs, the Esc dialogs, `tool-content.svelte` |
 | `teaching/` | phases and dividers, the probe assessment, the plan diagram (`plan-diagram.svelte`, `plan-layout.ts`), `send_to_user` prose (`delivery.ts`), live tool results (`response-prose.ts`), image card (click to zoom in the shared zoom dialog, see [jobs](jobs.md)), file-access helpers |
@@ -63,11 +65,27 @@ Frontend, `app/src/lib/`:
   uncommitted edit. Sync applies that write prompt files take the same lock. The order is prompt lock,
   session locks, then edit lock, so compaction (session, then edit) and the editor (prompt, then edit)
   cannot deadlock with them.
-  Only the fragments of the three agents are listed; `side-chat/` fragments stay overridable by
-  files and switches but have no editor. Prompt paths with symlinks and paths outside the listed
+  Only the fragments of the four agents (`teacher`, `prober`, `practice`, `chat`) and `shared` are
+  listed in Settings → Prompts; `side-chat/` fragments stay overridable by files and switches (and
+  `sidechat/helper.py` composes them through `fragment_text` under `prompt_edit_lock`) and are
+  visible to the Chat agent's `list_prompts` / `read_prompt` tools. Prompt paths with symlinks and paths outside the listed
   fragments are unavailable in the editor. Each file change is recorded with sync before returning.
   An older push acknowledgement cannot overwrite a pending local edit. Pulls apply in server
   sequence order, and a subsequent push reconciles the recorded local edit against that order.
+- **Chat sessions** (`kind = "chat"`) skip probing, planning, extraction, and plugins and run the
+  general chat agent (`teaching/chat/agent.py`): `chat/*.md` plus `CHAT_SHARED_FRAGMENTS` (voice,
+  accuracy, learner files, side conversations, formatting; no `system-prompt.md`), the 9 built-in
+  chat tools (`list_prompts`, `read_prompt`, `read_settings`, `list_sessions_and_folders`,
+  `list_graph_nodes`, `read_graph_node`, `read_session`, `read_app_guide`, `prepare_session`), the
+  learner-file tools, and `research` / `pdf` background jobs (under Settings → Tools and background
+  consent). `read_settings` exposes only non-secret settings, safe account metadata, and boolean
+  search-key status. `read_session` formats readable history using `teacher_prose()`, `result_tree()`,
+  `probe_done_result_ids()`, and `question_calls_of()`, scrubs base64 data URLs, and caps the
+  serialized JSON response at 24,000 characters. `prepare_session` validates `folder_id`, strict live
+  `proposition_ids` (up to `MAX_GRAPH_CONTEXT_PICKS`), and `opening_prompt` without writing anything,
+  returning metadata streamed to `PrepareSessionCard`. Bundled `teaching/prompts/chat/guide.md` is
+  unnumbered so `FRAGMENT_RE` ignores it while PyInstaller collects it and `self_check.py` verifies
+  both numbered `chat/*.md` fragments and `guide.md`.
 - **Practice sessions** (`kind = "practice"`) skip probing, planning, extraction, and graph
   mastery writes and run the practitioner: `practice/*.md` plus the allowlisted `shared/` fragments
   (voice, accuracy, mental model, side conversations, formatting), `problem` and `conclude`, the

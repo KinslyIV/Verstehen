@@ -84,11 +84,12 @@ All of this is merged into `main`.
    placeholder until then); themes as shadcn theme variables; API keys, a custom endpoint, Copilot
    (Pydantic AI has a device-code flow), and Grok (Pydantic AI's `xai` is API-key only, so a
    subscription login would be our own code).
-4. **General Chat agent** ([plan](plans/chat-agent.md), approved 2026-11-26). A third session kind
-   (`kind = "chat"`, **Chat**) with read-only inspection of prompts, non-secret settings, sessions,
-   folders, knowledge-graph nodes/chains, past transcripts, and a bundled app guide, plus
-   learner-file and `research`/`pdf` tools and a 1-click Launch Card (`prepare_session`) to start a
-   clean Teaching (Prober) or Practice session. Verstehen-only (no LearnHarness counterpart).
+4. **General Chat agent** (branch `t3/general-chat-agent`, built and ready for review;
+   [plan](plans/chat-agent.md)). A third session kind (`kind = "chat"`, **Chat**) with read-only
+   inspection of prompts, non-secret settings, sessions, folders, knowledge-graph nodes/chains, past
+   transcripts, and a bundled app guide, plus learner-file and `research`/`pdf` tools and a 1-click
+   Launch Card (`prepare_session`) to start a clean Teaching (Prober) or Practice session.
+   Verstehen-only (no LearnHarness counterpart).
 
 ## LH catch-up
 

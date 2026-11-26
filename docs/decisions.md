@@ -14,6 +14,24 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**General Chat agent (implementation):**
+
+- **Idempotent session creation (`client_request_id` + `session_create_requests` in `0011_chat_sessions.sql`):**
+  `POST /api/sessions` accepts an optional `client_request_id`, recorded atomically in the same
+  SQLite transaction as `sessions`, folder placement, and any initial `graph-context` marker
+  (folder-missing 400s are never cached). `PrepareSessionCard` persists primary/fallback request IDs
+  in `sessionStorage` per `(sessionId, tool_call_id)` until navigation completes. Alternative:
+  client-only state or in-memory cache; consequence: retries after a dropped mobile response,
+  reload, or backend restart never duplicate a Launch Card session or lose its graph context.
+- **`Notification.kind` on `turn-settled`:** `turn-settled` notifications carry the session's `kind`
+  so both the backend watcher (`app.py`) and frontend `PluginHost` skip plugin `turn-settled`
+  observers for `chat` turns while keeping the notification for sidebar and stats subscribers.
+  Alternative: re-querying the session kind on every notification.
+- **Side-chat prompt overrides wired in `sidechat/helper.py`:** `compose_side_chat_instructions`
+  now shares `SIDE_CHAT_FRAGMENTS` with `list_prompts`/`read_prompt` and resolves overrides via
+  `fragment_text` under `prompt_edit_lock`, so inspection and runtime agree when a `side-chat/`
+  override is enabled. Alternative: reporting `side-chat/` overrides as inactive in Chat inspection.
+
 **Plugins (implementation):**
 
 - **MCP toolsets use `pydantic_ai.mcp.MCPToolset`** over `fastmcp-slim[client]` (the `mcp` extra),
@@ -374,22 +392,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
 
 ## Decided, not yet implemented
 
-**General Chat agent ([plan](plans/chat-agent.md), approved 2026-11-26):**
-
-- **Third session kind (`kind = "chat"`, labeled **Chat**):** sits alongside **Teaching** and
-  **Practice** (`0011_chat_sessions.sql`). Teaching still starts directly with the Prober (no
-  general router in front of it, no in-place transition). No LearnHarness counterpart.
-- **Read-only inspection + 1-click Launch Card:** the Chat agent can read prompts (defaults,
-  overrides, switches), non-secret settings (never keys, tokens, or credentials), sessions and
-  folders, full knowledge-graph nodes and chains, paginated past session transcripts, and a bundled
-  app guide (`teaching/prompts/chat/guide.md`), plus Verstehen's existing learner-file tools and
-  `research`/`pdf` jobs. It never mutates settings, prompts, or folders. `prepare_session` renders
-  an inline 1-click Launch Card (**Start teaching →** / **Start practice →**); nothing is created
-  and no Prober/Practitioner turn runs until the user clicks.
-- **UI, model slot & graph exclusion:** uses the **Main (`strong`)** slot by default (switchable per
-  session), exposes its own prompt segments in **Settings → Prompts**, skips graph extraction and
-  the Chains table, and keeps plugins scoped to `prober`, `teacher`, and `practice`.
-
 **Mobile app and two-way sync ([plan](plans/mobile-and-sync.md)):**
 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
@@ -511,6 +513,17 @@ alternative, and the consequence, until the user reviews them at the end of the 
   `endsInDismissal`, which misses the `problem-dismissed` marker, so a job result can wake the
   practitioner and pose a new problem before the dismissal's `conclude` pair is saved. Verstehen
   holds the delivered results until the learner's next input, which carries the pair and the results.
+
+### General Chat agent
+
+- **Third session kind (`kind = "chat"`, **Chat**):** Verstehen-only (no LearnHarness counterpart),
+  sitting alongside **Teaching** (`teach`) and **Practice** (`practice`) (`0011_chat_sessions.sql`).
+  Uses the **Main (`strong`)** slot by default, exposes its own prompt segments in **Settings →
+  Prompts**, skips graph extraction, coverage, the Chains table, and plugins, and provides 8
+  read-only inspection tools (prompts, non-secret settings/account/search-key status, sessions and
+  folders, canonical graph nodes and chains, paginated base64-scrubbed transcripts, and bundled
+  `guide.md`), learner-file tools, `research`/`pdf` jobs, and a 1-click `prepare_session` Launch
+  Card that creates and starts a clean Teaching or Practice session only when clicked.
 
 ### Providers and models
 

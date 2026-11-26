@@ -10,6 +10,7 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
+from verstehen.store.sessions import SessionKind
 
 
 class TurnEvent(BaseModel):
@@ -43,6 +44,7 @@ class Notification(BaseModel):
         "plugin-message",
     ]
     session_id: str = ""
+    kind: SessionKind | None = None
     revision: int | None = None
     running: bool | None = None
     plugin_id: str | None = None

@@ -1,0 +1,67 @@
+[
+	{
+		"tool_calls": [
+			{
+				"name": "read_settings",
+				"arguments": {}
+			},
+			{
+				"name": "list_prompts",
+				"arguments": {}
+			},
+			{
+				"name": "list_graph_nodes",
+				"arguments": {
+					"query": "slope"
+				}
+			},
+			{
+				"name": "list_sessions_and_folders",
+				"arguments": {}
+			},
+			{
+				"name": "read_app_guide",
+				"arguments": {}
+			},
+			{
+				"name": "prepare_session",
+				"arguments": {
+					"kind": "teach",
+					"title": "Calculus: Secant to Derivative",
+					"opening_prompt": "Help me connect secant slopes to derivatives.",
+					"proposition_ids": ["n_slope"]
+				}
+			}
+		]
+	},
+	{
+		"text": "I inspected your live settings, prompt segments, and knowledge graph (`Slope`), and prepared a 1-click Teaching launch card above."
+	},
+	{
+		"text": "Let's begin by checking how you think about rate of change.",
+		"tool_calls": [
+			{
+				"name": "probe",
+				"arguments": {
+					"question": "What does the slope of a secant line between two points on $y = f(x)$ represent?",
+					"options": [
+						{
+							"label": "The average rate of change of $f$ between those two points",
+							"value": "average"
+						},
+						{
+							"label": "The instantaneous derivative at the midpoint",
+							"value": "midpoint"
+						},
+						{
+							"label": "The area under the curve between the points",
+							"value": "area"
+						}
+					],
+					"correctAnswer": "average",
+					"explanation": "A secant line connects $(x_1, f(x_1))$ and $(x_2, f(x_2))$, so its slope is the average rate of change."
+				}
+			}
+		]
+	}
+]

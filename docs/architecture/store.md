@@ -35,7 +35,7 @@ over a connection (`insert_entry`, `insert_session`, `insert_job`, `insert_side_
 | Table | Migration | Holds |
 |---|---|---|
 | `settings` | 0001 | key → JSON value, one row per top-level settings field |
-| `sessions`, `entries` | 0002 (model columns added in 0003; `sessions.kind` widened to `teach` or `practice` in 0010) | sessions with their model pick; the entry log (sequence, entry id, kind, JSON payload), deleted with its session |
+| `sessions`, `entries`, `session_create_requests` | 0002 (model columns in 0003; `kind` widened to `practice` in 0010 and `chat` + `session_create_requests` in 0011) | sessions with their model pick; the entry log (sequence, entry id, kind, JSON payload), deleted with its session; atomic `client_request_id` receipts for idempotent session creation |
 | `usage` | 0003, rebuilt in 0006 | per-call usage by request id, role, and source id; a trigger removes a deleted session's rows |
 | `jobs`, `artifact_views` | 0004 | kind, status, input, result, delivery state, usage; demo/figure inversion |
 | `side_threads`, `side_exchanges` | 0005 | side-chat threads per segment and their exchanges |
@@ -70,7 +70,7 @@ browsers in `<data dir>/browsers/`.
   `BEGIN`, runs `PRAGMA foreign_key_check` before commit, and always turns it back on. It keeps the
   lock through pragma changes and rollback, then propagates any cancellation. The rebuild
   recreates the `delete_session_usage` trigger.
-- **Sync requires matching schema versions.** After updating a paired laptop to schema `0010`,
+- **Sync requires matching schema versions.** After updating a paired laptop to schema `0011`,
   use Settings → Sync to update the server before sync resumes.
 - **Applied migrations never change.** Add a new numbered file and run `make lock-migrations`.
 - **A setting is never stored as `null`;** a missing setting reads as its typed default.

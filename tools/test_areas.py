@@ -35,6 +35,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
     "teaching": (
         "src/lib/teaching/*.test.ts",
         "src/lib/practice/*.test.ts",
+        "src/lib/chat/*.test.ts",
         "src/lib/questions/*.test.ts",
         "src/lib/components/settings-lesson.svelte.test.ts",
         "src/lib/components/settings-prompts.svelte.test.ts",
