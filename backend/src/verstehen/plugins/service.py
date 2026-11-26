@@ -223,9 +223,19 @@ class PluginService:
         return plugin.info
 
     async def settled(self) -> None:
-        """Wait until every queued start and stop has finished."""
-        while self.tasks:
-            await asyncio.wait(list(self.tasks))
+        """Wait until every queued start, stop, and retiring background work has finished."""
+        while True:
+            if self.tasks:
+                await asyncio.wait(list(self.tasks))
+                continue
+            for plugin in list(self.plugins.values()):
+                if (
+                    plugin.worker is not None and not plugin.worker.done()
+                ) or plugin.late_cleanups:
+                    await self.wait_background(plugin)
+                    break
+            else:
+                break
 
     async def call(
         self, plugin_id: str, name: str, value: JsonValue
@@ -382,7 +392,12 @@ class PluginService:
         for plugin in self.plugins.values():
             async with self.lock_for(plugin.info.id):
                 await self.deactivate(plugin)
-                await self.wait_background(plugin)
+                while True:
+                    try:
+                        await self.wait_background(plugin)
+                        break
+                    except asyncio.CancelledError:
+                        continue
                 forget_backend(plugin.info.id)
                 plugin.module = None
                 plugin.revision = None
@@ -574,13 +589,12 @@ class PluginService:
                         await self.run_late_cleanup(plugin, returned)
                     else:
                         context.cleanup(returned)
-                while context.late_cleanups:
-                    await self.run_late_cleanup(plugin, context.late_cleanups.pop())
             except BaseException as error:
                 outcome.append(error)
             finally:
-                while context.late_cleanups:
-                    await self.run_late_cleanup(plugin, context.late_cleanups.pop())
+                while late := context.take_late_cleanups():
+                    for cleanup in reversed(late):
+                        await self.run_late_cleanup(plugin, cleanup)
                 if plugin.worker is current:
                     plugin.worker = None
 
@@ -601,18 +615,12 @@ class PluginService:
         while True:
             worker = plugin.worker
             if worker is not None and not worker.done():
-                try:
-                    await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    continue
+                await asyncio.wait({worker})
                 continue
             pending = [task for task in plugin.late_cleanups if not task.done()]
             if not pending:
                 break
-            try:
-                await asyncio.shield(asyncio.gather(*pending, return_exceptions=True))
-            except asyncio.CancelledError:
-                continue
+            await asyncio.wait(pending)
 
     async def run_late_cleanup(self, plugin: InstalledPlugin, cleanup: Any) -> None:
         if not callable(cleanup):

@@ -99,7 +99,7 @@ class PluginToolset(WrapperToolset[None]):
 
     async def __aenter__(self) -> Self:
         """Enter only the toolsets this run's `for_run` made new; the plugin's own are entered by its context."""
-        if not self.resolved_here:
+        if not self.resolved_here or self.context.closed:
             return self
         stack = AsyncExitStack()
         await stack.__aenter__()
@@ -112,7 +112,18 @@ class PluginToolset(WrapperToolset[None]):
 
         async def close_entered() -> None:
             if self.closing is None:
-                self.closing = asyncio.create_task(finish())
+                closing = asyncio.create_task(finish())
+                self.closing = closing
+
+                def detach(task: asyncio.Task[None]) -> None:
+                    if not task.cancelled():
+                        task.exception()
+                    if self.stop_entered is close_entered:
+                        self.stop_entered = None
+                    if close_entered in self.context.cleanups:
+                        self.context.cleanups.remove(close_entered)
+
+                closing.add_done_callback(detach)
             while not self.closing.done():
                 try:
                     await asyncio.shield(self.closing)
@@ -128,6 +139,13 @@ class PluginToolset(WrapperToolset[None]):
             for toolset in self.resolved_here:
                 await self.context.operate(partial(stack.enter_async_context, toolset))
         except Stopped:
+            await self.discard_entered(close_entered)
+        except asyncio.CancelledError:
+            current = asyncio.current_task()
+            if current and current.cancelling():
+                await self.discard_entered(close_entered)
+                raise
+            self.turn.drop(self.plugin_id, RuntimeError("Cancelled"))
             await self.discard_entered(close_entered)
         except Exception as error:
             self.turn.drop(self.plugin_id, error)
@@ -147,10 +165,11 @@ class PluginToolset(WrapperToolset[None]):
         except Exception as error:
             self.turn.drop(self.plugin_id, error)
         finally:
-            if self.stop_entered is close_entered:
-                self.stop_entered = None
-            if close_entered in self.context.cleanups:
-                self.context.cleanups.remove(close_entered)
+            if self.closing is None or self.closing.done():
+                if self.stop_entered is close_entered:
+                    self.stop_entered = None
+                if close_entered in self.context.cleanups:
+                    self.context.cleanups.remove(close_entered)
 
     async def __aexit__(self, *args: Any) -> bool | None:
         stop = self.stop_entered
@@ -177,10 +196,11 @@ class PluginToolset(WrapperToolset[None]):
             self.turn.drop(self.plugin_id, error)
             return None
         finally:
-            if self.stop_entered is stop:
-                self.stop_entered = None
-            if stop in self.context.cleanups:
-                self.context.cleanups.remove(stop)
+            if self.closing is None or self.closing.done():
+                if self.stop_entered is stop:
+                    self.stop_entered = None
+                if stop in self.context.cleanups:
+                    self.context.cleanups.remove(stop)
 
     async def get_tools(self, ctx: RunContext[None]) -> Tools:
         return await self.context.operate(

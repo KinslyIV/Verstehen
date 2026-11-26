@@ -1,6 +1,7 @@
 import asyncio
 import inspect
 import re
+import threading
 from collections.abc import Awaitable, Callable, Iterable, Sequence
 from dataclasses import dataclass
 from functools import partial
@@ -87,6 +88,7 @@ class PluginContext:
         self.loop = loop
         self.on_late_cleanup = on_late_cleanup
         self.teardown: asyncio.Future[list[str]] | None = None
+        self.cleanup_lock = threading.Lock()
         self.cleanups: list[Cleanup] = []
         self.late_cleanups: list[Cleanup] = []
         self.exposed: dict[str, Exposed] = {}
@@ -99,30 +101,48 @@ class PluginContext:
         """Run `cleanup` when the plugin is disabled or the app stops, last registered first."""
         if not callable(cleanup):
             raise TypeError("Plugin cleanup must be a function")
-        if not self.closed:
-            self.cleanups.append(cleanup)
+        enqueue = False
+        loop = self.loop
+        with self.cleanup_lock:
+            if not self.closed:
+                self.cleanups.append(cleanup)
+                return
+            if (
+                self.on_late_cleanup is not None
+                and loop is not None
+                and not self.in_loop()
+            ):
+                self.late_cleanups.append(cleanup)
+                enqueue = True
+        if enqueue and loop is not None:
+            if not loop.is_closed():
+                loop.call_soon_threadsafe(self.drain_late_cleanups)
             return
         if self.on_late_cleanup is not None:
-            if self.loop is not None and not self.in_loop():
-                self.late_cleanups.append(cleanup)
-                self.loop.call_soon_threadsafe(self.drain_late_cleanups)
-            else:
-                self.on_late_cleanup(cleanup)
+            self.on_late_cleanup(cleanup)
             return
-        self.late_cleanups.append(cleanup)
         try:
             result = cleanup()
             if inspect.isawaitable(result):
-                if self.loop is not None and not self.in_loop():
-                    self.loop.call_soon_threadsafe(asyncio.ensure_future, result)
+                if loop is not None and not self.in_loop():
+                    if not loop.is_closed():
+                        loop.call_soon_threadsafe(asyncio.ensure_future, result)
                 else:
                     asyncio.ensure_future(result)
         except Exception:
             pass
 
+    def take_late_cleanups(self) -> list[Cleanup]:
+        with self.cleanup_lock:
+            items = list(self.late_cleanups)
+            self.late_cleanups.clear()
+            return items
+
     def drain_late_cleanups(self) -> None:
-        while self.late_cleanups and self.on_late_cleanup is not None:
-            self.on_late_cleanup(self.late_cleanups.pop(0))
+        if self.on_late_cleanup is None:
+            return
+        for cleanup in self.take_late_cleanups():
+            self.on_late_cleanup(cleanup)
 
     @overload
     def expose(self, function: Function) -> Function: ...
@@ -253,7 +273,8 @@ class PluginContext:
         """Drop every registration, end the operations in flight, and run the cleanups, newest first;
         returns the failure messages. Teardown is not interrupted: later cancellations are dropped.
         """
-        self.closed = True
+        with self.cleanup_lock:
+            self.closed = True
         if self.teardown is None:
             self.teardown = asyncio.ensure_future(self.tear_down())
         while not self.teardown.done():

@@ -1040,3 +1040,52 @@ def test_a_turn_settled_observer_raising_cancelled_error_does_not_abort_other_ob
         await service.close()
 
     asyncio.run(run())
+
+
+def test_disabling_while_reenable_waits_for_retiring_worker_cancels_reenable(
+    tmp_path: Path,
+):
+    root = install(tmp_path, "lifecycle")
+    gate = tmp_path / "sync_gate"
+    (root / "dist" / "backend" / "__init__.py").write_text(
+        "import time\n"
+        "from pathlib import Path\n"
+        "runs = 0\n"
+        "def activate(ctx):\n"
+        "    global runs\n"
+        "    runs += 1\n"
+        "    run_no = runs\n"
+        "    log = ctx.data_directory / 'events.txt'\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'start-{run_no}\\n')\n"
+        f"    while not Path({str(gate)!r}).exists():\n"
+        "        time.sleep(0.01)\n"
+        "    def late_cleanup():\n"
+        "        with log.open('a') as f:\n"
+        "            f.write(f'cleanup-{run_no}\\n')\n"
+        "    ctx.cleanup(late_cleanup)\n"
+        "    with log.open('a') as f:\n"
+        "        f.write(f'end-{run_no}\\n')\n"
+    )
+
+    async def run():
+        service = new_service(tmp_path)
+        await service.discover()
+        await service.set_enabled("lifecycle", True)
+        await until(lambda: (root / "data" / "events.txt").exists())
+        await service.set_enabled("lifecycle", False)
+        await service.set_enabled("lifecycle", True)
+        await until(lambda: "lifecycle" in service.activations)
+        await service.set_enabled("lifecycle", False)
+        gate.write_text("1")
+        await service.settled()
+        plugin = service.plugins["lifecycle"]
+        assert (plugin.info.enabled, plugin.info.status, plugin.context) == (
+            False,
+            "disabled",
+            None,
+        )
+        assert events(root) == ["start-1", "end-1", "cleanup-1"]
+        await service.close()
+
+    asyncio.run(run())

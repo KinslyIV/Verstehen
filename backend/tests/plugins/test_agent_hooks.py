@@ -978,6 +978,7 @@ class GatedToolset(FunctionToolset[None]):
         enter_gate: asyncio.Event | None = None,
         exit_started: asyncio.Event | None = None,
         exit_gate: asyncio.Event | None = None,
+        cancel_on_enter: bool = False,
         cancel_on_exit: bool = False,
     ):
         super().__init__([harmless])
@@ -985,6 +986,7 @@ class GatedToolset(FunctionToolset[None]):
         self.enter_gate = enter_gate
         self.exit_started = exit_started
         self.exit_gate = exit_gate
+        self.cancel_on_enter = cancel_on_enter
         self.cancel_on_exit = cancel_on_exit
         self.active = False
         self.exits = 0
@@ -994,6 +996,10 @@ class GatedToolset(FunctionToolset[None]):
             self.enter_started.set()
         if self.enter_gate:
             await self.enter_gate.wait()
+        if self.cancel_on_enter:
+            child = asyncio.create_task(asyncio.sleep(3600))
+            child.cancel()
+            await child
         self.active = True
         return self
 
@@ -1066,6 +1072,29 @@ def test_disable_waits_for_in_flight_run_toolset_exit_and_partial_enter_and_cont
         result = await run_prober_with(service, ResolvesPerRun(cancelling_exit))
         assert result.output == "done"
         assert cancelling_exit.active is False
+        assert warnings_of(service, "agent-hooks") == [
+            "Added nothing to a prober turn: Cancelled"
+        ]
+        await service.close()
+
+    asyncio.run(scenario())
+
+
+def test_a_run_owned_toolset_enter_cancelled_error_closes_entered_siblings_and_drops_plugin(
+    tmp_path: Path,
+):
+    first = GatedToolset()
+    second = GatedToolset(cancel_on_enter=True)
+
+    async def scenario():
+        service = service_with(tmp_path, "agent-hooks")
+        await enabled(service, "agent-hooks")
+        result = await run_prober_with(
+            service, ResolvesPerRun(CombinedToolset([first, second]))
+        )
+        assert result.output == "done"
+        assert first.active is False
+        assert first.exits == 1
         assert warnings_of(service, "agent-hooks") == [
             "Added nothing to a prober turn: Cancelled"
         ]
