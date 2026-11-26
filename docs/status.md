@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-26 (PyInstaller mcp.cli packaging fix).
+> PRs. Last update: 2026-11-26 (`faster-session-open` branch ready for review).
 
 ## Where we are
 
@@ -72,6 +72,9 @@ Merged into `dev` and queued for `0.2.0` on `main`:
   documented in-process Python / `vendor/` limits), and 6 (toolset resolver cancellation boundary,
   late backend cleanup failure capture during teardown, and frontend retiring-runtime drain across
   module load) are committed; see [plugin authoring](plugin-authoring.md).
+- **Faster lesson opening** (branch `faster-session-open`, not yet merged): a lesson renders its
+  newest 12 rows' content first and older rows' content in batches; first paint of the
+  imported "Learning SIFT" session fell from ~790 ms to ~325 ms on Pixal.
 - **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 74 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.

@@ -565,6 +565,9 @@ alternative, and the consequence, until the user reviews them at the end of the 
   demo in a dialog without remounting its iframe, so its state survives.
 - **Off-screen transcript rows are `content-visibility` placeholders** so a long lesson opens
   fast; LH renders every row.
+- **Opening a lesson renders its newest 12 rows' content first** and older rows' content 6 per
+  painted frame, so the lesson's end shows in well under half the time; LH renders every row at
+  once.
 - **Demo iframes load near the viewport and unload far off-screen** (about two viewport heights),
   so a demo scrolled far away resets when it comes back; a zoomed demo is never unloaded. LH keeps
   every demo alive.
