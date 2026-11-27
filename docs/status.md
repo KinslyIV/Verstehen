@@ -101,7 +101,8 @@ Merged in PR #40, the
 [MCP Servers core plugin](../backend/src/verstehen/core_plugins/mcp-servers/README.md) ships with
 the desktop app, starts disabled, and adds local stdio connections with per-agent tool selection.
 Settings changes apply on the next turn. The `mcp-select-all` branch adds **Select all** and
-**Clear all** for the selected agent. See the [plan](plans/mcp-servers.md).
+**Clear all** for the selected agent. Its CI follow-up installs the EGL runtime for Qt imports.
+See the [plan](plans/mcp-servers.md).
 
 ## Next
 
