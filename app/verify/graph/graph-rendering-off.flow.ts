@@ -43,22 +43,19 @@ test('graph-rendering-off', async ({ page, request, seedGraph }) => {
 	await expect
 		.poll(async () => {
 			const snapshot = await (await request.get('/api/graph')).json();
-			const distinct = new Set(
-				Object.values(snapshot.positions as Record<string, { x: number; y: number }>).map(
-					(pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`
-				)
+			const nodeIds: string[] = snapshot.nodes.map((node: { id: string }) => node.id);
+			const positions = snapshot.positions as Record<string, { x: number; y: number }>;
+			const nodeCoords = nodeIds.map((id) => positions[id]).filter(Boolean);
+			const nonOrigin = nodeCoords.filter((pos) => pos.x !== 0 || pos.y !== 0).length;
+			const distinct = new Set(nodeCoords.map((pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`))
+				.size;
+			return (
+				nodeCoords.length === nodeIds.length &&
+				nonOrigin >= nodeIds.length - 1 &&
+				distinct === nodeIds.length
 			);
-			return {
-				placed: Object.keys(snapshot.positions).length >= snapshot.nodes.length,
-				distinct: distinct.size
-			};
 		})
-		.toEqual({ placed: true, distinct: expect.any(Number) });
-	const settled = await (await request.get('/api/graph')).json();
-	const coords = Object.values(settled.positions as Record<string, { x: number; y: number }>);
-	expect(
-		new Set(coords.map((pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`)).size
-	).toBeGreaterThan(1);
+		.toBe(true);
 
 	await page.getByRole('link', { name: 'Settings', exact: true }).click();
 	await expect(dialog).toBeVisible();

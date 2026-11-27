@@ -3,14 +3,23 @@
 	import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
 	import Settings from './settings.svelte';
 
+	let dialogEl = $state<HTMLElement | null>(null);
+
 	function hasNestedOverlay(): boolean {
-		return (
-			document.querySelectorAll('[data-slot="dialog-content"]:not([data-state="closed"])').length >
-				1 ||
-			!!document.querySelector(
-				'dialog:modal, [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"]'
-			)
+		if (!dialogEl) return false;
+		const overlays = document.querySelectorAll(
+			'dialog:modal, [data-slot="dialog-content"]:not([data-state="closed"]), [data-popover-content][data-state="open"], [data-context-menu-content][data-state="open"]'
 		);
+		for (const overlay of overlays) {
+			if (overlay === dialogEl) continue;
+			if (
+				dialogEl.contains(overlay) ||
+				Boolean(dialogEl.compareDocumentPosition(overlay) & Node.DOCUMENT_POSITION_FOLLOWING)
+			) {
+				return true;
+			}
+		}
+		return false;
 	}
 </script>
 
@@ -21,6 +30,7 @@
 	}}
 >
 	<Dialog.Content
+		bind:ref={dialogEl}
 		data-testid="settings-dialog"
 		onEscapeKeydown={(event) => {
 			if (hasNestedOverlay()) event.preventDefault();

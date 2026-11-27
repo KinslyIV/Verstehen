@@ -132,7 +132,8 @@ test('workingStatus_maps_pending_builtin_tools_and_ignores_plugin_tools', () => 
 			{ type: 'tool_call', tool_call_id: 'c1', tool_name: 'list_graph_nodes', arguments: {} }
 		]
 	};
-	expect(workingStatus([sendWithBuiltIn], noResults, 'a5', true)).toBeNull();
+	expect(workingStatus([sendWithBuiltIn], noResults, 'a5', true)).toBe('Reading knowledge graph…');
+	expect(workingStatus([sendWithBuiltIn], noResults, 'a5', true, ['c1'])).toBeNull();
 
 	expect(workingStatus([builtInBeforePlugin], noResults, 'a3', true, ['c1'])).toBeNull();
 

@@ -61,6 +61,10 @@ export function workingStatus(
 			!completed?.has(part.tool_call_id)
 	);
 	if (pendingCalls.length > 0) {
+		const otherBuiltIn = pendingCalls
+			.filter((part) => part.tool_name !== 'send_to_user' && isBuiltInTool(part.tool_name))
+			.at(-1);
+		if (otherBuiltIn) return toolActivityLabel(otherBuiltIn.tool_name);
 		if (
 			pendingCalls.some(
 				(part) =>

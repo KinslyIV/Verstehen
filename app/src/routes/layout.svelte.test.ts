@@ -391,3 +391,21 @@ test('delayed_rename_does_not_overwrite_next_sessions_header_title', async () =>
 		.element(header.getByRole('button', { name: 'Calculus', exact: true }))
 		.not.toBeInTheDocument();
 });
+
+test('settings_dialog_closes_on_escape_when_opened_above_an_existing_dialog', async () => {
+	const underlying = document.createElement('div');
+	underlying.setAttribute('data-slot', 'dialog-content');
+	underlying.setAttribute('data-state', 'open');
+	document.body.append(underlying);
+	try {
+		await render(Lesson, { page: SessionThreadPage });
+		settingsOverlay.show('plugins');
+		const dialog = page.getByTestId('settings-dialog');
+		await expect.element(dialog).toBeVisible();
+
+		await userEvent.keyboard('{Escape}');
+		await expect.element(dialog).not.toBeInTheDocument();
+	} finally {
+		underlying.remove();
+	}
+});
