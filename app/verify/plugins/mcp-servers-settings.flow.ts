@@ -45,7 +45,23 @@ test('mcp-servers-settings', async ({ page }) => {
 	await shout.check();
 	await agent.selectOption('teacher');
 	await expect(shout).not.toBeChecked();
-	await echo.check();
+	const filter = body.getByRole('searchbox', { name: 'Filter tools' });
+	const selectAll = body.getByRole('button', { name: 'Select all' });
+	const clearAll = body.getByRole('button', { name: 'Clear all' });
+	await filter.fill('echo');
+	await expect(shout).toHaveCount(0);
+	await selectAll.click();
+	await filter.clear();
+	await expect(echo).toBeChecked();
+	await expect(shout).toBeChecked();
+	await clearAll.click();
+	await expect(echo).not.toBeChecked();
+	await expect(shout).not.toBeChecked();
+	await agent.selectOption('chat');
+	await expect(echo).not.toBeChecked();
+	await expect(shout).toBeChecked();
+	await agent.selectOption('teacher');
+	await selectAll.click();
 	await body.getByRole('button', { name: 'Save', exact: true }).click();
 	await expect(body.locator('[data-status]')).toHaveText('Saved. Changes apply on the next turn.');
 
@@ -55,7 +71,7 @@ test('mcp-servers-settings', async ({ page }) => {
 	await expect(echo).not.toBeChecked();
 	await agent.selectOption('teacher');
 	await expect(echo).toBeChecked();
-	await expect(shout).not.toBeChecked();
+	await expect(shout).toBeChecked();
 	await body.getByRole('button', { name: 'Save', exact: true }).scrollIntoViewIfNeeded();
 	await page.screenshot({
 		path: test.info().outputPath('mcp-agent-tools.png'),

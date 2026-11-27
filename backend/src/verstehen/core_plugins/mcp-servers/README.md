@@ -10,7 +10,8 @@ Enter **Zotero** as the name, the full path to your installed `zotero-mcp` as th
 **Arguments** blank, and enter `{"ZOTERO_LOCAL": "true"}` in **Environment variables**. Keep Zotero
 running with local application access enabled. Select **Test connection** to list its tools.
 
-Use the **Agent** menu to choose tools for each agent, then select **Save**. An empty selection
+Use the **Agent** menu to choose tools for each agent. **Select all** and **Clear all** apply to
+the selected agent and include tools hidden by the filter. Select **Save** to apply the changes. An empty selection
 gives that agent no tools from this server. Retest to discover newly added tools and select them.
 If you edit the command, arguments, or environment, retest and select tools for that configuration.
 Running turns keep their original selection. The next turn uses the saved choices.

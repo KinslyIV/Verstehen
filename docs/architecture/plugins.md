@@ -207,8 +207,8 @@ after its plugin is removed.
 The [MCP Servers plugin](../../backend/src/verstehen/core_plugins/mcp-servers/README.md) is built
 into the desktop app. An earlier manual installation keeps its enable choice and server settings.
 Its settings page discovers tools from local stdio commands and saves the launch settings and
-per-agent tool selections in `mcp-servers/data/servers.json`. Tool discovery lists metadata without
-invoking tools.
+per-agent tool selections in `mcp-servers/data/servers.json`. **Select all** and **Clear all** apply to
+the selected agent across the current tool catalog. Tool discovery lists metadata without invoking tools.
 
 On each agent run, the plugin resolves the saved configuration into run-owned toolsets and
 starts only the servers with tools selected for that agent. A server that fails to start or list

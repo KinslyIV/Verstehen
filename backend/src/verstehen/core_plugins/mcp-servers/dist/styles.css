@@ -71,6 +71,7 @@
 
 .mcp-server-list,
 .mcp-tool-heading,
+.mcp-tool-controls,
 .mcp-settings-actions,
 .mcp-connection {
 	display: flex;
@@ -87,8 +88,13 @@
 	margin-bottom: 0.875rem;
 }
 
-.mcp-server-list label {
+.mcp-server-list label,
+.mcp-tool-controls label {
 	flex: 1;
+}
+
+.mcp-tool-controls label {
+	min-width: min(100%, 12rem);
 }
 
 .mcp-command-options {

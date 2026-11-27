@@ -44,7 +44,11 @@ function mount(backend, root, signal) {
 						<h4>Agent tools</h4>
 						<label>Agent <select data-agent></select></label>
 					</div>
-					<label class="mcp-search">Filter tools <input type="search" data-filter placeholder="Search by name or description"></label>
+					<div class="mcp-tool-controls">
+						<label>Filter tools <input type="search" data-filter placeholder="Search by name or description"></label>
+						<button type="button" data-select-all>Select all</button>
+						<button type="button" data-clear-all>Clear all</button>
+					</div>
 					<div class="mcp-tools" data-tools></div>
 				</section>
 				<div class="mcp-settings-actions">
@@ -71,6 +75,8 @@ function mount(backend, root, signal) {
 	const agentPicker = root.querySelector('[data-agent]');
 	const toolSection = root.querySelector('[data-tool-section]');
 	const filter = root.querySelector('[data-filter]');
+	const selectAll = root.querySelector('[data-select-all]');
+	const clearAll = root.querySelector('[data-clear-all]');
 	const tools = root.querySelector('[data-tools]');
 	const save = root.querySelector('[type=submit]');
 	const remove = root.querySelector('[data-remove]');
@@ -94,6 +100,7 @@ function mount(backend, root, signal) {
 	function renderTools() {
 		toolSection.hidden = !tested;
 		save.disabled = !tested;
+		selectAll.disabled = clearAll.disabled = catalog.length === 0;
 		const query = filter.value.toLowerCase().trim();
 		const selected = (selections[agentPicker.value] ??= []);
 		const visible = catalog.filter((tool) =>
@@ -193,6 +200,14 @@ function mount(backend, root, signal) {
 	}
 	agentPicker.addEventListener('change', renderTools);
 	filter.addEventListener('input', renderTools);
+	selectAll.addEventListener('click', () => {
+		selections[agentPicker.value] = catalog.map((tool) => tool.name);
+		renderTools();
+	});
+	clearAll.addEventListener('click', () => {
+		selections[agentPicker.value] = [];
+		renderTools();
+	});
 	root.querySelector('[data-test]').addEventListener('click', () =>
 		run(async () => {
 			showStatus('');
