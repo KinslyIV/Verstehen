@@ -6,32 +6,39 @@ import Lesson from './lesson-test-harness.svelte';
 import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
 import type { Notification } from '#lib/api/client.js';
+import { returnPath } from '#lib/layout/return-path.svelte.js';
+import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
 import appHtml from '../app.html?raw';
 
-const { sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
-	sessionRequests: vi.fn(async () => []),
-	itemRequests: vi.fn(async (id: string) => ({
-		id,
-		title: 'Algebra',
-		kind: 'teach',
-		updated_at: '2026-01-01T00:00:00Z',
-		busy: false
-	})),
-	subscribers: new Set<(event: Notification) => void>(),
-	navigated: new Set<(navigation: unknown) => void>()
-}));
+const { gotoCalls, renameRequests, sessionRequests, itemRequests, subscribers, navigated } =
+	vi.hoisted(() => ({
+		gotoCalls: vi.fn(),
+		renameRequests: vi.fn(async (id: string, title: string) => ({ id, title })),
+		sessionRequests: vi.fn(async () => []),
+		itemRequests: vi.fn(async (id: string) => ({
+			id,
+			title: 'Algebra',
+			kind: 'teach',
+			updated_at: '2026-01-01T00:00:00Z',
+			busy: false
+		})),
+		subscribers: new Set<(event: Notification) => void>(),
+		navigated: new Set<(navigation: unknown) => void>()
+	}));
 
 vi.mock('$app/navigation', () => ({
-	goto: async () => {},
+	goto: async (...args: unknown[]) => {
+		gotoCalls(...args);
+	},
 	afterNavigate: (callback: (navigation: unknown) => void) => {
 		navigated.add(callback);
 	}
 }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
-	getSession: async () => ({
-		id: 'one',
-		title: 'Algebra',
+	getSession: async (id: string) => ({
+		id,
+		title: id === 'two' ? 'Geometry' : 'Algebra',
 		kind: 'teach',
 		turn_in_flight: false,
 		turn_error: null,
@@ -80,6 +87,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	}),
 	listSessions: sessionRequests,
 	getSessionItem: itemRequests,
+	renameSession: renameRequests,
 	streamNotifications: (
 		receive: (event: Notification) => void,
 		signal: AbortSignal,
@@ -106,6 +114,13 @@ afterEach(async () => {
 });
 
 beforeEach(() => {
+	gotoCalls.mockClear();
+	renameRequests
+		.mockReset()
+		.mockImplementation(async (id: string, title: string) => ({ id, title }));
+	settingsOverlay.close();
+	sessionStorage.clear();
+	returnPath.reset();
 	sessionRequests.mockClear();
 	itemRequests.mockClear();
 	navigated.clear();
@@ -312,4 +327,85 @@ test('settings_shows_models_and_accounts', async () => {
 		.element(page.getByRole('button', { name: 'Toggle right panel' }))
 		.not.toBeInTheDocument();
 	await expect.element(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
+});
+
+test('desktop_settings_opens_as_overlay_without_navigation_and_closes_on_escape', async () => {
+	await render(Lesson, { page: SessionThreadPage });
+	await expect.element(page.getByText('Slope is rise over run.')).toBeVisible();
+
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByTestId('settings-dialog');
+	await expect.element(dialog).toBeVisible();
+	expect(gotoCalls).not.toHaveBeenCalled();
+
+	await dialog.getByRole('button', { name: 'Models', exact: true }).click();
+	await expect.element(dialog.getByRole('heading', { name: 'Models', exact: true })).toBeVisible();
+	expect(gotoCalls).not.toHaveBeenCalled();
+
+	await userEvent.keyboard('{Escape}');
+	await expect.element(dialog).not.toBeInTheDocument();
+	await expect.element(page.getByText('Slope is rise over run.')).toBeVisible();
+});
+
+test('desktop_session_header_owns_single_title_and_phase_badge', async () => {
+	await render(Lesson, { page: SessionThreadPage });
+	const header = page.getByTestId('session-header');
+	await expect.element(header.getByRole('button', { name: 'Algebra', exact: true })).toBeVisible();
+	await expect.element(header.getByTestId('phase-chip')).toBeVisible();
+	await expect
+		.poll(() => page.getByRole('button', { name: 'Algebra', exact: true }).elements().length)
+		.toBe(1);
+});
+
+test('phone_session_shows_single_title_in_top_bar', async () => {
+	await page.viewport(360, 780);
+	await render(Lesson, { page: SessionThreadPage });
+	await expect
+		.element(
+			page.getByTestId('phone-heading').getByRole('button', { name: 'Algebra', exact: true })
+		)
+		.toBeVisible();
+	await expect
+		.poll(() => page.getByRole('button', { name: 'Algebra', exact: true }).elements().length)
+		.toBe(1);
+});
+
+test('delayed_rename_does_not_overwrite_next_sessions_header_title', async () => {
+	const deferred = Promise.withResolvers<{ id: string; title: string }>();
+	renameRequests.mockImplementationOnce(() => deferred.promise);
+
+	const screen = await render(Lesson, { sessionId: 'one' });
+	const header = page.getByTestId('session-header');
+	await header.getByRole('button', { name: 'Algebra', exact: true }).click();
+	const input = header.getByRole('textbox');
+	await input.fill('Calculus');
+	await userEvent.keyboard('{Enter}');
+	expect(renameRequests).toHaveBeenCalledWith('one', 'Calculus');
+
+	await screen.rerender({ sessionId: 'two' });
+	await expect.element(header.getByRole('button', { name: 'Geometry', exact: true })).toBeVisible();
+
+	deferred.resolve({ id: 'one', title: 'Calculus' });
+	await expect.element(header.getByRole('button', { name: 'Geometry', exact: true })).toBeVisible();
+	await expect
+		.element(header.getByRole('button', { name: 'Calculus', exact: true }))
+		.not.toBeInTheDocument();
+});
+
+test('settings_dialog_closes_on_escape_when_opened_above_an_existing_dialog', async () => {
+	const underlying = document.createElement('div');
+	underlying.setAttribute('data-slot', 'dialog-content');
+	underlying.setAttribute('data-state', 'open');
+	document.body.append(underlying);
+	try {
+		await render(Lesson, { page: SessionThreadPage });
+		settingsOverlay.show('plugins');
+		const dialog = page.getByTestId('settings-dialog');
+		await expect.element(dialog).toBeVisible();
+
+		await userEvent.keyboard('{Escape}');
+		await expect.element(dialog).not.toBeInTheDocument();
+	} finally {
+		underlying.remove();
+	}
 });

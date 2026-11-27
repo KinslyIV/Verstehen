@@ -103,6 +103,10 @@ place that names the roles and models; AGENTS.md and plans link here.
   skill requires it, runs locally because it needs the user's Claude login.
 - **The user reviews the milestone's orchestrator decisions before merging**, from the review
   queue in [decisions](decisions.md#waiting-for-your-review).
+- **Always pull `dev` before merging.** Right before a PR merges into `dev` (whoever merges it),
+  fetch and merge the latest `origin/dev` into the branch, resolve any conflicts, check the
+  auto-merged hunks for semantic clashes, rerun `make check AREA='...'` and the verify flows for
+  the areas both sides touched, and push. Merge only once the PR is no longer behind `dev`.
 - The report in the T3 thread is a compact summary, not a log:
   - **New:** what can be used now, with one line of evidence;
   - **Changed:** existing code rewritten or removed, and why;

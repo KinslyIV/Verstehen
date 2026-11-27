@@ -3283,6 +3283,8 @@ export interface components {
 				(components['schemas']['UserEntry'] | components['schemas']['MarkerEntry'])[] | null;
 			/** Results */
 			results?: components['schemas']['ToolResultEntry'][] | null;
+			/** Completed Tool Call Ids */
+			completed_tool_call_ids?: string[] | null;
 			/** Error Text */
 			error_text?: string | null;
 		};

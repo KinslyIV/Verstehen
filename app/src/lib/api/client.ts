@@ -328,7 +328,13 @@ export async function saveSettings(
 	const body = { ...settings };
 	delete body.file_access_error;
 	if (!includeModels) delete body.models;
-	return (await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })).json();
+	const saved: Settings = await (
+		await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })
+	).json();
+	if (typeof window !== 'undefined') {
+		window.dispatchEvent(new CustomEvent('verstehen:settings-changed', { detail: saved }));
+	}
+	return saved;
 }
 const promptPath = (path: string) =>
 	`/api/prompts/${path.split('/').map(encodeURIComponent).join('/')}`;

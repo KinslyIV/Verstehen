@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Popover } from 'bits-ui';
-	import { getSettings, type SessionCoverage } from '#lib/api/client.js';
+	import { getSettings, type SessionCoverage, type Settings } from '#lib/api/client.js';
 	import { timeAgo } from '#lib/session/time-ago.js';
 	import { formatTokens } from './costs.js';
 	import ExtractNowButton from './extract-now-button.svelte';
@@ -23,9 +23,31 @@
 	);
 
 	onMount(() => {
+		let epoch = 0;
+		const initial = ++epoch;
 		void getSettings()
-			.then((settings) => (graph = graphRead(settings)))
+			.then((settings) => {
+				if (initial === epoch) graph = graphRead(settings);
+			})
 			.catch(() => {});
+		const onSettingsChanged = (event: Event) => {
+			const current = ++epoch;
+			const detail = (event as CustomEvent<Settings | undefined>).detail;
+			if (detail) {
+				graph = graphRead(detail);
+				return;
+			}
+			void getSettings()
+				.then((settings) => {
+					if (current === epoch) graph = graphRead(settings);
+				})
+				.catch(() => {});
+		};
+		window.addEventListener('verstehen:settings-changed', onSettingsChanged);
+		return () => {
+			epoch++;
+			window.removeEventListener('verstehen:settings-changed', onSettingsChanged);
+		};
 	});
 </script>
 

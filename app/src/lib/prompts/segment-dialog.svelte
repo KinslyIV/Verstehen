@@ -96,6 +96,14 @@
 		showCloseButton={false}
 		aria-busy={busy !== null}
 		data-testid="prompt-segment-dialog"
+		onEscapeKeydown={(event) => {
+			event.preventDefault();
+			requestClose();
+		}}
+		onInteractOutside={(event) => {
+			event.preventDefault();
+			requestClose();
+		}}
 		class="flex h-[720px] max-h-[90dvh] flex-col gap-0 p-0 sm:max-w-4xl"
 	>
 		<header class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b px-4 py-3">

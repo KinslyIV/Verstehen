@@ -5,23 +5,38 @@ import type { Notification, PluginList } from '#lib/api/client.js';
 import { live } from '#lib/api/live.svelte.js';
 import { plugins } from '#lib/plugins/plugins.svelte.js';
 import { PluginRuntime } from '#lib/plugins/runtime.svelte.js';
+import { returnPath } from '#lib/layout/return-path.svelte.js';
 import RootLayout from './+layout.svelte';
 
-const { backListeners, routeState, modeState, subscribers, streamCalls, listPluginsMock } =
-	vi.hoisted(() => ({
-		backListeners: new Set<(event: { canGoBack: boolean }) => void>(),
-		routeState: { id: '/settings' as string | null },
-		modeState: { mode: 'sidecar' as 'sidecar' | 'remote' },
-		subscribers: new Set<{
-			receive: (event: Notification) => void;
-			drop: () => void;
-		}>(),
-		streamCalls: vi.fn(),
-		listPluginsMock: vi.fn(async (): Promise<PluginList> => ({
-			plugins: [],
-			directory: '/plugins'
-		}))
-	}));
+const {
+	afterNavigateCallbacks,
+	backListeners,
+	routeState,
+	modeState,
+	subscribers,
+	streamCalls,
+	listPluginsMock
+} = vi.hoisted(() => ({
+	afterNavigateCallbacks: new Set<(navigation: { to: { url: URL } | null }) => void>(),
+	backListeners: new Set<(event: { canGoBack: boolean }) => void>(),
+	routeState: { id: '/settings' as string | null },
+	modeState: { mode: 'sidecar' as 'sidecar' | 'remote' },
+	subscribers: new Set<{
+		receive: (event: Notification) => void;
+		drop: () => void;
+	}>(),
+	streamCalls: vi.fn(),
+	listPluginsMock: vi.fn(async (): Promise<PluginList> => ({
+		plugins: [],
+		directory: '/plugins'
+	}))
+}));
+
+vi.mock('$app/navigation', () => ({
+	afterNavigate: (callback: (navigation: { to: { url: URL } | null }) => void) => {
+		afterNavigateCallbacks.add(callback);
+	}
+}));
 
 vi.mock('$app/state', () => ({
 	page: {
@@ -80,6 +95,9 @@ const page = createRawSnippet(() => ({ render: () => '<p>Settings page</p>' }));
 const pressBack = () => backListeners.forEach((listener) => listener({ canGoBack: true }));
 
 beforeEach(() => {
+	afterNavigateCallbacks.clear();
+	sessionStorage.clear();
+	returnPath.reset();
 	routeState.id = '/settings';
 	modeState.mode = 'sidecar';
 	subscribers.clear();
@@ -167,4 +185,17 @@ test('remote_pairing_page_does_not_open_the_notification_stream', async () => {
 	>);
 	await expect.element(screen.getByText('Settings page')).toBeVisible();
 	expect(streamCalls).not.toHaveBeenCalled();
+});
+
+test('afterNavigate_records_non_settings_paths_for_settings_back_link', async () => {
+	await render(RootLayout, { children: page } as unknown as ComponentProps<typeof RootLayout>);
+	const navigate = (url: string) =>
+		afterNavigateCallbacks.forEach((callback) => callback({ to: { url: new URL(url) } }));
+
+	navigate('http://localhost/session/abc?mode=chat');
+	expect(returnPath.path).toBe('/session/abc?mode=chat');
+
+	navigate('http://localhost/settings?section=sync');
+	navigate('http://localhost/pair');
+	expect(returnPath.path).toBe('/session/abc?mode=chat');
 });

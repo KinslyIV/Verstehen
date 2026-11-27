@@ -14,13 +14,12 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 | Path | What it holds |
 |---|---|
 | `src/app.html`, `src/routes/+layout.svelte` | the page shell, theme, and initial saved model catalog. In remote mode the catalog starts after pairing and is reset on return to the pairing screen. |
-| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching`, `Practice`, and `Chat` buttons, the `Teaching | Practice | Chat | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), header, and the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
+| `src/routes/(lesson)/+layout.svelte` | the lesson shell: sidebar (`+ Teaching`, `Practice`, and `Chat` buttons, the `Teaching | Practice | Chat | All` filter, session list, and optional live sync badge from `sync-badge.svelte`), top bar (`session-header` with `RenameSession`, `phase-chip`, and `CoverageRing` on desktop/tablet; `phone-heading` single editable title on phone), the resizable right panel with the tabs Plan, Jobs, Activity (placeholder until M11), and Side chat, and the desktop/tablet `SettingsDialog` modal host; below 768 px a phone top bar, the right-panel tab screen, and the "Reconnecting…" line (see Layouts and touch) |
 | `src/lib/components/session-list.svelte`, `sidebar-folder-row.svelte`, `new-folder-row.svelte`, `lib/graph/source-directory.svelte.ts`, `source-drop.svelte.ts` | the sidebar folder tree: rows, folder menu, drag and drop, and the shared directory reader |
 | `src/routes/(lesson)/+page.svelte`, `session/new/`, `session/[id]/`, `graph/` | the new-session screen (`/` and `/session/new`), a lesson, the knowledge graph |
-| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, and Sync on the desktop or Connection in remote mode (`?section=sync` deep-links; the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
+| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte`, `lib/layout/settings-overlay.svelte.ts`, `lib/layout/return-path.svelte.ts` | Settings on desktop/tablet and phone: `Settings` supports `mode="page"` (at `/settings`, section synced with `page.url` query parameters and Back using `returnPath.path` persisted in `sessionStorage`) and `mode="dialog"` (mounted in `SettingsDialog` via `settingsOverlay` with nested-overlay Escape/outside guards so active lesson/graph views and drafts stay mounted). Covers Appearance, Models, Accounts, Lesson, Prompts (owned by [teaching](teaching.md)), Graph, Tools, Plugins, and Sync on desktop/tablet or Connection in remote mode (`settings-sync.svelte` keeps one in-memory attempt through TOFU and SSH-password prompts, loads the three server cards independently, discards stale responses, and warns when the server cannot identify this laptop) |
 | `src/routes/pair/+page.svelte` | the pairing form (outside the lesson group): server address, code, device name |
 | `src/lib/api/connection.ts` | `ServerConnection`, the storage behind it (Capacitor Preferences on Android, `localStorage` for headless flows), the client mode, and server-address rules |
-| `src/routes/settings/+page.svelte`, `lib/components/settings*.svelte` | settings outside the lesson group: Appearance, Models, Accounts, Lesson, Prompts, Graph, Tools, Sync (`?section=sync` deep-links; Prompts is owned by [teaching](teaching.md); the section derives from reactive `page.url` and clicks update the URL). `settings-sync.svelte` keeps one in-memory attempt (install or OAuth) through TOFU and SSH-password prompts, loads the three server cards independently with per-card errors, and discards stale responses (cards by a generation counter, status and install-status requests each by their own sequence number) after disconnect or a server change; it shows a warning when the server cannot identify this laptop |
 | `src/routes/lesson-test-harness.svelte`, `session-thread-test-page.svelte` | wrappers for component tests |
 | `src/lib/markdown/` | assistant markdown: Streamdown-style top-level blocks, each parsed by LH's unified/remark stack and sanitized; math, Shiki code, app-owned Mermaid; learner text stays plain |
 | `src/lib/components/ui/` | shadcn-svelte components, generated with its CLI (excluded from the comment check) |
@@ -175,12 +174,18 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **Width tiers** (`layout.tier` in `lib/layout/tiers.svelte.ts`): phone below 768 px, tablet
   768–1279 px, desktop from 1280 px. Tailwind's `max-md:` and `md:` carry the phone styling; the
   tablet and desktop split is the sidebar (a drawer below 1280 px, inline above) and the panel.
-- **Phone:** a top bar (drawer button, session heading, then the four right-panel buttons). A panel
-  button opens that tab full screen over the inert lesson and the bar shows a "Lesson" back
-  button; a new plan does not switch screens. The drawer closes on navigation (`DrawerCloser`), and
-  navigating to another lesson or the new-session screen returns to the lesson screen.
-- **Tablet:** the drawer plus the right panel beside the lesson, closable; the width is
-  remembered. **Desktop** is unchanged.
+- **Phone:** a top bar (drawer button, editable `RenameSession` in `phone-heading` without
+  duplicating the title below, and the four right-panel buttons) plus a slim phase/coverage
+  strip above the transcript. A panel button opens that tab full screen over the inert lesson and
+  the bar shows a "Lesson" back button; a new plan does not switch screens. The drawer closes on
+  navigation (`DrawerCloser`), and navigating to another lesson or the new-session screen returns
+  to the lesson screen.
+- **Tablet:** the drawer plus `session-header` in the top bar and the right panel beside the
+  lesson, closable; the width is remembered. **Desktop** renders the persistent sidebar,
+  `session-header`, and right panel, and opens Settings (`Sidebar`, `SyncBadge`, or plugin
+  `openSettings`) in `SettingsDialog` without leaving the current page. Saving Settings dispatches
+  `verstehen:settings-changed` so mounted `GraphController` and `CoverageRing` views reflect changes
+  immediately without reloading.
 - **Touch** (`pointer: coarse`, a custom Tailwind `coarse:` variant): buttons and icon buttons get
   44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
   8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.

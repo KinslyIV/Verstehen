@@ -25,7 +25,12 @@
 	import TurnMinimap from '#lib/session/turn-minimap.svelte';
 	import { turnTicks } from '#lib/session/turn-minimap.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
-	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
+	import { phaseLabel } from '#lib/teaching/phases.js';
+	import { workingStatus } from '#lib/session/working-status.js';
+	import { copyableAssistantText, formatMessageTime } from '#lib/session/message-meta.js';
+	import { layout } from '#lib/layout/tiers.svelte.js';
+	import { cn } from '#lib/utils.js';
+	import MessageCopyButton from './message-copy-button.svelte';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
 	import DispatchCard from '#lib/jobs/dispatch-card.svelte';
 	import MarkerCard from '#lib/jobs/marker-card.svelte';
@@ -62,9 +67,47 @@
 	const controller = new SessionController(untrack(() => id));
 	const panel = getPlanPanel();
 	controller.onNewPlan = panel?.open;
-	const phases = $derived(phaseTimeline(controller.entries));
-	const phase = $derived(phases.timeline.at(-1) ?? 'probe');
+	const phases = $derived(controller.phases);
+	const phase = $derived(controller.phase);
 	const results = $derived(responseResults(controller.entries));
+	const latestAssistantId = $derived.by(() => {
+		for (let i = controller.entries.length - 1; i >= 0; i--) {
+			const entry = controller.entries[i]!;
+			if (entry.kind !== 'assistant') continue;
+			const hasThinking = entry.parts.some((part) => part.type === 'thinking' && part.thinking);
+			const prose = responseProse(
+				entry,
+				results.get(entry.entry_id!),
+				entry.entry_id === controller.streamingEntryId
+			);
+			if (hasThinking || prose.length) return entry.entry_id;
+		}
+		return undefined;
+	});
+	const activeStatus = $derived(
+		controller.compacting
+			? null
+			: workingStatus(
+					controller.entries,
+					results,
+					controller.streamingEntryId,
+					controller.busy,
+					controller.completedToolCallIds
+				)
+	);
+	let elapsedSec = $state(0);
+	$effect(() => {
+		if (!controller.busy) {
+			elapsedSec = 0;
+			return;
+		}
+		const started = Date.now();
+		elapsedSec = 0;
+		const timer = setInterval(() => {
+			elapsedSec = Math.floor((Date.now() - started) / 1000);
+		}, 1000);
+		return () => clearInterval(timer);
+	});
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
 	const ticks = $derived(turnTicks(controller.entries, cards, results));
 	const tickIds = $derived(new Set(ticks.map(({ id }) => id)));
@@ -238,16 +281,19 @@
 	style:--dock-reserve="{reserve}px"
 	style:--dock-height="{dockHeight}px"
 >
-	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
+	{#if controller.record && (!panel || layout.tier === 'phone')}<div
+			class={cn(
+				'mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 max-md:px-4',
+				panel ? 'py-1.5' : 'py-3'
+			)}
 		>
-			<RenameSession
-				{id}
-				title={controller.record.title}
-				onrenamed={(title) => {
-					if (controller.record) controller.record.title = title;
-				}}
-			/>
+			{#if !panel}<RenameSession
+					{id}
+					title={controller.record.title}
+					onrenamed={(title) => {
+						if (controller.record) controller.record.title = title;
+					}}
+				/>{/if}
 			{#if controller.isPractice}<span
 					data-testid="phase-chip"
 					data-phase="practice"
@@ -320,7 +366,7 @@
 								<Scroller.Item
 									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
 								>
-									<LearnerMessage content={entry.text} />
+									<LearnerMessage content={entry.text} createdAt={entry.created_at} />
 								</Scroller.Item>
 							{:else if entry.kind === 'assistant'}
 								{@const thinking = entry.parts
@@ -334,6 +380,9 @@
 									: controller.questionCalls.filter(
 											(call) => call.messageId === entry.entry_id && !call.question
 										)}
+								{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
+								{@const copyText = copyableAssistantText(prose)}
+								{@const time = formatMessageTime(entry.created_at)}
 								{#if thinking || prose.length || malformed.length}
 									{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
 									{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
@@ -342,6 +391,7 @@
 											{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
 										</Scroller.Item>{/if}
 									<Scroller.Item
+										class="group/row"
 										messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
 									>
 										{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
@@ -360,16 +410,51 @@
 												onretry={() => void controller.retryQuestion(call)}
 											/>
 										{/each}
+										{#if !streaming && (copyText || time || segmentId)}
+											<div
+												data-testid="message-footer"
+												class={cn(
+													'mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground transition-opacity',
+													entry.entry_id === latestAssistantId ||
+														(segmentId && controller.side.hasHistory(segmentId))
+														? 'opacity-100'
+														: 'opacity-40 group-focus-within/row:opacity-100 group-hover/row:opacity-100 coarse:opacity-100'
+												)}
+											>
+												{#if copyText}<MessageCopyButton text={copyText} />{/if}
+												{#if time}
+													<time
+														data-testid="message-time"
+														datetime={entry.created_at}
+														title={time.full}
+														class="px-1 text-muted-foreground/70 tabular-nums"
+													>
+														{time.short}
+													</time>
+												{/if}
+												{#if segmentId}
+													<div class="ml-auto">
+														<SideEntryButton
+															{segmentId}
+															hasHistory={controller.side.hasHistory(segmentId)}
+															onopen={openSide}
+														/>
+													</div>
+												{/if}
+											</div>
+										{/if}
+									</Scroller.Item>
+								{:else if segmentId}
+									<Scroller.Item>
+										<div class="flex justify-end">
+											<SideEntryButton
+												{segmentId}
+												hasHistory={controller.side.hasHistory(segmentId)}
+												onopen={openSide}
+											/>
+										</div>
 									</Scroller.Item>
 								{/if}
-								{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
-								{#if segmentId}<Scroller.Item>
-										<SideEntryButton
-											{segmentId}
-											hasHistory={controller.side.hasHistory(segmentId)}
-											onopen={openSide}
-										/>
-									</Scroller.Item>{/if}
 							{:else if entry.kind === 'marker' && graphContext}
 								<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
 							{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
@@ -437,10 +522,20 @@
 						>
 							<LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
 							Compacting context…
-						</p>{:else if controller.busy && controller.entries.at(-1)?.kind !== 'assistant'}<p
-							class="shimmer text-sm text-muted-foreground"
+						</p>{:else if activeStatus}<p
+							data-testid="working-indicator"
+							class="flex items-center gap-2 text-sm text-muted-foreground"
 						>
-							Thinking...
+							<LoaderCircle class="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+							<span role="status" class="shimmer">{activeStatus}</span>
+							{#if elapsedSec >= 2}
+								<span
+									data-testid="working-elapsed"
+									class="text-xs text-muted-foreground/70 tabular-nums"
+								>
+									· {elapsedSec}s
+								</span>
+							{/if}
 						</p>{/if}
 				</Scroller.Content>
 			</Scroller.Viewport>

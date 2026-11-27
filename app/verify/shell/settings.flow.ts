@@ -132,4 +132,48 @@ test('settings', async ({ page, request }) => {
 		path: test.info().outputPath('settings-tools-link-refused.png'),
 		animations: 'disabled'
 	});
+
+	await page.goto('/session/new?mode=chat');
+	const draft = page.getByRole('textbox', { name: 'What do you want to learn?' });
+	await draft.fill('Unsent draft question');
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByTestId('settings-dialog');
+	await expect(dialog).toBeVisible();
+	await expect(page).not.toHaveURL(/\/settings/);
+	await dialog.getByRole('button', { name: 'Appearance', exact: true }).click();
+	await expect(dialog.getByRole('heading', { name: 'Appearance', exact: true })).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath('settings-dialog.png'),
+		animations: 'disabled'
+	});
+	await dialog.getByRole('button', { name: 'Prompts', exact: true }).click();
+	const promptRow = dialog.getByTestId('prompt-row-teacher/20-teaching.md');
+	await promptRow.getByRole('button', { name: '+ Add override' }).click();
+	const editor = page.getByRole('dialog', { name: 'Add override' });
+	await expect(editor).toBeVisible();
+	await editor.getByLabel('Override Markdown').fill('Read [Example](https://example.com).');
+	await editor.getByRole('button', { name: 'Preview' }).click();
+	await editor.getByRole('link', { name: 'Example', exact: true }).click();
+	const externalLink = page.getByRole('dialog', { name: 'Open external link' });
+	await expect(externalLink).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(externalLink).toBeHidden();
+	await expect(editor).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(editor).toBeVisible();
+	await expect(editor.getByText('Discard unsaved changes?')).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await editor.getByRole('button', { name: 'Discard changes', exact: true }).click();
+	await expect(editor).toBeHidden();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(draft).toHaveValue('Unsent draft question');
+
+	await page.goto('/settings');
+	const backLink = page.getByRole('link', { name: 'Back' });
+	await expect(backLink).toHaveAttribute('href', '/session/new?mode=chat');
+	await backLink.click();
+	await expect(page).toHaveURL(/\/session\/new\?mode=chat$/);
 });

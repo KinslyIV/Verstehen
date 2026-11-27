@@ -308,8 +308,10 @@ test('settings-sync', async ({ page, context }) => {
 	await expect(badge).toBeVisible();
 	await expect(badge).toContainText('Synced');
 	await badge.click();
-	await expect(page).toHaveURL(/\/settings\?section=sync$/);
-	await expect(page.getByRole('heading', { name: 'Sync', exact: true })).toBeVisible();
+	await expect(page).not.toHaveURL(/\/settings/);
+	const settingsDialog = page.getByTestId('settings-dialog');
+	await expect(settingsDialog).toBeVisible();
+	await expect(settingsDialog.getByRole('heading', { name: 'Sync', exact: true })).toBeVisible();
 
 	const pollStarted = Promise.withResolvers<void>();
 	const releasePoll = Promise.withResolvers<void>();

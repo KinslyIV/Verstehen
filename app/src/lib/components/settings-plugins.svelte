@@ -8,11 +8,21 @@
 	import { plugins } from '#lib/plugins/plugins.svelte.js';
 	import PluginSettingsPage from '#lib/plugins/plugin-settings-page.svelte';
 
+	let {
+		selectedPlugin,
+		onselect
+	}: {
+		selectedPlugin?: string | null;
+		onselect?: (pluginId: string | null) => void;
+	} = $props();
+
 	let error = $state<string | null>(null);
 	let busy = $state<Record<string, boolean>>({});
 	let refreshing = $state(false);
 	const list = $derived(plugins.list);
-	const selected = $derived(page.url.searchParams.get('plugin'));
+	const selected = $derived(
+		onselect ? (selectedPlugin ?? null) : page.url.searchParams.get('plugin')
+	);
 	const selectedInfo = $derived(list?.plugins.find((plugin) => plugin.id === selected));
 
 	onMount(() => void plugins.sync());
@@ -51,9 +61,20 @@
 
 {#if selectedInfo}
 	<div class="mt-4">
-		<Button variant="ghost" size="sm" href="?section=plugins" data-testid="plugin-settings-back">
-			<ArrowLeft class="size-4" /> Plugins
-		</Button>
+		{#if onselect}
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={() => onselect(null)}
+				data-testid="plugin-settings-back"
+			>
+				<ArrowLeft class="size-4" /> Plugins
+			</Button>
+		{:else}
+			<Button variant="ghost" size="sm" href="?section=plugins" data-testid="plugin-settings-back">
+				<ArrowLeft class="size-4" /> Plugins
+			</Button>
+		{/if}
 		<h3 class="mt-4 text-base font-medium">{selectedInfo.name}</h3>
 		<PluginSettingsPage plugin={selectedInfo} />
 	</div>
@@ -117,15 +138,27 @@
 						<p class="mt-1 text-xs break-words text-amber-600 dark:text-amber-400">{warning}</p>
 					{/each}
 					{#if plugin.status === 'active'}
-						<Button
-							variant="link"
-							size="xs"
-							class="px-0"
-							href="?section=plugins&plugin={encodeURIComponent(plugin.id)}"
-							data-testid="plugin-open-settings-{plugin.id}"
-						>
-							Settings
-						</Button>
+						{#if onselect}
+							<Button
+								variant="link"
+								size="xs"
+								class="px-0"
+								onclick={() => onselect(plugin.id)}
+								data-testid="plugin-open-settings-{plugin.id}"
+							>
+								Settings
+							</Button>
+						{:else}
+							<Button
+								variant="link"
+								size="xs"
+								class="px-0"
+								href="?section=plugins&plugin={encodeURIComponent(plugin.id)}"
+								data-testid="plugin-open-settings-{plugin.id}"
+							>
+								Settings
+							</Button>
+						{/if}
 					{/if}
 				</div>
 				{#if plugin.status !== 'invalid'}

@@ -108,7 +108,19 @@ test('job-demo', async ({ page, request, appendEntries }, testInfo) => {
 	await scrollTo('end');
 	await expect(page.getByText('Tutor turn 30')).toBeVisible();
 	await expect(page.getByTestId('demo-iframe')).toHaveCount(0);
-	await scrollTo('start');
+	// Paint every content-visibility: auto row once so scrollHeight only reflects demo unload/reload.
+	await viewport.evaluate(
+		(element) =>
+			new Promise<void>((done) => {
+				const step = Math.max(200, Math.floor(element.clientHeight * 0.75));
+				const advance = () => {
+					if (element.scrollTop <= 0) return done();
+					element.scrollTop = Math.max(0, element.scrollTop - step);
+					requestAnimationFrame(() => requestAnimationFrame(advance));
+				};
+				requestAnimationFrame(() => requestAnimationFrame(advance));
+			})
+	);
 	await expect(page.getByTestId('demo-iframe')).toHaveCount(1);
 	await expect(demo.locator('#out')).toHaveText('slope = 4.00');
 	await expect.poll(async () => (await iframe.boundingBox())?.height).toBeGreaterThan(200);

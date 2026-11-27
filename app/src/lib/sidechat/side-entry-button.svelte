@@ -10,21 +10,19 @@
 	const label = $derived(hasHistory ? 'Open side conversation' : 'Ask a side question');
 </script>
 
-<div class="flex justify-end">
-	<Button
-		type="button"
-		variant="ghost"
-		size="icon-xs"
-		data-testid="side-conversation-button"
-		data-side-segment-id={segmentId}
-		data-has-history={hasHistory}
-		aria-label={label}
-		title={label}
-		class={hasHistory
-			? 'border border-border/60 text-muted-foreground'
-			: 'text-muted-foreground/40 hover:text-muted-foreground'}
-		onclick={() => onopen(segmentId)}
-	>
-		<MessageCircleQuestion aria-hidden="true" class="size-3.5" />
-	</Button>
-</div>
+<Button
+	type="button"
+	variant="ghost"
+	size="icon-xs"
+	data-testid="side-conversation-button"
+	data-side-segment-id={segmentId}
+	data-has-history={hasHistory}
+	aria-label={label}
+	title={label}
+	class={hasHistory
+		? 'border border-border/60 text-muted-foreground'
+		: 'text-muted-foreground/40 hover:text-muted-foreground'}
+	onclick={() => onopen(segmentId)}
+>
+	<MessageCircleQuestion aria-hidden="true" class="size-3.5" />
+</Button>

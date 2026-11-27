@@ -114,9 +114,10 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   `no-session-persistence`).
 - **A saved catalog must never feed dispatch.** Showing a model the account no longer offers is
   harmless; resolving it would not be. Validation stays on the adapters.
-- **The menu keeps one size.** Its body is fixed (columns scroll inside) and its footer is always
-  present for the status line and Set as default, so changing slot or account cannot resize it.
-  Component tests run without Tailwind, so the size is checked in the `model-catalog` flow.
+- **The menu keeps one size.** Its body is fixed at a compact `28rem` (`[0.9fr, 1.1fr]` columns,
+  scrolling inside; `SetupDialog` uses `32rem`) and its footer is always present for the status line
+  and Set as default, so changing slot or account cannot resize it. Component tests run without
+  Tailwind, so the size is checked in the `model-catalog` flow.
 - **Claude Code has no native web search through the adapter.** With the search engine set to
   Native, Claude Code research uses Tavily, then Brave; an explicitly chosen keyed engine is used
   as chosen.

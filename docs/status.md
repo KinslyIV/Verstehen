@@ -87,9 +87,16 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 - **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 75 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.
+- **Chat & Settings UX polish** (branch `ux-chat-polish`, pending review/merge): desktop/tablet `SettingsDialog` modal
+  overlay (`settingsOverlay` + `returnPath` for `/settings`), compact `28rem` `ModelMenu` / `32rem`
+  `SetupDialog`, top-bar `session-header` (`RenameSession`, `phase-chip`, `CoverageRing`) and single
+  `phone-heading` title, contextual `workingStatus` indicator with immediate `is_call_tools_node`
+  `message_update` flush and elapsed timer, and assistant/learner message footers with Copy,
+  `end_response` finish timestamps, and folded `SideEntryButton`.
 
 ## Next
 
+0c. Review and merge `ux-chat-polish` into `dev`.
 0. Review and merge the `qt-shell` PR into `dev`. Then, on the laptop with `make app` installed:
    Task 8 (PSS for a demo-free lesson and the 2-demo session; five session switches plus a heap
    snapshot with `VERSTEHEN_DEVTOOLS=1`) and the hand checks: trackpad pinch on the graph,
