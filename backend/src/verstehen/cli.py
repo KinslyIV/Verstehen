@@ -38,7 +38,18 @@ def configure_logging(settings: Settings) -> None:
         logger.propagate = True
 
 
-class SidecarServer(uvicorn.Server):
+class VerstehenServer(uvicorn.Server):
+    """Close long-lived notification streams before uvicorn waits for connections to drain."""
+
+    async def shutdown(self, sockets: list[socket.socket] | None = None) -> None:
+        app = self.config.app
+        notifications = getattr(getattr(app, "state", None), "notifications", None)
+        if notifications is not None:
+            notifications.close()
+        await super().shutdown(sockets=sockets)
+
+
+class SidecarServer(VerstehenServer):
     """An API server that announces its listening port on stdout."""
 
     async def startup(self, sockets: list[socket.socket] | None = None) -> None:

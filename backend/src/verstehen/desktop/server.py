@@ -11,7 +11,12 @@ from pathlib import Path
 import httpx2
 import uvicorn
 
-from verstehen.cli import bind_listener, configure_logging, uvicorn_config
+from verstehen.cli import (
+    VerstehenServer,
+    bind_listener,
+    configure_logging,
+    uvicorn_config,
+)
 from verstehen.config import TOKEN_COOKIE, Settings, load_settings
 from verstehen.jobs.workers.headless import DemoRunner
 
@@ -77,7 +82,7 @@ class DesktopServer:
                 self.settings.data_dir,
                 self.port,
             )
-            self._server = uvicorn.Server(
+            self._server = VerstehenServer(
                 uvicorn_config(self.settings, self._demo_runner)
             )
         except (ValueError, OSError, RuntimeError, ImportError) as error:

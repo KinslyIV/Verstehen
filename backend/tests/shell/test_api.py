@@ -198,6 +198,31 @@ def test_only_desktop_mode_serves_the_app(tmp_path: Path, mode: str):
         assert client.get("/").status_code == 404
 
 
+def test_closing_notifications_ends_active_event_streams_immediately():
+    import asyncio
+
+    from verstehen.session.events import Notification, Notifications
+
+    async def run() -> list[Notification | None]:
+        bus = Notifications()
+        seen: list[Notification | None] = []
+
+        async def reader() -> None:
+            async for item in bus.subscribe():
+                seen.append(item)
+
+        task = asyncio.create_task(reader())
+        await asyncio.sleep(0)
+        bus.publish(Notification(type="chats-changed", session_id="s1"))
+        await asyncio.sleep(0)
+        bus.close()
+        await asyncio.wait_for(task, timeout=1)
+        return seen
+
+    seen = asyncio.run(run())
+    assert seen == [None, Notification(type="chats-changed", session_id="s1")]
+
+
 def test_desktop_spa_revalidates_html_and_caches_immutable_assets(tmp_path: Path):
     with spa_client(tmp_path) as client:
         assert client.get("/").headers["cache-control"] == "no-cache"
