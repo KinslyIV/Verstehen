@@ -15,9 +15,10 @@ step and its open questions are in [status](status.md); how each area works is i
   endpoint, Copilot, Grok).
 - **Plugins** (branch `plugins`, [plan](plans/plugins.md)): the first version is built: discovery,
   backend and frontend activation, the bridge, agent hooks, views, actions, settings, and `ctx.ui`.
+  The MCP Servers branch introduces the first core plugin shipped with the desktop app.
 - **Deferred:** the rest of the plugin API (plugin questions, problems, workers, jobs, the knowledge
   picker, code-block and tool renderers, submission interceptors, learning-data reads, inference,
-  managed agents, documents, action keyboard shortcuts, the action context's session snapshot, more `ctx.ui` widgets, core plugins, server and Android) and flashcards.
+  managed agents, documents, action keyboard shortcuts, the action context's session snapshot, more `ctx.ui` widgets, LearnHarness's core plugins, server and Android) and flashcards.
 - **Excluded:** dictation (speech to text).
 - **LearnHarness data import** is a one-way command-line replace; see [store](architecture/store.md#importing-from-learnharness).
 

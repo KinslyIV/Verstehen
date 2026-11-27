@@ -545,6 +545,12 @@ alternative, and the consequence, until the user reviews them at the end of the 
   host route, so plugin authors write no endpoints.
 - **A toolset hook** (`register_toolset`, for MCP servers over Pydantic AI's `MCPToolset`) beside
   `register_tools`; LH has no MCP or toolset hook.
+- **MCP Servers ships with the desktop app and starts disabled**, as LearnHarness core plugins do.
+  It configures local stdio commands and explicit per-agent tool selections in Settings. The next
+  turn reads saved changes. LearnHarness defines its per-agent plugin tools in code.
+- **Core plugin data shares the existing per-ID data path.** LearnHarness has a separate core data
+  directory. Verstehen loads code from the app bundle and reuses the current data path and enable
+  choice so an earlier manual MCP Servers installation keeps its configuration.
 - **A Python backend and a JS frontend.** LH's backend is JS; here it is a Python package in
   `dist/backend/` with optional pure-Python `vendor/`, and the host installs nothing.
 - **Desktop only.** Server mode discovers no plugins, paired remote devices run none, and

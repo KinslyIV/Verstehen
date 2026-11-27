@@ -1,5 +1,7 @@
 .PHONY: setup check check-backend check-frontend test fmt lock-migrations dev verify verify-run verify-live api-types app app-image android-setup android-debug android android-key
 
+MCP_PLUGIN_DIST := backend/src/verstehen/core_plugins/mcp-servers/dist
+
 setup:
 	uv sync --project backend --locked
 	npm ci --prefix app
@@ -14,6 +16,7 @@ check-backend:
 	uv run --project backend ruff check .
 	uv run --project backend ruff format --check .
 	uv run --project backend pyrefly check --config pyrefly.toml
+	uv run --project backend pyrefly check --config pyrefly.toml --search-path $(MCP_PLUGIN_DIST) $(MCP_PLUGIN_DIST)/backend/*.py
 	cd backend && uv run lint-imports
 	uv run --project backend python tools/check_comments.py
 	uv run --project backend python tools/check_migrations.py

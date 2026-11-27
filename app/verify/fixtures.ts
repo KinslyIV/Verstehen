@@ -243,8 +243,9 @@ export interface GraphSeed {
 export const test = base.extend<{
 	script: string;
 	learnHarnessFolder: string;
-	/** Fixture plugins (`backend/tests/fixtures/plugins/<name>`) copied into the data directory. */
+	/** Fixture plugins copied into the data directory. */
 	plugins: string[];
+	pluginsEnabled: boolean;
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
@@ -268,6 +269,7 @@ export const test = base.extend<{
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
 	plugins: [[], { option: true }],
+	pluginsEnabled: [false, { option: true }],
 	expectedStatuses: [[], { option: true }],
 	goesOffline: [false, { option: true }],
 	client: ['sidecar', { option: true }],
@@ -346,6 +348,7 @@ export const test = base.extend<{
 		{
 			script,
 			plugins,
+			pluginsEnabled,
 			client,
 			goesOffline,
 			playwright,
@@ -362,7 +365,7 @@ export const test = base.extend<{
 		Object.assign(env, {
 			VERSTEHEN_DATA_DIR: dataDirectory,
 			VERSTEHEN_PORT: '0',
-			...(plugins.length ? { VERSTEHEN_PLUGINS: '1' } : {}),
+			...(pluginsEnabled || plugins.length ? { VERSTEHEN_PLUGINS: '1' } : {}),
 			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
 		const remote = client === 'remote';

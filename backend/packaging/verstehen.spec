@@ -8,6 +8,10 @@ binaries = []
 datas = collect_data_files(
     "verstehen", includes=["store/migrations/*.sql", "teaching/prompts/**/*.md"]
 )
+datas += collect_data_files(
+    "verstehen", include_py_files=True, includes=["core_plugins/**/*"],
+    excludes=["**/__pycache__/**"],
+)
 datas += [(str(spa), "spa"), (str(root.parent / "packaging" / "icons"), "icons")]
 datas += copy_metadata("verstehen", recursive=True)
 hiddenimports = collect_submodules("uvicorn") + ["pydantic_ai.mcp"]

@@ -21,7 +21,7 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
 | `app/eslint.config.*`, Prettier, Vitest | frontend lint with boundaries, format, unit and browser-mode component tests |
 | `backend/src/verstehen/arguments.py`, `cli.py`, `config.py` | the command line (`parse_arguments`, parsed once; the mode comes from `--server` or `VERSTEHEN_SERVER=1`), the console entry `verstehen.cli:main`, the browser-only and `--server` backend (`serve`, logging, `uvicorn_config`), the `import-learnharness`, `mint-token`, and `desktop` subcommands, and environment settings |
 | `backend/src/verstehen/desktop/` | the Qt shell (`shell.py`, `server.py`, `demo_runner.py`, `links.py`, `pages.py`) and `__main__.py` (`python -m verstehen.desktop`, which runs `verstehen.cli:main` with `desktop` appended); [frontend shell](frontend-shell.md), [jobs](jobs.md) |
-| `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, an offline demo page (`qt-demo` in the desktop bundle, `playwright` and `headless` in the server bundle, chosen by whether PySide6 imports), the Claude CLI |
+| `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, an offline demo page (`qt-demo` in the desktop bundle, `playwright` and `headless` in the server bundle, chosen by whether PySide6 imports), the Claude CLI, and the MCP stack with core MCP Servers plugin activation in the desktop bundle |
 | `backend/src/verstehen/providers/fake.py`, `app/verify/scripts/*.json` | the scripted fake model and its reply scripts |
 | `app/verify/<area>/*.flow.ts`, `fixtures.ts`, helpers | fake-model Playwright flows grouped by the 9 architecture areas; `playwright.config.ts` |
 | `app/verify-live/`, `playwright.live.config.ts` | the one real-model flow (Claude Code Haiku) |
@@ -98,7 +98,8 @@ the fake model, the verify flows, the console entry, the desktop entry and self-
   and Chromium runtime libraries; Docker volumes cache npm and uv). `compile.sh` builds the SPA,
   then `verstehen.spec` freezes one PyInstaller onedir app, `/usr/lib/verstehen/verstehen`
   (`/usr/bin/verstehen` links to it), with PySide6, QtWebEngine, the built SPA (`spa/`), and the
-  window icons (`icons/`). Its `shipped` filter drops the Qt parts nothing loads: libraries no
+  window icons (`icons/`). The spec also includes core plugin packages under `verstehen/core_plugins/`.
+  Its `shipped` filter drops the Qt parts nothing loads: libraries no
   shipped binary links to (`UNUSED_QT_LIBRARY`), `qml/`, the QML debugger plugins, and every
   translation except English and German (about 170 MB unpacked). `entrypoint.py` points `VERSTEHEN_SPA_DIR` and `VERSTEHEN_ICONS_DIR` at
   them, opens the desktop when run without arguments, and refuses `--server` (server mode runs

@@ -10,7 +10,7 @@ vi.mock('#lib/api/client.js', () => ({
 }));
 
 function plugin(id: string, extra: Partial<PluginInfo> = {}): PluginInfo {
-	return { id, name: id, enabled: true, status: 'active', main: 'main.js', ...extra };
+	return { id, name: id, enabled: true, core: false, status: 'active', main: 'main.js', ...extra };
 }
 
 const navigation = {

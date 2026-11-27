@@ -1,6 +1,6 @@
 # Plugins
 
-Owns what runs from `<data dir>/plugins/<id>/`: finding installed plugins, the enable choice, a
+Owns built-in plugins and plugins installed under `<data dir>/plugins/<id>/`: discovery, the enable choice, a
 plugin's Python backend and JS frontend, the bridge between the two, what a plugin adds to the
 prober, teacher, and practitioner, and Settings → Plugins. Plugins are trusted local code with no
 sandbox. Desktop only: plugins load only in the desktop app (`Settings.plugins`: the desktop shell, or
@@ -17,6 +17,7 @@ Backend, `backend/src/verstehen/` (`plugins` sits beside `jobs | sidechat | grap
 
 | File | What it holds |
 |---|---|
+| `plugins/core.py` | Core plugin IDs and their package paths in the app |
 | `plugins/manifest.py` | `PluginManifest` and `validate_package`: LH's manifest rules, checked without running plugin code; the reason an invalid package gives |
 | `plugins/loader.py` | `load_backend` (import `dist/<backend>/` as `verstehen_plugins.<id>`), `add_vendor`, `forget_backend` |
 | `plugins/context.py` | `PluginContext`: what `activate(ctx)` receives (`expose`, `emit`, `on`, `cleanup`, `register_instructions`, `register_tools`, `register_toolset`) and the registrations it records |
@@ -41,13 +42,14 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
 
 ## How it works
 
-- **Layout.** `plugins/<id>/dist/` holds what runs: `manifest.json`, `backend/` (a Python package,
-  optional `vendor/`), `main.js`, `styles.css`, `assets/`. `plugins/<id>/data/` is the plugin's
+- **Layout.** A plugin's `dist/` folder holds what runs: `manifest.json`, `backend/` (a Python package,
+  optional `vendor/`), `main.js`, `styles.css`, `assets/`. Core code ships under `core_plugins/<id>/`
+  inside the app. Community code lives under the data directory. `plugins/<id>/data/` is the plugin's
   own folder and survives updates and disabling. A symlink anywhere in a package is refused: `dist/`,
   `backend/` and everything under it, `main`, `styles` and the `assets` root.
 - **Discovery** (`PluginService.discover`, at startup and on **Refresh**): validate each manifest
   without importing anything; a package that cannot run is listed `invalid` with the reason. New
-  plugins start disabled. A plugin whose code is imported or running is not rescanned: changed
+  plugins start disabled. Core IDs are reserved even when the bundled files are missing. A plugin whose code is imported or running is not rescanned: changed
   code needs an app restart, and Refresh marks a running plugin whose package changed or was
   removed (a hash of `dist/` taken at activation, ignoring `__pycache__`) with `Restart required`.
   The queued work of a plugin (`InstalledPlugin.queued`) owns its registry entry: Refresh neither
@@ -166,7 +168,8 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
 | What | Where |
 |---|---|
 | Enable choices | `<data dir>/plugins-state.json` (not synced) |
-| Plugin code and its data | `<data dir>/plugins/<id>/dist/`, `…/data/` (not synced) |
+| Core plugin code | `core_plugins/<id>/dist/` inside the app |
+| Community code and all plugin data | `<data dir>/plugins/<id>/dist/`, `…/data/` (not synced) |
 | Routes | `GET /api/plugins`, `POST /api/plugins/refresh`, `PUT /api/plugins/{id}/enabled`, `POST /api/plugins/{id}/call/{name}`, `GET /api/plugins/{id}/files/{path}` |
 | Notifications | `plugins-changed` (list or status changed: refetch `/api/plugins`), `plugin-message` (`plugin_id`, `topic`, `data`) |
 
@@ -198,6 +201,20 @@ after its plugin is removed.
   while `turn-settled` observers remain teaching/practice-only). All 9 built-in Chat tools are listed in
   `plugins/reserved.py` and `built-in-tools.ts`.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
+
+## MCP Servers plugin
+
+The [MCP Servers plugin](../../backend/src/verstehen/core_plugins/mcp-servers/README.md) is built
+into the desktop app. An earlier manual installation keeps its enable choice and server settings.
+Its settings page discovers tools from local stdio commands and saves the launch settings and
+per-agent tool selections in `mcp-servers/data/servers.json`. Tool discovery lists metadata without
+invoking tools.
+
+On each agent run, the plugin resolves the saved configuration into run-owned toolsets and
+starts only the servers with tools selected for that agent. A server that fails to start or list
+tools contributes none that turn. The child processes close with the run or on plugin disable.
+Names are scoped by server so two servers can offer the same tool name. Saves replace the settings
+atomically and affect subsequent runs.
 
 ## Tests
 

@@ -97,6 +97,11 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 Agents merge the latest `origin/dev` into their task branch before running pre-PR checks and
 opening a PR. The user merges the PR. See [workflow](workflow.md#4-report-and-merge).
 
+On branch `mcp-servers-plugin`, the
+[MCP Servers core plugin](../backend/src/verstehen/core_plugins/mcp-servers/README.md) ships with
+the desktop app, starts disabled, and adds local stdio connections with per-agent tool selection.
+Settings changes apply on the next turn. See the [plan](plans/mcp-servers.md).
+
 ## Next
 
 0. Review and merge the `qt-shell` PR into `dev`. Then, on the laptop with `make app` installed:

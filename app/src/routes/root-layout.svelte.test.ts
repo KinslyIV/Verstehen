@@ -142,6 +142,7 @@ test('notifications_reach_plugins_on_non_lesson_pages_and_resync_fires_only_on_r
 		id: 'hello',
 		name: 'Hello',
 		enabled: true,
+		core: false,
 		status: 'active' as const,
 		main: 'main.js'
 	};

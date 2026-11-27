@@ -2,7 +2,7 @@ import asyncio
 import inspect
 import logging
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from functools import partial
 from pathlib import Path
@@ -55,6 +55,7 @@ class PluginInfo(BaseModel):
     main: str | None = None
     styles: str | None = None
     enabled: bool
+    core: bool = False
     status: PluginStatus
     error: str | None = None
     warnings: list[str] = Field(default_factory=list)
@@ -79,8 +80,8 @@ class InstalledPlugin:
 
 
 class PluginService:
-    """Find the installed plugins under `<data dir>/plugins/`, keep their enable choices, and run
-    their backends. When `available` is false (server mode) nothing is discovered.
+    """Find core and community plugins, keep their enable choices, and run their backends.
+    When `available` is false (server mode) nothing is discovered.
     """
 
     def __init__(
@@ -91,9 +92,12 @@ class PluginService:
         available: bool,
         plugins_changed: Callable[[], None],
         plugin_message: Callable[[str, str, JsonValue], None],
+        *,
+        core_plugins: Mapping[str, Path] | None = None,
     ):
         self.plugins_store = plugins_store
         self.plugins_directory = plugins_directory
+        self.core_plugins = dict(core_plugins or {})
         self.app_version = app_version
         self.available = available
         self.plugins_changed = plugins_changed
@@ -129,8 +133,10 @@ class PluginService:
             }
         except OSError as error:
             self.error = f"Cannot read the plugins folder: {error}"
-            self.plugins_changed()
-            return self.installed()
+            folders = {
+                plugin_id: plugin.root for plugin_id, plugin in self.plugins.items()
+            }
+        folders.update(self.core_plugins)
         for plugin_id in [name for name in self.plugins if name not in folders]:
             plugin = self.plugins[plugin_id]
             if (
@@ -291,7 +297,7 @@ class PluginService:
         )
         if not public or not all(SEGMENT.match(part) for part in parts):
             return PluginRefused(404, "Plugin file is not public")
-        root = self.plugins_directory / plugin_id
+        root = plugin.root
         dist = root / "dist"
         if root.is_symlink() or dist.is_symlink():
             return PluginRefused(404, "Plugin file is not public")
@@ -404,6 +410,7 @@ class PluginService:
                 plugin.files = None
 
     def read_package(self, root: Path, enabled: bool) -> InstalledPlugin:
+        core = root.name in self.core_plugins
         try:
             manifest = validate_package(root, self.app_version)
         except (PluginInvalid, OSError) as error:
@@ -411,6 +418,7 @@ class PluginService:
                 id=root.name,
                 name=root.name,
                 enabled=enabled,
+                core=core,
                 status="invalid",
                 error=str(error),
             )
@@ -424,6 +432,7 @@ class PluginService:
             main=manifest.main,
             styles=manifest.styles,
             enabled=enabled,
+            core=core,
             status="disabled",
         )
         return InstalledPlugin(root, info, manifest)
@@ -495,7 +504,7 @@ class PluginService:
             context = PluginContext(
                 manifest.id,
                 dist,
-                plugin.root / "data",
+                self.plugins_directory / manifest.id / "data",
                 self.plugin_message,
                 asyncio.get_running_loop(),
             )
@@ -503,6 +512,13 @@ class PluginService:
                 self.schedule_late_cleanup, plugin, context
             )
             if manifest.backend:
+                if plugin.info.core and (
+                    context.data_directory.parent.is_symlink()
+                    or context.data_directory.is_symlink()
+                ):
+                    raise PluginInvalid(
+                        "Unsafe core plugin data directory: symlinks are not allowed"
+                    )
                 context.data_directory.mkdir(parents=True, exist_ok=True)
                 add_vendor(manifest, dist, context)
                 if plugin.module is None:
