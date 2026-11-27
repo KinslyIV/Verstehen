@@ -133,6 +133,19 @@ test('workingStatus_maps_pending_builtin_tools_and_ignores_plugin_tools', () => 
 		]
 	};
 	expect(workingStatus([sendWithBuiltIn], noResults, 'a5', true)).toBeNull();
+
+	expect(workingStatus([builtInBeforePlugin], noResults, 'a3', true, ['c1'])).toBeNull();
+
+	const twoBuiltIns: Entry = {
+		kind: 'assistant',
+		entry_id: 'a6',
+		stop_reason: 'stop',
+		parts: [
+			{ type: 'tool_call', tool_call_id: 'b1', tool_name: 'list_prompts', arguments: {} },
+			{ type: 'tool_call', tool_call_id: 'b2', tool_name: 'list_graph_nodes', arguments: {} }
+		]
+	};
+	expect(workingStatus([twoBuiltIns], noResults, 'a6', true, ['b2'])).toBe('Checking prompts…');
 });
 
 test('workingStatus_shows_working_between_completed_steps', () => {

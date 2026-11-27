@@ -806,6 +806,7 @@ class TurnService:
                     elif Agent.is_call_tools_node(node):
                         assert reply is not None
                         update_response(reply, node.model_response, model)
+                        completed_ids: list[str] = []
                         run.publish(
                             TurnEvent(
                                 type="message_update",
@@ -819,6 +820,17 @@ class TurnService:
                                     result = saved_tool_result(event.part)
                                     if result is not None:
                                         results.append(result)
+                                        completed_ids.append(result.tool_call_id)
+                                        run.publish(
+                                            TurnEvent(
+                                                type="message_update",
+                                                message=reply.model_copy(deep=True),
+                                                completed_tool_call_ids=list(
+                                                    completed_ids
+                                                ),
+                                            )
+                                        )
+                                        run.flush()
                         update_response(reply, node.model_response, model)
         except asyncio.CancelledError:
             task = asyncio.current_task()

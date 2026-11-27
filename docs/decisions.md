@@ -586,10 +586,11 @@ alternative, and the consequence, until the user reviews them at the end of the 
   every demo alive.
 - **Settings opens as a modal overlay on desktop and tablet:** clicking Sidebar Settings, the
   Sync badge, or a plugin Settings trigger on desktop/tablet opens `SettingsDialog` (`settingsOverlay`)
-  over the mounted lesson or graph so active views and unsent drafts survive. `/settings` remains
-  active for phones (`< 768 px`) and direct URLs, with its Back link returning to the last
-  in-app non-Settings/non-Pair route remembered in `sessionStorage` (`returnPath`). LH uses a route
-  or sheet depending on layout.
+  over the mounted lesson or graph so active views and unsent drafts survive (matching pinned
+  LearnHarness `069a6a11`, which opens Settings as a centered dialog and redirects `/settings` to
+  `/chat/new`). Verstehen differs by keeping `/settings` as a working route for phones (`< 768 px`)
+  and direct URLs, with its Back link returning to the last in-app non-Settings/non-Pair route
+  remembered in `sessionStorage` (`returnPath`).
 - **Compact model menu and setup dialog:** `ModelMenu` uses a compact `28rem` width (`0.9fr`/`1.1fr`
   columns) on desktop/tablet and `SetupDialog` uses `32rem` instead of wide `42rem`/`46rem`
   containers.

@@ -187,8 +187,9 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
   `<TurnRun.id>#<n>`, opaque to sync and the importer.
 - Turn stream events: `message_start`, `message_update`, `message_end`, `context_update`, `error`,
   `turn-settled`. `TurnService` immediately publishes and flushes `message_update` when entering
-  `is_call_tools_node` (so tool calls reach the UI before execution completes), and
-  `end_response` stamps `reply.created_at` to UTC completion time.
+  `is_call_tools_node` (so tool calls reach the UI before execution completes), streams
+  `completed_tool_call_ids` as individual tools finish within that step, and `end_response` stamps
+  `reply.created_at` to UTC completion time.
 - Notifications: `turn-started`, `turn-settled`, `chats-changed`, `compaction-changed`
   ([API and events](api-and-events.md)).
 - Transcript UX (`session-thread.svelte`, `working-status.ts`, `message-meta.ts`,

@@ -183,7 +183,9 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
 - **Tablet:** the drawer plus `session-header` in the top bar and the right panel beside the
   lesson, closable; the width is remembered. **Desktop** renders the persistent sidebar,
   `session-header`, and right panel, and opens Settings (`Sidebar`, `SyncBadge`, or plugin
-  `openSettings`) in `SettingsDialog` without leaving the current page.
+  `openSettings`) in `SettingsDialog` without leaving the current page. Saving Settings dispatches
+  `verstehen:settings-changed` so mounted `GraphController` and `CoverageRing` views reflect changes
+  immediately without reloading.
 - **Touch** (`pointer: coarse`, a custom Tailwind `coarse:` variant): buttons and icon buttons get
   44 px targets. `/graph` takes a tap to open the card, a 500 ms press for the menu, any drag past
   8 px to pan, and a pinch to zoom; touch never drags a node. Mouse input is as in LearnHarness.

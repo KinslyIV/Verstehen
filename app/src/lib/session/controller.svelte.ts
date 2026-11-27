@@ -47,6 +47,7 @@ export class SessionController {
 	setupOpen = $state(false);
 	modelMenuOpen = $state(false);
 	streamingEntryId = $state<string>();
+	completedToolCallIds = $state<readonly string[]>([]);
 	private submittingQuestion = $state<string>();
 	private questionDrafts = new SvelteMap<string, QuestionDraft>();
 	private automaticContinuationBlocked = false;
@@ -225,6 +226,8 @@ export class SessionController {
 		if (!event.message) return;
 		const message = event.message;
 		this.streamingEntryId = event.type === 'message_end' ? undefined : message.entry_id;
+		this.completedToolCallIds =
+			event.type === 'message_update' ? (event.completed_tool_call_ids ?? []) : [];
 		if (this.saved.some((entry) => entry.entry_id === message.entry_id)) return;
 		const index = this.live.findIndex((entry) => entry.entry_id === message.entry_id);
 		this.live = index < 0 ? [...this.live, message] : this.live.with(index, message);
@@ -257,6 +260,7 @@ export class SessionController {
 				if (this.lifetime.signal.aborted) return;
 				this.live = [];
 				this.streamingEntryId = undefined;
+				this.completedToolCallIds = [];
 				this.entries = [...this.saved];
 				const stream = new AbortController();
 				const stopStream = () => stream.abort();
@@ -306,6 +310,7 @@ export class SessionController {
 		} finally {
 			live.markDown(this, false);
 			this.streamingEntryId = undefined;
+			this.completedToolCallIds = [];
 			this.consuming = false;
 		}
 	}

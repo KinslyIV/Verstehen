@@ -450,6 +450,31 @@ test('working_indicator_stays_visible_for_empty_assistant_stream_and_tool_calls'
 		.toHaveTextContent('Reading knowledge graph…');
 
 	emit!({
+		type: 'message_update',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			parts: [
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-1',
+					tool_name: 'list_graph_nodes',
+					arguments: {}
+				},
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-2',
+					tool_name: 'hello_greet',
+					arguments: {}
+				}
+			]
+		},
+		completed_tool_call_ids: ['tc-1']
+	});
+	await expect.element(screen.getByTestId('working-indicator')).not.toBeInTheDocument();
+
+	emit!({
 		type: 'message_end',
 		message: {
 			kind: 'assistant',

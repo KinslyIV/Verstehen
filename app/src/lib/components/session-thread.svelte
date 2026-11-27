@@ -87,7 +87,13 @@
 	const activeStatus = $derived(
 		controller.compacting
 			? null
-			: workingStatus(controller.entries, results, controller.streamingEntryId, controller.busy)
+			: workingStatus(
+					controller.entries,
+					results,
+					controller.streamingEntryId,
+					controller.busy,
+					controller.completedToolCallIds
+				)
 	);
 	let elapsedSec = $state(0);
 	$effect(() => {

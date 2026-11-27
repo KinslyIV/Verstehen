@@ -25,6 +25,7 @@ class TurnEvent(BaseModel):
     message: AssistantEntry | None = None
     entries: list[UserEntry | MarkerEntry] | None = None
     results: list[ToolResultEntry] | None = None
+    completed_tool_call_ids: list[str] | None = None
     error_text: str | None = None
 
 

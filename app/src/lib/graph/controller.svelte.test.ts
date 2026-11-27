@@ -338,3 +338,23 @@ test('a_disposed_controller_ignores_graph_events_and_late_failures', async () =>
 	expect(api.getGraph).toHaveBeenCalledTimes(2);
 	expect(controller.loadError).toBe('Failed to fetch');
 });
+
+test('settings_changed_updates_rendering_and_dispose_unsubscribes', async () => {
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.rendering).toBe(true));
+
+	window.dispatchEvent(
+		new CustomEvent('verstehen:settings-changed', {
+			detail: { graph: { rendering: false } }
+		})
+	);
+	expect(controller.rendering).toBe(false);
+
+	controller.dispose();
+	window.dispatchEvent(
+		new CustomEvent('verstehen:settings-changed', {
+			detail: { graph: { rendering: true } }
+		})
+	);
+	expect(controller.rendering).toBe(false);
+});

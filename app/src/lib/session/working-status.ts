@@ -44,16 +44,21 @@ export function workingStatus(
 	entries: Entry[],
 	results: Map<string, Map<string, ToolResult>>,
 	streamingEntryId: string | undefined,
-	busy: boolean
+	busy: boolean,
+	completedToolCallIds: readonly string[] = []
 ): string | null {
 	if (!busy) return null;
 	const tail = entries.at(-1);
 	if (!tail || tail.kind !== 'assistant') return 'Thinking…';
 	const tailResults = tail.entry_id ? results.get(tail.entry_id) : undefined;
 	const streaming = tail.entry_id === streamingEntryId;
+	const completed =
+		streaming && completedToolCallIds.length ? new Set(completedToolCallIds) : undefined;
 	const pendingCalls = tail.parts.filter(
 		(part): part is Extract<typeof part, { type: 'tool_call' }> =>
-			part.type === 'tool_call' && !tailResults?.has(part.tool_call_id)
+			part.type === 'tool_call' &&
+			!tailResults?.has(part.tool_call_id) &&
+			!completed?.has(part.tool_call_id)
 	);
 	if (pendingCalls.length > 0) {
 		if (
