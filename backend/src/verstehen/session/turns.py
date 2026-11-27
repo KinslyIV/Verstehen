@@ -536,7 +536,7 @@ class TurnService:
         )
         plugins = (
             await self.plugin_service.toolset_for(role, state.session_id)
-            if self.plugin_service and role != "chat"
+            if self.plugin_service
             else None
         )
         state.agent = self.build_role_agent(
@@ -609,6 +609,7 @@ class TurnService:
                     *files,
                     *job_tools(dispatcher, settings.tools, prober=True),
                 ),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 extra_capabilities=(updates,),
             )
         if role == "practice":

@@ -17,8 +17,8 @@ Publish = Callable[[str, str, JsonValue], None]
 Observer = Callable[[str], Awaitable[None] | None]
 AppEvent = Literal["turn-settled"]
 APP_EVENTS: tuple[AppEvent, ...] = ("turn-settled",)
-AgentName = Literal["prober", "teacher", "practice"]
-AGENT_NAMES: tuple[AgentName, ...] = ("prober", "teacher", "practice")
+AgentName = Literal["prober", "teacher", "practice", "chat"]
+AGENT_NAMES: tuple[AgentName, ...] = ("prober", "teacher", "practice", "chat")
 Function = TypeVar("Function", bound=Callable[..., Any])
 EXPOSED_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 TOPIC = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")

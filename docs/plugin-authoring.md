@@ -80,7 +80,7 @@ export function activate(ctx) {
 }
 ```
 
-- Placements: `sidebar`, `graph`, and `top-bar` with `sessions: ['teaching', 'practice']` or
+- Placements: `sidebar`, `graph`, and `top-bar` with `sessions: ['teaching', 'practice', 'chat']` or
   `views: ['<view id>']`. An action's `run` gets where it was clicked (`context.sessionId` for a
   session). `ctx.refreshActions()` re-reads `disabled`.
 - `ctx.backend.<name>(input)`; `ctx.onNotification(topic, fn)` and `ctx.onResync(fn)` (delivered

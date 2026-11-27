@@ -50,9 +50,10 @@ Frontend, `app/src/`:
   messages and skips `problem-dismissed`, and settlement skips extraction.
 - **Chat sessions** (`kind = "chat"`) run the `chat` role (the strong slot) with the read-only
   inspection tools, `prepare_session` (in `STREAMED_RESULT_TOOLS` so Launch Card metadata streams
-  live), learner-file tools, and `research`/`pdf` jobs. `TurnService` skips plugin toolsets and
-  probe handoffs for `chat`, `SessionService` reports `coverage = None`, and `turn-settled` carries
-  `kind` so plugin observers ignore Chat turns while sidebar/stats refresh normally.
+  live), learner-file tools, `research`/`pdf` jobs, and plugin toolsets targeting `"chat"`.
+  `TurnService` skips probe handoffs for `chat`, `SessionService` reports `coverage = None`, and
+  `turn-settled` carries `kind` so plugin observers ignore Chat turns while sidebar/stats refresh
+  normally.
 - **Create.** `POST /api/sessions` takes `kind`, and optionally `folder_id` and `client_request_id`
   (`NewSessionInput`): the new session, its folder placement (if any), its `graph-context` marker
   (if any), and the `session_create_requests` receipt commit in one SQLite transaction. An unknown

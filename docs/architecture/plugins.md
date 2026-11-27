@@ -85,7 +85,7 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   an observer in flight and skips remaining observers; the frontend's `onAppEvent("turn-settled", fn)` follows the same notification (sync and async listener errors on `onNotification`, `onResync`, and `onAppEvent` are caught and logged).
 - **Agent hooks** (`PluginService.toolset_for(agent, session_id)`, called by `build_agent` once per
   turn for the agent that turn runs, `None` when no plugin registered anything for it). Targets:
-  `prober`, `teacher`, `practice` (the practitioner). Tool factories receive
+  `prober`, `teacher`, `practice` (the practitioner), and `chat` (the general chat agent). Tool factories receive
   `PluginTurnContext(session_id, agent)` and return tools; toolsets are added as they are. Each
   plugin is one `PluginToolset` (a `WrapperToolset`) and all plugins one `PluginToolsets` (a
   `CombinedToolset`, `plugins/toolsets.py`), the only toolset the agent gets from plugins, in id
@@ -140,7 +140,7 @@ Frontend, `app/src/lib/plugins/` (plus the lesson layout, graph page, and Settin
   result or error, also after the plugin is removed. Built-in tools keep their own rules.
 - **Surfaces.** A **view** renders in the host's viewport at `/plugin/{id}/{view}`; the host draws
   the top bar. An **action** is registered, then **placed**: `sidebar` (under Knowledge graph),
-  `graph` (the graph strip), or `top-bar` for chosen session kinds (`teaching`, `practice`) or for
+  `graph` (the graph strip), or `top-bar` for chosen session kinds (`teaching`, `practice`, `chat`) or for
   the plugin's own views. A failing action shows a dismissible banner. **Settings** is a per-plugin
   page under Settings → Plugins (`?section=plugins&plugin=<id>`): `{ rows }` (returning a
   `{ update, dispose }` handle that updates rows in place) or `{ mount }` (returning an unregister
@@ -194,8 +194,8 @@ after its plugin is removed.
   longer exists. PyInstaller does not see `mcp`/`fastmcp` imports, so `verstehen.spec` collects
   them while excluding `mcp.cli` (whose `cli.py` calls `sys.exit(1)` without optional `typer`).
 - **`practice` means the practitioner;** a session's `kind` is `teach|practice|chat` in the API,
-  `teaching|practice` in plugin placements (`chat` sessions pass `topBarSurface = undefined` and
-  never run plugin hooks), as in LearnHarness. All 9 built-in Chat tools are listed in
+  `teaching|practice|chat` in plugin placements (`chat` supports agent hooks and `top-bar` actions,
+  while `turn-settled` observers remain teaching/practice-only). All 9 built-in Chat tools are listed in
   `plugins/reserved.py` and `built-in-tools.ts`.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
 
