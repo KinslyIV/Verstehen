@@ -161,6 +161,10 @@ test('settings', async ({ page, request }) => {
 	await expect(editor).toBeVisible();
 	await expect(dialog).toBeVisible();
 	await page.keyboard.press('Escape');
+	await expect(editor).toBeVisible();
+	await expect(editor.getByText('Discard unsaved changes?')).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await editor.getByRole('button', { name: 'Discard changes', exact: true }).click();
 	await expect(editor).toBeHidden();
 	await expect(dialog).toBeVisible();
 	await page.keyboard.press('Escape');

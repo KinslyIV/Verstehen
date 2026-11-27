@@ -523,12 +523,11 @@
 							<LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
 							Compacting context…
 						</p>{:else if activeStatus}<p
-							role="status"
 							data-testid="working-indicator"
 							class="flex items-center gap-2 text-sm text-muted-foreground"
 						>
 							<LoaderCircle class="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
-							<span class="shimmer">{activeStatus}</span>
+							<span role="status" class="shimmer">{activeStatus}</span>
 							{#if elapsedSec >= 2}
 								<span
 									data-testid="working-elapsed"

@@ -40,6 +40,25 @@ test('graph-rendering-off', async ({ page, request, seedGraph }) => {
 	await expect(dialog).toBeHidden();
 	await expect(page.getByTestId('graph-canvas')).toBeVisible();
 	await expect(summary).toHaveCount(0);
+	await expect
+		.poll(async () => {
+			const snapshot = await (await request.get('/api/graph')).json();
+			const distinct = new Set(
+				Object.values(snapshot.positions as Record<string, { x: number; y: number }>).map(
+					(pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`
+				)
+			);
+			return {
+				placed: Object.keys(snapshot.positions).length >= snapshot.nodes.length,
+				distinct: distinct.size
+			};
+		})
+		.toEqual({ placed: true, distinct: expect.any(Number) });
+	const settled = await (await request.get('/api/graph')).json();
+	const coords = Object.values(settled.positions as Record<string, { x: number; y: number }>);
+	expect(
+		new Set(coords.map((pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`)).size
+	).toBeGreaterThan(1);
 
 	await page.getByRole('link', { name: 'Settings', exact: true }).click();
 	await expect(dialog).toBeVisible();

@@ -428,6 +428,10 @@ test('working_indicator_stays_visible_for_empty_assistant_stream_and_tool_calls'
 		message: { kind: 'assistant', entry_id: 'a1', stop_reason: 'stop', parts: [] }
 	});
 	await expect.element(screen.getByTestId('working-indicator')).toHaveTextContent('Thinking…');
+	await expect.element(screen.getByRole('status')).toHaveTextContent('Thinking…');
+	expect(
+		document.querySelector('[data-testid="working-indicator"]')?.getAttribute('role')
+	).toBeNull();
 
 	emit!({
 		type: 'message_update',

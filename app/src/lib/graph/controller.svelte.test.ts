@@ -358,3 +358,27 @@ test('settings_changed_updates_rendering_and_dispose_unsubscribes', async () => 
 	);
 	expect(controller.rendering).toBe(false);
 });
+
+test('enabling_rendering_live_settles_unplaced_node_positions', async () => {
+	vi.mocked(api.getSettings).mockResolvedValueOnce({
+		graph: { rendering: false }
+	} as api.SettingsStatus);
+	vi.mocked(api.getGraph).mockResolvedValueOnce(snapshot(5, { positions: {} }));
+	vi.mocked(api.putGraphPositions).mockReset().mockResolvedValue(6);
+
+	controller = new GraphController();
+	await vi.waitFor(() => expect(controller.graph).toBeDefined());
+	expect(controller.rendering).toBe(false);
+	expect(controller.graph?.positions).toEqual({});
+	expect(api.putGraphPositions).not.toHaveBeenCalled();
+
+	window.dispatchEvent(
+		new CustomEvent('verstehen:settings-changed', {
+			detail: { graph: { rendering: true } }
+		})
+	);
+	expect(controller.rendering).toBe(true);
+	expect(controller.graph?.positions.a).toBeDefined();
+	expect(controller.graph?.positions.b).toBeDefined();
+	expect(api.putGraphPositions).toHaveBeenCalledOnce();
+});
