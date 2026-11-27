@@ -132,7 +132,9 @@ library finds the Qt libraries it links to, then runs the frozen `--self-check` 
   so later restarts rebind at once; the first upgrade from a version without it waits out Linux's
   60 s TIME_WAIT. The health and rollback waits (90 s) cover the stop, `RestartSec=5`, TIME_WAIT,
   and startup. Device-token checks keep their own 5-attempt budget.
-- **CI** (`ci.yml`) installs `libegl1` for Qt and Playwright's Chromium system dependencies.
+- **CI** (`ci.yml`) sets `UV_PYTHON_PREFERENCE: only-managed` so `uv` uses a managed Python 3.14
+  interpreter rather than Ubuntu's older system Python, and installs `libegl1` for Qt and
+  Playwright's Chromium system dependencies.
   It runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
   uploads `app/verify-output` on failure. Flows never retry, in CI or locally. On pull requests
   into `main` a second job, `android-debug`, sets up JDK 21 (Temurin) and the Android SDK, runs
