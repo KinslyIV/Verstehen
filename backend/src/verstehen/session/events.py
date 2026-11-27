@@ -60,21 +60,41 @@ class Notifications:
 
     def __init__(self):
         self.subscribers: set[asyncio.Queue[Notification]] = set()
+        self._closing = asyncio.Event()
 
     def publish(self, event: Notification) -> None:
+        if self._closing.is_set():
+            return
         for queue in self.subscribers:
             queue.put_nowait(event)
 
+    def close(self) -> None:
+        """End all active notification streams so the server can shut down immediately."""
+        self._closing.set()
+
     async def subscribe(self) -> AsyncGenerator[Notification | None]:
         """Yields None once subscribed and every 25 s without a notification."""
+        if self._closing.is_set():
+            return
         queue: asyncio.Queue[Notification] = asyncio.Queue()
         self.subscribers.add(queue)
+        closing = asyncio.create_task(self._closing.wait())
         try:
             yield None
-            while True:
-                try:
-                    yield await asyncio.wait_for(queue.get(), timeout=25)
-                except TimeoutError:
+            while not self._closing.is_set():
+                incoming = asyncio.create_task(queue.get())
+                done, _ = await asyncio.wait(
+                    (incoming, closing),
+                    timeout=25,
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+                if incoming in done:
+                    yield incoming.result()
+                else:
+                    incoming.cancel()
+                    if closing in done:
+                        return
                     yield None
         finally:
+            closing.cancel()
             self.subscribers.remove(queue)
