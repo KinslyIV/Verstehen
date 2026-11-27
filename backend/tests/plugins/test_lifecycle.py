@@ -346,13 +346,19 @@ def test_a_hanging_activation_does_not_delay_the_apps_health_and_shows_as_activa
         started = time.monotonic()
         assert client.get("/api/health").status_code == 200
         assert time.monotonic() - started < 1
-        (info,) = client.get("/api/plugins").json()["plugins"]
+        info = next(
+            p for p in client.get("/api/plugins").json()["plugins"] if p["id"] == "slow"
+        )
         assert info["status"] == "activating"
         (root / "data").mkdir(exist_ok=True)
         (root / "data" / "release").write_text("")
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            (info,) = client.get("/api/plugins").json()["plugins"]
+            info = next(
+                p
+                for p in client.get("/api/plugins").json()["plugins"]
+                if p["id"] == "slow"
+            )
             if info["status"] == "active":
                 break
             time.sleep(0.02)
@@ -434,7 +440,7 @@ def test_a_plugins_folder_that_is_a_file_is_reported_and_the_app_still_starts(
     with TestClient(app, base_url="http://localhost") as client:
         assert client.get("/api/health").status_code == 200
         listed = client.get("/api/plugins").json()
-        assert listed["plugins"] == []
+        assert [plugin["id"] for plugin in listed["plugins"]] == ["mcp-servers"]
         assert "Cannot read the plugins folder" in listed["error"]
         refreshed = client.post("/api/plugins/refresh").json()
         assert "Cannot read the plugins folder" in refreshed["error"]
@@ -528,7 +534,11 @@ def test_a_synchronous_activate_that_blocks_does_not_delay_the_apps_health(
         status = "activating"
         while status == "activating" and time.monotonic() < deadline:
             time.sleep(0.05)
-            (info,) = client.get("/api/plugins").json()["plugins"]
+            info = next(
+                p
+                for p in client.get("/api/plugins").json()["plugins"]
+                if p["id"] == "blocking-activate"
+            )
             status = info["status"]
         assert status == "active"
 
@@ -1063,9 +1073,9 @@ def test_disabling_while_reenable_waits_for_retiring_worker_cancels_reenable(
         "    def late_cleanup():\n"
         "        with log.open('a') as f:\n"
         "            f.write(f'cleanup-{run_no}\\n')\n"
-        "    ctx.cleanup(late_cleanup)\n"
         "    with log.open('a') as f:\n"
         "        f.write(f'end-{run_no}\\n')\n"
+        "    ctx.cleanup(late_cleanup)\n"
     )
 
     async def run():

@@ -11,6 +11,7 @@ const info: PluginInfo = {
 	id: 'hello',
 	name: 'Hello',
 	enabled: true,
+	core: false,
 	status: 'active',
 	main: 'main.js'
 };

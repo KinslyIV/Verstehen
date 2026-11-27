@@ -2328,6 +2328,11 @@ export interface components {
 			/** Enabled */
 			enabled: boolean;
 			/**
+			 * Core
+			 * @default false
+			 */
+			core: boolean;
+			/**
 			 * Status
 			 * @enum {string}
 			 */

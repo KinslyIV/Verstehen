@@ -1,11 +1,17 @@
 import { fileURLToPath } from 'node:url';
 import { test, expect } from '../fixtures';
 
-test.use({ script: 'verify/scripts/health.json', plugins: ['mcp-servers'] });
+test.use({ script: 'verify/scripts/health.json', pluginsEnabled: true });
 
 test('mcp-servers-settings', async ({ page }) => {
 	await page.goto('/settings?section=plugins');
 	const plugin = page.getByTestId('plugin-mcp-servers');
+	await expect(plugin).toContainText('Built in');
+	await expect(page.getByTestId('plugin-status-mcp-servers')).toHaveText('disabled');
+	await page.screenshot({
+		path: test.info().outputPath('core-mcp-servers.png'),
+		animations: 'disabled'
+	});
 	await plugin.getByRole('switch', { name: 'Enable MCP Servers' }).click();
 	await expect(page.getByTestId('plugin-status-mcp-servers')).toHaveText('active');
 	await plugin.getByTestId('plugin-open-settings-mcp-servers').click();

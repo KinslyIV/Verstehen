@@ -35,6 +35,7 @@ beforeEach(() => {
 		name: 'Slow Plugin',
 		version: '1.0.0',
 		enabled: false,
+		core: false,
 		status: 'disabled'
 	};
 	vi.mocked(listPlugins).mockImplementation(async () => ({
@@ -89,6 +90,7 @@ test('register_settings_rows_handle_updates_values_in_place_without_remounting',
 		id: 'hello',
 		name: 'Hello',
 		enabled: true,
+		core: false,
 		status: 'active',
 		main: 'main.js'
 	};

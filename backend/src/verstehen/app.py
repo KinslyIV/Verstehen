@@ -42,6 +42,7 @@ from verstehen.jobs.workers.browser import (
     playwright_runner_provider,
 )
 from verstehen.jobs.workers.headless import DemoRunner
+from verstehen.plugins.core import CORE_PLUGINS
 from verstehen.plugins.service import PluginService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
@@ -330,6 +331,7 @@ def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> Fas
                 settings.plugins,
                 plugins_changed,
                 plugin_message,
+                core_plugins=CORE_PLUGINS,
             )
             app.state.plugin_service = plugin_service
 

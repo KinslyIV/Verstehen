@@ -1,9 +1,8 @@
 # MCP Servers for Verstehen
 
-1. In the Verstehen desktop app, open **Settings → Plugins** and find the plugin directory.
-2. Copy this `mcp-servers` folder into that directory, or extract the plugin ZIP there. The manifest goes at
-   `<plugin directory>/mcp-servers/dist/manifest.json`.
-3. Select **Refresh**, enable **MCP Servers**, then open its **Settings**.
+MCP Servers ships with the Verstehen desktop app. Open **Settings → Plugins**, enable **MCP Servers**,
+then open its **Settings**. The app uses the bundled code and loads settings from an earlier manual
+installation using the same plugin ID.
 
 ## Connect Zotero
 

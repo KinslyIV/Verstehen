@@ -7,6 +7,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -170,13 +171,56 @@ def check_claude() -> str:
     return f"{sdk}; claude {command_version([cli, '--version'])}"
 
 
+async def check_core_mcp_plugin(data_dir: Path) -> None:
+    from verstehen.plugins.core import CORE_PLUGINS
+    from verstehen.plugins.service import PluginService
+    from verstehen.store.plugins import PluginsStore
+
+    service = PluginService(
+        PluginsStore(data_dir),
+        data_dir / "plugins",
+        importlib.metadata.version("verstehen"),
+        True,
+        lambda: None,
+        lambda *_: None,
+        core_plugins=CORE_PLUGINS,
+    )
+    try:
+        await service.discover()
+        plugin_id = "mcp-servers"
+        plugin = service.plugins[plugin_id]
+        if not plugin.info.core or plugin.info.status != "disabled":
+            raise RuntimeError(
+                plugin.info.error or "Core MCP Servers plugin was not discovered"
+            )
+        await service.set_enabled(plugin_id, True)
+        await service.settled()
+        if plugin.info.status != "active":
+            raise RuntimeError(
+                plugin.info.error or "Core MCP Servers plugin did not start"
+            )
+        if await service.call(plugin_id, "get_servers", None) != {} or not isinstance(
+            service.file(plugin_id, "main.js"), tuple
+        ):
+            raise RuntimeError(
+                "Core MCP Servers plugin backend or frontend did not load"
+            )
+    finally:
+        await service.close()
+
+
 def check_mcp() -> str:
     """Prove the MCP client stack used by plugin toolsets is bundled and importable."""
     from pydantic_ai.mcp import MCPToolset
 
     fastmcp = importlib.metadata.version("fastmcp-slim")
     mcp = importlib.metadata.version("mcp")
-    return f"{MCPToolset.__name__}; fastmcp-slim {fastmcp}, mcp {mcp}"
+    summary = f"{MCPToolset.__name__}; fastmcp-slim {fastmcp}, mcp {mcp}"
+    if is_desktop_bundle():
+        with tempfile.TemporaryDirectory(prefix="verstehen-core-plugins-") as directory:
+            asyncio.run(check_core_mcp_plugin(Path(directory)))
+        summary += "; core MCP Servers plugin loaded"
+    return summary
 
 
 def run_self_check() -> bool:

@@ -86,7 +86,10 @@
 	</p>
 	{#if list}
 		<p class="mt-4 text-xs text-muted-foreground">
-			Folder: <code class="rounded bg-muted px-1 py-0.5" data-testid="plugins-directory">
+			Community plugins folder: <code
+				class="rounded bg-muted px-1 py-0.5"
+				data-testid="plugins-directory"
+			>
 				{list.directory}
 			</code>
 			<Button
@@ -114,6 +117,7 @@
 				<div class="min-w-0">
 					<div class="flex flex-wrap items-center gap-2">
 						<span class="text-sm font-medium">{plugin.name}</span>
+						{#if plugin.core}<span class="text-xs text-muted-foreground">Built in</span>{/if}
 						{#if plugin.version}<span class="text-xs text-muted-foreground">
 								{plugin.version}
 							</span>{/if}

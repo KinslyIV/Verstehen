@@ -1,7 +1,6 @@
 import { test as base, expect, type Frame, type Request } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
-import { existsSync } from 'node:fs';
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -198,7 +197,6 @@ asyncio.run(main())
 `;
 
 const pluginFixtures = resolve(appDirectory, '../backend/tests/fixtures/plugins');
-const installablePlugins = resolve(appDirectory, '../plugins');
 
 export const learnHarnessFixture = resolve(
 	appDirectory,
@@ -245,8 +243,9 @@ export interface GraphSeed {
 export const test = base.extend<{
 	script: string;
 	learnHarnessFolder: string;
-	/** Fixture or installable plugins copied into the data directory. */
+	/** Fixture plugins copied into the data directory. */
 	plugins: string[];
+	pluginsEnabled: boolean;
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
 	seedGraph: (seed: GraphSeed) => Promise<void>;
@@ -270,6 +269,7 @@ export const test = base.extend<{
 	script: ['', { option: true }],
 	learnHarnessFolder: ['', { option: true }],
 	plugins: [[], { option: true }],
+	pluginsEnabled: [false, { option: true }],
 	expectedStatuses: [[], { option: true }],
 	goesOffline: [false, { option: true }],
 	client: ['sidecar', { option: true }],
@@ -313,11 +313,10 @@ export const test = base.extend<{
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		try {
 			if (learnHarnessFolder) await importLearnHarness(learnHarnessFolder, directory);
-			for (const name of plugins) {
-				const fixture = resolve(pluginFixtures, name);
-				const source = existsSync(fixture) ? fixture : resolve(installablePlugins, name);
-				await cp(source, resolve(directory, 'plugins', name), { recursive: true });
-			}
+			for (const name of plugins)
+				await cp(resolve(pluginFixtures, name), resolve(directory, 'plugins', name), {
+					recursive: true
+				});
 			await use(directory);
 		} finally {
 			await rm(directory, { recursive: true, force: true });
@@ -349,6 +348,7 @@ export const test = base.extend<{
 		{
 			script,
 			plugins,
+			pluginsEnabled,
 			client,
 			goesOffline,
 			playwright,
@@ -365,7 +365,7 @@ export const test = base.extend<{
 		Object.assign(env, {
 			VERSTEHEN_DATA_DIR: dataDirectory,
 			VERSTEHEN_PORT: '0',
-			...(plugins.length ? { VERSTEHEN_PLUGINS: '1' } : {}),
+			...(pluginsEnabled || plugins.length ? { VERSTEHEN_PLUGINS: '1' } : {}),
 			...(script === 'none' ? {} : { VERSTEHEN_FAKE_MODEL_SCRIPT: resolve(appDirectory, script) })
 		});
 		const remote = client === 'remote';

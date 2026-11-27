@@ -68,7 +68,8 @@ def test_the_list_shows_the_plugin_and_the_enable_route_activates_it(tmp_path: P
         assert listed["directory"] == str(tmp_path / "plugins")
         assert listed["error"] is None
         assert [(p["id"], p["status"]) for p in listed["plugins"]] == [
-            ("bridge", "disabled")
+            ("bridge", "disabled"),
+            ("mcp-servers", "disabled"),
         ]
         started = client.put("/api/plugins/bridge/enabled", json={"enabled": True})
         assert started.json()["status"] == "activating"
