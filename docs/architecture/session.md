@@ -186,9 +186,17 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
 - Tables: `sessions`, `entries`, `usage` ([store](store.md)); a lesson call's `usage.request_id` is
   `<TurnRun.id>#<n>`, opaque to sync and the importer.
 - Turn stream events: `message_start`, `message_update`, `message_end`, `context_update`, `error`,
-  `turn-settled`.
+  `turn-settled`. `TurnService` immediately publishes and flushes `message_update` when entering
+  `is_call_tools_node` (so tool calls reach the UI before execution completes), and
+  `end_response` stamps `reply.created_at` to UTC completion time.
 - Notifications: `turn-started`, `turn-settled`, `chats-changed`, `compaction-changed`
   ([API and events](api-and-events.md)).
+- Transcript UX (`session-thread.svelte`, `working-status.ts`, `message-meta.ts`,
+  `message-copy-button.svelte`, `learner-message.svelte`): `workingStatus` keeps the spinner,
+  shimmer status label, and elapsed timer (`>= 2 s`) visible across empty streaming assistant
+  shells and built-in tool calls; completed assistant rows render `message-footer` (markdown Copy
+  button, localized finish time, and folded `SideEntryButton`), and learner messages render a
+  hover/focus/touch timestamp + Copy footer.
 
 ## Collaborators
 

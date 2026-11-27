@@ -55,8 +55,9 @@ test('chat-session', async ({ page, request, seedGraph, allowTeardownAborts }) =
 	const chatId = new URL(page.url()).pathname.split('/').at(-1)!;
 
 	// Header shows the Chat badge and has no coverage ring or phase divider.
-	await expect(page.getByTestId('phase-chip')).toHaveAttribute('data-phase', 'chat');
-	await expect(page.getByTestId('phase-chip')).toHaveText(/Chat/);
+	const sessionHeader = page.getByTestId('session-header');
+	await expect(sessionHeader.getByTestId('phase-chip')).toHaveAttribute('data-phase', 'chat');
+	await expect(sessionHeader.getByTestId('phase-chip')).toHaveText(/Chat/);
 	await expect(page.getByTestId('coverage-ring')).toHaveCount(0);
 
 	// The 1-click PrepareSessionCard renders with kind, title, picked node chip, and opening prompt.

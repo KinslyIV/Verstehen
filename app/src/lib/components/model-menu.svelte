@@ -50,7 +50,7 @@
 	);
 </script>
 
-<div class="w-[min(42rem,calc(100vw-3rem))] text-sm" aria-label="Model menu">
+<div class="w-[min(28rem,calc(100vw-3rem))] text-sm" aria-label="Model menu">
 	{#if showTabs}<div
 			class="flex items-center gap-1 border-b p-2"
 			role="tablist"
@@ -71,7 +71,9 @@
 				</Button>
 			{/each}
 		</div>{/if}
-	<div class="grid h-[min(15rem,40vh)] grid-cols-[minmax(7rem,1fr)_minmax(8rem,1.3fr)] grid-rows-1">
+	<div
+		class="grid h-[min(15rem,40vh)] grid-cols-[minmax(7rem,0.9fr)_minmax(8rem,1.1fr)] grid-rows-1"
+	>
 		<div class="space-y-1 overflow-y-auto border-r bg-muted/20 p-2" aria-label="Accounts">
 			{#each catalog.accounts as item (item.account.id)}
 				<Button

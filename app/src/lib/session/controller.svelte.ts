@@ -63,6 +63,8 @@ export class SessionController {
 	compacting = $derived(this.record?.compacting ?? false);
 	isPractice = $derived(this.record?.kind === 'practice');
 	isChat = $derived(this.record?.kind === 'chat');
+	phases = $derived(phaseTimeline(this.entries));
+	phase = $derived(this.phases.timeline.at(-1) ?? 'probe');
 	/** The posed problem awaiting the learner; its dock replaces the composer. */
 	activeProblem = $derived(this.isPractice ? activeProblemOf(this.entries) : undefined);
 	/** Between problems: the composer offers `Next problem →` (LearnHarness `nextReady`). */

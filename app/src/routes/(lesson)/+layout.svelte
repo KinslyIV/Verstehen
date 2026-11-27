@@ -1,7 +1,9 @@
 <script lang="ts">
 	import SessionList from '#lib/components/session-list.svelte';
 	import SyncBadge from '#lib/components/sync-badge.svelte';
-	import type { Snippet } from 'svelte';
+	import RenameSession from '#lib/components/rename-session.svelte';
+	import SettingsDialog from '#lib/components/settings-dialog.svelte';
+	import { onDestroy, type Snippet } from 'svelte';
 	import { afterNavigate } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
@@ -24,10 +26,12 @@
 	import { Tabs } from 'bits-ui';
 	import JobsPanel from '#lib/jobs/jobs-panel.svelte';
 	import SideChatPanel from '#lib/sidechat/side-chat-panel.svelte';
+	import CoverageRing from '#lib/graph/coverage-ring.svelte';
 	import { hasOpenOverlay } from '#lib/questions/keyboard.js';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { derivePlanStatuses } from '#lib/teaching/plan.js';
 	import { setPlanPanel } from '#lib/teaching/plan-panel.js';
+	import { phaseLabel } from '#lib/teaching/phases.js';
 	import type { SessionController } from '#lib/session/controller.svelte.js';
 	import { SIDEBAR_COOKIE_NAME } from '#lib/components/ui/sidebar/constants.js';
 	import DrawerCloser from '#lib/components/drawer-closer.svelte';
@@ -35,6 +39,7 @@
 	import ReconnectingLine from '#lib/components/reconnecting-line.svelte';
 	import PluginActions, { type ActionSurface } from '#lib/plugins/plugin-actions.svelte';
 	import { plugins } from '#lib/plugins/plugins.svelte.js';
+	import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
 	import { layout } from '#lib/layout/tiers.svelte.js';
 	import { cn } from '#lib/utils.js';
 
@@ -57,6 +62,7 @@
 	const onGraph = $derived(page.route.id === '/(lesson)/graph');
 	const onPluginView = $derived(page.route.id === '/(lesson)/plugin/[id]/[view]');
 	const onSession = $derived(page.route.id === '/(lesson)/session/[id]');
+	const inSession = $derived(onSession || (!onGraph && !onPluginView && !!watched));
 	const noPanel = $derived(onGraph || onPluginView);
 	const shownPhoneTab = $derived(phone && !noPanel ? phoneTab : null);
 	const pluginViewName = $derived(
@@ -109,8 +115,12 @@
 
 	const place = (url?: URL) => (url ? url.pathname + url.search : '');
 	afterNavigate(({ from, to }) => {
-		if (place(from?.url) !== place(to?.url)) phoneTab = null;
+		if (place(from?.url) !== place(to?.url)) {
+			phoneTab = null;
+			settingsOverlay.close();
+		}
 	});
+	onDestroy(() => settingsOverlay.close());
 
 	function showPhoneTab(value: string | null) {
 		phoneTab = value;
@@ -218,6 +228,19 @@
 				href={resolve('/settings')}
 				variant="ghost"
 				class="justify-start gap-2 text-muted-foreground"
+				onclick={(event: MouseEvent) => {
+					if (
+						phone ||
+						event.metaKey ||
+						event.ctrlKey ||
+						event.shiftKey ||
+						event.altKey ||
+						event.button !== 0
+					)
+						return;
+					event.preventDefault();
+					settingsOverlay.show();
+				}}
 			>
 				<Settings class="size-4" /> Settings
 			</Button>
@@ -243,12 +266,26 @@
 						<ArrowLeft class="size-4" /> Lesson
 					</Button>
 				{/if}
-				<span
-					class={shownPhoneTab ? 'sr-only' : 'min-w-0 flex-1 truncate px-2 text-sm font-medium'}
-					data-testid="phone-heading"
-				>
-					{shownPhoneTab ? tabs.find((tab) => tab.value === shownPhoneTab)?.label : heading}
-				</span>
+				{#if !shownPhoneTab && inSession && watched?.record}
+					<div class="min-w-0 flex-1 px-2" data-testid="phone-heading">
+						{#key watched.id}
+							<RenameSession
+								id={watched.id}
+								title={watched.record.title}
+								onrenamed={(title) => {
+									if (watched?.record) watched.record.title = title;
+								}}
+							/>
+						{/key}
+					</div>
+				{:else}
+					<span
+						class={shownPhoneTab ? 'sr-only' : 'min-w-0 flex-1 truncate px-2 text-sm font-medium'}
+						data-testid="phone-heading"
+					>
+						{shownPhoneTab ? tabs.find((tab) => tab.value === shownPhoneTab)?.label : heading}
+					</span>
+				{/if}
 				{#if shownPhoneTab}<span class="flex-1"></span>{/if}
 				{#if !noPanel}
 					<div role="group" aria-label="Right panel" class="flex shrink-0 gap-0.5">
@@ -269,7 +306,53 @@
 				{#if onPluginView}<span class="px-2 text-sm font-medium" data-testid="plugin-view-title">
 						{heading}
 					</span>{/if}
-				<span class="flex-1"></span>
+				{#if inSession && watched?.record}
+					<div class="flex min-w-0 flex-1 items-center gap-3 px-2" data-testid="session-header">
+						<div class="max-w-md min-w-0">
+							{#key watched.id}
+								<RenameSession
+									id={watched.id}
+									title={watched.record.title}
+									onrenamed={(title) => {
+										if (watched?.record) watched.record.title = title;
+									}}
+								/>
+							{/key}
+						</div>
+						{#if watched.isPractice}
+							<span
+								data-testid="phase-chip"
+								data-phase="practice"
+								class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+							>
+								<Dumbbell class="size-3" aria-hidden="true" /> Practice
+							</span>
+						{:else if watched.isChat}
+							<span
+								data-testid="phase-chip"
+								data-phase="chat"
+								class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+							>
+								<MessageSquare class="size-3" aria-hidden="true" /> Chat
+							</span>
+						{:else}
+							<span
+								data-testid="phase-chip"
+								data-phase={watched.phase}
+								class="shrink-0 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+							>
+								{phaseLabel[watched.phase]}
+							</span>
+							<CoverageRing
+								sessionId={watched.id}
+								coverage={watched.record.coverage}
+								onextract={() => watched?.scheduleCoverage()}
+							/>
+						{/if}
+					</div>
+				{:else}
+					<span class="flex-1"></span>
+				{/if}
 				{#if topBarSurface}<PluginActions surface={topBarSurface} />{/if}
 				{#if !noPanel}<Button
 						variant="ghost"
@@ -374,4 +457,7 @@
 			{/if}
 		</div>
 	</main>
+	{#if settingsOverlay.open}
+		<SettingsDialog />
+	{/if}
 </Sidebar.Provider>

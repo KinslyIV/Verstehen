@@ -6,9 +6,12 @@ import Lesson from './lesson-test-harness.svelte';
 import SessionThreadPage from './session-thread-test-page.svelte';
 import './layout.css';
 import type { Notification } from '#lib/api/client.js';
+import { returnPath } from '#lib/layout/return-path.svelte.js';
+import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
 import appHtml from '../app.html?raw';
 
-const { sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
+const { gotoCalls, sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
+	gotoCalls: vi.fn(),
 	sessionRequests: vi.fn(async () => []),
 	itemRequests: vi.fn(async (id: string) => ({
 		id,
@@ -22,7 +25,9 @@ const { sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() 
 }));
 
 vi.mock('$app/navigation', () => ({
-	goto: async () => {},
+	goto: async (...args: unknown[]) => {
+		gotoCalls(...args);
+	},
 	afterNavigate: (callback: (navigation: unknown) => void) => {
 		navigated.add(callback);
 	}
@@ -106,6 +111,10 @@ afterEach(async () => {
 });
 
 beforeEach(() => {
+	gotoCalls.mockClear();
+	settingsOverlay.close();
+	sessionStorage.clear();
+	returnPath.reset();
 	sessionRequests.mockClear();
 	itemRequests.mockClear();
 	navigated.clear();
@@ -312,4 +321,45 @@ test('settings_shows_models_and_accounts', async () => {
 		.element(page.getByRole('button', { name: 'Toggle right panel' }))
 		.not.toBeInTheDocument();
 	await expect.element(screen.getByRole('link', { name: 'Back' })).toHaveAttribute('href', '/');
+});
+
+test('desktop_settings_opens_as_overlay_without_navigation_and_closes_on_escape', async () => {
+	await render(Lesson, { page: SessionThreadPage });
+	await expect.element(page.getByText('Slope is rise over run.')).toBeVisible();
+
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByTestId('settings-dialog');
+	await expect.element(dialog).toBeVisible();
+	expect(gotoCalls).not.toHaveBeenCalled();
+
+	await dialog.getByRole('button', { name: 'Models', exact: true }).click();
+	await expect.element(dialog.getByRole('heading', { name: 'Models', exact: true })).toBeVisible();
+	expect(gotoCalls).not.toHaveBeenCalled();
+
+	await userEvent.keyboard('{Escape}');
+	await expect.element(dialog).not.toBeInTheDocument();
+	await expect.element(page.getByText('Slope is rise over run.')).toBeVisible();
+});
+
+test('desktop_session_header_owns_single_title_and_phase_badge', async () => {
+	await render(Lesson, { page: SessionThreadPage });
+	const header = page.getByTestId('session-header');
+	await expect.element(header.getByRole('button', { name: 'Algebra', exact: true })).toBeVisible();
+	await expect.element(header.getByTestId('phase-chip')).toBeVisible();
+	await expect
+		.poll(() => page.getByRole('button', { name: 'Algebra', exact: true }).elements().length)
+		.toBe(1);
+});
+
+test('phone_session_shows_single_title_in_top_bar', async () => {
+	await page.viewport(360, 780);
+	await render(Lesson, { page: SessionThreadPage });
+	await expect
+		.element(
+			page.getByTestId('phone-heading').getByRole('button', { name: 'Algebra', exact: true })
+		)
+		.toBeVisible();
+	await expect
+		.poll(() => page.getByRole('button', { name: 'Algebra', exact: true }).elements().length)
+		.toBe(1);
 });

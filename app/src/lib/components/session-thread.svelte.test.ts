@@ -37,6 +37,7 @@ beforeEach(() => {
 	vi.mocked(api.getJobs).mockReset().mockResolvedValue({ jobs: [], turn_in_flight: false });
 	vi.mocked(api.getSession).mockReset();
 	vi.mocked(api.postInput).mockReset();
+	vi.mocked(api.streamTurn).mockReset();
 });
 test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
@@ -378,4 +379,124 @@ test('android_back_goes_back_when_nothing_is_pending', async () => {
 	pressBack();
 	expect(history.back).toHaveBeenCalledOnce();
 	await expect.element(screen.getByText('Dismiss this question?')).not.toBeInTheDocument();
+});
+
+test('working_indicator_stays_visible_for_empty_assistant_stream_and_tool_calls', async () => {
+	let emit: ((event: api.TurnEvent) => void) | undefined;
+	let finishStream: ((done: boolean) => void) | undefined;
+	vi.mocked(api.getSession)
+		.mockResolvedValueOnce({
+			side_segments: { by_entry: {}, entry_points: {}, current: null },
+			id: 's-live',
+			title: 'Live session',
+			kind: 'teach',
+			turn_in_flight: true,
+			turn_error: null,
+			entries: [{ kind: 'user', entry_id: 'u1', text: 'Hi' }]
+		})
+		.mockResolvedValue({
+			side_segments: { by_entry: {}, entry_points: {}, current: null },
+			id: 's-live',
+			title: 'Live session',
+			kind: 'teach',
+			turn_in_flight: false,
+			turn_error: null,
+			entries: [
+				{ kind: 'user', entry_id: 'u1', text: 'Hi' },
+				{
+					kind: 'assistant',
+					entry_id: 'a1',
+					stop_reason: 'stop',
+					created_at: '2026-04-01T14:30:00Z',
+					parts: [{ type: 'text', text: 'Done!' }]
+				}
+			]
+		});
+	vi.mocked(api.streamTurn).mockImplementation((_id, receive, _signal, opened) => {
+		emit = receive;
+		opened?.();
+		return new Promise<boolean>((resolve) => {
+			finishStream = resolve;
+		});
+	});
+
+	const screen = await render(SessionThread, { id: 's-live' });
+	await expect.poll(() => emit).toBeDefined();
+
+	emit!({
+		type: 'message_start',
+		message: { kind: 'assistant', entry_id: 'a1', stop_reason: 'stop', parts: [] }
+	});
+	await expect.element(screen.getByTestId('working-indicator')).toHaveTextContent('Thinking…');
+
+	emit!({
+		type: 'message_update',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			parts: [
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-1',
+					tool_name: 'list_graph_nodes',
+					arguments: {}
+				}
+			]
+		}
+	});
+	await expect
+		.element(screen.getByTestId('working-indicator'))
+		.toHaveTextContent('Reading knowledge graph…');
+
+	emit!({
+		type: 'message_end',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			created_at: '2026-04-01T14:30:00Z',
+			parts: [{ type: 'text', text: 'Done!' }]
+		}
+	});
+	finishStream!(true);
+	await expect.element(screen.getByTestId('working-indicator')).not.toBeInTheDocument();
+});
+
+test('message_footer_renders_time_copy_and_side_button', async () => {
+	const writeText = vi.fn(async () => {});
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText }
+	});
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: { a1: 'a1' }, entry_points: { a1: 'a1' }, current: null },
+		id: 's-done',
+		title: 'Settled session',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{ kind: 'user', entry_id: 'u1', text: 'Explain slope', created_at: '2026-04-01T14:29:00Z' },
+			{
+				kind: 'assistant',
+				entry_id: 'a1',
+				stop_reason: 'stop',
+				created_at: '2026-04-01T14:30:00Z',
+				parts: [{ type: 'text', text: '**Slope** is rise over run.' }]
+			}
+		]
+	});
+
+	const screen = await render(SessionThread, { id: 's-done' });
+	const footer = screen.getByTestId('message-footer');
+	await expect.element(footer).toBeVisible();
+	await expect.element(footer.getByTestId('message-time')).toBeVisible();
+	await expect.element(footer.getByTestId('side-conversation-button')).toBeVisible();
+	await expect.element(screen.getByTestId('user-message-time')).toBeVisible();
+
+	const copyButton = footer.getByTestId('copy-message-button');
+	await copyButton.click();
+	expect(writeText).toHaveBeenCalledWith('**Slope** is rise over run.');
+	await expect.element(copyButton).toHaveAttribute('aria-label', 'Copied');
 });

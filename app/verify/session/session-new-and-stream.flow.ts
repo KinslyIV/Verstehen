@@ -35,5 +35,23 @@ test('session-new-and-stream', async ({ page }) => {
 	await expect(
 		page.getByRole('button', { name: 'Photosynthesis basics', exact: true })
 	).toBeVisible();
+	await expect(
+		page
+			.getByTestId('session-header')
+			.getByRole('button', { name: 'Photosynthesis basics', exact: true })
+	).toBeVisible();
+	await expect(
+		page.getByRole('button', { name: 'Photosynthesis basics', exact: true })
+	).toHaveCount(1);
 	await expect(page.getByRole('link', { name: /Photosynthesis basics/ })).toContainText('just now');
+	const footer = page.getByTestId('message-footer').last();
+	await expect(footer.getByTestId('message-time')).toBeVisible();
+	const copyButton = footer.getByTestId('copy-message-button');
+	await expect(copyButton).toBeVisible();
+	await copyButton.click();
+	await expect(copyButton).toHaveAttribute('aria-label', 'Copied');
+	await page.screenshot({
+		path: test.info().outputPath('session-settled-header-footer.png'),
+		animations: 'disabled'
+	});
 });

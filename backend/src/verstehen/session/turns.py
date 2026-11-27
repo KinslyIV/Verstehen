@@ -2,6 +2,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -805,6 +806,13 @@ class TurnService:
                     elif Agent.is_call_tools_node(node):
                         assert reply is not None
                         update_response(reply, node.model_response, model)
+                        run.publish(
+                            TurnEvent(
+                                type="message_update",
+                                message=reply.model_copy(deep=True),
+                            )
+                        )
+                        run.flush()
                         async with node.stream(agent_run.ctx) as events:
                             async for event in events:
                                 if isinstance(event, FunctionToolResultEvent):
@@ -851,6 +859,7 @@ class TurnService:
         reply: AssistantEntry,
         results: list[ToolResultEntry],
     ) -> None:
+        reply.created_at = datetime.now(UTC)
         call_order = {
             part.tool_call_id: index
             for index, part in enumerate(reply.parts)

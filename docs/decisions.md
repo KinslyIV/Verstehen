@@ -584,3 +584,26 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Demo iframes load near the viewport and unload far off-screen** (about two viewport heights),
   so a demo scrolled far away resets when it comes back; a zoomed demo is never unloaded. LH keeps
   every demo alive.
+- **Settings opens as a modal overlay on desktop and tablet:** clicking Sidebar Settings, the
+  Sync badge, or a plugin Settings trigger on desktop/tablet opens `SettingsDialog` (`settingsOverlay`)
+  over the mounted lesson or graph so active views and unsent drafts survive. `/settings` remains
+  active for phones (`< 768 px`) and direct URLs, with its Back link returning to the last
+  in-app non-Settings/non-Pair route remembered in `sessionStorage` (`returnPath`). LH uses a route
+  or sheet depending on layout.
+- **Compact model menu and setup dialog:** `ModelMenu` uses a compact `28rem` width (`0.9fr`/`1.1fr`
+  columns) on desktop/tablet and `SetupDialog` uses `32rem` instead of wide `42rem`/`46rem`
+  containers.
+- **Session title, phase badge, and coverage ring sit in the top bar:** desktop and tablet render
+  `RenameSession`, `phase-chip`, and `CoverageRing` inside `(lesson)/+layout.svelte`
+  (`session-header`); phone puts the single editable `RenameSession` inside `phone-heading` and a
+  slim `phase-chip` + `CoverageRing` strip below it so the title never duplicates.
+- **Contextual live working indicator and immediate tool-call flush:** `TurnService` flushes
+  `message_update` immediately upon entering `is_call_tools_node`, and the thread shows a spinner,
+  shimmer status label (`workingStatus`), and elapsed timer (`>= 2 s`) whenever a turn is working
+  without visible streaming prose or reasoning (including empty streaming `AssistantEntry` shells
+  and active built-in tools).
+- **Assistant and learner message footers:** `TurnService.end_response` stamps `reply.created_at`
+  to completion time; completed assistant messages render a compact footer (`message-footer`) with
+  a markdown Copy button, timestamp, and right-aligned `SideEntryButton` (always visible on the
+  latest reply or side-chat threads, muted hover/focus reveal on older desktop replies, always
+  visible on touch), and `LearnerMessage` renders a hover/focus/touch timestamp + Copy footer.

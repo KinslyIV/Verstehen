@@ -720,3 +720,110 @@ def test_notification_stream_subscribes_before_its_first_frame(tmp_path: Path):
             assert not turn_service.notifications.subscribers
 
     asyncio.run(scenario())
+
+
+def test_tool_call_flushes_message_update_before_tool_finishes(tmp_path: Path):
+    async def scenario():
+        from pydantic_ai.models.function import DeltaToolCall
+
+        calls = 0
+
+        async def stream(messages: list[ModelMessage], info: AgentInfo):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                yield {
+                    0: DeltaToolCall(
+                        name="list_propositions",
+                        json_args='{"session": "s"}',
+                        tool_call_id="tc-1",
+                    )
+                }
+            else:
+                yield "Done"
+
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (turn_service, session_id):
+            entered = asyncio.Event()
+            release = asyncio.Event()
+            original_read = turn_service.graph_store.read
+
+            async def slow_read():
+                entered.set()
+                await release.wait()
+                return await original_read()
+
+            turn_service.graph_store.read = slow_read
+            run = await start(turn_service, session_id)
+            await asyncio.wait_for(entered.wait(), 3)
+
+            seen_types: list[str] = []
+            async for event in run.subscribe():
+                seen_types.append(event.type)
+                if (
+                    event.type == "message_update"
+                    and event.message
+                    and any(
+                        part.type == "tool_call"
+                        and part.tool_name == "list_propositions"
+                        for part in event.message.parts
+                    )
+                ):
+                    break
+            assert "results" not in seen_types
+            assert run.pending is None
+            release.set()
+            await completed(run)
+
+    asyncio.run(scenario())
+
+
+def test_assistant_created_at_is_stamped_when_response_ends(tmp_path: Path):
+    async def scenario():
+        from datetime import UTC, datetime
+
+        from pydantic_ai.models.function import DeltaToolCall
+
+        calls = 0
+
+        async def stream(messages: list[ModelMessage], info: AgentInfo):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                yield {
+                    0: DeltaToolCall(
+                        name="list_propositions",
+                        json_args='{"session": "s"}',
+                        tool_call_id="tc-1",
+                    )
+                }
+            else:
+                yield "Finished"
+
+        async with turn_service_context(
+            tmp_path, FunctionModel(stream_function=stream)
+        ) as (turn_service, session_id):
+            tool_entered = asyncio.Event()
+            release_tool = asyncio.Event()
+            original_read = turn_service.graph_store.read
+
+            async def gated_read():
+                tool_entered.set()
+                await release_tool.wait()
+                return await original_read()
+
+            turn_service.graph_store.read = gated_read
+            run = await start(turn_service, session_id)
+            await asyncio.wait_for(tool_entered.wait(), 3)
+            after_start = datetime.now(UTC)
+            release_tool.set()
+            await completed(run)
+
+            saved = await turn_service.entries_store.list(session_id)
+            reply = saved[-1]
+            assert isinstance(reply, AssistantEntry)
+            assert reply.created_at is not None
+            assert reply.created_at >= after_start
+
+    asyncio.run(scenario())
