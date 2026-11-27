@@ -1,5 +1,5 @@
 export type Cleanup = () => void | Promise<void>;
-export type PluginSession = 'teaching' | 'practice';
+export type PluginSession = 'teaching' | 'practice' | 'chat';
 
 export interface ViewRegistration {
 	id: string;
