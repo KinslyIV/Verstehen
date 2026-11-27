@@ -1,0 +1,162 @@
+.mcp-settings {
+	font-size: 0.875rem;
+}
+
+.mcp-settings fieldset {
+	padding: 0;
+	border: 0;
+	min-inline-size: 0;
+}
+
+.mcp-settings form,
+.mcp-settings label {
+	display: grid;
+	gap: 0.375rem;
+}
+
+.mcp-settings form {
+	gap: 0.875rem;
+}
+
+.mcp-settings label > span {
+	color: var(--muted-foreground);
+	font-size: 0.75rem;
+}
+
+.mcp-settings :is(input:not([type='checkbox']), textarea, select, button) {
+	border: 1px solid var(--border);
+	border-radius: 0.375rem;
+	padding: 0.375rem 0.625rem;
+}
+
+.mcp-settings :is(input:not([type='checkbox']), textarea, select) {
+	background: var(--background);
+	min-width: 0;
+}
+
+.mcp-settings select {
+	color-scheme: light dark;
+}
+
+.mcp-settings textarea,
+.mcp-settings [name='command'] {
+	font-family: var(--font-mono, monospace);
+}
+
+.mcp-settings button {
+	width: fit-content;
+	font-weight: 500;
+	cursor: pointer;
+}
+
+.mcp-settings button:enabled:hover {
+	background: var(--accent);
+	color: var(--accent-foreground);
+}
+
+.mcp-settings :is(button:disabled, fieldset:disabled) {
+	opacity: 0.65;
+	cursor: default;
+}
+
+.mcp-settings .mcp-primary {
+	background: var(--primary);
+	color: var(--primary-foreground);
+}
+
+.mcp-settings :focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}
+
+.mcp-server-list,
+.mcp-tool-heading,
+.mcp-settings-actions,
+.mcp-connection {
+	display: flex;
+	gap: 0.625rem;
+	align-items: end;
+	flex-wrap: wrap;
+}
+
+.mcp-connection {
+	align-items: center;
+}
+
+.mcp-server-list {
+	margin-bottom: 0.875rem;
+}
+
+.mcp-server-list label {
+	flex: 1;
+}
+
+.mcp-command-options {
+	display: grid;
+	gap: 0.625rem;
+	grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+}
+
+.mcp-tool-heading {
+	justify-content: space-between;
+	margin-bottom: 0.5rem;
+}
+
+.mcp-tool-heading h4 {
+	font-size: 1rem;
+	font-weight: 600;
+}
+
+.mcp-settings .mcp-tools {
+	margin-top: 0.5rem;
+	max-height: 15rem;
+	overflow: auto;
+	border: 1px solid var(--border);
+	border-radius: 0.375rem;
+	padding: 0.5rem;
+}
+
+.mcp-tools label {
+	grid-template-columns: auto 1fr;
+	align-items: start;
+	gap: 0.625rem;
+	padding: 0.5rem;
+	overflow-wrap: anywhere;
+}
+
+.mcp-tools label + label {
+	border-top: 1px solid var(--border);
+}
+
+.mcp-tools input {
+	margin-top: 0.2rem;
+	accent-color: var(--primary);
+}
+
+.mcp-tools label span span {
+	display: block;
+}
+
+.mcp-tools label span span:first-child {
+	color: var(--foreground);
+	font-weight: 500;
+	font-size: 0.875rem;
+}
+
+.mcp-tools label span span:empty {
+	display: none;
+}
+
+.mcp-settings [data-status] {
+	min-height: 1.2em;
+	margin-top: 0.625rem;
+	color: var(--muted-foreground);
+}
+
+.mcp-settings [data-connection-status] {
+	color: var(--muted-foreground);
+}
+
+.mcp-settings .mcp-error {
+	color: var(--destructive);
+}

@@ -1,6 +1,7 @@
 import { test as base, expect, type Frame, type Request } from '@playwright/test';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
+import { existsSync } from 'node:fs';
 import { cp, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createConnection, createServer, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -197,6 +198,7 @@ asyncio.run(main())
 `;
 
 const pluginFixtures = resolve(appDirectory, '../backend/tests/fixtures/plugins');
+const installablePlugins = resolve(appDirectory, '../plugins');
 
 export const learnHarnessFixture = resolve(
 	appDirectory,
@@ -243,7 +245,7 @@ export interface GraphSeed {
 export const test = base.extend<{
 	script: string;
 	learnHarnessFolder: string;
-	/** Fixture plugins (`backend/tests/fixtures/plugins/<name>`) copied into the data directory. */
+	/** Fixture or installable plugins copied into the data directory. */
 	plugins: string[];
 	dataDirectory: string;
 	appendEntries: (sessionId: string, entries: Entry[]) => Promise<void>;
@@ -311,10 +313,11 @@ export const test = base.extend<{
 		const directory = await mkdtemp(resolve(tmpdir(), 'verstehen-verify-'));
 		try {
 			if (learnHarnessFolder) await importLearnHarness(learnHarnessFolder, directory);
-			for (const name of plugins)
-				await cp(resolve(pluginFixtures, name), resolve(directory, 'plugins', name), {
-					recursive: true
-				});
+			for (const name of plugins) {
+				const fixture = resolve(pluginFixtures, name);
+				const source = existsSync(fixture) ? fixture : resolve(installablePlugins, name);
+				await cp(source, resolve(directory, 'plugins', name), { recursive: true });
+			}
 			await use(directory);
 		} finally {
 			await rm(directory, { recursive: true, force: true });

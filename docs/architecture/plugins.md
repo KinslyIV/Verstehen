@@ -199,6 +199,19 @@ after its plugin is removed.
   `plugins/reserved.py` and `built-in-tools.ts`.
 - **`{@html}`** is used once, in `plugin-icon.svelte`, for trusted SVG from the plugin.
 
+## MCP Servers plugin
+
+The [MCP Servers plugin](../../plugins/mcp-servers/README.md) is an installable desktop plugin.
+Its settings page discovers tools from local stdio commands and saves the launch settings and
+per-agent tool selections in `mcp-servers/data/servers.json`. Tool discovery lists metadata without
+invoking tools.
+
+On each agent run, the plugin resolves the saved configuration into run-owned toolsets and
+starts only the servers with tools selected for that agent. A server that fails to start or list
+tools contributes none that turn. The child processes close with the run or on plugin disable.
+Names are scoped by server so two servers can offer the same tool name. Saves replace the settings
+atomically and affect subsequent runs.
+
 ## Tests
 
 `backend/tests/plugins/` (`test_discovery.py`, `test_lifecycle.py`, `test_bridge.py`,
