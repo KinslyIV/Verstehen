@@ -108,8 +108,10 @@ LearnHarness spec: behavior from LH, look from T3 Code ([overview](../learnharne
   page with the reason and the log path (`desktop/pages.py`). The app loads only after the server
   is healthy and the token is set as an HttpOnly, SameSite=Strict cookie in the window's cookie
   store, so the page never sees the token. The app's CSP is sent by FastAPI
-  ([API and events](api-and-events.md#access)). The persistent web profile lives under
-  `<data dir>/webengine` and `webengine-cache`.
+  ([API and events](api-and-events.md#access)). `SinglePageFiles` sends `Cache-Control: no-cache`
+  on `index.html` and non-immutable files so upgrades never serve a stale build from the persistent
+  HTTP cache, while `_app/immutable/*` keeps `public, max-age=31536000, immutable`. The persistent
+  web profile lives under `<data dir>/webengine` and `webengine-cache`.
 - **Links and windows:** the window stays on the app's origin. `acceptNavigationRequest` and
   `newWindowRequested` open exactly the ChatGPT sign-in URLs (`auth.openai.com`) and the Claude
   Code setup page in the system browser (`desktop/links.py`); every other navigation is refused.
