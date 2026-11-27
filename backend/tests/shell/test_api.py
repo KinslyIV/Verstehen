@@ -141,9 +141,11 @@ def test_desktop_mode_has_no_cors_for_any_origin(tmp_path: Path):
 
 def spa_directory(tmp_path: Path) -> Path:
     directory = tmp_path / "spa"
-    (directory / "_app").mkdir(parents=True)
+    (directory / "_app" / "immutable").mkdir(parents=True)
     (directory / "index.html").write_text("<html>shell</html>")
+    (directory / "_app" / "version.json").write_text('{"version":"1"}')
     (directory / "_app" / "app.js").write_text("console.log(1)")
+    (directory / "_app" / "immutable" / "chunk.js").write_text("console.log(2)")
     return directory
 
 
@@ -194,3 +196,18 @@ def test_the_app_is_served_without_a_token_but_the_api_is_not(tmp_path: Path):
 def test_only_desktop_mode_serves_the_app(tmp_path: Path, mode: str):
     with spa_client(tmp_path, desktop=False, server=mode == "server") as client:
         assert client.get("/").status_code == 404
+
+
+def test_desktop_spa_revalidates_html_and_caches_immutable_assets(tmp_path: Path):
+    with spa_client(tmp_path) as client:
+        assert client.get("/").headers["cache-control"] == "no-cache"
+        assert client.get("/session/abc").headers["cache-control"] == "no-cache"
+        assert client.get("/_app/version.json").headers["cache-control"] == "no-cache"
+        assert (
+            client.get("/_app/immutable/missing.js").headers["cache-control"]
+            == "no-cache"
+        )
+        assert (
+            client.get("/_app/immutable/chunk.js").headers["cache-control"]
+            == "public, max-age=31536000, immutable"
+        )
