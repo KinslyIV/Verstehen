@@ -75,11 +75,16 @@
 	const topBarSurface = $derived<ActionSurface | undefined>(
 		onPluginView
 			? { kind: 'plugin-view', pluginId: page.params.id!, viewId: page.params.view! }
-			: onSession && watched?.record && watched.record.kind !== 'chat'
+			: onSession && watched?.record
 				? {
 						kind: 'session',
 						sessionId: page.params.id!,
-						sessionKind: watched.record.kind === 'practice' ? 'practice' : 'teaching'
+						sessionKind:
+							watched.record.kind === 'practice'
+								? 'practice'
+								: watched.record.kind === 'chat'
+									? 'chat'
+									: 'teaching'
 					}
 				: undefined
 	);

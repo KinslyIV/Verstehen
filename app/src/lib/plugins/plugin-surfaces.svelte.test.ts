@@ -153,6 +153,25 @@ test('a_top_bar_action_appears_only_for_its_session_kind_and_receives_the_sessio
 		sessionId: 's2',
 		kind: 'practice'
 	});
+	await practice.unmount();
+
+	runtime.registerAction({ id: 'chat-act', name: 'Chat Action', run });
+	runtime.placeAction({
+		id: 'chat-bar',
+		actionId: 'chat-act',
+		location: 'top-bar',
+		sessions: ['chat']
+	});
+	const chat = await render(PluginActions, {
+		surface: { kind: 'session', sessionId: 's3', sessionKind: 'chat' } as ActionSurface
+	});
+	await chat.getByRole('button', { name: 'Chat Action' }).click();
+	expect(run).toHaveBeenCalledWith({
+		placement: 'top-bar',
+		surface: 'session',
+		sessionId: 's3',
+		kind: 'chat'
+	});
 });
 
 test('refreshing_actions_rereads_a_disabled_predicate', async () => {

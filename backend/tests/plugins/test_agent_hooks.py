@@ -1300,3 +1300,69 @@ def test_chat_turn_does_not_invoke_plugin_turn_settled_observers(tmp_path: Path)
                 break
             time.sleep(0.02)
         assert marker.exists() and marker.read_text() == teach_id
+
+
+def test_a_chat_turn_calls_a_plugin_tool_and_saves_its_result(tmp_path: Path):
+    plugin_dir = tmp_path / "plugins" / "chat-hook" / "dist"
+    (plugin_dir / "backend").mkdir(parents=True)
+    (plugin_dir / "manifest.json").write_text(
+        json.dumps(
+            {
+                "apiVersion": 1,
+                "id": "chat-hook",
+                "name": "Chat Hook",
+                "version": "1.0.0",
+                "minAppVersion": "0.1.0",
+                "backend": "backend",
+            }
+        )
+    )
+    (plugin_dir / "backend" / "__init__.py").write_text(
+        "def activate(ctx):\n"
+        "    ctx.register_instructions(['chat'], 'Chat plugin active.')\n"
+        "    def create(turn):\n"
+        "        def ping_chat(word: str) -> str:\n"
+        "            return f'{turn.agent}:{word}'\n"
+        "        return [ping_chat]\n"
+        "    ctx.register_tools(['chat'], create)\n"
+    )
+    replies = [
+        {"tool_calls": [{"name": "ping_chat", "arguments": {"word": "hello"}}]},
+        {"text": "Done"},
+    ]
+    script = tmp_path / "script.json"
+    script.write_text(json.dumps(replies))
+    app = create_app(
+        Settings(
+            tmp_path,
+            fake_model_script=script,
+            plugins=True,
+        )
+    )
+    with TestClient(app, headers={"host": "localhost"}) as client:
+        client.patch(
+            "/api/settings",
+            json={
+                "models": {
+                    "strong": {"account": "fake", "model": "fake"},
+                    "cheap": {"account": "fake", "model": "fake-title"},
+                    "vision": {"account": "fake", "model": "fake"},
+                }
+            },
+        )
+        info = client.put(
+            "/api/plugins/chat-hook/enabled", json={"enabled": True}
+        ).json()
+        while info["status"] == "activating":
+            time.sleep(0.02)
+            listed = client.get("/api/plugins").json()["plugins"]
+            info = next(item for item in listed if item["id"] == "chat-hook")
+        assert info["status"] == "active"
+
+        chat_id = client.post("/api/sessions", json={"kind": "chat"}).json()["id"]
+        url = f"/api/sessions/{chat_id}"
+        client.post(url + "/input", json={"type": "text", "text": "use tool"})
+        client.get(url + "/stream")
+        detail = client.get(url).json()
+    assert "chat:hello" in json.dumps(detail["entries"])
+    assert detail["turn_in_flight"] is False

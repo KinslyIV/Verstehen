@@ -3,6 +3,7 @@ from pydantic_ai.capabilities import AbstractCapability
 from pydantic_ai.models import Model
 from pydantic_ai.settings import ModelSettings
 from pydantic_ai.tools import DeferredToolRequests
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.teaching.questions.tools import (
     QUESTION_RETRY_LIMIT,
@@ -17,6 +18,7 @@ def build_chat(
     settings: ModelSettings | None = None,
     *,
     extra_tools: tuple[Tool[None], ...] = (),
+    extra_toolsets: tuple[AbstractToolset[None], ...] = (),
     extra_capabilities: tuple[AbstractCapability[None], ...] = (),
 ) -> QuestionAgent:
     """Build the general chat agent with inspection tools, prepare_session, and retry guard."""
@@ -27,6 +29,7 @@ def build_chat(
         retries={"tools": QUESTION_RETRY_LIMIT, "output": 0},
         model_settings=settings,
         tools=list(extra_tools),
+        toolsets=list(extra_toolsets),
         output_type=[str, DeferredToolRequests],
         capabilities=[ConversationToolErrors(), *extra_capabilities],
     )

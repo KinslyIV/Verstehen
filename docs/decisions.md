@@ -519,11 +519,13 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Third session kind (`kind = "chat"`, **Chat**):** Verstehen-only (no LearnHarness counterpart),
   sitting alongside **Teaching** (`teach`) and **Practice** (`practice`) (`0011_chat_sessions.sql`).
   Uses the **Main (`strong`)** slot by default, exposes its own prompt segments in **Settings →
-  Prompts**, skips graph extraction, coverage, the Chains table, and plugins, and provides 8
-  read-only inspection tools (prompts, non-secret settings/account/search-key status, sessions and
-  folders, canonical graph nodes and chains, paginated base64-scrubbed transcripts, and bundled
-  `guide.md`), learner-file tools, `research`/`pdf` jobs, and a 1-click `prepare_session` Launch
-  Card that creates and starts a clean Teaching or Practice session only when clicked.
+  Prompts**, skips graph extraction, coverage, the Chains table, and plugin `turn-settled`
+  observers, supports opt-in plugin agent hooks (`agents=["chat"]`) and `top-bar` actions
+  (`sessions: ['chat']`), and provides 8 read-only inspection tools (prompts, non-secret
+  settings/account/search-key status, sessions and folders, canonical graph nodes and chains,
+  paginated base64-scrubbed transcripts, and bundled `guide.md`), learner-file tools,
+  `research`/`pdf` jobs, and a 1-click `prepare_session` Launch Card that creates and starts a
+  clean Teaching or Practice session only when clicked.
 
 ### Providers and models
 
