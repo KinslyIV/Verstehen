@@ -55,16 +55,17 @@ export function workingStatus(
 		(part): part is Extract<typeof part, { type: 'tool_call' }> =>
 			part.type === 'tool_call' && !tailResults?.has(part.tool_call_id)
 	);
-	const activeTool = pendingCalls.at(-1);
-	if (activeTool) {
+	if (pendingCalls.length > 0) {
 		if (
-			activeTool.tool_name === 'send_to_user' &&
-			streaming &&
-			sendToUserText(activeTool.arguments, true)
+			pendingCalls.some(
+				(part) =>
+					part.tool_name === 'send_to_user' && streaming && sendToUserText(part.arguments, true)
+			)
 		) {
 			return null;
 		}
-		if (isBuiltInTool(activeTool.tool_name)) return toolActivityLabel(activeTool.tool_name);
+		const activeBuiltIn = pendingCalls.filter((part) => isBuiltInTool(part.tool_name)).at(-1);
+		if (activeBuiltIn) return toolActivityLabel(activeBuiltIn.tool_name);
 		return null;
 	}
 	if (!streaming) return 'Working…';

@@ -31,9 +31,9 @@ export function formatMessageTime(
 
 /** Collects visible markdown prose blocks from a rendered assistant reply for copying. */
 export function copyableAssistantText(items: ResponseItem[]): string {
-	return items
+	const text = items
 		.filter((item): item is Extract<ResponseItem, { kind: 'text' }> => item.kind === 'text')
 		.map((item) => item.text)
-		.join('\n\n')
-		.trim();
+		.join('\n\n');
+	return text.trim() ? text : '';
 }

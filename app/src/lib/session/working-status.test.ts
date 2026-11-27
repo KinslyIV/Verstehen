@@ -91,6 +91,48 @@ test('workingStatus_maps_pending_builtin_tools_and_ignores_plugin_tools', () => 
 		parts: [{ type: 'tool_call', tool_call_id: 'p1', tool_name: 'hello_greet', arguments: {} }]
 	};
 	expect(workingStatus([plugin], noResults, 'a2', true)).toBeNull();
+
+	const builtInBeforePlugin: Entry = {
+		kind: 'assistant',
+		entry_id: 'a3',
+		stop_reason: 'stop',
+		parts: [
+			{ type: 'tool_call', tool_call_id: 'c1', tool_name: 'list_graph_nodes', arguments: {} },
+			{ type: 'tool_call', tool_call_id: 'p1', tool_name: 'hello_greet', arguments: {} }
+		]
+	};
+	expect(workingStatus([builtInBeforePlugin], noResults, 'a3', true)).toBe(
+		'Reading knowledge graph…'
+	);
+
+	const pluginBeforeBuiltIn: Entry = {
+		kind: 'assistant',
+		entry_id: 'a4',
+		stop_reason: 'stop',
+		parts: [
+			{ type: 'tool_call', tool_call_id: 'p1', tool_name: 'hello_greet', arguments: {} },
+			{ type: 'tool_call', tool_call_id: 'c1', tool_name: 'list_graph_nodes', arguments: {} }
+		]
+	};
+	expect(workingStatus([pluginBeforeBuiltIn], noResults, 'a4', true)).toBe(
+		'Reading knowledge graph…'
+	);
+
+	const sendWithBuiltIn: Entry = {
+		kind: 'assistant',
+		entry_id: 'a5',
+		stop_reason: 'stop',
+		parts: [
+			{
+				type: 'tool_call',
+				tool_call_id: 's1',
+				tool_name: 'send_to_user',
+				arguments: '{"message":"Visible prose'
+			},
+			{ type: 'tool_call', tool_call_id: 'c1', tool_name: 'list_graph_nodes', arguments: {} }
+		]
+	};
+	expect(workingStatus([sendWithBuiltIn], noResults, 'a5', true)).toBeNull();
 });
 
 test('workingStatus_shows_working_between_completed_steps', () => {

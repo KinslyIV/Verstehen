@@ -24,5 +24,12 @@ test('copyableAssistantText_joins_text_items_and_skips_cards', () => {
 		{ kind: 'text', text: 'Second paragraph.' }
 	];
 	expect(copyableAssistantText(items)).toBe('First paragraph.\n\nSecond paragraph.');
+	expect(
+		copyableAssistantText([
+			{ kind: 'text', text: '    const x = 1;' },
+			{ kind: 'text', text: 'Paragraph' }
+		])
+	).toBe('    const x = 1;\n\nParagraph');
+	expect(copyableAssistantText([{ kind: 'text', text: '  \n  ' }])).toBe('');
 	expect(copyableAssistantText([{ kind: 'job', jobKind: 'research', toolCallId: 'j1' }])).toBe('');
 });

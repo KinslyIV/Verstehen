@@ -10,19 +10,21 @@ import { returnPath } from '#lib/layout/return-path.svelte.js';
 import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
 import appHtml from '../app.html?raw';
 
-const { gotoCalls, sessionRequests, itemRequests, subscribers, navigated } = vi.hoisted(() => ({
-	gotoCalls: vi.fn(),
-	sessionRequests: vi.fn(async () => []),
-	itemRequests: vi.fn(async (id: string) => ({
-		id,
-		title: 'Algebra',
-		kind: 'teach',
-		updated_at: '2026-01-01T00:00:00Z',
-		busy: false
-	})),
-	subscribers: new Set<(event: Notification) => void>(),
-	navigated: new Set<(navigation: unknown) => void>()
-}));
+const { gotoCalls, renameRequests, sessionRequests, itemRequests, subscribers, navigated } =
+	vi.hoisted(() => ({
+		gotoCalls: vi.fn(),
+		renameRequests: vi.fn(async (id: string, title: string) => ({ id, title })),
+		sessionRequests: vi.fn(async () => []),
+		itemRequests: vi.fn(async (id: string) => ({
+			id,
+			title: 'Algebra',
+			kind: 'teach',
+			updated_at: '2026-01-01T00:00:00Z',
+			busy: false
+		})),
+		subscribers: new Set<(event: Notification) => void>(),
+		navigated: new Set<(navigation: unknown) => void>()
+	}));
 
 vi.mock('$app/navigation', () => ({
 	goto: async (...args: unknown[]) => {
@@ -34,9 +36,9 @@ vi.mock('$app/navigation', () => ({
 }));
 vi.mock('#lib/api/client.js', async (original) => ({
 	...(await original<typeof import('#lib/api/client.js')>()),
-	getSession: async () => ({
-		id: 'one',
-		title: 'Algebra',
+	getSession: async (id: string) => ({
+		id,
+		title: id === 'two' ? 'Geometry' : 'Algebra',
 		kind: 'teach',
 		turn_in_flight: false,
 		turn_error: null,
@@ -85,6 +87,7 @@ vi.mock('#lib/api/client.js', async (original) => ({
 	}),
 	listSessions: sessionRequests,
 	getSessionItem: itemRequests,
+	renameSession: renameRequests,
 	streamNotifications: (
 		receive: (event: Notification) => void,
 		signal: AbortSignal,
@@ -112,6 +115,9 @@ afterEach(async () => {
 
 beforeEach(() => {
 	gotoCalls.mockClear();
+	renameRequests
+		.mockReset()
+		.mockImplementation(async (id: string, title: string) => ({ id, title }));
 	settingsOverlay.close();
 	sessionStorage.clear();
 	returnPath.reset();
@@ -362,4 +368,26 @@ test('phone_session_shows_single_title_in_top_bar', async () => {
 	await expect
 		.poll(() => page.getByRole('button', { name: 'Algebra', exact: true }).elements().length)
 		.toBe(1);
+});
+
+test('delayed_rename_does_not_overwrite_next_sessions_header_title', async () => {
+	const deferred = Promise.withResolvers<{ id: string; title: string }>();
+	renameRequests.mockImplementationOnce(() => deferred.promise);
+
+	const screen = await render(Lesson, { sessionId: 'one' });
+	const header = page.getByTestId('session-header');
+	await header.getByRole('button', { name: 'Algebra', exact: true }).click();
+	const input = header.getByRole('textbox');
+	await input.fill('Calculus');
+	await userEvent.keyboard('{Enter}');
+	expect(renameRequests).toHaveBeenCalledWith('one', 'Calculus');
+
+	await screen.rerender({ sessionId: 'two' });
+	await expect.element(header.getByRole('button', { name: 'Geometry', exact: true })).toBeVisible();
+
+	deferred.resolve({ id: 'one', title: 'Calculus' });
+	await expect.element(header.getByRole('button', { name: 'Geometry', exact: true })).toBeVisible();
+	await expect
+		.element(header.getByRole('button', { name: 'Calculus', exact: true }))
+		.not.toBeInTheDocument();
 });

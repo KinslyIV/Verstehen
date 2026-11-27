@@ -122,6 +122,12 @@
 	});
 	onDestroy(() => settingsOverlay.close());
 
+	function renameHandler(controller: SessionController) {
+		return (title: string) => {
+			if (controller.record) controller.record.title = title;
+		};
+	}
+
 	function showPhoneTab(value: string | null) {
 		phoneTab = value;
 		if (value) activeTab = value;
@@ -272,9 +278,7 @@
 							<RenameSession
 								id={watched.id}
 								title={watched.record.title}
-								onrenamed={(title) => {
-									if (watched?.record) watched.record.title = title;
-								}}
+								onrenamed={renameHandler(watched)}
 							/>
 						{/key}
 					</div>
@@ -313,9 +317,7 @@
 								<RenameSession
 									id={watched.id}
 									title={watched.record.title}
-									onrenamed={(title) => {
-										if (watched?.record) watched.record.title = title;
-									}}
+									onrenamed={renameHandler(watched)}
 								/>
 							{/key}
 						</div>

@@ -34,11 +34,13 @@
 			oncancel?.();
 			return;
 		}
+		const targetId = id;
+		const notifyRenamed = onrenamed;
 		saving = true;
 		try {
-			const result = await renameSession(id, value);
+			const result = await renameSession(targetId, value);
 			editing = false;
-			onrenamed?.(result.title);
+			notifyRenamed?.(result.title);
 		} catch (cause) {
 			error = (cause as Error).message;
 		} finally {

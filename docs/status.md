@@ -87,7 +87,7 @@ Merged into `dev` and queued for `0.2.0` on `main`:
 - **Test organization & verification:** 10-area test separation (`AREA=`) across backend pytest,
   frontend Vitest, and 75 scripted Playwright flows. Live Claude verification (`make verify-live`)
   was quota-blocked on 2026-11-21 and again on 2026-11-26 until Nov 29, and still needs a fresh run.
-- **Chat & Settings UX polish** (branch `ux-chat-polish`): desktop/tablet `SettingsDialog` modal
+- **Chat & Settings UX polish** (branch `ux-chat-polish`, pending review/merge): desktop/tablet `SettingsDialog` modal
   overlay (`settingsOverlay` + `returnPath` for `/settings`), compact `28rem` `ModelMenu` / `32rem`
   `SetupDialog`, top-bar `session-header` (`RenameSession`, `phase-chip`, `CoverageRing`) and single
   `phone-heading` title, contextual `workingStatus` indicator with immediate `is_call_tools_node`

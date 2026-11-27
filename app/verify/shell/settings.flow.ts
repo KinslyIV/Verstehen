@@ -146,6 +146,23 @@ test('settings', async ({ page, request }) => {
 		path: test.info().outputPath('settings-dialog.png'),
 		animations: 'disabled'
 	});
+	await dialog.getByRole('button', { name: 'Prompts', exact: true }).click();
+	const promptRow = dialog.getByTestId('prompt-row-teacher/20-teaching.md');
+	await promptRow.getByRole('button', { name: '+ Add override' }).click();
+	const editor = page.getByRole('dialog', { name: 'Add override' });
+	await expect(editor).toBeVisible();
+	await editor.getByLabel('Override Markdown').fill('Read [Example](https://example.com).');
+	await editor.getByRole('button', { name: 'Preview' }).click();
+	await editor.getByRole('link', { name: 'Example', exact: true }).click();
+	const externalLink = page.getByRole('dialog', { name: 'Open external link' });
+	await expect(externalLink).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(externalLink).toBeHidden();
+	await expect(editor).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(editor).toBeHidden();
+	await expect(dialog).toBeVisible();
 	await page.keyboard.press('Escape');
 	await expect(dialog).toBeHidden();
 	await expect(draft).toHaveValue('Unsent draft question');
