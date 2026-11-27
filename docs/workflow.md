@@ -47,16 +47,16 @@ place that names the roles and models; AGENTS.md and plans link here.
 - **Commits.** Implementer subagents only run checks and verify flows for the changes they made
   (`make check AREA='...'`, `make verify FLOW='...'` / `AREA='...'`) and never run the full test
   or verify suite. `make check AREA='...'` for the touched areas passes before every commit; the
-  orchestrator runs full `make check` and `make verify` once right before opening a PR into `dev`.
-  Which checks and flows to run while editing and before merge, and when earlier results may be
-  reused, is in the verify skill (`.claude/skills/verify/SKILL.md`).
+  orchestrator runs the pre-PR checks after updating the task branch. The verify skill
+  (`.claude/skills/verify/SKILL.md`) specifies which checks and flows to run and when earlier
+  results may be reused.
 - **The orchestrator decides** what the implementer asks: what fits the plan and the docs most
   closely, and the most cautious option when unsure. Each decision goes into the review queue in
   [decisions](decisions.md) with **what was decided, the alternative, and the consequence**.
 - **A flake is a bug.** A test or flow that fails and then passes on rerun is recorded in the
   [roadmap](roadmap.md#known-gaps) and fixed before merge. Never pass a change on a rerun, and
   never weaken an assertion or timeout to make it pass.
-- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging, real-model calls other
+- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging PRs, real-model calls other
   than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
   and reported.
 
@@ -95,18 +95,17 @@ place that names the roles and models; AGENTS.md and plans link here.
 
 ## 4. Report and merge
 
-- Push the branch and open a PR into `dev`. **Evidence goes in the PR**: the commands, the
-  revision, the flows, and the screenshots and traces looked at. Docs hold only the current state.
+- **Update the task branch before opening a PR.** Fetch and merge the latest `origin/dev` into the
+  task branch, resolve conflicts, and check the auto-merged changes for interactions with the task.
+  Run the pre-PR checks on the updated branch, push it, and open a PR into `dev`. **Evidence goes in
+  the PR**: the commands, the revision, the flows, and the screenshots and traces looked at. Docs
+  hold only the current state.
 - PRs into `dev` are for the user's review and questions; `dev` has no CI, so the local checks are
   the evidence. The user merges into `dev`, and later opens `dev` → `main`, where the `ci` check
   (`make check` and `make verify` on GitHub) must be green. `make verify-live`, when the verify
   skill requires it, runs locally because it needs the user's Claude login.
 - **The user reviews the milestone's orchestrator decisions before merging**, from the review
   queue in [decisions](decisions.md#waiting-for-your-review).
-- **Always pull `dev` before merging.** Right before a PR merges into `dev` (whoever merges it),
-  fetch and merge the latest `origin/dev` into the branch, resolve any conflicts, check the
-  auto-merged hunks for semantic clashes, rerun `make check AREA='...'` and the verify flows for
-  the areas both sides touched, and push. Merge only once the PR is no longer behind `dev`.
 - The report in the T3 thread is a compact summary, not a log:
   - **New:** what can be used now, with one line of evidence;
   - **Changed:** existing code rewritten or removed, and why;

@@ -55,9 +55,10 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
 - **Git.** Work on the task's branch, started from `dev`; commit with `make check AREA='...'`
   passing for the touched areas. Subagents only run scoped checks and verify flows for the
   changes they made (`make check AREA='...'`, `make verify FLOW='...'` / `AREA='...'`), never the
-  full test or verify suite; the orchestrator runs full `make check` and `make verify` once right
-  before opening a PR into `dev`. Push the branch and open a PR into `dev`. Never commit or push
-  to `dev` or `main`, force-push, or merge: the user merges into `dev`, and later merges `dev`
+  full test or verify suite. Before opening a PR into `dev`, fetch and merge the latest
+  `origin/dev` into the task branch. The orchestrator runs the pre-PR checks on the updated branch
+  as specified by the verify skill, then pushes the branch and opens the PR. Never commit or push
+  to `dev` or `main`, force-push, or merge a PR. The user merges into `dev`, and later merges `dev`
   into `main`.
 - **Plausible bugs only in review.** Reviewers flag — and post-review fixes implement — only
   plausible real bug cases, spec/plan mismatches, or concrete regressions; skip contrived or
