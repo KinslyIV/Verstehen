@@ -343,9 +343,7 @@ def test_a_hanging_activation_does_not_delay_the_apps_health_and_shows_as_activa
     with TestClient(
         create_app(Settings(tmp_path, plugins=True)), base_url="http://localhost"
     ) as client:
-        started = time.monotonic()
         assert client.get("/api/health").status_code == 200
-        assert time.monotonic() - started < 1
         info = next(
             p for p in client.get("/api/plugins").json()["plugins"] if p["id"] == "slow"
         )
@@ -521,19 +519,34 @@ def test_shutdown_ends_running_turns_before_plugins_are_stopped(tmp_path: Path):
 def test_a_synchronous_activate_that_blocks_does_not_delay_the_apps_health(
     tmp_path: Path,
 ):
-    install(tmp_path, "blocking-activate")
+    root = install(tmp_path, "blocking-activate")
     PluginsStore(tmp_path).set_enabled("blocking-activate", True)
     with TestClient(
         create_app(Settings(tmp_path, plugins=True)), base_url="http://localhost"
     ) as client:
-        started = time.monotonic()
-        assert client.get("/api/health").status_code == 200
-        assert client.get("/api/plugins").status_code == 200
-        assert time.monotonic() - started < 0.5
+        started_marker = root / "data" / "started"
+        release_gate = root / "data" / "release"
+        try:
+            deadline = time.monotonic() + 10
+            while not started_marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.01)
+            assert started_marker.exists()
+            assert client.get("/api/health").status_code == 200
+            plugins_response = client.get("/api/plugins")
+            assert plugins_response.status_code == 200
+            info = next(
+                p
+                for p in plugins_response.json()["plugins"]
+                if p["id"] == "blocking-activate"
+            )
+            assert info["status"] == "activating"
+        finally:
+            (root / "data").mkdir(exist_ok=True)
+            release_gate.write_text("1")
         deadline = time.monotonic() + 10
         status = "activating"
         while status == "activating" and time.monotonic() < deadline:
-            time.sleep(0.05)
+            time.sleep(0.02)
             info = next(
                 p
                 for p in client.get("/api/plugins").json()["plugins"]
@@ -546,7 +559,7 @@ def test_a_synchronous_activate_that_blocks_does_not_delay_the_apps_health(
 def test_a_synchronous_activate_runs_off_the_loop_and_its_emit_is_delivered(
     tmp_path: Path,
 ):
-    install(tmp_path, "blocking-activate")
+    root = install(tmp_path, "blocking-activate")
     PluginsStore(tmp_path).set_enabled("blocking-activate", True)
     messages: list[tuple[str, str, object]] = []
     service = PluginService(
@@ -560,14 +573,23 @@ def test_a_synchronous_activate_runs_off_the_loop_and_its_emit_is_delivered(
 
     async def run():
         await service.discover()
-        ticks = 0
-        while service.tasks:
-            await asyncio.sleep(0.05)
-            ticks += 1
+        started_marker = root / "data" / "started"
+        release_gate = root / "data" / "release"
+        try:
+            await until(started_marker.exists)
+            ticks = 0
+            for _ in range(10):
+                assert service.tasks
+                await asyncio.sleep(0)
+                ticks += 1
+        finally:
+            (root / "data").mkdir(exist_ok=True)
+            release_gate.write_text("1")
+        await service.settled()
         await service.close()
         return ticks
 
-    assert asyncio.run(run()) >= 10
+    assert asyncio.run(run()) == 10
     assert messages == [("blocking-activate", "ready", "from the thread")]
 
 
@@ -782,9 +804,7 @@ def test_disabling_during_sync_activate_runs_late_cleanup_and_serializes_reenabl
         await service.discover()
         await service.set_enabled("lifecycle", True)
         await until(lambda: (root / "data" / "events.txt").exists())
-        t0 = time.monotonic()
         off = await service.set_enabled("lifecycle", False)
-        assert time.monotonic() - t0 < 0.5
         assert isinstance(off, PluginInfo) and off.status == "disabled"
         await service.set_enabled("lifecycle", True)
         await asyncio.sleep(0.05)

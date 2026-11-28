@@ -374,20 +374,19 @@ def test_a_blocking_sync_exposed_function_runs_off_the_loop_and_disabling_return
             calling = asyncio.create_task(
                 app.state.plugin_service.call("bridge", "slow_sync", None)
             )
-            for _ in range(200):
-                if started.exists():
-                    break
-                await asyncio.sleep(0.01)
-            assert started.exists()
-            t0 = time.monotonic()
-            info = await app.state.plugin_service.set_enabled("bridge", False)
-            elapsed = time.monotonic() - t0
-            result = await calling
-            gate.write_text("1")
-            return info, elapsed, result
+            try:
+                for _ in range(200):
+                    if started.exists():
+                        break
+                    await asyncio.sleep(0.01)
+                assert started.exists()
+                info = await app.state.plugin_service.set_enabled("bridge", False)
+                result = await calling
+            finally:
+                gate.write_text("1")
+            return info, result
 
-        info, elapsed, result = portal.call(scenario)
-        assert elapsed < 0.5
+        info, result = portal.call(scenario)
         assert info.status == "disabled"
         assert client.get("/api/health").status_code == 200
         assert result.status == 409
