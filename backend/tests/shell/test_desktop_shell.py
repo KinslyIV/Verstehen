@@ -172,3 +172,59 @@ def test_the_window_shows_the_failure_when_the_data_dir_is_a_file(tmp_path: Path
     result = run_probe(PROBE, tmp_path, tmp_path / "spa", "4")
     assert "Verstehen couldn't start" in result["text"]
     assert "data" in result["text"]
+
+
+def test_stop_before_or_during_start_leaves_no_server_running(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    monkeypatch.setenv("VERSTEHEN_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("VERSTEHEN_SPA_DIR", str(tmp_path))
+
+    early = DesktopServer(on_exit=lambda: None)
+    early.stop()
+    early.start()
+    early.wait_until_healthy()
+    assert early._thread is None and early._listener is None and early.port == 0
+
+    import verstehen.desktop.server as desktop_server
+
+    racing = DesktopServer(on_exit=lambda: None)
+    original_config = desktop_server.uvicorn_config
+
+    def stop_during_start(settings, demo_runner=None):
+        racing.stop()
+        return original_config(settings, demo_runner)
+
+    monkeypatch.setattr(desktop_server, "uvicorn_config", stop_during_start)
+    racing.start()
+    racing.wait_until_healthy()
+    assert racing._thread is None and racing._listener is None and racing.port == 0
+
+
+@pytest.mark.slow
+def test_quit_on_signals_exits_when_sigterm_arrives_before_exec():
+    code = """
+import os
+import signal
+import sys
+
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
+from verstehen.desktop.shell import quit_on_signals
+
+app = QApplication(sys.argv)
+quit_on_signals(app)
+os.kill(os.getpid(), signal.SIGTERM)
+QTimer.singleShot(5000, lambda: app.exit(2))
+raise SystemExit(app.exec())
+"""
+    done = subprocess.run(
+        [sys.executable, "-c", code],
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr

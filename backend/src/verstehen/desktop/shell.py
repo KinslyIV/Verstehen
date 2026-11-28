@@ -155,14 +155,18 @@ class DesktopShell(QObject):
         threading.Thread(target=self._start_and_wait, daemon=True).start()
 
     def _start_and_wait(self) -> None:
+        if self._closing:
+            return
         try:
             self.server.start()
             self.server.wait_until_healthy()
         except ServerStartupError as error:
             self.server.stop()
-            self.server_failed.emit(str(error))
+            if not self._closing:
+                self.server_failed.emit(str(error))
         else:
-            self.server_started.emit()
+            if not self._closing:
+                self.server_started.emit()
 
     @Slot()
     def _load_app(self) -> None:
@@ -226,12 +230,23 @@ class DesktopShell(QObject):
 
 
 def quit_on_signals(app: QApplication) -> None:
-    """Close the app on SIGINT or SIGTERM; the timer lets Python run its signal handlers."""
+    """Close the app on SIGINT or SIGTERM; the timer polls the flag once the event loop runs."""
+    quitting = False
+
+    def request_quit(*_: object) -> None:
+        nonlocal quitting
+        quitting = True
+
+    def check_quit() -> None:
+        if quitting:
+            heartbeat.stop()
+            app.quit()
+
     for name in (signal.SIGINT, signal.SIGTERM):
-        signal.signal(name, lambda *_: app.quit())
+        signal.signal(name, request_quit)
     heartbeat = QTimer(app)
-    heartbeat.timeout.connect(lambda: None)
-    heartbeat.start(200)
+    heartbeat.timeout.connect(check_quit)
+    heartbeat.start(50)
 
 
 def run_desktop() -> int:

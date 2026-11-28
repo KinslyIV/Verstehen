@@ -60,6 +60,8 @@ class DesktopServer:
         self.settings: Settings | None = None
         self._on_exit = on_exit
         self._demo_runner = demo_runner
+        self._lock = threading.Lock()
+        self._stopped = False
         self._listener: socket.socket | None = None
         self._server: uvicorn.Server | None = None
         self._thread: threading.Thread | None = None
@@ -67,35 +69,48 @@ class DesktopServer:
 
     def start(self) -> None:
         """Bind a listener, configure logging, and start serving on a thread."""
+        with self._lock:
+            if self._stopped:
+                return
+        listener: socket.socket | None = None
         try:
-            self._listener = bind_loopback_listener()
-            self.port = self._listener.getsockname()[1]
-            self.settings = load_settings(
+            listener = bind_loopback_listener()
+            port = listener.getsockname()[1]
+            settings = load_settings(
                 host="127.0.0.1",
-                port=self.port,
+                port=port,
                 desktop_token=self.token,
                 spa_dir=spa_directory(),
             )
-            configure_logging(self.settings)
+            configure_logging(settings)
             logging.getLogger(__name__).info(
                 "Starting mode=desktop data_dir=%s port=%s",
-                self.settings.data_dir,
-                self.port,
+                settings.data_dir,
+                port,
             )
-            self._server = VerstehenServer(
-                uvicorn_config(self.settings, self._demo_runner)
-            )
+            server = VerstehenServer(uvicorn_config(settings, self._demo_runner))
         except (ValueError, OSError, RuntimeError, ImportError) as error:
-            self.close_listener()
+            if listener is not None:
+                listener.close()
             raise ServerStartupError(str(error)) from error
-        self._thread = threading.Thread(target=self._serve, daemon=True)
-        self._thread.start()
+        with self._lock:
+            if self._stopped:
+                listener.close()
+                return
+            self._listener = listener
+            self.port = port
+            self.settings = settings
+            self._server = server
+            self._thread = threading.Thread(target=self._serve, daemon=True)
+            self._thread.start()
 
     def _serve(self) -> None:
-        assert self._server is not None and self._listener is not None
+        with self._lock:
+            server, listener = self._server, self._listener
+        assert server is not None and listener is not None
         try:
-            asyncio.run(self._server.serve(sockets=[self._listener]))
-            if not self._server.started:
+            asyncio.run(server.serve(sockets=[listener]))
+            if not server.started:
                 self._failure = "the server stopped before it was ready"
         except Exception as error:
             logging.getLogger(__name__).exception("The API server failed")
@@ -109,7 +124,11 @@ class DesktopServer:
         url = f"http://127.0.0.1:{self.port}/api/health"
         with httpx2.Client(timeout=1, trust_env=False) as client:
             while time.monotonic() < deadline:
-                if self._thread is None or not self._thread.is_alive():
+                with self._lock:
+                    if self._stopped:
+                        return
+                    thread = self._thread
+                if thread is None or not thread.is_alive():
                     raise ServerStartupError(self._failure or "the server stopped")
                 try:
                     response = client.get(
@@ -124,13 +143,17 @@ class DesktopServer:
 
     def stop(self) -> None:
         """Ask uvicorn to shut down and wait for its thread; safe to call twice."""
-        if self._server is not None:
-            self._server.should_exit = True
-        if self._thread is not None:
-            self._thread.join(STOP_TIMEOUT_SECONDS)
+        with self._lock:
+            self._stopped = True
+            server, thread = self._server, self._thread
+        if server is not None:
+            server.should_exit = True
+        if thread is not None:
+            thread.join(STOP_TIMEOUT_SECONDS)
         self.close_listener()
 
     def close_listener(self) -> None:
-        if self._listener is not None:
-            self._listener.close()
-            self._listener = None
+        with self._lock:
+            listener, self._listener = self._listener, None
+        if listener is not None:
+            listener.close()

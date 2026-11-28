@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-27 (CI managed Python 3.14 and shielded ChatGPT fetch fix).
+> PRs. Last update: 2026-11-28 (Desktop early SIGTERM fix after PR #43).
 
 ## Where we are
 
@@ -103,8 +103,10 @@ the desktop app, starts disabled, and adds local stdio connections with per-agen
 Settings changes apply on the next turn. The `mcp-select-all` branch adds **Select all** and
 **Clear all** for the selected agent. Its CI follow-up installs the EGL runtime for Qt imports.
 See the [plan](plans/mcp-servers.md).
-The `fix/ci-shield-python-314` branch sets `UV_PYTHON_PREFERENCE: only-managed` in CI and returns
-failures from the shielded ChatGPT model fetch task instead of raising out of it.
+PR #43 (`fix/ci-shield-python-314`) set `UV_PYTHON_PREFERENCE: only-managed` in CI and returns
+failures from the shielded ChatGPT model fetch task instead of raising out of it. The
+`fix/desktop-early-sigterm` branch makes `quit_on_signals` and `DesktopServer` exit cleanly when
+`SIGTERM` arrives before `app.exec()` or while the server is starting.
 
 ## Next
 
