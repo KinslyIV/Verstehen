@@ -1,22 +1,20 @@
 import asyncio
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 import anyio
 import httpx2
-lazy from pydantic_ai.models import Model
-lazy from pydantic_ai.models.openai import OpenAIResponsesModel
-lazy from pydantic_ai.providers.openai_chatgpt import CredentialsRefreshError
 
 from verstehen.providers.accounts import Account, AccountUnavailable
 from verstehen.providers.catalog import CatalogModel
 from verstehen.providers.credentials import CredentialsStore
 from verstehen.store.settings import ModelPick
-lazy from verstehen.providers.chatgpt.client import (
-    AccountModel,
-    AccountProvider,
-    catalog_model,
-)
-lazy from verstehen.providers.chatgpt.credentials import AccountCredentialSource
+
+if TYPE_CHECKING:
+    from pydantic_ai.models import Model
+
+    from verstehen.providers.chatgpt.client import AccountProvider
+    from verstehen.providers.chatgpt.credentials import AccountCredentialSource
 
 SIGN_IN_REASON = "ChatGPT authorization expired. Sign in again."
 
@@ -38,7 +36,9 @@ class ChatGPTAccountAdapter:
         self.providers: dict[str, AccountProvider] = {}
         self.clients: list[httpx2.AsyncClient] = []
         self.catalogs: dict[str, list[CatalogModel]] = {}
-        self.fetches: dict[str, asyncio.Task[list[CatalogModel]]] = {}
+        self.fetches: dict[
+            str, asyncio.Task[list[CatalogModel] | AccountUnavailable]
+        ] = {}
 
     async def accounts(self) -> list[Account]:
         accounts = []
@@ -58,6 +58,9 @@ class ChatGPTAccountAdapter:
         return accounts
 
     def provider(self, account_id: str) -> AccountProvider:
+        from verstehen.providers.chatgpt.client import AccountProvider
+        from verstehen.providers.chatgpt.credentials import AccountCredentialSource
+
         if account_id not in self.providers:
             source = AccountCredentialSource(self.credentials_store, account_id)
             source.ensure_available()
@@ -93,6 +96,8 @@ class ChatGPTAccountAdapter:
         error: Exception,
         source: AccountCredentialSource | None = None,
     ) -> AccountUnavailable:
+        from pydantic_ai.providers.openai_chatgpt import CredentialsRefreshError
+
         if source is not None and source.invalidated:
             return AccountUnavailable("The ChatGPT account changed. Select it again.")
         self.forget_account_models(account_id)
@@ -131,9 +136,14 @@ class ChatGPTAccountAdapter:
             task = asyncio.create_task(self.load_models(account))
             task.add_done_callback(lambda t: t.cancelled() or t.exception())
             self.fetches[account.id] = task
-        return await asyncio.shield(task)
+        result = await asyncio.shield(task)
+        if isinstance(result, AccountUnavailable):
+            raise AccountUnavailable(result.reason, result.state)
+        return result
 
-    async def load_models(self, account: Account) -> list[CatalogModel]:
+    async def load_models(
+        self, account: Account
+    ) -> list[CatalogModel] | AccountUnavailable:
         """Fetch once for all waiting callers; only the current fetch caches or evicts."""
         task = asyncio.current_task()
         provider = None
@@ -145,17 +155,19 @@ class ChatGPTAccountAdapter:
             return models
         except Exception as error:
             if self.fetches.get(account.id) is not task:
-                raise AccountUnavailable(
+                return AccountUnavailable(
                     "The ChatGPT model list changed. Try again.", "unavailable"
-                ) from None
-            raise self.unavailable(
+                )
+            return self.unavailable(
                 account.id, error, provider.source if provider else None
-            ) from None
+            )
         finally:
             if self.fetches.get(account.id) is task:
                 del self.fetches[account.id]
 
     async def fetch_models(self, provider: AccountProvider) -> list[CatalogModel]:
+        from verstehen.providers.chatgpt.client import catalog_model
+
         with anyio.fail_after(15):
             body = await provider.client.get(
                 "/models", cast_to=dict, options={"timeout": 15, "max_retries": 0}
@@ -180,6 +192,10 @@ class ChatGPTAccountAdapter:
         return models
 
     async def build_model(self, account: Account, pick: ModelPick) -> Model:
+        from pydantic_ai.models.openai import OpenAIResponsesModel
+
+        from verstehen.providers.chatgpt.client import AccountModel
+
         return AccountModel(
             OpenAIResponsesModel(pick.model, provider=self.provider(account.id)),
             self,

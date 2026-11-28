@@ -47,6 +47,7 @@ export class GraphController {
 
 	private lifetime = new AbortController();
 	private renderingKnown: Promise<void> = Promise.resolve();
+	private settingsEpoch = 0;
 	private graphRequest = 0;
 	private requestClock = 0;
 	private snapshotStarted = 0;
@@ -74,13 +75,30 @@ export class GraphController {
 		};
 		const status = () => this.scheduleStatus();
 		const renamed = () => this.scheduleTitles();
+		const settingsChanged = (event: Event) => {
+			const epoch = ++this.settingsEpoch;
+			const detail = (event as CustomEvent<{ graph?: { rendering?: boolean } } | undefined>).detail;
+			if (detail) {
+				this.applyRendering(detail.graph?.rendering ?? true);
+				return;
+			}
+			void getSettings()
+				.then((settings) => {
+					if (!this.lifetime.signal.aborted && epoch === this.settingsEpoch) {
+						this.applyRendering(settings.graph?.rendering ?? true);
+					}
+				})
+				.catch(() => {});
+		};
 		window.addEventListener('verstehen:graph-changed', refresh);
 		window.addEventListener('verstehen:extractions-changed', status);
 		window.addEventListener('verstehen:sessions-changed', renamed);
+		window.addEventListener('verstehen:settings-changed', settingsChanged);
 		this.lifetime.signal.addEventListener('abort', () => {
 			window.removeEventListener('verstehen:graph-changed', refresh);
 			window.removeEventListener('verstehen:extractions-changed', status);
 			window.removeEventListener('verstehen:sessions-changed', renamed);
+			window.removeEventListener('verstehen:settings-changed', settingsChanged);
 		});
 		void this.start();
 	}
@@ -88,14 +106,25 @@ export class GraphController {
 	/** The graph and the render settings load together; costs and status follow the first paint.
 	 * A graph event runs it again while that first load has failed. */
 	private async start(): Promise<void> {
+		const epoch = ++this.settingsEpoch;
 		this.renderingKnown = getSettings().then((settings) => {
-			this.rendering = settings.graph?.rendering ?? true;
+			if (epoch === this.settingsEpoch) this.rendering = settings.graph?.rendering ?? true;
 		});
 		this.renderingKnown.catch(() => {});
 		void this.loadSettings();
 		await this.refreshGraph();
 		void this.refreshCosts();
 		void this.refreshStatus();
+	}
+
+	private applyRendering(enabled: boolean): void {
+		this.rendering = enabled;
+		if (!enabled || !this.graph) return;
+		const snapshot = { ...this.graph.snapshot, positions: this.graph.positions };
+		if (!hasUnplacedNodes(snapshot)) return;
+		const positions = settleSnapshotLayout(snapshot);
+		this.graph = { snapshot: this.graph.snapshot, positions };
+		void this.savePositions(positions);
 	}
 
 	private needsSnapshot(revision: number): boolean {

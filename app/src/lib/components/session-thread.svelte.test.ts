@@ -37,6 +37,7 @@ beforeEach(() => {
 	vi.mocked(api.getJobs).mockReset().mockResolvedValue({ jobs: [], turn_in_flight: false });
 	vi.mocked(api.getSession).mockReset();
 	vi.mocked(api.postInput).mockReset();
+	vi.mocked(api.streamTurn).mockReset();
 });
 test('saved_thread_renders_plain_learner_text_markdown_and_collapsed_thinking', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
@@ -277,6 +278,48 @@ test('dispatch_card_follows_the_session_feed_by_tool_call_id', async () => {
 	await expect.element(screen.getByTestId('dispatch-settled')).toMatchTextContent('finished');
 });
 
+test('a_practice_problem_tick_is_anchored_to_its_problem_card', async () => {
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: {}, entry_points: {}, current: null },
+		id: 'one',
+		title: 'Practice',
+		kind: 'practice',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{ kind: 'user', entry_id: 'u', text: 'Practice the power rule' },
+			{
+				kind: 'assistant',
+				entry_id: 'p',
+				stop_reason: 'stop',
+				parts: [
+					{
+						type: 'tool_call',
+						tool_call_id: 'c1',
+						tool_name: 'problem',
+						arguments: '{"statement":"Differentiate x^3."}'
+					}
+				]
+			},
+			{
+				kind: 'tool_result',
+				entry_id: 'pr',
+				tool_call_id: 'c1',
+				tool_name: 'problem',
+				is_error: false,
+				text: ''
+			}
+		]
+	});
+	const screen = await render(SessionThread, { id: 'one' });
+	await expect.element(screen.getByTestId('problem-card')).toBeVisible();
+	const item = screen
+		.getByTestId('problem-card')
+		.element()
+		.closest('[data-slot="message-scroller-item"]');
+	expect(item?.getAttribute('data-message-id')).toBe('p');
+});
+
 test('android_back_opens_the_dismiss_confirmation_for_a_pending_question_like_escape', async () => {
 	vi.mocked(api.getSession).mockResolvedValue({
 		side_segments: { by_entry: {}, entry_points: {}, current: null },
@@ -336,4 +379,153 @@ test('android_back_goes_back_when_nothing_is_pending', async () => {
 	pressBack();
 	expect(history.back).toHaveBeenCalledOnce();
 	await expect.element(screen.getByText('Dismiss this question?')).not.toBeInTheDocument();
+});
+
+test('working_indicator_stays_visible_for_empty_assistant_stream_and_tool_calls', async () => {
+	let emit: ((event: api.TurnEvent) => void) | undefined;
+	let finishStream: ((done: boolean) => void) | undefined;
+	vi.mocked(api.getSession)
+		.mockResolvedValueOnce({
+			side_segments: { by_entry: {}, entry_points: {}, current: null },
+			id: 's-live',
+			title: 'Live session',
+			kind: 'teach',
+			turn_in_flight: true,
+			turn_error: null,
+			entries: [{ kind: 'user', entry_id: 'u1', text: 'Hi' }]
+		})
+		.mockResolvedValue({
+			side_segments: { by_entry: {}, entry_points: {}, current: null },
+			id: 's-live',
+			title: 'Live session',
+			kind: 'teach',
+			turn_in_flight: false,
+			turn_error: null,
+			entries: [
+				{ kind: 'user', entry_id: 'u1', text: 'Hi' },
+				{
+					kind: 'assistant',
+					entry_id: 'a1',
+					stop_reason: 'stop',
+					created_at: '2026-04-01T14:30:00Z',
+					parts: [{ type: 'text', text: 'Done!' }]
+				}
+			]
+		});
+	vi.mocked(api.streamTurn).mockImplementation((_id, receive, _signal, opened) => {
+		emit = receive;
+		opened?.();
+		return new Promise<boolean>((resolve) => {
+			finishStream = resolve;
+		});
+	});
+
+	const screen = await render(SessionThread, { id: 's-live' });
+	await expect.poll(() => emit).toBeDefined();
+
+	emit!({
+		type: 'message_start',
+		message: { kind: 'assistant', entry_id: 'a1', stop_reason: 'stop', parts: [] }
+	});
+	await expect.element(screen.getByTestId('working-indicator')).toHaveTextContent('Thinking…');
+	await expect.element(screen.getByRole('status')).toHaveTextContent('Thinking…');
+	expect(
+		document.querySelector('[data-testid="working-indicator"]')?.getAttribute('role')
+	).toBeNull();
+
+	emit!({
+		type: 'message_update',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			parts: [
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-1',
+					tool_name: 'list_graph_nodes',
+					arguments: {}
+				}
+			]
+		}
+	});
+	await expect
+		.element(screen.getByTestId('working-indicator'))
+		.toHaveTextContent('Reading knowledge graph…');
+
+	emit!({
+		type: 'message_update',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			parts: [
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-1',
+					tool_name: 'list_graph_nodes',
+					arguments: {}
+				},
+				{
+					type: 'tool_call',
+					tool_call_id: 'tc-2',
+					tool_name: 'hello_greet',
+					arguments: {}
+				}
+			]
+		},
+		completed_tool_call_ids: ['tc-1']
+	});
+	await expect.element(screen.getByTestId('working-indicator')).not.toBeInTheDocument();
+
+	emit!({
+		type: 'message_end',
+		message: {
+			kind: 'assistant',
+			entry_id: 'a1',
+			stop_reason: 'stop',
+			created_at: '2026-04-01T14:30:00Z',
+			parts: [{ type: 'text', text: 'Done!' }]
+		}
+	});
+	finishStream!(true);
+	await expect.element(screen.getByTestId('working-indicator')).not.toBeInTheDocument();
+});
+
+test('message_footer_renders_time_copy_and_side_button', async () => {
+	const writeText = vi.fn(async () => {});
+	Object.defineProperty(navigator, 'clipboard', {
+		configurable: true,
+		value: { writeText }
+	});
+	vi.mocked(api.getSession).mockResolvedValue({
+		side_segments: { by_entry: { a1: 'a1' }, entry_points: { a1: 'a1' }, current: null },
+		id: 's-done',
+		title: 'Settled session',
+		kind: 'teach',
+		turn_in_flight: false,
+		turn_error: null,
+		entries: [
+			{ kind: 'user', entry_id: 'u1', text: 'Explain slope', created_at: '2026-04-01T14:29:00Z' },
+			{
+				kind: 'assistant',
+				entry_id: 'a1',
+				stop_reason: 'stop',
+				created_at: '2026-04-01T14:30:00Z',
+				parts: [{ type: 'text', text: '**Slope** is rise over run.' }]
+			}
+		]
+	});
+
+	const screen = await render(SessionThread, { id: 's-done' });
+	const footer = screen.getByTestId('message-footer');
+	await expect.element(footer).toBeVisible();
+	await expect.element(footer.getByTestId('message-time')).toBeVisible();
+	await expect.element(footer.getByTestId('side-conversation-button')).toBeVisible();
+	await expect.element(screen.getByTestId('user-message-time')).toBeVisible();
+
+	const copyButton = footer.getByTestId('copy-message-button');
+	await copyButton.click();
+	expect(writeText).toHaveBeenCalledWith('**Slope** is rise over run.');
+	await expect.element(copyButton).toHaveAttribute('aria-label', 'Copied');
 });

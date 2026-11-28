@@ -9,31 +9,34 @@ in [decisions](decisions.md).
 
 ```mermaid
 flowchart LR
-  subgraph Desktop[Tauri desktop app]
-    UI[Svelte 5 SPA<br/>app/src]
-    Shell[Rust shell<br/>app/src-tauri]
+  subgraph Desktop[Desktop app: one PySide6 process, PyInstaller onedir]
+    subgraph Main[Qt main thread]
+      Shell[DesktopShell<br/>QWebEngineView<br/>desktop/]
+      Runner[DesktopDemoRunner<br/>hidden QtWebEngine pages]
+    end
+    subgraph Server[Server thread: uvicorn]
+      API[FastAPI routes + the built SPA<br/>api/]
+      Services[services and live runtimes<br/>session/ jobs/ sidechat/ graph/]
+      Agents[Pydantic AI agents<br/>teaching/ providers/]
+      Store[(SQLite, WAL<br/>store/)]
+    end
   end
-  Shell -- starts with a token, reads the port --> Sidecar
-  UI -- HTTP + SSE on 127.0.0.1<br/>token in a header --> Sidecar
-  subgraph Sidecar[Python sidecar: PyInstaller onedir]
-    API[FastAPI routes<br/>api/]
-    Services[services and live runtimes<br/>session/ jobs/ sidechat/ graph/]
-    Agents[Pydantic AI agents<br/>teaching/ providers/]
-    Store[(SQLite, WAL<br/>store/)]
-  end
+  Shell -- "HTTP + SSE on 127.0.0.1, same origin<br/>token in an HttpOnly cookie" --> API
   API --> Services --> Agents
   Services --> Store
   Agents --> Models[Claude Code CLI<br/>ChatGPT accounts]
-  Services --> Browser[Chromium via Playwright<br/>demo checks]
+  Services -- demo checks --> Runner
 ```
 
-- **One process owns the data.** The sidecar is the only reader and writer of the SQLite database
-  (`<data dir>/verstehen.db`) and the data directory (`~/.local/share/verstehen`, or
-  `VERSTEHEN_DATA_DIR`).
-- **The shell stays thin.** [`app/src-tauri/src/lib.rs`](../app/src-tauri/src/lib.rs) starts the
-  sidecar with a per-launch token, shows the window at once, and waits for its port line and a healthy `/api/health`. The
-  webview may call two commands: `sidecar_connection` (resolves only when the sidecar is healthy)
-  and `startup_mark` (timing lines).
+- **One process owns the data.** The desktop process is the only reader and writer of the SQLite
+  database (`<data dir>/verstehen.db`) and the data directory (`~/.local/share/verstehen`, or
+  `VERSTEHEN_DATA_DIR`). `verstehen --server` is the same backend without Qt, run on a server; it
+  checks demos in Playwright's Chromium ([tooling](architecture/tooling.md)).
+- **The shell stays thin.** [`desktop/shell.py`](../backend/src/verstehen/desktop/shell.py) shows the
+  window at once with a starting page, starts uvicorn on a thread, waits for a healthy `/api/health`,
+  sets the per-launch token as an HttpOnly cookie, and loads the app from the server's own origin.
+  The page needs no connection lookup: every request is same-origin. If the server dies, the app
+  quits.
 - **Development and the app run on different machines.** Agents work on Pixal (Ubuntu) and build
   the Arch package in a container; the user installs it on the Arch laptop. See
   [tooling](architecture/tooling.md).
@@ -44,15 +47,16 @@ The backend is `backend/src/verstehen/`, one package per LearnHarness topic. The
 by import-linter (`backend/pyproject.toml`):
 
 ```
-api | lh_import  →  sync  →  session  →  jobs | sidechat | graph  →  teaching | providers  →  store
+desktop  →  api | lh_import  →  sync  →  session  →  jobs | sidechat | graph | plugins  →  teaching | providers  →  store
 ```
 
 `lh_import` is the one-off LearnHarness import ([store](architecture/store.md#importing-from-learnharness)),
-run from the command line instead of the API.
+run from the command line instead of the API. `desktop` is the Qt shell: the only package that
+imports PySide6 (a ruff rule enforces it), and it starts `api` through `create_app`.
 
 - A package imports only packages to its right. `session` calls `jobs`, `sidechat`, and `graph`
   directly; they reach a session only through plain functions injected at startup (for example
-  `wake_session`, `before_side_ask`, `graph_changed`).
+  `wake_session`, `before_side_ask`, `graph_changed`, and `plugins`' notification callbacks).
 - **All wiring happens once**, in `create_app` in [`app.py`](../backend/src/verstehen/app.py). Read
   it to see which service gets which store, callback, and collaborator.
 - ruff's banned-API rules keep `sqlite3`/`aiosqlite` in `store/` only, and keep Pydantic AI out of
@@ -119,13 +123,14 @@ settles. Details: [session and turns](architecture/session.md).
 |---|---|---|---|---|
 | Session and turns | [session](architecture/session.md) | `session/` | `lib/session/`, thread, composer, session list | [turn lifecycle](learnharness/turn-lifecycle.md) |
 | Teaching and questions | [teaching](architecture/teaching.md) | `teaching/` | `lib/questions/`, `lib/teaching/` | [teaching flow](learnharness/teaching-flow.md), [question tools](learnharness/question-tools.md) |
-| Background jobs | [jobs](architecture/jobs.md) | `jobs/`, `session/delivery.py`, `teaching/job_tools.py` | `lib/jobs/` | [subagents and background work](learnharness/subagents-and-background-work.md) |
+| Background jobs | [jobs](architecture/jobs.md) | `jobs/`, `desktop/demo_runner.py`, `session/delivery.py`, `teaching/job_tools.py` | `lib/jobs/` | [subagents and background work](learnharness/subagents-and-background-work.md) |
 | Side chat | [side chat](architecture/sidechat.md) | `sidechat/` | `lib/sidechat/` | [side chat](learnharness/side-chat.md) |
 | Knowledge graph | [graph](architecture/graph.md) | `graph/` | `lib/graph/`, `/graph` | [knowledge graph](learnharness/knowledge-graph.md) |
+| Plugins | [plugins](architecture/plugins.md) | `plugins/`, `store/plugins.py`, `api/plugins.py` | `lib/plugins/`, Settings → Plugins, `/plugin/{id}/{view}` | LH's plugin API v1 (`docs/plugin-authoring.md`, no Part A doc) |
 | Providers and models | [providers](architecture/providers.md) | `providers/` | `lib/models/`, model menu, Accounts, setup | [providers](learnharness/providers.md) |
 | Storage | [store](architecture/store.md) | `store/`, migrations, `lh_import/` | — | [storage and events](learnharness/storage-and-events.md) |
 | API and events | [API and events](architecture/api-and-events.md) | `api/`, `session/events.py` | `lib/api/` | [storage and events](learnharness/storage-and-events.md#event-flow-to-the-ui) |
-| Frontend shell | [frontend shell](architecture/frontend-shell.md) | — | routes, layout, settings, markdown, Tauri shell | [overview](learnharness/overview.md) |
+| Frontend shell | [frontend shell](architecture/frontend-shell.md) | `desktop/` | routes, layout, settings, markdown, what the page expects of the Qt shell | [overview](learnharness/overview.md) |
 | Tooling and packaging | [tooling](architecture/tooling.md) | `cli.py`, `self_check.py`, fake model | verify flows | — |
 
 Paths in the table are relative to `backend/src/verstehen/` and `app/src/`.

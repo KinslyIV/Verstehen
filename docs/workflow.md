@@ -44,17 +44,19 @@ place that names the roles and models; AGENTS.md and plans link here.
   for a new thread, or `t3_worktree_handoff` to move the current thread. `git worktree add` or `cd`
   alone does not update T3's binding. Never switch a shared checkout's branch for another task.
   Before editing, check that the T3 binding, the working directory, and the branch agree.
-- **Commits.** `make check AREA='...'` for the touched areas passes before every commit; full
-  `make check` and `make verify` pass before opening a PR into `dev`. Which checks and flows to
-  run while editing and before merge, and when earlier results may be reused, is in the verify
-  skill (`.claude/skills/verify/SKILL.md`).
+- **Commits.** Implementer subagents only run checks and verify flows for the changes they made
+  (`make check AREA='...'`, `make verify FLOW='...'` / `AREA='...'`) and never run the full test
+  or verify suite. `make check AREA='...'` for the touched areas passes before every commit; the
+  orchestrator runs the pre-PR checks after updating the task branch. The verify skill
+  (`.claude/skills/verify/SKILL.md`) specifies which checks and flows to run and when earlier
+  results may be reused.
 - **The orchestrator decides** what the implementer asks: what fits the plan and the docs most
   closely, and the most cautious option when unsure. Each decision goes into the review queue in
   [decisions](decisions.md) with **what was decided, the alternative, and the consequence**.
 - **A flake is a bug.** A test or flow that fails and then passes on rerun is recorded in the
   [roadmap](roadmap.md#known-gaps) and fixed before merge. Never pass a change on a rerun, and
   never weaken an assertion or timeout to make it pass.
-- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging, real-model calls other
+- **Not allowed during a run:** pushing to `dev` or `main`, force-pushing, merging PRs, real-model calls other
   than `make verify-live`, the user's real data, credentials. Anything that needs one is skipped
   and reported.
 
@@ -79,6 +81,9 @@ place that names the roles and models; AGENTS.md and plans link here.
 - Each round is a fresh reviewer delegate with the plan, the diff, and the earlier findings. It
   reviews against the plan, [AGENTS.md](../AGENTS.md), the [architecture](architecture.md), and
   LearnHarness's code (the specification).
+- **Plausible bugs only.** Reviewers flag — and post-review fixes implement — only plausible real
+  bug cases, concrete plan/spec violations, or real regressions and maintainability hazards; skip
+  contrived or impossible edge cases that cannot happen in practice.
 - **Skeptical of existing code too.** Code the change builds on is reviewed as well; bad design,
   bad choices, and errors are fixed (and searched for elsewhere). A recorded decision that looks
   wrong is flagged; only the user changes it.
@@ -90,8 +95,11 @@ place that names the roles and models; AGENTS.md and plans link here.
 
 ## 4. Report and merge
 
-- Push the branch and open a PR into `dev`. **Evidence goes in the PR**: the commands, the
-  revision, the flows, and the screenshots and traces looked at. Docs hold only the current state.
+- **Update the task branch before opening a PR.** Fetch and merge the latest `origin/dev` into the
+  task branch, resolve conflicts, and check the auto-merged changes for interactions with the task.
+  Run the pre-PR checks on the updated branch, push it, and open a PR into `dev`. **Evidence goes in
+  the PR**: the commands, the revision, the flows, and the screenshots and traces looked at. Docs
+  hold only the current state.
 - PRs into `dev` are for the user's review and questions; `dev` has no CI, so the local checks are
   the evidence. The user merges into `dev`, and later opens `dev` → `main`, where the `ci` check
   (`make check` and `make verify` on GitHub) must be green. `make verify-live`, when the verify

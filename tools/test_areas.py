@@ -14,6 +14,7 @@ AREAS = (
     "providers",
     "store",
     "sync",
+    "plugins",
     "shell",
 )
 
@@ -26,6 +27,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
     "session": (
         "src/lib/session/*.test.ts",
         "src/lib/components/composer.svelte.test.ts",
+        "src/lib/components/new-session.svelte.test.ts",
         "src/lib/components/reasoning.svelte.test.ts",
         "src/lib/components/session-thread.svelte.test.ts",
         "src/lib/components/stats-bar.svelte.test.ts",
@@ -33,6 +35,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
     "teaching": (
         "src/lib/teaching/*.test.ts",
         "src/lib/practice/*.test.ts",
+        "src/lib/chat/*.test.ts",
         "src/lib/questions/*.test.ts",
         "src/lib/components/settings-lesson.svelte.test.ts",
         "src/lib/components/settings-prompts.svelte.test.ts",
@@ -56,6 +59,7 @@ VITEST_GLOBS: dict[str, tuple[str, ...]] = {
         "src/lib/components/settings-accounts.svelte.test.ts",
     ),
     "store": (),
+    "plugins": ("src/lib/plugins/**/*.test.ts",),
     "sync": (
         "src/lib/components/settings-sync.svelte.test.ts",
         "src/lib/components/sync-badge.svelte.test.ts",

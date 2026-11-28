@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
 	import { page } from '$app/state';
-	import { Dumbbell } from '@lucide/svelte';
+	import { Dumbbell, MessageSquare } from '@lucide/svelte';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { cn } from '#lib/utils.js';
 	import { ApiError, type ModelPick, createSession } from '#lib/api/client.js';
@@ -11,6 +11,7 @@
 	import NodePicker from '#lib/graph/node-picker.svelte';
 	import { picks } from '#lib/graph/picks.svelte.js';
 	import { OPENING_FAILURE, stashOpening } from '#lib/session/opening.js';
+	import { newSessionQuery } from './new-session-query.js';
 	import Composer from './composer.svelte';
 	import ModelControls from './model-controls.svelte';
 	import SetupDialog from './setup-dialog.svelte';
@@ -20,7 +21,13 @@
 			'rounded-sm px-3',
 			active ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
 		);
-	const kind = $derived(page.url.searchParams.get('mode') === 'practice' ? 'practice' : 'teach');
+	const modeParam = $derived(page.url.searchParams.get('mode'));
+	const kind = $derived<'teach' | 'practice' | 'chat'>(
+		modeParam === 'practice' ? 'practice' : modeParam === 'chat' ? 'chat' : 'teach'
+	);
+	const folderId = $derived(page.url.searchParams.get('folder') ?? undefined);
+	const sessionPath = (mode: 'teach' | 'practice' | 'chat') =>
+		`${resolve('/(lesson)/session/new')}${newSessionQuery(mode, folderId)}`;
 	let pick = $state<ModelPick | null>(null);
 	let setup = $state(false);
 	let menu = $state(false);
@@ -29,7 +36,7 @@
 	let picking = $state(false);
 	let busy = $state(false);
 	let error = $state<string | null>(null);
-	let created: { text: string; id: string; kind: typeof kind } | undefined;
+	let created: { text: string; id: string; kind: typeof kind; folderId?: string } | undefined;
 	async function start() {
 		if (!draft.trim() || busy) return;
 		busy = true;
@@ -41,18 +48,31 @@
 				setup = true;
 				return;
 			}
-			if (created?.text !== draft || created.kind !== kind) {
-				const graphContext = picks.items.length ? { propositions: picks.items } : undefined;
-				created = { text: draft, kind, ...(await createSession(draft, pick, graphContext, kind)) };
+			if (created?.text !== draft || created.kind !== kind || created.folderId !== folderId) {
+				const graphContext =
+					kind !== 'chat' && picks.items.length ? { propositions: picks.items } : undefined;
+				created = {
+					text: draft,
+					kind,
+					folderId,
+					...(await createSession(draft, pick, graphContext, kind, folderId))
+				};
 			}
 			stashOpening(created.id, draft);
-			picks.clear();
+			if (kind !== 'chat') picks.clear();
 			await goto(resolve('/(lesson)/session/[id]', { id: created.id }));
 		} catch (cause) {
 			if (cause instanceof ApiError && cause.code === 'models_not_configured') setup = true;
 			else if (cause instanceof ApiError && cause.code === 'model_unavailable') {
 				notice = cause.reason ?? cause.message;
 				menu = true;
+			} else if (cause instanceof ApiError && cause.status === 400 && folderId) {
+				error = `${cause.message} Your next message starts the session at the top level.`;
+				created = undefined;
+				// eslint-disable-next-line svelte/no-navigation-without-resolve
+				await goto(resolve('/(lesson)/session/new') + newSessionQuery(kind), {
+					replaceState: true
+				});
 			} else error = OPENING_FAILURE;
 		} finally {
 			busy = false;
@@ -68,7 +88,9 @@
 		<p class="mt-3 max-w-lg text-sm leading-6 text-muted-foreground">
 			{kind === 'practice'
 				? 'The practitioner will pose problems on what you want to practice.'
-				: 'The teacher will open by probing what you already know.'}
+				: kind === 'chat'
+					? 'Ask anything, explore how Verstehen works, or prepare a lesson or practice session.'
+					: 'The teacher will open by probing what you already know.'}
 		</p>
 		<div
 			role="group"
@@ -77,7 +99,7 @@
 			class="mt-5 flex items-center gap-0.5 rounded-md border bg-background p-0.5"
 		>
 			<Button
-				href={resolve('/(lesson)/session/new')}
+				href={sessionPath('teach')}
 				variant="ghost"
 				size="xs"
 				data-sveltekit-replacestate
@@ -88,7 +110,7 @@
 				Teach
 			</Button>
 			<Button
-				href={`${resolve('/(lesson)/session/new')}?mode=practice`}
+				href={sessionPath('practice')}
 				variant="ghost"
 				size="xs"
 				data-sveltekit-replacestate
@@ -98,27 +120,42 @@
 			>
 				<Dumbbell class="size-3" aria-hidden="true" /> Practice
 			</Button>
+			<Button
+				href={sessionPath('chat')}
+				variant="ghost"
+				size="xs"
+				data-sveltekit-replacestate
+				aria-current={kind === 'chat' ? 'page' : undefined}
+				data-testid="kind-chat"
+				class={toggleClass(kind === 'chat')}
+			>
+				<MessageSquare class="size-3" aria-hidden="true" /> Chat
+			</Button>
 		</div>
 	</div>
 	{#if error}<p role="alert" class="mx-auto max-w-3xl px-6 text-sm text-destructive max-md:px-4">
 			{error}
 		</p>{/if}
-	<div class="mx-auto w-full max-w-3xl px-6 max-md:px-4">
-		<NodePicker
-			count={picks.items.length}
-			onopen={() => (picking = true)}
-			onclear={() => {
-				picks.clear();
-				created = undefined;
-			}}
-		/>
-	</div>
+	{#if kind !== 'chat'}
+		<div class="mx-auto w-full max-w-3xl px-6 max-md:px-4">
+			<NodePicker
+				count={picks.items.length}
+				onopen={() => (picking = true)}
+				onclear={() => {
+					picks.clear();
+					created = undefined;
+				}}
+			/>
+		</div>
+	{/if}
 	<Composer
 		bind:draft
 		disabled={busy}
 		placeholder={kind === 'practice'
 			? 'What do you want to practice?'
-			: 'What do you want to learn?'}
+			: kind === 'chat'
+				? 'Ask about Verstehen, your notes, or anything else…'
+				: 'What do you want to learn?'}
 		onsend={() => void start()}
 	>
 		{#snippet models()}<ModelControls

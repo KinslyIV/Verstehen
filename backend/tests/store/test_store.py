@@ -357,6 +357,11 @@ def test_migration_0010_rebuilds_sessions_with_fk_off_and_preserves_children_and
                     "VALUES ('s_practice', 'Practice Session', 'practice', ?, ?)",
                     (now, now),
                 )
+                await conn.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                    "VALUES ('s_chat', 'Chat Session', 'chat', ?, ?)",
+                    (now, now),
+                )
             with pytest.raises(Exception, match="CHECK constraint failed"):
                 async with database.transaction() as conn:
                     await conn.execute(
@@ -540,5 +545,69 @@ def test_repeated_cancellation_while_restoring_foreign_keys_still_restores_them(
         async with database.read() as conn:
             async with conn.execute("PRAGMA foreign_keys") as cur:
                 return await cur.fetchone()
+
+    asyncio.run(run())
+
+
+def test_migration_0011_widens_kind_to_chat_preserves_rows_and_trigger(tmp_path: Path):
+    through_0010 = tmp_path / "migrations_0010"
+    through_0010.mkdir()
+    for path in sorted(MIGRATIONS.glob("*.sql")):
+        if int(path.name.split("_", 1)[0]) <= 10:
+            shutil.copy(path, through_0010 / path.name)
+
+    async def run():
+        async with open_database(tmp_path / "test.db") as database:
+            await migrate(database, through_0010)
+            now = "2026-11-26T00:00:00+00:00"
+            async with database.transaction() as conn:
+                await conn.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at, model_account, model_id, thinking_level) "
+                    "VALUES ('s_teach', 'Teach', 'teach', ?, ?, 'acc_1', 'gpt-5', 'medium'), "
+                    "('s_prac', 'Practice', 'practice', ?, ?, 'acc_1', 'gpt-5', 'low')",
+                    (now, now, now, now),
+                )
+                await conn.execute(
+                    "INSERT INTO usage (request_id, session_id, role, account, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, created_at) "
+                    "VALUES ('req_p', 's_prac', 'practice', 'acc_1', 'gpt-5', 10, 5, 0, 0, 0, ?)",
+                    (now,),
+                )
+            with pytest.raises(Exception, match="CHECK constraint failed"):
+                async with database.transaction() as conn:
+                    await conn.execute(
+                        "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                        "VALUES ('s_chat', 'Chat', 'chat', ?, ?)",
+                        (now, now),
+                    )
+
+            await migrate(database, MIGRATIONS)
+
+            async with database.transaction() as conn:
+                await conn.execute(
+                    "INSERT INTO sessions (id, title, kind, created_at, updated_at) "
+                    "VALUES ('s_chat', 'Chat', 'chat', ?, ?)",
+                    (now, now),
+                )
+                await conn.execute(
+                    "INSERT INTO usage (request_id, session_id, role, account, model, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, created_at) "
+                    "VALUES ('req_c', 's_chat', 'chat', 'acc_1', 'gpt-5', 8, 4, 0, 0, 0, ?)",
+                    (now,),
+                )
+            async with database.read() as conn:
+                async with conn.execute(
+                    "SELECT id, kind FROM sessions ORDER BY id"
+                ) as cur:
+                    assert await cur.fetchall() == [
+                        ("s_chat", "chat"),
+                        ("s_prac", "practice"),
+                        ("s_teach", "teach"),
+                    ]
+            async with database.transaction() as conn:
+                await conn.execute("DELETE FROM sessions WHERE id = 's_chat'")
+            async with database.read() as conn:
+                async with conn.execute(
+                    "SELECT request_id FROM usage ORDER BY request_id"
+                ) as cur:
+                    assert await cur.fetchall() == [("req_p",)]
 
     asyncio.run(run())

@@ -36,6 +36,7 @@ class PromptSegments(BaseModel):
     prober: list[PromptSegment]
     teacher: list[PromptSegment]
     practice: list[PromptSegment]
+    chat: list[PromptSegment]
 
 
 class UnknownPromptSegment(ValueError):
@@ -166,5 +167,8 @@ class PromptOverridesService:
             return [segment(key) for key in segment_keys(kind)]
 
         return PromptSegments(
-            prober=agent("prober"), teacher=agent("teacher"), practice=agent("practice")
+            prober=agent("prober"),
+            teacher=agent("teacher"),
+            practice=agent("practice"),
+            chat=agent("chat"),
         )

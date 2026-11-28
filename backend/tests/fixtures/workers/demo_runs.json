@@ -1,0 +1,355 @@
+[
+  {
+    "name": "a clean demo",
+    "html": "<!doctype html><title>t</title><p>hello</p>",
+    "probe": null,
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a console error",
+    "html": "<script>console.error('boom'); console.log('fine')</script>",
+    "probe": null,
+    "expect": {
+      "console_errors": [
+        "boom"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "an uncaught error",
+    "html": "<script>throw new Error('uncaught')</script>",
+    "probe": null,
+    "expect": {
+      "console_errors": [],
+      "page_errors": [
+        "uncaught"
+      ],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a blocked scheme",
+    "html": "<img src=\"ftp://example.invalid/x.png\">",
+    "probe": null,
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "ftp://example.invalid/x.png"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a failed request",
+    "html": "<img src=\"blob:null/00000000-0000-0000-0000-000000000000\">",
+    "probe": null,
+    "expect": {
+      "console_errors": [
+        "Not allowed to load local resource: blob:null/00000000-0000-0000-0000-000000000000"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "blob:null/00000000-0000-0000-0000-000000000000"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a local file",
+    "html": "<img src=\"file:///nonexistent-verstehen-test.png\">",
+    "probe": null,
+    "expect": {
+      "console_errors": [
+        "Not allowed to load local resource: file:///nonexistent-verstehen-test.png"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "file:///nonexistent-verstehen-test.png"
+      ],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a probe value",
+    "html": "<p>ok \u00e9</p>",
+    "probe": "document.querySelector('p').textContent",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "ok \u00e9",
+      "probed": true
+    }
+  },
+  {
+    "name": "refused storage",
+    "html": "<script>try { localStorage.getItem('k') } catch (e) { window.refused = true }</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a demo over 2 MB",
+    "html": "<p>big</p>",
+    "padding": 2300000,
+    "probe": "document.querySelector('p').textContent",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "big",
+      "probed": true
+    }
+  },
+  {
+    "name": "an opaque page origin",
+    "html": "<p>x</p>",
+    "probe": "self.origin",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "null",
+      "probed": true
+    }
+  },
+  {
+    "name": "a function probe",
+    "html": "<p>fn</p>",
+    "probe": "async () => { await new Promise((resolve) => setTimeout(resolve, 50)); return document.querySelector('p').textContent }",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "fn",
+      "probed": true
+    }
+  },
+  {
+    "name": "an error in the first animation frame",
+    "html": "<script>requestAnimationFrame(() => { throw new Error('frame') })</script>",
+    "probe": null,
+    "expect": {
+      "console_errors": [],
+      "page_errors": [
+        "frame"
+      ],
+      "failed_request_urls": [],
+      "probe_result": null,
+      "probed": false
+    }
+  },
+  {
+    "name": "a visible page",
+    "html": "<p>v</p>",
+    "probe": "document.visibilityState",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "visible",
+      "probed": true
+    }
+  },
+  {
+    "name": "two animation frames",
+    "html": "<p>f</p>",
+    "probe": "async () => { await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))); return 'two frames' }",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": "two frames",
+      "probed": true
+    }
+  },
+  {
+    "name": "a caught failed fetch",
+    "html": "<script>fetch('http://example.invalid/data.json').catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a caught failed XHR",
+    "html": "<script>const request = new XMLHttpRequest(); request.open('GET', 'http://example.invalid/data.json'); request.onerror = () => { window.refused = true }; request.send()</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a demo that wraps fetch and XHR under common names",
+    "html": "<script>const nativeFetch = window.fetch; window.fetch = (...a) => nativeFetch(...a); const nativeOpen = XMLHttpRequest.prototype.open; const requestUrls = new Map(); const reportFailedRequest = () => {}; const log = console.debug; fetch('data:,ok').then(() => { window.done = true })</script>",
+    "probe": "window.done === true",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a fetch rejected for its input",
+    "html": "<script>fetch('data:,x', { method: 'GET', body: 'x' }).catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a blocked scheme and an independent failed fetch",
+    "html": "<img src=\"ftp://example.invalid/x.png\"><script>fetch('http://example.invalid/data.json').catch(() => { window.refused = true })</script>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: net::ERR_ACCESS_DENIED",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "ftp://example.invalid/x.png",
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a failed fetch in an iframe",
+    "html": "<iframe srcdoc=\"<script>fetch('http://example.invalid/data.json').catch(() => { parent.refused = true })</script>\"></iframe>",
+    "probe": "window.refused === true",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a fetch answered with 404",
+    "html": "<script>fetch('{server}/missing').then((response) => { window.status404 = response.status })</script>",
+    "probe": "window.status404",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 404,
+      "probed": true
+    }
+  },
+  {
+    "name": "an XHR answered with 500",
+    "html": "<script>const request = new XMLHttpRequest(); request.open('GET', '{server}/broken'); request.onload = () => { window.status500 = request.status }; request.send()</script>",
+    "probe": "window.status500",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: the server responded with a status of 500 (Internal Server Error)"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 500,
+      "probed": true
+    }
+  },
+  {
+    "name": "two failed fetches to the same URL",
+    "html": "<script>let n = 0; const count = () => { window.refusals = ++n }; fetch('http://example.invalid/data.json').catch(count); fetch('http://example.invalid/data.json').catch(count)</script>",
+    "probe": "window.refusals === 2",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json",
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "two failed XHRs to the same URL",
+    "html": "<script>let n = 0; for (let i = 0; i < 2; i++) { const request = new XMLHttpRequest(); request.open('GET', 'http://example.invalid/data.json'); request.onerror = () => { window.refusals = ++n }; request.send() }</script>",
+    "probe": "window.refusals === 2",
+    "expect": {
+      "console_errors": [
+        "Failed to load resource: {reason}",
+        "Failed to load resource: {reason}"
+      ],
+      "page_errors": [],
+      "failed_request_urls": [
+        "http://example.invalid/data.json",
+        "http://example.invalid/data.json"
+      ],
+      "probe_result": true,
+      "probed": true
+    }
+  },
+  {
+    "name": "a BigInt probe",
+    "html": "<p>b</p>",
+    "probe": "() => 1n",
+    "expect": {
+      "console_errors": [],
+      "page_errors": [],
+      "failed_request_urls": [],
+      "probe_result": 1,
+      "probed": true
+    }
+  }
+]

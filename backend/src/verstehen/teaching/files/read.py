@@ -4,15 +4,17 @@ from io import BytesIO
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from time import monotonic
-from typing import BinaryIO
+from typing import TYPE_CHECKING, BinaryIO
 
 from pydantic import BaseModel, Field, ValidationError
 from pydantic_ai.messages import BinaryContent
 from pydantic_ai.tools import ToolReturn
-lazy from PIL import Image, ImageOps, UnidentifiedImageError
 
 from verstehen.teaching.files.access import regular_file
 from verstehen.teaching.files.search import MAX_OUTPUT, capped
+
+if TYPE_CHECKING:
+    from PIL import Image
 
 MAX_LINES = 2000
 MAX_IMAGE_BASE64 = int(4.5 * 1024 * 1024)
@@ -89,6 +91,8 @@ def fits_inline(data: bytes) -> bool:
 
 
 def resize_image(image: Image.Image) -> tuple[bytes, str, str] | None:
+    from PIL import Image, ImageOps
+
     oriented = ImageOps.exif_transpose(image)
     width, height = oriented.size
     oriented.thumbnail((2000, 2000), Image.Resampling.LANCZOS)
@@ -185,6 +189,8 @@ def image_result(
 def read_source(
     path: Path, offset: int, limit: int | None, data_dir: Path, accepts_images: bool
 ) -> ToolReturn[str]:
+    from PIL import Image, UnidentifiedImageError
+
     deadline = monotonic() + 30
     with regular_file(path) as stream:
         try:

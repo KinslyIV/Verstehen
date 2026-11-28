@@ -22,6 +22,8 @@ def test_copied_prompt_tree_matches_learnharness_apart_from_approved_planning_li
     expected = json.loads((FIXTURES / "lh-prompt-hashes.json").read_text())
     actual = {}
     for path in PROMPTS_DIR.rglob("*.md"):
+        if path.relative_to(PROMPTS_DIR).parts[0] == "chat":
+            continue
         text = path.read_text()
         if path.name == "10-planning.md":
             text = (

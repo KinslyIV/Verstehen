@@ -17,7 +17,7 @@ def test_health_ok_with_token(tmp_path: Path):
     with desktop_client(tmp_path) as client:
         response = client.get("/api/health", headers={"x-verstehen-token": TOKEN})
         assert response.status_code == 200
-        assert response.json() == {"status": "ok"}
+        assert response.json() == {"status": "ok", "desktop": True}
 
 
 def test_missing_token_is_refused(tmp_path: Path):
@@ -113,21 +113,126 @@ def test_cors_never_allows_null_origin(tmp_path: Path):
                 "/api/health",
                 headers={"origin": origin, "access-control-request-method": "GET"},
             )
-            assert response.status_code == 400
+            assert response.status_code == 403
             assert "access-control-allow-origin" not in response.headers
 
 
-@pytest.mark.parametrize("origin", ["tauri://localhost", "http://tauri.localhost"])
-def test_preflight_passes_without_token(tmp_path: Path, origin: str):
+def test_cookie_token_is_accepted_and_a_wrong_cookie_is_refused(tmp_path: Path):
     with desktop_client(tmp_path) as client:
-        response = client.options(
-            "/api/health",
-            headers={
-                "origin": origin,
-                "access-control-request-method": "GET",
-                "access-control-request-headers": "x-verstehen-token",
-            },
+        client.cookies.set("verstehen_token", TOKEN)
+        assert client.get("/api/health").status_code == 200
+        client.cookies.set("verstehen_token", "x" * len(TOKEN))
+        assert client.get("/api/health").status_code == 403
+        assert (
+            client.get("/api/health", headers={"x-verstehen-token": TOKEN}).status_code
+            == 200
         )
-        assert response.status_code == 200
-        assert response.headers["access-control-allow-origin"] == origin
-        assert client.get("/api/health", headers={"origin": origin}).status_code == 403
+
+
+def test_desktop_mode_has_no_cors_for_any_origin(tmp_path: Path):
+    with desktop_client(tmp_path) as client:
+        for origin in ("tauri://localhost", "http://tauri.localhost"):
+            response = client.options(
+                "/api/health",
+                headers={"origin": origin, "access-control-request-method": "GET"},
+            )
+            assert "access-control-allow-origin" not in response.headers
+
+
+def spa_directory(tmp_path: Path) -> Path:
+    directory = tmp_path / "spa"
+    (directory / "_app" / "immutable").mkdir(parents=True)
+    (directory / "index.html").write_text("<html>shell</html>")
+    (directory / "_app" / "version.json").write_text('{"version":"1"}')
+    (directory / "_app" / "app.js").write_text("console.log(1)")
+    (directory / "_app" / "immutable" / "chunk.js").write_text("console.log(2)")
+    return directory
+
+
+def spa_client(tmp_path: Path, *, desktop: bool = True, **settings) -> TestClient:
+    token = TOKEN if desktop else None
+    return TestClient(
+        create_app(
+            Settings(
+                tmp_path,
+                desktop=desktop,
+                token=token,
+                spa_dir=spa_directory(tmp_path),
+                **settings,
+            )
+        )
+    )
+
+
+def test_desktop_mode_serves_the_app_with_the_csp(tmp_path: Path):
+    with spa_client(tmp_path) as client:
+        page = client.get("/")
+        assert page.text == "<html>shell</html>"
+        assert client.get("/_app/app.js").text == "console.log(1)"
+        policy = page.headers["content-security-policy"]
+        assert "script-src 'self' 'unsafe-inline' https:" in policy
+        assert "ipc" not in policy and "tauri" not in policy
+
+
+def test_unknown_client_routes_fall_back_to_the_app_but_not_api_paths(tmp_path: Path):
+    with spa_client(tmp_path) as client:
+        assert client.get("/session/abc").text == "<html>shell</html>"
+        client.cookies.set("verstehen_token", TOKEN)
+        assert client.get("/api/unknown").status_code == 404
+        assert (
+            client.get("/api/unknown")
+            .headers["content-type"]
+            .startswith("application/json")
+        )
+
+
+def test_the_app_is_served_without_a_token_but_the_api_is_not(tmp_path: Path):
+    with spa_client(tmp_path) as client:
+        assert client.get("/").status_code == 200
+        assert client.get("/api/health").status_code == 403
+
+
+@pytest.mark.parametrize("mode", ["browser-only", "server"])
+def test_only_desktop_mode_serves_the_app(tmp_path: Path, mode: str):
+    with spa_client(tmp_path, desktop=False, server=mode == "server") as client:
+        assert client.get("/").status_code == 404
+
+
+def test_closing_notifications_ends_active_event_streams_immediately():
+    import asyncio
+
+    from verstehen.session.events import Notification, Notifications
+
+    async def run() -> list[Notification | None]:
+        bus = Notifications()
+        seen: list[Notification | None] = []
+
+        async def reader() -> None:
+            async for item in bus.subscribe():
+                seen.append(item)
+
+        task = asyncio.create_task(reader())
+        await asyncio.sleep(0)
+        bus.publish(Notification(type="chats-changed", session_id="s1"))
+        await asyncio.sleep(0)
+        bus.close()
+        await asyncio.wait_for(task, timeout=1)
+        return seen
+
+    seen = asyncio.run(run())
+    assert seen == [None, Notification(type="chats-changed", session_id="s1")]
+
+
+def test_desktop_spa_revalidates_html_and_caches_immutable_assets(tmp_path: Path):
+    with spa_client(tmp_path) as client:
+        assert client.get("/").headers["cache-control"] == "no-cache"
+        assert client.get("/session/abc").headers["cache-control"] == "no-cache"
+        assert client.get("/_app/version.json").headers["cache-control"] == "no-cache"
+        assert (
+            client.get("/_app/immutable/missing.js").headers["cache-control"]
+            == "no-cache"
+        )
+        assert (
+            client.get("/_app/immutable/chunk.js").headers["cache-control"]
+            == "public, max-age=31536000, immutable"
+        )

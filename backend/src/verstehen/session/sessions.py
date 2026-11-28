@@ -19,7 +19,7 @@ from verstehen.sidechat.segments import SideSegments, side_segments
 from verstehen.sidechat.service import SideChatService
 from verstehen.store.artifact_views import ArtifactViewsStore
 from verstehen.store.entries import EntriesStore, Entry, MarkerEntry
-from verstehen.store.graph import GraphLedger, GraphStore
+from verstehen.store.graph import GraphLedger, GraphStore, SourcePlacement
 from verstehen.store.jobs import JobsStore
 from verstehen.store.sessions import Session, SessionKind, SessionsStore
 from verstehen.store.settings import ModelPick
@@ -82,6 +82,7 @@ class SessionService:
         self.side_chat_service = side_chat_service
         self.extraction_service = extraction_service
         self.graph_store = graph_store
+        self._create_locks: dict[str, asyncio.Lock] = {}
 
     async def list(self) -> List[ListedSession]:
         sessions = await self.sessions_store.list()
@@ -123,6 +124,38 @@ class SessionService:
         pick: ModelPick | None = None,
         graph_context: GraphContext | None = None,
         kind: SessionKind = "teach",
+        folder_id: str | None = None,
+        client_request_id: str | None = None,
+    ) -> Session | Refused:
+        request_id = client_request_id.strip() if client_request_id else None
+        if not request_id:
+            return await self._create_once(title, pick, graph_context, kind, folder_id)
+        lock = self._create_locks.setdefault(request_id, asyncio.Lock())
+        try:
+            async with lock:
+                existing = await self.sessions_store.get_by_create_request(request_id)
+                if existing is not None:
+                    return existing
+                return await self._create_once(
+                    title,
+                    pick,
+                    graph_context,
+                    kind,
+                    folder_id,
+                    client_request_id=request_id,
+                )
+        finally:
+            if self._create_locks.get(request_id) is lock and not lock.locked():
+                del self._create_locks[request_id]
+
+    async def _create_once(
+        self,
+        title: str | None,
+        pick: ModelPick | None = None,
+        graph_context: GraphContext | None = None,
+        kind: SessionKind = "teach",
+        folder_id: str | None = None,
+        client_request_id: str | None = None,
     ) -> Session | Refused:
         if pick is not None:
             try:
@@ -131,14 +164,39 @@ class SessionService:
                 return Refused(503, error.envelope())
         else:
             pick = (await self.resolver_service.settings_store.read()).models.strong
-        session = await self.sessions_store.create(
-            title_from_prompt(title or "Untitled session"), pick, kind=kind
+        title = title_from_prompt(title or "Untitled session")
+        context_marker = (
+            await graph_context_message(graph_context, self.graph_store)
+            if graph_context is not None and graph_context.propositions
+            else None
         )
-        if graph_context is not None and graph_context.propositions:
-            await self.entries_store.append(
-                session.id,
-                [await graph_context_message(graph_context, self.graph_store)],
-            )
+        session = self.sessions_store.new_session(title, pick, kind)
+        if folder_id is None:
+            async with self.sessions_store.database.transaction() as connection:
+                await self.sessions_store.insert(
+                    connection, session, client_request_id=client_request_id
+                )
+                if context_marker is not None:
+                    await self.entries_store.append_in_transaction(
+                        connection, session.id, [context_marker]
+                    )
+        else:
+            async with self.graph_store.transaction_with_connection() as (
+                connection,
+                ledger,
+            ):
+                if not any(f.id == folder_id for f in ledger.organization.folders):
+                    return Refused(400, {"error": "Folder no longer exists."})
+                ledger.organization.placements[session.id] = SourcePlacement(
+                    folder_id=folder_id
+                )
+                await self.sessions_store.insert(
+                    connection, session, client_request_id=client_request_id
+                )
+                if context_marker is not None:
+                    await self.entries_store.append_in_transaction(
+                        connection, session.id, [context_marker]
+                    )
         self.notifications.publish(
             Notification(type="chats-changed", session_id=session.id)
         )
@@ -163,16 +221,16 @@ class SessionService:
                 await self.artifact_views_store.list(session_id),
                 side_segments(entries),
                 None
-                if session.kind == "practice"
+                if session.kind != "teach"
                 else await self.extraction_service.coverage(session_id, entries),
             )
 
     async def coverage(self, session_id: str) -> SessionCoverage | None | Refused:
-        """Coverage alone, for refreshes that need no transcript; practice sessions have none."""
+        """Coverage alone, for refreshes that need no transcript; non-teaching sessions have none."""
         session = await self.sessions_store.get(session_id)
         if session is None:
             return Refused(404, {"error": "Not found"})
-        if session.kind == "practice":
+        if session.kind != "teach":
             return None
         return await self.extraction_service.coverage(session_id)
 

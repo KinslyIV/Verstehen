@@ -1,5 +1,4 @@
 import { getModels, refreshModels, type ModelCatalog } from '#lib/api/client.js';
-import { markStartup } from '#lib/api/startup.js';
 
 export const REFRESH_POLL_MS = 1000;
 
@@ -37,7 +36,6 @@ export class ModelCatalogState {
 				this.applied = sequence;
 				this.catalog = result;
 				this.error = null;
-				markStartup('models_displayed');
 			}
 			return null;
 		} catch (cause) {

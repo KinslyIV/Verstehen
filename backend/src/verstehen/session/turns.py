@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -9,10 +10,13 @@ from pydantic import BaseModel, JsonValue, TypeAdapter
 from pydantic_ai import Agent
 from pydantic_ai.messages import FunctionToolResultEvent, ModelResponse, ToolReturnPart
 
+from verstehen.graph.context import MAX_GRAPH_CONTEXT_PICKS
 from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.model import get_graph
 from verstehen.graph.snapshot import format_graph_propositions, format_graph_sessions
 from verstehen.jobs.runner import JobRunner
+from verstehen.plugins.service import PluginService
+from verstehen.plugins.toolsets import PluginToolsets
 from verstehen.providers.events import log_provider_event
 from verstehen.providers.policy import ProviderPolicy
 from verstehen.providers.resolve import ResolutionError, ResolvedModel, ResolverService
@@ -46,13 +50,20 @@ from verstehen.store.entries import (
     ToolResultEntry,
     UserEntry,
 )
-from verstehen.store.graph import GraphStore
+from verstehen.store.graph import GraphChain, GraphLedger, GraphNode, GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.model_identity import ModelIdentity
 from verstehen.store.sessions import SessionKind, SessionsStore
-from verstehen.store.settings import SettingsStore, ToolSettings
+from verstehen.store.settings import Settings, SettingsStore, ToolSettings
 from verstehen.store.side_chats import SideThread
 from verstehen.store.usage import UsageStore
+from verstehen.teaching.chat import (
+    PREPARE_SESSION_TOOL,
+    ChatAccountStatus,
+    ChatSearchKeysStatus,
+    build_chat,
+    chat_tools,
+)
 from verstehen.teaching.delivery import needs_send_to_user
 from verstehen.teaching.files.tools import file_tools
 from verstehen.teaching.graph_tools import prober_graph_tools
@@ -101,6 +112,7 @@ STREAMED_RESULT_TOOLS = (
     "send_to_user",
     PRACTICE_PROBLEM_TOOL,
     PRACTICE_CONCLUDE_TOOL,
+    PREPARE_SESSION_TOOL,
     *ACKNOWLEDGEMENTS,
 )
 logger = logging.getLogger(__name__)
@@ -148,9 +160,11 @@ class TurnState:
     for_handoff: bool = False
 
     @property
-    def role(self) -> Literal["teacher", "prober", "practice"]:
+    def role(self) -> Literal["teacher", "prober", "practice", "chat"]:
         if self.session_kind == "practice":
             return "practice"
+        if self.session_kind == "chat":
+            return "chat"
         return "teacher" if has_probe_done(self.entries) else "prober"
 
 
@@ -201,7 +215,14 @@ class TurnService:
         graph_store: GraphStore,
         prompt_edit_lock: asyncio.Lock,
         provider_events: bool = False,
+        plugin_service: PluginService | None = None,
+        accounts_status: Callable[[], Awaitable[Sequence[ChatAccountStatus]]]
+        | None = None,
+        search_keys_status: Callable[[], Awaitable[ChatSearchKeysStatus]] | None = None,
     ):
+        self.plugin_service = plugin_service
+        self.accounts_status = accounts_status
+        self.search_keys_status = search_keys_status
         self.prompt_edit_lock = prompt_edit_lock
         self.sessions_store = sessions_store
         self.entries_store = entries_store
@@ -505,7 +526,6 @@ class TurnService:
             self.settings_store, self.data_dir, role, self.prompt_edit_lock
         )
         settings = await self.settings_store.read()
-        quizzing = settings.quizzing
         model = UsageModel(
             state.resolved,
             self.usage_store,
@@ -514,6 +534,31 @@ class TurnService:
             self.provider_events,
             turn_id=state.run.id if state.run else None,
         )
+        plugins = (
+            await self.plugin_service.toolset_for(role, state.session_id)
+            if self.plugin_service
+            else None
+        )
+        state.agent = self.build_role_agent(
+            state,
+            model,
+            instructions,
+            settings,
+            plugins,
+        )
+        return Continue(state)
+
+    def build_role_agent(
+        self,
+        state: TurnState,
+        model: UsageModel,
+        instructions: str,
+        settings: Settings,
+        plugins: PluginToolsets | None,
+    ) -> QuestionAgent:
+        assert state.resolved is not None
+        role = state.role
+        quizzing = settings.quizzing
         deliver = needs_send_to_user(state.resolved.kind, state.resolved.pick.model)
         files = file_tools(
             self.settings_store,
@@ -528,6 +573,45 @@ class TurnService:
             self.data_dir,
         )
         updates = ContextUpdates(lambda: self.take_context_updates(state))
+        if role == "chat":
+
+            async def default_accounts() -> Sequence[ChatAccountStatus]:
+                return ()
+
+            async def default_search_keys() -> ChatSearchKeysStatus:
+                return ChatSearchKeysStatus(tavily=False, brave=False)
+
+            def derive_graph(
+                ledger: GraphLedger,
+            ) -> tuple[list[GraphNode], list[GraphChain]]:
+                derived = get_graph(ledger)
+                return derived.nodes, derived.chains
+
+            return build_chat(
+                model,
+                instructions,
+                state.resolved.settings,
+                extra_tools=(
+                    *chat_tools(
+                        settings_store=self.settings_store,
+                        data_dir=self.data_dir,
+                        prompt_edit_lock=self.prompt_edit_lock,
+                        read_sessions=self.sessions_store.list,
+                        read_session_by_id=self.sessions_store.get,
+                        read_entries=self.entries_store.list,
+                        read_ledger=self.graph_store.read,
+                        derive_graph=derive_graph,
+                        read_accounts_status=self.accounts_status or default_accounts,
+                        read_search_keys_status=self.search_keys_status
+                        or default_search_keys,
+                        max_proposition_picks=MAX_GRAPH_CONTEXT_PICKS,
+                    ),
+                    *files,
+                    *job_tools(dispatcher, settings.tools, prober=True),
+                ),
+                extra_toolsets=(plugins,) if plugins is not None else (),
+                extra_capabilities=(updates,),
+            )
         if role == "practice":
 
             async def list_sessions() -> str:
@@ -541,7 +625,7 @@ class TurnService:
             async def graph_nodes():
                 return get_graph(await self.graph_store.read()).nodes
 
-            state.agent = build_practitioner(
+            return build_practitioner(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -556,6 +640,7 @@ class TurnService:
                     ),
                     *job_tools(dispatcher, ToolSettings(), prober=True),
                 ),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 extra_capabilities=(updates,),
             )
         elif role == "prober":
@@ -574,7 +659,7 @@ class TurnService:
             async def list_propositions(session: str) -> str:
                 return format_graph_propositions(await self.graph_store.read(), session)
 
-            state.agent = build_prober(
+            return build_prober(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -589,6 +674,7 @@ class TurnService:
                     ),
                     *job_tools(dispatcher, settings.tools, prober=True),
                 ),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
@@ -602,7 +688,7 @@ class TurnService:
             def node_ids() -> list[str]:
                 return [node.id for node in tree.nodes] if tree else []
 
-            state.agent = build_teacher(
+            return build_teacher(
                 model,
                 instructions,
                 state.resolved.settings,
@@ -614,10 +700,10 @@ class TurnService:
                     show_image_tool(self.settings_store, self.data_dir),
                     *job_tools(dispatcher, settings.tools),
                 ),
+                extra_toolsets=(plugins,) if plugins is not None else (),
                 deliver_prose=deliver,
                 extra_capabilities=(updates,),
             )
-        return Continue(state)
 
     async def take_context_updates(self, state: TurnState) -> list[ContextEntry]:
         assert state.run is not None and state.resolved is not None
@@ -721,12 +807,31 @@ class TurnService:
                     elif Agent.is_call_tools_node(node):
                         assert reply is not None
                         update_response(reply, node.model_response, model)
+                        completed_ids: list[str] = []
+                        run.publish(
+                            TurnEvent(
+                                type="message_update",
+                                message=reply.model_copy(deep=True),
+                            )
+                        )
+                        run.flush()
                         async with node.stream(agent_run.ctx) as events:
                             async for event in events:
                                 if isinstance(event, FunctionToolResultEvent):
                                     result = saved_tool_result(event.part)
                                     if result is not None:
                                         results.append(result)
+                                        completed_ids.append(result.tool_call_id)
+                                        run.publish(
+                                            TurnEvent(
+                                                type="message_update",
+                                                message=reply.model_copy(deep=True),
+                                                completed_tool_call_ids=list(
+                                                    completed_ids
+                                                ),
+                                            )
+                                        )
+                                        run.flush()
                         update_response(reply, node.model_response, model)
         except asyncio.CancelledError:
             task = asyncio.current_task()
@@ -767,6 +872,7 @@ class TurnService:
         reply: AssistantEntry,
         results: list[ToolResultEntry],
     ) -> None:
+        reply.created_at = datetime.now(UTC)
         call_order = {
             part.tool_call_id: index
             for index, part in enumerate(reply.parts)
@@ -826,8 +932,10 @@ class TurnService:
         await self.entries_store.append(state.session_id, [*entries, *markers])
         state.runtime.delivery.discard(entry.entry_id for entry in entries)
         self.notify_changed(state.session_id)
-        reserve_handoff = not self.runtimes.closing and handoff_owed(
-            [*state.entries, *entries]
+        reserve_handoff = (
+            not self.runtimes.closing
+            and state.session_kind == "teach"
+            and handoff_owed([*state.entries, *entries])
         )
         if reserve_handoff:
             await self.finish(state, reserve_handoff=True)
@@ -874,7 +982,7 @@ class TurnService:
                 probe_run.publish(TurnEvent(type="error", error_text=error_text))
             runtime.end_handoff()
         self.notifications.publish(
-            Notification(type="turn-settled", session_id=session_id)
+            Notification(type="turn-settled", session_id=session_id, kind="teach")
         )
 
     async def pump_deliveries(self, session_id: str) -> None:
@@ -900,7 +1008,11 @@ class TurnService:
                 state.runtime.begin_handoff()
         if not reserve_handoff:
             self.notifications.publish(
-                Notification(type="turn-settled", session_id=state.session_id)
+                Notification(
+                    type="turn-settled",
+                    session_id=state.session_id,
+                    kind=state.session_kind,
+                )
             )
 
 

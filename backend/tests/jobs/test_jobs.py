@@ -198,6 +198,7 @@ async def stack(
             CredentialsStore(tmp_path),
             WorkerAdmission(settings_store),
             tmp_path,
+            lambda configured: None,
             wake_session,
             lambda session_id: None,
         )

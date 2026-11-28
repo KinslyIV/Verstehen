@@ -17,6 +17,39 @@ test('settings', async ({ page, request }) => {
 		animations: 'disabled'
 	});
 
+	const width = page.getByRole('group', { name: 'Transcript width' });
+	await expect(width.getByRole('button', { name: 'Full', exact: true })).toHaveAttribute(
+		'aria-pressed',
+		'true'
+	);
+	await width.getByRole('slider').focus();
+	await page.keyboard.press('Home');
+	await expect(width.getByText('46rem')).toBeVisible();
+	await page.keyboard.press('ArrowRight');
+	await expect(width.getByText('48rem')).toBeVisible();
+	await page.reload();
+	await expect(width.getByText('48rem')).toBeVisible();
+	const transcriptMax = () =>
+		page.evaluate(() =>
+			document.documentElement.style.getPropertyValue('--verstehen-transcript-max')
+		);
+	const composerWidth = () =>
+		page
+			.getByPlaceholder('What do you want to learn?')
+			.evaluate((element) => element.closest('form, div')?.getBoundingClientRect().width ?? 0);
+	expect(await transcriptMax()).toBe('48rem');
+	await page.goto('/');
+	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
+	const capped = await composerWidth();
+	await page.goto('/settings');
+	await width.getByRole('button', { name: 'Full', exact: true }).click();
+	expect(await transcriptMax()).toBe('');
+	await page.goto('/');
+	await expect(page.getByRole('heading', { name: 'New session' })).toBeVisible();
+	// Like LearnHarness's dock, the composer keeps its width; only the transcript follows the slider.
+	expect(await composerWidth()).toBe(capped);
+	await page.goto('/settings');
+
 	await page.getByRole('button', { name: 'Models', exact: true }).click();
 	await expect(page.getByRole('button', { name: 'Choose Main model' })).toContainText(
 		'Scripted teacher'
@@ -85,4 +118,62 @@ test('settings', async ({ page, request }) => {
 	await concurrency.fill('4');
 	await concurrency.press('Enter');
 	await expect.poll(async () => (await saved()).worker_request_concurrency).toBe(4);
+
+	await page.evaluate(() =>
+		window.dispatchEvent(
+			new CustomEvent('verstehen:link-refused', { detail: 'https://brave.com/search/api/' })
+		)
+	);
+	await expect(page.getByRole('alert')).toHaveText(
+		"Verstehen can't open https://brave.com/search/api/. Open it in your browser."
+	);
+	await page.getByRole('alert').scrollIntoViewIfNeeded();
+	await page.screenshot({
+		path: test.info().outputPath('settings-tools-link-refused.png'),
+		animations: 'disabled'
+	});
+
+	await page.goto('/session/new?mode=chat');
+	const draft = page.getByRole('textbox', { name: 'What do you want to learn?' });
+	await draft.fill('Unsent draft question');
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByTestId('settings-dialog');
+	await expect(dialog).toBeVisible();
+	await expect(page).not.toHaveURL(/\/settings/);
+	await dialog.getByRole('button', { name: 'Appearance', exact: true }).click();
+	await expect(dialog.getByRole('heading', { name: 'Appearance', exact: true })).toBeVisible();
+	await page.screenshot({
+		path: test.info().outputPath('settings-dialog.png'),
+		animations: 'disabled'
+	});
+	await dialog.getByRole('button', { name: 'Prompts', exact: true }).click();
+	const promptRow = dialog.getByTestId('prompt-row-teacher/20-teaching.md');
+	await promptRow.getByRole('button', { name: '+ Add override' }).click();
+	const editor = page.getByRole('dialog', { name: 'Add override' });
+	await expect(editor).toBeVisible();
+	await editor.getByLabel('Override Markdown').fill('Read [Example](https://example.com).');
+	await editor.getByRole('button', { name: 'Preview' }).click();
+	await editor.getByRole('link', { name: 'Example', exact: true }).click();
+	const externalLink = page.getByRole('dialog', { name: 'Open external link' });
+	await expect(externalLink).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(externalLink).toBeHidden();
+	await expect(editor).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(editor).toBeVisible();
+	await expect(editor.getByText('Discard unsaved changes?')).toBeVisible();
+	await expect(dialog).toBeVisible();
+	await editor.getByRole('button', { name: 'Discard changes', exact: true }).click();
+	await expect(editor).toBeHidden();
+	await expect(dialog).toBeVisible();
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(draft).toHaveValue('Unsent draft question');
+
+	await page.goto('/settings');
+	const backLink = page.getByRole('link', { name: 'Back' });
+	await expect(backLink).toHaveAttribute('href', '/session/new?mode=chat');
+	await backLink.click();
+	await expect(page).toHaveURL(/\/session\/new\?mode=chat$/);
 });

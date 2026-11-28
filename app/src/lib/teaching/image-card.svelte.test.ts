@@ -1,7 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import { render } from 'vitest-browser-svelte';
 import ImageCard from './image-card.svelte';
-import { setToken, type ToolResult } from '#lib/api/client.js';
+import type { ToolResult } from '#lib/api/client.js';
 
 const details = {
 	path: '/home/learner/diagram.bmp',
@@ -25,10 +25,9 @@ const result: ToolResult = {
 afterEach(() => {
 	vi.unstubAllGlobals();
 	vi.restoreAllMocks();
-	setToken(undefined);
 });
 
-test('image_card_fetches_with_token_and_releases_its_object_url', async () => {
+test('image_card_fetches_and_releases_its_object_url', async () => {
 	const fetcher = vi
 		.fn()
 		.mockResolvedValue(
@@ -47,7 +46,6 @@ test('image_card_fetches_with_token_and_releases_its_object_url', async () => {
 			)
 		);
 	vi.stubGlobal('fetch', fetcher);
-	setToken('test-token');
 	const create = vi.spyOn(URL, 'createObjectURL');
 	const revoke = vi.spyOn(URL, 'revokeObjectURL');
 	const screen = await render(ImageCard, { result });
@@ -58,7 +56,7 @@ test('image_card_fetches_with_token_and_releases_its_object_url', async () => {
 	await expect.element(screen.getByText(details.path)).toBeVisible();
 	expect(fetcher).toHaveBeenCalledWith(`/api/images/${details.sha256}.png`, {
 		signal: expect.any(AbortSignal),
-		headers: { 'x-verstehen-token': 'test-token' }
+		headers: {}
 	});
 	expect(create).toHaveBeenCalledOnce();
 	await screen.rerender({
@@ -113,4 +111,19 @@ test('image_card_discards_a_fetch_that_finishes_after_unmount', async () => {
 	await read.mock.results[0].value;
 	await Promise.resolve();
 	expect(create).not.toHaveBeenCalled();
+});
+
+test('image_card_zooms_into_a_popup_and_closes_on_backdrop_click', async () => {
+	vi.stubGlobal(
+		'fetch',
+		vi.fn().mockResolvedValue(new Response(new Blob(['image'], { type: 'image/png' })))
+	);
+	const screen = await render(ImageCard, { result });
+	await expect.element(screen.getByRole('button', { name: 'Zoom image' })).toBeVisible();
+	await screen.getByRole('button', { name: 'Zoom image' }).click();
+	const dialog = screen.getByTestId('zoom-dialog').element() as HTMLDialogElement;
+	expect(dialog.open).toBe(true);
+	await expect.element(screen.getByRole('img', { name: 'Zoomed view' })).toBeInTheDocument();
+	dialog.click();
+	expect(dialog.open).toBe(false);
 });

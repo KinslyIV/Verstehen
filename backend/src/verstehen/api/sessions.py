@@ -69,6 +69,11 @@ class SessionInput(TitleInput):
     graph_context: GraphContext | None = None
 
 
+class NewSessionInput(SessionInput):
+    folder_id: str | None = None
+    client_request_id: str | None = None
+
+
 class SessionItem(BaseModel):
     id: str
     title: str
@@ -169,9 +174,16 @@ async def get_session_coverage(
     response_model=Created,
     responses={503: {"model": ModelUnavailable}},
 )
-async def create_session(body: SessionInput, session_service: SessionServiceDependency):
+async def create_session(
+    body: NewSessionInput, session_service: SessionServiceDependency
+):
     session = await session_service.create(
-        body.title, body.model, body.graph_context, kind=body.kind
+        body.title,
+        body.model,
+        body.graph_context,
+        kind=body.kind,
+        folder_id=body.folder_id,
+        client_request_id=body.client_request_id,
     )
     if isinstance(session, Refused):
         return JSONResponse(session.reason, status_code=session.status)

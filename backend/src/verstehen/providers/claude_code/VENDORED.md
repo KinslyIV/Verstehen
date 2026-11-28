@@ -18,6 +18,8 @@ Local patches to upstream files:
    the app-owned `VERSTEHEN_PROVIDER_EVENTS` logger, without configuring logging inside the vendor.
 4. Python files: repository Ruff import ordering and formatting (double quotes, wrapping).
    Relative imports already work under `verstehen.providers.claude_code`; no import remapping.
+5. `__init__.py`: no package re-exports, so importing `binary` or `adapter` does not load
+   `claude_agent_sdk`; import from the submodules (`model`, `exceptions`, `diagnostics`).
 
 App-owned files (not upstream): `adapter.py`, `binary.py`, and `context.py`.
 The adapter always supplies the discovered absolute CLI path and every lockdown option itself:

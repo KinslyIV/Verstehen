@@ -66,4 +66,27 @@ test('mobile-sidebar-folders', async ({ page, request }) => {
 	await expect(page.getByRole('menuitem', { name: 'New subfolder' })).toBeVisible();
 	await expect(page.getByRole('menuitem', { name: 'Delete' })).toHaveAttribute('data-disabled', '');
 	await page.screenshot({ path: test.info().outputPath('menu.png'), animations: 'disabled' });
+
+	// Move to folder works by tap, with no dragging.
+	await page.keyboard.press('Escape');
+	if ((await toggle.getAttribute('aria-expanded')) === 'false') await toggle.tap();
+	await expect(link).toBeVisible();
+	const sessionBox = (await link.boundingBox())!;
+	// The synthetic touch release clicks the link under the finger; a real long press does not.
+	await page.evaluate(() =>
+		document.addEventListener('click', (event) => event.preventDefault(), {
+			capture: true,
+			once: true
+		})
+	);
+	await holdTouch(page, { x: sessionBox.x + 40, y: sessionBox.y + sessionBox.height / 2 }, 900);
+	await page.getByRole('menuitem', { name: 'Move to folder' }).tap();
+	await page.screenshot({ path: test.info().outputPath('move-menu.png'), animations: 'disabled' });
+	await page.getByRole('menuitem', { name: 'No folder' }).tap();
+	await expect
+		.poll(async () => {
+			const directory = await (await request.get('/api/graph/sources')).json();
+			return directory.organization.placements[session]?.folder_id;
+		})
+		.toBeNull();
 });

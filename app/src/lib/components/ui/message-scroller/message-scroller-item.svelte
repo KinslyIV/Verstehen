@@ -1,13 +1,16 @@
 <script lang="ts">
 	import { MessageScroller as MessageScrollerPrimitive } from '@shadcn-svelte/primitives/message-scroller';
+	import { getRowDeferred } from './deferred.js';
 	import { cn } from '#lib/utils.js';
 
 	let {
 		ref = $bindable(null),
 		class: className,
 		scrollAnchor = false,
+		children,
 		...restProps
 	}: MessageScrollerPrimitive.ItemProps = $props();
+	const deferred = getRowDeferred();
 </script>
 
 <MessageScrollerPrimitive.Item
@@ -19,4 +22,6 @@
 		className
 	)}
 	{...restProps}
-/>
+>
+	{#if !deferred?.()}{@render children?.()}{/if}
+</MessageScrollerPrimitive.Item>

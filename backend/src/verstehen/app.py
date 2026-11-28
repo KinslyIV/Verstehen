@@ -1,21 +1,28 @@
 import asyncio
+import importlib.metadata
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
+from fastapi.staticfiles import StaticFiles
+from pydantic import JsonValue
+from starlette.exceptions import HTTPException
 from starlette.middleware.base import RequestResponseEndpoint
 from starlette.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response
+from starlette.types import Scope
 
 from verstehen.api.access import authenticate_server_request, request_refusal
 from verstehen.api.auth import PairingCodeManager
 from verstehen.api.auth import router as auth_router
 from verstehen.api.chatgpt import router as chatgpt_router
 from verstehen.api.claude_code import router as claude_code_router
+from verstehen.api.demo_browser import router as demo_browser_router
 from verstehen.api.graph import router as graph_router
 from verstehen.api.health import router
 from verstehen.api.images import router as images_router
 from verstehen.api.jobs import router as jobs_router
+from verstehen.api.plugins import router as plugins_router
 from verstehen.api.prompts import router as prompts_router
 from verstehen.api.providers import router as providers_router
 from verstehen.api.server_setup import router as server_setup_router
@@ -30,7 +37,13 @@ from verstehen.graph.extraction_service import ExtractionService
 from verstehen.graph.service import GraphService
 from verstehen.jobs.runner import JobRunner
 from verstehen.jobs.workers.admission import WorkerAdmission
-from verstehen.jobs.workers.browser import BrowserDownloadService
+from verstehen.jobs.workers.browser import (
+    BrowserDownloadService,
+    playwright_runner_provider,
+)
+from verstehen.jobs.workers.headless import DemoRunner
+from verstehen.plugins.core import CORE_PLUGINS
+from verstehen.plugins.service import PluginService
 from verstehen.providers.accounts import AccountAdapter, AccountsService
 from verstehen.providers.catalog_store import ModelCatalogStore
 from verstehen.providers.chatgpt.adapter import ChatGPTAccountAdapter
@@ -58,6 +71,7 @@ from verstehen.store.entries import EntriesStore
 from verstehen.store.graph import GraphStore
 from verstehen.store.jobs import JobsStore
 from verstehen.store.migrate import migrate
+from verstehen.store.plugins import PluginsStore
 from verstehen.store.sessions import SessionsStore
 from verstehen.store.settings import SettingsStore
 from verstehen.store.side_chats import SideChatsStore
@@ -70,10 +84,39 @@ from verstehen.sync.provision import (
     ServerProxy,
 )
 from verstehen.sync.service import SyncService
+from verstehen.teaching.chat import ChatAccountStatus, ChatSearchKeysStatus
+
+DESKTOP_CSP = (
+    "default-src 'self'; script-src 'self' 'unsafe-inline' https:; "
+    "style-src 'self' 'unsafe-inline' https:; "
+    "img-src 'self' data: blob: 'unsafe-inline' https:; "
+    "font-src 'self' data: 'unsafe-inline' https:; "
+    "connect-src 'self' http://127.0.0.1:* 'unsafe-inline' https:"
+)
 
 
-def create_app(settings: Settings) -> FastAPI:
-    """Build the API with database lifecycle, access checks, and desktop CORS."""
+class SinglePageFiles(StaticFiles):
+    """Serves the built app, answering unknown client routes with index.html."""
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        immutable = path.startswith("_app/immutable/")
+        try:
+            response = await super().get_response(path, scope)
+        except HTTPException as error:
+            if error.status_code != 404 or path.startswith("api/"):
+                raise
+            immutable = False
+            response = await super().get_response("index.html", scope)
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if immutable else "no-cache"
+        )
+        return response
+
+
+def create_app(settings: Settings, demo_runner: DemoRunner | None = None) -> FastAPI:
+    """Build the API with database lifecycle and access checks; desktop mode also serves the app.
+    The desktop shell injects its `demo_runner`; without one, demos run in Playwright's Chromium.
+    """
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -102,7 +145,9 @@ def create_app(settings: Settings) -> FastAPI:
             chatgpt_adapter = ChatGPTAccountAdapter(
                 credentials_store, on_invalidated=catalog_store.forget
             )
-            browser_download_service = BrowserDownloadService(settings.data_dir)
+            browser_download_service = (
+                None if settings.desktop else BrowserDownloadService(settings.data_dir)
+            )
             app.state.browser_download_service = browser_download_service
             callback_port = CallbackPort()
             chatgpt_sign_in_service = ChatGPTSignInService(
@@ -152,6 +197,11 @@ def create_app(settings: Settings) -> FastAPI:
                 credentials_store,
                 WorkerAdmission(settings_store),
                 settings.data_dir,
+                (
+                    (lambda configured: demo_runner)
+                    if demo_runner
+                    else playwright_runner_provider(settings.data_dir)
+                ),
                 wake_session,
                 jobs_changed,
                 settings.provider_events,
@@ -178,6 +228,7 @@ def create_app(settings: Settings) -> FastAPI:
                 side_chats_changed,
                 lambda session_id: runtimes.get(session_id).lock,
                 settings.provider_events,
+                prompt_edit_lock,
             )
 
             def graph_changed(revision: int) -> None:
@@ -259,6 +310,50 @@ def create_app(settings: Settings) -> FastAPI:
                 delete_graph_session,
                 check_graph_session,
             )
+
+            def plugins_changed() -> None:
+                notifications.publish(Notification(type="plugins-changed"))
+
+            def plugin_message(plugin_id: str, topic: str, data: JsonValue) -> None:
+                notifications.publish(
+                    Notification(
+                        type="plugin-message",
+                        plugin_id=plugin_id,
+                        topic=topic,
+                        data=data,
+                    )
+                )
+
+            plugin_service = PluginService(
+                PluginsStore(settings.data_dir),
+                settings.data_dir / "plugins",
+                importlib.metadata.version("verstehen"),
+                settings.plugins,
+                plugins_changed,
+                plugin_message,
+                core_plugins=CORE_PLUGINS,
+            )
+            app.state.plugin_service = plugin_service
+
+            async def read_accounts_status() -> list[ChatAccountStatus]:
+                return [
+                    ChatAccountStatus(
+                        id=account.id,
+                        label=account.label,
+                        kind=account.kind,
+                        usable=account.usable,
+                    )
+                    for account in await accounts_service.list()
+                ]
+
+            async def read_search_keys_status() -> ChatSearchKeysStatus:
+                status = await app.state.search_keys_service.status()
+                return ChatSearchKeysStatus(
+                    tavily=status.tavily.present,
+                    brave=status.brave.present,
+                    effective_engine=status.effective_engine,
+                )
+
             app.state.turn_service = turn_service = TurnService(
                 sessions_store,
                 entries_store,
@@ -277,6 +372,9 @@ def create_app(settings: Settings) -> FastAPI:
                 graph_store,
                 prompt_edit_lock,
                 settings.provider_events,
+                plugin_service,
+                accounts_status=read_accounts_status,
+                search_keys_status=read_search_keys_status,
             )
 
             app.state.job_service = JobService(
@@ -321,10 +419,26 @@ def create_app(settings: Settings) -> FastAPI:
             else:
                 database.on_sync_write = sync_service.notify_local_change
                 sync_service.start()
+
+            async def watch_settled_turns() -> None:
+                async for event in notifications.subscribe():
+                    if (
+                        event
+                        and event.type == "turn-settled"
+                        and event.session_id
+                        and event.kind != "chat"
+                    ):
+                        await plugin_service.turn_settled(event.session_id)
+
             turn_service.delivery_service.start_watching()
+            settled_watcher = asyncio.create_task(watch_settled_turns())
             try:
+                await plugin_service.discover()
                 yield
             finally:
+                settled_watcher.cancel()
+                await runtimes.close()
+                await plugin_service.close()
                 await server_oauth_service.close()
                 await server_install_service.close()
                 await sync_service.close()
@@ -332,8 +446,8 @@ def create_app(settings: Settings) -> FastAPI:
                 await extraction_service.close()
                 await side_chat_service.close()
                 await job_runner.close()
-                await browser_download_service.close()
-                await runtimes.close()
+                if browser_download_service:
+                    await browser_download_service.close()
                 await title_service.close()
                 claude_code_adapter.close()
                 await chatgpt_sign_in_service.close()
@@ -395,22 +509,10 @@ def create_app(settings: Settings) -> FastAPI:
                     )
         return await call_next(request)
 
-    if settings.desktop:
+    if settings.server:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=["tauri://localhost", "http://tauri.localhost"],
-            allow_methods=["*"],
-            allow_headers=["x-verstehen-token", "content-type"],
-        )
-    elif settings.server:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=[
-                "tauri://localhost",
-                "http://tauri.localhost",
-                "https://tauri.localhost",
-                "http://localhost",
-            ],
+            allow_origins=["http://localhost"],
             allow_methods=["*"],
             allow_headers=["authorization", "x-verstehen-token", "content-type"],
         )
@@ -421,13 +523,27 @@ def create_app(settings: Settings) -> FastAPI:
     app.include_router(server_setup_router)
     app.include_router(graph_router)
     app.include_router(tools_router)
+    if not settings.desktop:
+        app.include_router(demo_browser_router)
     app.include_router(router)
     app.include_router(sessions_router)
     app.include_router(images_router)
     app.include_router(jobs_router)
     app.include_router(side_chats_router)
     app.include_router(prompts_router)
+    app.include_router(plugins_router)
     app.include_router(providers_router)
     app.include_router(claude_code_router)
     app.include_router(chatgpt_router)
+    if settings.desktop and settings.spa_dir is not None:
+
+        @app.middleware("http")
+        async def content_security_policy(
+            request: Request, call_next: RequestResponseEndpoint
+        ) -> Response:
+            response = await call_next(request)
+            response.headers["Content-Security-Policy"] = DESKTOP_CSP
+            return response
+
+        app.mount("/", SinglePageFiles(directory=settings.spa_dir), name="spa")
     return app

@@ -1,10 +1,19 @@
 import asyncio
 import json
+from collections.abc import Callable
+from typing import Protocol
 
 from pydantic import BaseModel, Field, JsonValue
-lazy from playwright.async_api import async_playwright
 
+ALLOWED_SCHEMES = frozenset({"http", "https", "data", "blob", "about"})
+SETTLE_SECONDS = 2
+LOAD_TIMEOUT_SECONDS = 30
 NO_BROWSER = "No render engine available: no Chromium-family browser was found. Set one in Settings → Tools → Demo browser, install Chromium, or use “Download Chromium for demos” there. (Verification is mandatory — demos are never delivered untested.)"
+
+
+def scheme_allowed(url: str) -> bool:
+    """Whether a demo may load `url`: only the schemes in `ALLOWED_SCHEMES`."""
+    return url.split(":", 1)[0] in ALLOWED_SCHEMES
 
 
 class DemoRunResult(BaseModel):
@@ -19,9 +28,31 @@ class DemoRunResult(BaseModel):
         return not (self.console_errors or self.page_errors or self.failed_requests)
 
 
+class DemoRunner(Protocol):
+    """Loads a demo document in a browser and reports what went wrong, like Playwright's `run_demo`."""
+
+    async def __call__(self, html: str, probe: str | None = None) -> DemoRunResult: ...
+
+
+# Gives the runner for the configured demo browser path, or None when no browser is available.
+DemoRunnerProvider = Callable[[str | None], DemoRunner | None]
+
+
+class PlaywrightDemoRunner:
+    """Runs demos in the Chromium-family browser at `executable`, for server mode."""
+
+    def __init__(self, executable: str) -> None:
+        self.executable = executable
+
+    async def __call__(self, html: str, probe: str | None = None) -> DemoRunResult:
+        return await run_demo(html, self.executable, probe)
+
+
 async def run_demo(
     html: str, executable: str, probe: str | None = None
 ) -> DemoRunResult:
+    from playwright.async_api import async_playwright
+
     result = DemoRunResult(probed=bool(probe))
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
@@ -47,16 +78,17 @@ async def run_demo(
             )
 
             async def guard(route):
-                scheme = route.request.url.split(":", 1)[0]
-                if scheme in {"http", "https", "data", "blob", "about"}:
+                if scheme_allowed(route.request.url):
                     await route.continue_()
                 else:
                     await route.abort("accessdenied")
 
             await page.route("**/*", guard)
             try:
-                await page.set_content(html, wait_until="load", timeout=30000)
-                await asyncio.sleep(2)
+                await page.set_content(
+                    html, wait_until="load", timeout=LOAD_TIMEOUT_SECONDS * 1000
+                )
+                await asyncio.sleep(SETTLE_SECONDS)
                 if probe:
                     try:
                         result.probe_result = await page.evaluate(probe)

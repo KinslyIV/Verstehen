@@ -9,4 +9,3 @@ __pycache__/
 /dist/
 /backend/build/
 /backend/dist/
-/app/src-tauri/binaries/

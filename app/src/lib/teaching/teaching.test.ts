@@ -157,6 +157,23 @@ test.each(['send_to_user', 'probe', 'probe_done', 'plan_init', 'read'])(
 	}
 );
 
+test('a_tool_that_is_not_built_in_renders_as_a_card_even_after_an_error_or_an_abort', () => {
+	const entry = call('hello_lookup', { word: 'slope' });
+	const ok = { ...result, tool_name: 'hello_lookup', tool_call_id: 'hello_lookup', text: 'ok' };
+	const failed = { ...ok, text: 'Tool hello_lookup failed: boom', is_error: true };
+	const card = { kind: 'tool', name: 'hello_lookup', args: { word: 'slope' }, stopped: false };
+	expect(responseProse(entry, new Map([['hello_lookup', ok]]), false)).toEqual([
+		{ ...card, result: ok }
+	]);
+	expect(responseProse(entry, new Map([['hello_lookup', failed]]), false)).toEqual([
+		{ ...card, result: failed }
+	]);
+	expect(responseProse(entry, undefined, true)).toEqual([{ ...card, result: undefined }]);
+	expect(responseProse({ ...entry, stop_reason: 'aborted' }, undefined, false)).toEqual([
+		{ ...card, result: undefined, stopped: true }
+	]);
+});
+
 test('probe_done_refusal_keeps_its_assessment_card', () => {
 	const refusal = { ...result, details: { ok: false, error: 'A question is still open.' } };
 	expect(responseProse(call('probe_done', {}), new Map([['probe_done', refusal]]), false)).toEqual([
@@ -175,6 +192,35 @@ test('problem_and_conclude_calls_pair_with_their_clean_results', () => {
 	const conclusion = { ...ack, tool_call_id: 'conclude', tool_name: 'conclude' };
 	expect(responseProse(concluded, new Map([['conclude', conclusion]]), false)).toEqual([
 		{ kind: 'conclude', args: { outcome: 'solved' }, toolCallId: 'conclude' }
+	]);
+});
+
+test('prepare_session_emits_a_prepared_session_card_on_clean_result_and_retries_on_error', () => {
+	const entry = call('prepare_session', {
+		kind: 'teach',
+		opening_prompt: 'Teach me limits.'
+	});
+	const prepared = {
+		...result,
+		tool_call_id: 'prepare_session',
+		tool_name: 'prepare_session',
+		text: 'Launch card prepared.',
+		details: {
+			kind: 'teach',
+			title: 'Limits',
+			opening_prompt: 'Teach me limits.',
+			folder_id: null,
+			folder_name: null,
+			propositions: []
+		}
+	};
+	expect(responseProse(entry, new Map([['prepare_session', prepared]]), false)).toEqual([
+		{ kind: 'prepared-session', result: prepared }
+	]);
+	expect(responseProse(entry, undefined, true)).toEqual([]);
+	const failed = { ...prepared, is_error: true, text: 'Unknown folder_id' };
+	expect(responseProse(entry, new Map([['prepare_session', failed]]), false)).toEqual([
+		{ kind: 'tool-retry' }
 	]);
 });
 

@@ -20,7 +20,7 @@ Backend, `backend/src/verstehen/providers/`:
 | `service.py` | `ProviderService`: settings, the saved catalog read, the account refresh, Set as default |
 | `usage.py` | `UsageModel`: wraps every request, saves a `usage` row per call through `UsageStore` |
 | `claude_code/` | `ClaudeCodeAccountAdapter` and binary discovery (`binary.py`), plus the vendored `ClaudeCodeModel` (`model.py`, `_transport.py`, `_request.py`; see `VENDORED.md`) |
-| `chatgpt/` | `ChatGPTAccountAdapter` (with each account's model list cached for the sidecar's lifetime), the lazily loaded provider/model wrappers (`client.py`: `AccountProvider`, `AccountModel`, `catalog_model`), the browser sign-in (`ChatGPTSignInService`), the credential source |
+| `chatgpt/` | `ChatGPTAccountAdapter` (with each account's model list cached for the process's lifetime), the lazily loaded provider/model wrappers (`client.py`: `AccountProvider`, `AccountModel`, `catalog_model`), the browser sign-in (`ChatGPTSignInService`), the credential source |
 | `credentials.py` | `CredentialsStore`: the private atomic `<data dir>/credentials.json` (0600) for ChatGPT tokens and search keys |
 | `search_keys.py` | Tavily and Brave key status and storage |
 | `fake.py` | `FakeAccountAdapter` and the scripted streaming model, enabled only by `VERSTEHEN_FAKE_MODEL_SCRIPT` |
@@ -114,9 +114,10 @@ manual refresh), `components/settings-accounts.svelte`, `components/setup-dialog
   `no-session-persistence`).
 - **A saved catalog must never feed dispatch.** Showing a model the account no longer offers is
   harmless; resolving it would not be. Validation stays on the adapters.
-- **The menu keeps one size.** Its body is fixed (columns scroll inside) and its footer is always
-  present for the status line and Set as default, so changing slot or account cannot resize it.
-  Component tests run without Tailwind, so the size is checked in the `model-catalog` flow.
+- **The menu keeps one size.** Its body is fixed at a compact `28rem` (`[0.9fr, 1.1fr]` columns,
+  scrolling inside; `SetupDialog` uses `32rem`) and its footer is always present for the status line
+  and Set as default, so changing slot or account cannot resize it. Component tests run without
+  Tailwind, so the size is checked in the `model-catalog` flow.
 - **Claude Code has no native web search through the adapter.** With the search engine set to
   Native, Claude Code research uses Tavily, then Brave; an explicitly chosen keyed engine is used
   as chosen.

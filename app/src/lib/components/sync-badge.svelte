@@ -5,6 +5,8 @@
 	import { Button } from '#lib/components/ui/button/index.js';
 	import { getSyncStatus, streamNotifications, type SyncStatusResponse } from '#lib/api/client.js';
 	import { live } from '#lib/api/live.svelte.js';
+	import { settingsOverlay } from '#lib/layout/settings-overlay.svelte.js';
+	import { layout } from '#lib/layout/tiers.svelte.js';
 
 	let status = $state<SyncStatusResponse | null>(null);
 	let requestNumber = 0;
@@ -66,6 +68,19 @@
 		variant="ghost"
 		class="justify-start gap-2 text-muted-foreground"
 		data-testid="sync-badge"
+		onclick={(event: MouseEvent) => {
+			if (
+				layout.tier === 'phone' ||
+				event.metaKey ||
+				event.ctrlKey ||
+				event.shiftKey ||
+				event.altKey ||
+				event.button !== 0
+			)
+				return;
+			event.preventDefault();
+			settingsOverlay.show('sync');
+		}}
 	>
 		{#if status.status === 'syncing'}
 			<LoaderCircle class="size-3.5 animate-spin text-primary" aria-hidden="true" />

@@ -4,15 +4,14 @@ from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Any
 
-lazy import pypdfium2 as pdfium
-lazy import regex
-
 from verstehen.teaching.files.access import regular_file
 from verstehen.teaching.pdfium import PDFIUM_LOCK
 
 
 @contextmanager
 def open_pdf(path: Path):
+    import pypdfium2 as pdfium
+
     with PDFIUM_LOCK, regular_file(path) as stream:
         with pdfium.PdfDocument(stream.read()) as document:
             yield document
@@ -37,6 +36,8 @@ def page_text(page: Any) -> str:
 
 
 def pdf_info(path: Path) -> dict[str, Any]:
+    import pypdfium2 as pdfium
+
     pages = []
     with open_pdf(path) as document:
         for index in range(len(document)):
@@ -85,6 +86,8 @@ def pdf_extract(path: Path, spec: str) -> tuple[str, list[int]]:
 def pdf_search(
     path: Path, query: str, context_lines: int = 3, literal: bool = False
 ) -> list[dict[str, Any]]:
+    import regex
+
     try:
         pattern = regex.compile(regex.escape(query) if literal else query, regex.I)
     except regex.error as error:

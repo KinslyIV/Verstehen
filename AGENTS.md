@@ -5,7 +5,7 @@
 Verstehen is a learning app: an AI tutor that probes what you know, plans a lesson, teaches with
 questions, and builds a knowledge graph of what you've learned. It is a **port of LearnHarness**
 ([github.com/amosblomqvist/learnharness](https://github.com/amosblomqvist/learnharness),
-TypeScript/Next.js) to Python + Pydantic AI, with a Tauri + SvelteKit desktop app. The port has two
+TypeScript/Next.js) to Python + Pydantic AI, with a PySide6 + SvelteKit desktop app. The port has two
 goals: **keep LearnHarness's learning flow and knowledge graph exactly**, rebuilt with code a human
 can read; and **understand how LearnHarness works** (`docs/learnharness/`).
 
@@ -36,6 +36,11 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
   the pieces fit, approved before any implementation. Every option offered to the user says what it
   means, its consequences, what it rules out, how reversible it is, and what LearnHarness does,
   with a recommendation; check the user understood before they choose.
+- **Flag bad decisions, the user's included.** The user is not a senior developer. When a
+  request or decision (from the user, the docs, or an agent) would cost performance, features,
+  correctness, security, or maintainability, say so before acting: what it costs, why, and the
+  better option, with a recommendation. The user still decides; never comply or work around it
+  silently.
 - **LearnHarness's code is the specification** (commit `069a6a11`; changes since the earlier
   pin `cb25c8e` are the [LH catch-up list](docs/roadmap.md#lh-catch-up)). When a Part A doc and the code
   disagree, the code is right: report the mismatch, don't fix the doc yourself. A behavior change
@@ -48,9 +53,16 @@ How work happens (roles, models, branches, review, reports) is in [`docs/workflo
   `VERSTEHEN_DATA_DIR` elsewhere. Never read, print, or commit credentials (`credentials.json`, the
   Claude Code login, the ChatGPT tokens).
 - **Git.** Work on the task's branch, started from `dev`; commit with `make check AREA='...'`
-  passing for the touched areas, and run full `make check` and `make verify` before opening a PR
-  into `dev`. Push the branch and open a PR into `dev`. Never commit or push to `dev` or `main`,
-  force-push, or merge: the user merges into `dev`, and later merges `dev` into `main`.
+  passing for the touched areas. Subagents only run scoped checks and verify flows for the
+  changes they made (`make check AREA='...'`, `make verify FLOW='...'` / `AREA='...'`), never the
+  full test or verify suite. Before opening a PR into `dev`, fetch and merge the latest
+  `origin/dev` into the task branch. The orchestrator runs the pre-PR checks on the updated branch
+  as specified by the verify skill, then pushes the branch and opens the PR. Never commit or push
+  to `dev` or `main`, force-push, or merge a PR. The user merges into `dev`, and later merges `dev`
+  into `main`.
+- **Plausible bugs only in review.** Reviewers flag — and post-review fixes implement — only
+  plausible real bug cases, spec/plan mismatches, or concrete regressions; skip contrived or
+  impossible edge cases that cannot happen in practice.
 - **Real models use the user's subscriptions.** The only standing exception is `make verify-live`
   (Claude Code, `haiku`). Run any other real-model call only when the user asks.
 
@@ -93,10 +105,10 @@ Every change comes with a way to prove it works, and you run it before you say i
 
 | Command | What it does |
 |---|---|
-| `make check` | lint, format, types, code rules, and all tests (`AREA='a b'` scopes tests to touched areas and skips `@pytest.mark.slow`; `SLOW=1` includes slow tests; run `make check AREA='...'` on commits and full `make check` before a PR into `dev`) |
+| `make check` | lint, format, types, code rules, and all tests (`AREA='a b'` scopes tests to touched areas and skips `@pytest.mark.slow`; `SLOW=1` includes slow tests; subagents run `make check AREA='...'` for their own changes only, while the orchestrator runs full `make check` once before opening a PR into `dev`) |
 | `make check-backend`, `make check-frontend` | the backend or frontend half, while editing (`AREA='...'` scopes tests) |
 | `make test` | only the tests (`AREA='...'`, `SLOW=1`) |
-| `make verify` | the app with the fake model in headless Chromium: flows that save screenshots and traces (`AREA='...'` or `FLOW='a b'`; run full `make verify` before a PR into `dev`) |
+| `make verify` | the app with the fake model in headless Chromium: flows that save screenshots and traces (`AREA='...'` or `FLOW='a b'`; subagents run only flows for their changes, while the orchestrator runs full `make verify` once before opening a PR into `dev`) |
 | `make verify-run FLOW='a b'` | rerun flows against an unchanged verified build (`AREA='...'` or `FLOW='a b'`) |
 | `make verify-live` | one lesson turn with real Claude Code (`haiku`) |
 | `make fmt` | fix formatting |

@@ -1,3 +1,4 @@
 project-includes = ["backend/src/**/*.py", "tools/**/*.py", "backend/tests/**/*.py"]
+project-excludes = ["backend/src/verstehen/core_plugins/*/dist/**"]
 search-path = ["backend/src", "."]
 python-interpreter = "backend/.venv/bin/python"

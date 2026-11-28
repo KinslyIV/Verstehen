@@ -12,7 +12,7 @@ from verstehen.store.graph import GraphLedger, GraphStore, read_ledger, write_le
 from verstehen.store.settings import ModelPick, ThinkingLevel
 from verstehen.store.sync_log import append_sync_log, record_tombstone
 
-SessionKind = Literal["teach", "practice"]
+SessionKind = Literal["teach", "practice", "chat"]
 
 
 class Session(BaseModel):
@@ -80,31 +80,69 @@ class SessionsStore:
     def __init__(self, database: Database):
         self.database = database
 
-    async def create(
+    def new_session(
         self,
         title: str,
         pick: ModelPick | None = None,
         kind: SessionKind = "teach",
     ) -> Session:
-        session = Session(
+        return Session(
             title=title,
             kind=kind,
             model_account=pick.account if pick else None,
             model_id=pick.model if pick else None,
             thinking_level=pick.thinking_level if pick else None,
         )
-        async with self.database.transaction() as connection:
-            await insert_session(connection, session)
-            await append_sync_log(
-                connection,
-                entity="session",
-                op="upsert",
-                entity_id=session.id,
-                session_id=session.id,
-                payload=session.model_dump(mode="json"),
+
+    async def insert(
+        self,
+        connection: Connection,
+        session: Session,
+        client_request_id: str | None = None,
+    ) -> None:
+        """Insert and sync-log a session inside a transaction the caller holds."""
+        await insert_session(connection, session)
+        if client_request_id:
+            await connection.execute(
+                "INSERT INTO session_create_requests (request_id, session_id) VALUES (?, ?)",
+                (client_request_id, session.id),
             )
-            self.database.mark_sync_dirty()
+        await append_sync_log(
+            connection,
+            entity="session",
+            op="upsert",
+            entity_id=session.id,
+            session_id=session.id,
+            payload=session.model_dump(mode="json"),
+        )
+        self.database.mark_sync_dirty()
+
+    async def create(
+        self,
+        title: str,
+        pick: ModelPick | None = None,
+        kind: SessionKind = "teach",
+        client_request_id: str | None = None,
+    ) -> Session:
+        session = self.new_session(title, pick, kind)
+        async with self.database.transaction() as connection:
+            await self.insert(connection, session, client_request_id=client_request_id)
         return session
+
+    async def get_by_create_request(self, request_id: str) -> Session | None:
+        async with self.database.read() as connection:
+            async with connection.execute(
+                "SELECT s.id, s.title, s.kind, s.created_at, s.updated_at, "
+                "s.model_account, s.model_id, s.thinking_level "
+                "FROM session_create_requests r "
+                "JOIN sessions s ON s.id = r.session_id "
+                "WHERE r.request_id = ?",
+                (request_id,),
+            ) as cursor:
+                row = await cursor.fetchone()
+        if row is None:
+            return None
+        return Session.model_validate(dict(zip(Session.model_fields, row)))
 
     async def get(self, session_id: str) -> Session | None:
         async with self.database.read() as connection:

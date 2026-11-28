@@ -218,8 +218,9 @@ class ExtractionService:
         session = await self.sessions_store.get(session_id)
         if session is None:
             raise GraphRefused("Not found", 404)
-        if session.kind == "practice":
-            raise GraphRefused("Practice sessions do not run graph extraction", 400)
+        if session.kind != "teach":
+            label = "Practice" if session.kind == "practice" else "Chat"
+            raise GraphRefused(f"{label} sessions do not run graph extraction", 400)
         await self.ready(purpose)
         task = self.launch(session_id, lambda: self.run_session(session_id, purpose))
         self.failure_reasons.pop(session_id, None)

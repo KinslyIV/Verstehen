@@ -63,7 +63,7 @@
 		if (!open) onclose();
 	}}
 >
-	<Dialog.Content class="sm:max-w-[46rem]">
+	<Dialog.Content class="sm:max-w-[32rem]">
 		<Dialog.Header>
 			<Dialog.Title>Set up your models</Dialog.Title><Dialog.Description>
 				Connect an account, then choose Main, Cheap, and Vision. Your message will wait.

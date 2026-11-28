@@ -985,6 +985,91 @@ export interface paths {
 		patch?: never;
 		trace?: never;
 	};
+	'/api/plugins': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** List Plugins */
+		get: operations['list_plugins_api_plugins_get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/plugins/refresh': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Refresh Plugins */
+		post: operations['refresh_plugins_api_plugins_refresh_post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/plugins/{plugin_id}/enabled': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		/** Set Plugin Enabled */
+		put: operations['set_plugin_enabled_api_plugins__plugin_id__enabled_put'];
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/plugins/{plugin_id}/call/{name}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		get?: never;
+		put?: never;
+		/** Call Plugin */
+		post: operations['call_plugin_api_plugins__plugin_id__call__name__post'];
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
+	'/api/plugins/{plugin_id}/files/{path}': {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		/** Get Plugin File */
+		get: operations['get_plugin_file_api_plugins__plugin_id__files__path__get'];
+		put?: never;
+		post?: never;
+		delete?: never;
+		options?: never;
+		head?: never;
+		patch?: never;
+		trace?: never;
+	};
 	'/api/settings': {
 		parameters: {
 			query?: never;
@@ -1437,6 +1522,11 @@ export interface components {
 			 * @default 0
 			 */
 			dropped_chains: number;
+		};
+		/** EnabledInput */
+		EnabledInput: {
+			/** Enabled */
+			enabled: boolean;
 		};
 		/** EntryUsage */
 		EntryUsage: {
@@ -2011,6 +2101,26 @@ export interface components {
 			/** Missing */
 			missing: ('strong' | 'cheap' | 'vision')[];
 		};
+		/** NewSessionInput */
+		NewSessionInput: {
+			/**
+			 * Title
+			 * @default
+			 */
+			title: string | null;
+			/**
+			 * Kind
+			 * @default teach
+			 * @enum {string}
+			 */
+			kind: 'teach' | 'practice' | 'chat';
+			model?: components['schemas']['ModelPick'] | null;
+			graph_context?: components['schemas']['GraphContext'] | null;
+			/** Folder Id */
+			folder_id?: string | null;
+			/** Client Request Id */
+			client_request_id?: string | null;
+		};
 		/** NodeDeleted */
 		NodeDeleted: {
 			stats: components['schemas']['NodeDeletionStats'];
@@ -2053,16 +2163,25 @@ export interface components {
 				| 'graph-changed'
 				| 'extractions-changed'
 				| 'sync-changed'
-				| 'sync-status-changed';
+				| 'sync-status-changed'
+				| 'plugins-changed'
+				| 'plugin-message';
 			/**
 			 * Session Id
 			 * @default
 			 */
 			session_id: string;
+			/** Kind */
+			kind?: ('teach' | 'practice' | 'chat') | null;
 			/** Revision */
 			revision?: number | null;
 			/** Running */
 			running?: boolean | null;
+			/** Plugin Id */
+			plugin_id?: string | null;
+			/** Topic */
+			topic?: string | null;
+			data?: components['schemas']['JsonValue'];
 		};
 		/** Ok */
 		Ok: {
@@ -2190,6 +2309,48 @@ export interface components {
 			 */
 			depth_base_radius: number;
 		};
+		/** PluginInfo */
+		PluginInfo: {
+			/** Id */
+			id: string;
+			/** Name */
+			name: string;
+			/** Version */
+			version?: string | null;
+			/** Description */
+			description?: string | null;
+			/** Author */
+			author?: string | null;
+			/** Main */
+			main?: string | null;
+			/** Styles */
+			styles?: string | null;
+			/** Enabled */
+			enabled: boolean;
+			/**
+			 * Core
+			 * @default false
+			 */
+			core: boolean;
+			/**
+			 * Status
+			 * @enum {string}
+			 */
+			status: 'disabled' | 'activating' | 'active' | 'invalid' | 'failed';
+			/** Error */
+			error?: string | null;
+			/** Warnings */
+			warnings?: string[];
+		};
+		/** PluginList */
+		PluginList: {
+			/** Plugins */
+			plugins: components['schemas']['PluginInfo'][];
+			/** Directory */
+			directory: string;
+			/** Error */
+			error?: string | null;
+		};
 		/** Position */
 		Position: {
 			/** X */
@@ -2227,6 +2388,8 @@ export interface components {
 			teacher: components['schemas']['PromptSegment'][];
 			/** Practice */
 			practice: components['schemas']['PromptSegment'][];
+			/** Chat */
+			chat: components['schemas']['PromptSegment'][];
 		};
 		/** PromptSwitched */
 		PromptSwitched: {
@@ -2586,7 +2749,7 @@ export interface components {
 			 * @default teach
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			/**
 			 * Created At
 			 * Format: date-time
@@ -2635,7 +2798,7 @@ export interface components {
 			 * @default teach
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			model?: components['schemas']['ModelPick'] | null;
 			graph_context?: components['schemas']['GraphContext'] | null;
 		};
@@ -2649,7 +2812,7 @@ export interface components {
 			 * Kind
 			 * @enum {string}
 			 */
-			kind: 'teach' | 'practice';
+			kind: 'teach' | 'practice' | 'chat';
 			/**
 			 * Updated At
 			 * Format: date-time
@@ -3125,6 +3288,8 @@ export interface components {
 				(components['schemas']['UserEntry'] | components['schemas']['MarkerEntry'])[] | null;
 			/** Results */
 			results?: components['schemas']['ToolResultEntry'][] | null;
+			/** Completed Tool Call Ids */
+			completed_tool_call_ids?: string[] | null;
 			/** Error Text */
 			error_text?: string | null;
 		};
@@ -5481,7 +5646,7 @@ export interface operations {
 				};
 				content: {
 					'application/json': {
-						[key: string]: string;
+						[key: string]: string | boolean;
 					};
 				};
 			};
@@ -5534,7 +5699,7 @@ export interface operations {
 		};
 		requestBody: {
 			content: {
-				'application/json': components['schemas']['SessionInput'];
+				'application/json': components['schemas']['NewSessionInput'];
 			};
 		};
 		responses: {
@@ -6876,6 +7041,255 @@ export interface operations {
 				};
 				content: {
 					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	list_plugins_api_plugins_get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PluginList'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	refresh_plugins_api_plugins_refresh_post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path?: never;
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PluginList'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	set_plugin_enabled_api_plugins__plugin_id__enabled_put: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				plugin_id: string;
+			};
+			cookie?: never;
+		};
+		requestBody: {
+			content: {
+				'application/json': components['schemas']['EnabledInput'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['PluginInfo'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	call_plugin_api_plugins__plugin_id__call__name__post: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				plugin_id: string;
+				name: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: {
+			content: {
+				'application/json': components['schemas']['JsonValue'];
+			};
+		};
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['JsonValue'];
+				};
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Unprocessable Content */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Internal Server Error */
+			500: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+		};
+	};
+	get_plugin_file_api_plugins__plugin_id__files__path__get: {
+		parameters: {
+			query?: never;
+			header?: never;
+			path: {
+				plugin_id: string;
+				path: string;
+			};
+			cookie?: never;
+		};
+		requestBody?: never;
+		responses: {
+			/** @description Successful Response */
+			200: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content?: never;
+			};
+			/** @description Not Found */
+			404: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Conflict */
+			409: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['ApiError'];
+				};
+			};
+			/** @description Validation Error */
+			422: {
+				headers: {
+					[name: string]: unknown;
+				};
+				content: {
+					'application/json': components['schemas']['HTTPValidationError'];
 				};
 			};
 		};

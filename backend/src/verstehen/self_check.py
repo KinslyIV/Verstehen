@@ -1,10 +1,13 @@
 import asyncio
 import importlib
 import importlib.metadata
+import importlib.util
 import io
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 from collections.abc import Callable
 from pathlib import Path
 
@@ -63,13 +66,24 @@ def check_regex() -> str:
 
 
 def check_prompts() -> str:
-    from verstehen.teaching.prompts import PROMPTS_DIR
+    from verstehen.teaching.prompts import FRAGMENT_RE, PROMPTS_DIR
 
     if not (PROMPTS_DIR / "system-prompt.md").is_file():
         raise RuntimeError("system-prompt.md is missing")
+    if not (PROMPTS_DIR / "chat" / "guide.md").is_file():
+        raise RuntimeError("chat/guide.md is missing")
     counts = {}
-    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
-        counts[directory] = len(list((PROMPTS_DIR / directory).glob("*.md")))
+    for directory in ("prober", "teacher", "shared", "practice", "chat", "side-chat"):
+        folder = PROMPTS_DIR / directory
+        counts[directory] = (
+            sum(
+                1
+                for path in folder.iterdir()
+                if path.is_file() and FRAGMENT_RE.fullmatch(path.name)
+            )
+            if folder.is_dir()
+            else 0
+        )
         if not counts[directory]:
             raise RuntimeError(f"No {directory} prompt fragments are bundled")
     return ", ".join(f"{name} {count}" for name, count in counts.items())
@@ -88,6 +102,27 @@ def check_playwright() -> str:
     return command_version(
         [str(driver / "node"), str(driver / "package/cli.js"), "--version"]
     )
+
+
+SELF_CHECK_PAGE = "<!doctype html><title>Self-check</title><p>offline</p>"
+SELF_CHECK_PROBE = "document.querySelector('p').textContent"
+
+
+def is_desktop_bundle() -> bool:
+    return importlib.util.find_spec("PySide6") is not None
+
+
+def check_qt_demo() -> str:
+    """Run an offline demo page through the desktop's QtWebEngine runner."""
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from verstehen.desktop.demo_runner import run_with_demo_runner
+
+    result = run_with_demo_runner(
+        lambda runner: runner(SELF_CHECK_PAGE, SELF_CHECK_PROBE)
+    )
+    if not result.ok or result.probe_result != "offline":
+        raise RuntimeError(f"Offline Qt demo page failed: {result.model_dump_json()}")
+    return "offline Qt demo page loaded and probed"
 
 
 def check_headless() -> str:
@@ -116,9 +151,9 @@ def check_headless() -> str:
         return "no browser found; optional headless check skipped"
     result = asyncio.run(
         run_demo(
-            "<!doctype html><title>Self-check</title><p>offline</p>",
+            SELF_CHECK_PAGE,
             executable,
-            "document.querySelector('p').textContent",
+            SELF_CHECK_PROBE,
         )
     )
     if not result.ok or result.probe_result != "offline":
@@ -136,16 +171,73 @@ def check_claude() -> str:
     return f"{sdk}; claude {command_version([cli, '--version'])}"
 
 
+async def check_core_mcp_plugin(data_dir: Path) -> None:
+    from verstehen.plugins.core import CORE_PLUGINS
+    from verstehen.plugins.service import PluginService
+    from verstehen.store.plugins import PluginsStore
+
+    service = PluginService(
+        PluginsStore(data_dir),
+        data_dir / "plugins",
+        importlib.metadata.version("verstehen"),
+        True,
+        lambda: None,
+        lambda *_: None,
+        core_plugins=CORE_PLUGINS,
+    )
+    try:
+        await service.discover()
+        plugin_id = "mcp-servers"
+        plugin = service.plugins[plugin_id]
+        if not plugin.info.core or plugin.info.status != "disabled":
+            raise RuntimeError(
+                plugin.info.error or "Core MCP Servers plugin was not discovered"
+            )
+        await service.set_enabled(plugin_id, True)
+        await service.settled()
+        if plugin.info.status != "active":
+            raise RuntimeError(
+                plugin.info.error or "Core MCP Servers plugin did not start"
+            )
+        if await service.call(plugin_id, "get_servers", None) != {} or not isinstance(
+            service.file(plugin_id, "main.js"), tuple
+        ):
+            raise RuntimeError(
+                "Core MCP Servers plugin backend or frontend did not load"
+            )
+    finally:
+        await service.close()
+
+
+def check_mcp() -> str:
+    """Prove the MCP client stack used by plugin toolsets is bundled and importable."""
+    from pydantic_ai.mcp import MCPToolset
+
+    fastmcp = importlib.metadata.version("fastmcp-slim")
+    mcp = importlib.metadata.version("mcp")
+    summary = f"{MCPToolset.__name__}; fastmcp-slim {fastmcp}, mcp {mcp}"
+    if is_desktop_bundle():
+        with tempfile.TemporaryDirectory(prefix="verstehen-core-plugins-") as directory:
+            asyncio.run(check_core_mcp_plugin(Path(directory)))
+        summary += "; core MCP Servers plugin loaded"
+    return summary
+
+
 def run_self_check() -> bool:
+    demo_checks = (
+        [("qt-demo", check_qt_demo)]
+        if is_desktop_bundle()
+        else [("playwright", check_playwright), ("headless", check_headless)]
+    )
     checks: list[tuple[str, Callable[[], str]]] = [
         ("resvg", check_resvg),
         ("pypdfium2", check_pdfium),
         ("pillow", check_pillow),
         ("regex", check_regex),
         ("prompts", check_prompts),
-        ("playwright", check_playwright),
-        ("headless", check_headless),
+        *demo_checks,
         ("claude-agent-sdk", check_claude),
+        ("mcp", check_mcp),
     ]
     results = []
     for name, check in checks:

@@ -1275,6 +1275,37 @@ def test_failed_fetch_nobody_waits_for_does_not_leave_an_unretrieved_exception(
     asyncio.run(scenario())
 
 
+def test_failed_fetch_task_finishes_without_exception_and_raises_per_waiter(
+    tmp_path: Path,
+):
+    async def scenario():
+        store = CredentialsStore(tmp_path)
+        store.sign_in(credentials())
+        adapter, gates, requests = gated_adapter(store, {0: 500})
+        gates.append(asyncio.Event())
+        try:
+            account = (await adapter.accounts())[0]
+            waiter_a = asyncio.create_task(adapter.models(account))
+            waiter_b = asyncio.create_task(adapter.models(account))
+            while not requests:
+                await asyncio.sleep(0)
+            task = adapter.fetches[account.id]
+            gates[0].set()
+            first, second = await asyncio.gather(
+                waiter_a, waiter_b, return_exceptions=True
+            )
+            assert isinstance(first, AccountUnavailable)
+            assert isinstance(second, AccountUnavailable)
+            assert first is not second
+            assert first.state == "unavailable" and second.state == "unavailable"
+            assert task.exception() is None
+            assert len(requests) == 1
+        finally:
+            await adapter.close()
+
+    asyncio.run(scenario())
+
+
 def stream_content(events: list[dict]) -> str:
     return "".join(
         "data: " + json.dumps({**event, "sequence_number": index}) + "\n\n"

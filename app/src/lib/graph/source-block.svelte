@@ -60,6 +60,7 @@
 		{...chainRowAttributes(['source', group.key], depth, open)}
 		kind="source"
 		id={group.key}
+		name={label}
 		enabled={renameable && !editing}
 		{ondragitem}
 		class="flex items-center gap-1 py-1.5 pr-3"
@@ -85,6 +86,7 @@
 		</button>
 		<button
 			type="button"
+			data-source-icon
 			data-testid="source-icon-{group.key}"
 			aria-expanded={open}
 			aria-label="Expand source {label}"

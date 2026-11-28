@@ -23,6 +23,9 @@
 	<dialog
 		bind:this={dialog}
 		onclose={() => (opened = false)}
+		onkeydown={(event) => {
+			if (event.key === 'Escape') event.stopPropagation();
+		}}
 		aria-label="Open external link"
 		class="m-auto max-w-lg rounded-xl border border-border bg-background p-6 text-foreground shadow-xl backdrop:bg-black/50"
 	>

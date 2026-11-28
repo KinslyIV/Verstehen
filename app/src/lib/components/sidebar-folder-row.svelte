@@ -22,6 +22,7 @@
 		onrenamed,
 		onstartrename,
 		onnewsubfolder,
+		onnewsession,
 		ondelete,
 		ondragitem,
 		...rest
@@ -39,6 +40,7 @@
 		onrenamed: () => void;
 		onstartrename: () => void;
 		onnewsubfolder: () => void;
+		onnewsession: (mode: 'teach' | 'practice' | 'chat') => void;
 		ondelete: () => void;
 		ondragitem: (item: DraggedEntry | undefined) => void;
 	} = $props();
@@ -48,6 +50,7 @@
 	{...rest}
 	kind="folder"
 	id={folder.id}
+	name={folder.name}
 	enabled={draggable && !renaming}
 	{ondragitem}
 	data-testid="sidebar-folder-row-{folder.id}"
@@ -102,6 +105,11 @@
 		</ContextMenu.Trigger>
 		<ContextMenu.Content data-testid="folder-context-menu">
 			<ContextMenu.Item onclick={onstartrename}>Rename</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => onnewsession('teach')}>New teaching here</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => onnewsession('practice')}>
+				New practice here
+			</ContextMenu.Item>
+			<ContextMenu.Item onclick={() => onnewsession('chat')}>New chat here</ContextMenu.Item>
 			<ContextMenu.Item onclick={onnewsubfolder}>New subfolder</ContextMenu.Item>
 			<ContextMenu.Item
 				variant="destructive"

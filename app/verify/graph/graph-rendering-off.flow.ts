@@ -19,4 +19,55 @@ test('graph-rendering-off', async ({ page, request, seedGraph }) => {
 	await page.getByTestId('open-chain-table').click();
 	await expect(page.getByTestId('chain-table')).toContainText('13 chains · 17 nodes');
 	await page.screenshot({ path: test.info().outputPath('summary.png'), animations: 'disabled' });
+
+	await page.keyboard.press('Escape');
+	await expect(page.getByTestId('chain-table')).toBeHidden();
+
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	const dialog = page.getByTestId('settings-dialog');
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('button', { name: 'Graph', exact: true }).click();
+	const renderingSwitch = dialog.getByRole('switch', { name: 'graph rendering enabled' });
+	await expect(renderingSwitch).not.toBeChecked();
+	const enabledSaved = page.waitForResponse(
+		(response) =>
+			response.url().endsWith('/api/settings') && response.request().method() === 'PATCH'
+	);
+	await renderingSwitch.click();
+	await enabledSaved;
+	await expect(renderingSwitch).toBeChecked();
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(page.getByTestId('graph-canvas')).toBeVisible();
+	await expect(summary).toHaveCount(0);
+	await expect
+		.poll(async () => {
+			const snapshot = await (await request.get('/api/graph')).json();
+			const nodeIds: string[] = snapshot.nodes.map((node: { id: string }) => node.id);
+			const positions = snapshot.positions as Record<string, { x: number; y: number }>;
+			const nodeCoords = nodeIds.map((id) => positions[id]).filter(Boolean);
+			const nonOrigin = nodeCoords.filter((pos) => pos.x !== 0 || pos.y !== 0).length;
+			const distinct = new Set(nodeCoords.map((pos) => `${Math.round(pos.x)},${Math.round(pos.y)}`))
+				.size;
+			return (
+				nodeCoords.length === nodeIds.length &&
+				nonOrigin >= nodeIds.length - 1 &&
+				distinct === nodeIds.length
+			);
+		})
+		.toBe(true);
+
+	await page.getByRole('link', { name: 'Settings', exact: true }).click();
+	await expect(dialog).toBeVisible();
+	await dialog.getByRole('button', { name: 'Graph', exact: true }).click();
+	const disabledSaved = page.waitForResponse(
+		(response) =>
+			response.url().endsWith('/api/settings') && response.request().method() === 'PATCH'
+	);
+	await dialog.getByRole('switch', { name: 'graph rendering enabled' }).click();
+	await disabledSaved;
+	await page.keyboard.press('Escape');
+	await expect(dialog).toBeHidden();
+	await expect(summary).toBeVisible();
+	await expect(page.getByTestId('graph-canvas')).toHaveCount(0);
 });

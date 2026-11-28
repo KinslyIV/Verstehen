@@ -14,6 +14,111 @@ constraint. A new decision replaces the one it contradicts. History lives in git
 Orchestrator decisions made during implementation wait here, each with what was decided, the
 alternative, and the consequence, until the user reviews them at the end of the milestone.
 
+**General Chat agent (implementation):**
+
+- **Idempotent session creation (`client_request_id` + `session_create_requests` in `0011_chat_sessions.sql`):**
+  `POST /api/sessions` accepts an optional `client_request_id`, recorded atomically in the same
+  SQLite transaction as `sessions`, folder placement, and any initial `graph-context` marker
+  (folder-missing 400s are never cached). `PrepareSessionCard` persists primary/fallback request IDs
+  in `sessionStorage` per `(sessionId, tool_call_id)` until navigation completes. Alternative:
+  client-only state or in-memory cache; consequence: retries after a dropped mobile response,
+  reload, or backend restart never duplicate a Launch Card session or lose its graph context.
+- **`Notification.kind` on `turn-settled`:** `turn-settled` notifications carry the session's `kind`
+  so both the backend watcher (`app.py`) and frontend `PluginHost` skip plugin `turn-settled`
+  observers for `chat` turns while keeping the notification for sidebar and stats subscribers.
+  Alternative: re-querying the session kind on every notification.
+- **Side-chat prompt overrides wired in `sidechat/helper.py`:** `compose_side_chat_instructions`
+  now shares `SIDE_CHAT_FRAGMENTS` with `list_prompts`/`read_prompt` and resolves overrides via
+  `fragment_text` under `prompt_edit_lock`, so inspection and runtime agree when a `side-chat/`
+  override is enabled. Alternative: reporting `side-chat/` overrides as inactive in Chat inspection.
+
+**Plugins (implementation):**
+
+- **MCP toolsets use `pydantic_ai.mcp.MCPToolset`** over `fastmcp-slim[client]` (the `mcp` extra),
+  because Pydantic AI 2.70 no longer has `MCPServerStdio`. Consequence: PyInstaller collects
+  `fastmcp` and `mcp` explicitly, and in the packaged app a stdio server must be an external
+  command, not a Python script (`sys.executable` is the `verstehen` binary). `make app` was not run.
+- **Plugins load only in the desktop app, or with `VERSTEHEN_PLUGINS=1` in browser-only mode** (the
+  verify flows set it). A plain local API (`make dev`) and server mode load none: its loopback
+  access check has no token, and plugin code is trusted. Alternative: always on locally.
+- **Paired remote devices run no plugins and hide Settings → Plugins.** Plugins live on the
+  desktop's own server. Alternative: let a phone load the laptop's plugins; consequence: it would
+  run plugin code on a device that has no plugin folder.
+- **Disabling does not forcefully interrupt a synchronous plugin tool or synchronous `@ctx.expose`
+  handler (decided: cooperative only, as in LearnHarness).** Both run in a worker thread; on disable
+  the waiting caller is cancelled immediately (answering 409 for `@ctx.expose` calls) while the
+  worker thread runs on and its late result is discarded. Alternative: block disable until the
+  worker thread exits. Consequence: a long synchronous tool or exposed handler can still write
+  plugin data after the plugin's cleanups ran.
+- **Plugin warnings reuse `PluginInfo.warnings`** (an agent-turn refusal or failing factory), cleared
+  by the next clean turn.
+
+**Qt shell (implementation):**
+
+- **The desktop server prefers port 28420 and falls back to a random free port.** The page origin
+  keys `localStorage` (theme, graph camera, filters, transcript width, open folders), so a random
+  port every launch would reset it; a launch that falls back loses that state once.
+- **The QtWebEngine profile is persistent, stored under `<data dir>/webengine` and
+  `webengine-cache`.** An off-the-record profile would lose every stored UI preference; keeping it
+  under `VERSTEHEN_DATA_DIR` keeps tests isolated.
+- **Desktop CSP `font-src` also allows `data:`.** Chromium refuses Vite's inlined `data:` fonts
+  otherwise; the alternative is a missing font.
+- **The frontend startup screen is removed; the shell owns the starting and failure pages.** The
+  startup timing marks are dropped too (their only reader was the Rust shell's log). The failure
+  text now says "server" instead of "sidecar".
+- **The built SPA path comes from `VERSTEHEN_SPA_DIR`, defaulting to the repo's `app/build`.**
+  Packaging sets the bundled path.
+- **Python stays on 3.14 while the desktop app uses PySide6 (user, 2026-11-25).** Python 3.15's
+  PEP 810 `lazy` imports, the standard library's included, break under shiboken6, which replaces
+  `__import__` and leaves lazy names unresolved (`concurrent.futures.ThreadPoolExecutor`, so
+  `asyncio.to_thread`, failed with "'lazy_import' object is not callable"). Heavy libraries are
+  imported inside the functions that use them instead. Servers get a Python 3.14 venv. No pytest process imports PySide6; Qt tests run in subprocess probes.
+- **The packaged desktop app refuses `verstehen --server`** with a pointer to Settings → Sync: it
+  has no Playwright, and server mode runs from the server bundle. Source and dev modes are
+  unchanged. The alternative was a server mode without demo checks.
+- **Each desktop demo check runs in a shown `QWebEngineView` that never reaches the screen**
+  (1280×720, Playwright's viewport), so `requestAnimationFrame`, timers, and `visibilityState`
+  behave as in Playwright; a hidden page never fires rAF.
+- **The mode is resolved once from `--server` and `VERSTEHEN_SERVER=1`;** `desktop` with either
+  is refused, and the packaged app refuses server mode however it is selected.
+- **A refused external link tells the page** (`verstehen:link-refused`), and Settings → Tools shows
+  "Verstehen can't open <url>. Open it in your browser." for the Brave/Tavily "Get a key" links;
+  `window.open` can't signal refusal in QtWebEngine. The two-URL allowlist is unchanged.
+- **A remounted demo frame starts without the old error;** the measured height is kept, so the
+  transcript does not shift.
+- **`/api/health` adds `"desktop": true` in desktop mode only;** Settings → Tools hides Demo
+  browser from it. The alternative, treating a 404 on the demo-browser routes as the signal, is
+  brittle.
+- **Desktop demo-check messages match Playwright except where Qt reports differently:** resource
+  and caught fetch/XHR failures read `net::ERR_FAILED` (JavaScript can't see the real reason), a
+  load timeout `Timeout 30000ms exceeded.`, a probe error has no stack, and an error-level console
+  line starting with `Uncaught` counts as a page error. A fetch or XHR answered 400 or higher is
+  reported like Chromium's own console line (`Failed to load resource: the server responded with a
+  status of 404 ()`), in any frame. Aborted requests are not reported. The
+  contract fixtures compare failed requests by URL and reason placeholder. Both runners
+  block only schemes other than `http`, `https`, `data`, `blob`, `about`, as LH does (user decision
+  2026-11-25: no localhost block).
+- **Each desktop demo check gets its own off-the-record profile and page,** deleted after it;
+  isolation over a small cost per check.
+- **The self-check picks `qt-demo` when PySide6 is importable** (desktop bundle, dev), and
+  `playwright`/`headless` otherwise (server bundle).
+- **`tools/check_versions.py` is removed;** `backend/pyproject.toml` is the only version and the
+  release workflow checks the tag against it.
+- **The package smoke test proves the cookie from the app's access log** (the window's API calls
+  return 200, `/api/health` without the cookie 403) instead of adding a token hook to the app;
+  it ignores zombie `QtWebEngineProcess` children the build container's PID 1 never reaps, and
+  sets `--no-sandbox --disable-gpu` only for itself.
+- **The desktop package ships only the Qt it loads, in English and German.** `verstehen.spec`
+  drops Qt libraries nothing links to, `qml/`, the QML debugger, and other languages' Qt and
+  Chromium translations: 277 → 219 MB compressed, 696 → 527 MB installed. Chromium's own texts
+  (such as the spell-check menu) fall back to English in other languages. The smoke test refuses
+  a build where a shipped library links to a dropped one; a library loaded only by name at
+  runtime would show up only when the app runs.
+- **PKGBUILD `depends` is a superset** of the Qt/Chromium runtime libraries (`ldd` found only
+  optional plugins missing); trimming waits for the laptop install.
+- **The `desktop` extra is `PySide6-Essentials` + `PySide6-WebEngine`** (6.12 split WebEngine into
+  its own wheel); `PySide6-Addons` is not needed.
+
 **M11a sidebar folders:**
 
 - **Folder Delete is one server-checked operation on the folder's tree.** The menu item is enabled
@@ -102,7 +207,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
   including on first load, and Settings can force refresh. A refresh superseded by a newer
   one reports the newer one's outcome, because the backend skips the older one's writes. The
   backend still answers 204, so a refresh superseded by a different client reports success.
-  Only two remote clients of one server can hit this (each desktop sidecar has its own catalog);
+  Only two remote clients of one server can hit this (each desktop app has its own catalog);
   Setup may then show "Connect a provider" until the next refresh. Accepted as is.
 - **Refresh accounts at launch and on named triggers; picker reads stay saved-only.** At `cb25c8e`
   LearnHarness exports only `GET /api/models`, which refreshes the subscription connection catalogs
@@ -111,9 +216,6 @@ alternative, and the consequence, until the user reviews them at the end of the 
   Verstehen refreshes every account at launch, when Settings → Models opens, when
   Setup opens and while it waits for a connection, and after a successful sign-in; opening the
   picker only rereads the saved catalog.
-- **Show sidecar startup status in the desktop shell.** Keeping the native failure dialog
-  would exit the app before the learner sees the shell. The in-app panel keeps the log path
-  visible and the timing marks distinguish desktop, sidecar, and composer readiness.
 - **Return graph summary counts with the snapshot and serve titles separately.** Counting
   through the sidebar endpoint and rebuilding the snapshot after rename duplicate work.
   Graph cost reads also use only source metadata and usage, so they can tolerate broken
@@ -255,9 +357,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Touch thresholds:** 8 px of movement turns a press into a pan, and a 500 ms press opens the
   node menu (the browser's own `contextmenu` after a touch is ignored so it cannot open twice).
   Alternative: other values; consequence: they live as two constants in `graph/canvas.ts`.
-- **The notification stream lives in `NotificationBridge` in the lesson layout**, not the session
-  list, because the phone drawer unmounts the sidebar. Alternative: keep it in the sidebar and
-  reopen it when the drawer opens; consequence: missed notifications while the drawer is closed.
+- **The notification stream lives in `NotificationBridge` in the root layout** (gated off `/pair`
+  in remote mode), not the session list or lesson layout, so the phone drawer unmounting the
+  sidebar and navigating to `/settings` keep the stream open. Alternative: keep it in the sidebar
+  or lesson layout; consequence: missed notifications while the drawer is closed or on `/settings`.
 - **Device type by screen size:** the device-name default is "Tablet" when
   `min(screen.width, screen.height) >= 600` CSS px, else "Phone". Alternative: a native device
   query; consequence: a large foldable's inner screen reads as a tablet.
@@ -294,7 +397,7 @@ alternative, and the consequence, until the user reviews them at the end of the 
 - **Two-backend + thin mobile topology.** Laptop stays local-first (local SQLite, local files/PDFs,
   offline-capable) and syncs with an always-on Linux server backend; mobile is client-only talking
   to the server.
-- **Android only (v1), built with Capacitor** (Tauri 2 Mobile until 2026-11-23). Signed `.apk`
+- **Android only (v1), built with Capacitor**. Signed `.apk`
   connecting directly to the server's Tailscale IP (`http://100.x.y.z:<port>`, no
   `tailscale serve`), with cleartext HTTP limited to `100.64.0.0/10` by a native WebView guard.
 - **Per-device tokens + short one-time pairing code.** No QR scanner in v1; tokens are stored
@@ -333,8 +436,8 @@ alternative, and the consequence, until the user reviews them at the end of the 
   LH only cuts the first message.
 - **The owed handoff is derived** from the entries, so a restart doesn't lose it, and a learner
   message sent before it starts cancels it.
-- **The sidecar refuses to start** in desktop mode without a valid token (LH starts and refuses every
-  request), exits when stdin closes, and rotates its log (5 MiB, three backups).
+- **The desktop server refuses to start** without a valid token (LH starts and refuses every
+  request), and the backend rotates its log (5 MiB, three backups).
 
 ### Teaching and questions
 
@@ -356,6 +459,10 @@ alternative, and the consequence, until the user reviews them at the end of the 
   falls back. With native search the researcher prompt drops its `web_search` wording.
 - **The Jobs tab** shows the open session's jobs only; LH's Background agents section is app-wide.
 - **The invert switch** for figures and demos is saved in `artifact_views`; LH rewrites the marker.
+- **Desktop demo checks run in the app's own QtWebEngine; server mode keeps Playwright.** Both
+  return `DemoRunResult` through one `DemoRunner` protocol, and the desktop has no Playwright,
+  Chromium lookup or download, or Demo browser setting. LH tests demos in a separate headless
+  browser (`headless.ts`) for everyone.
 - **The no-browser demo failure text** points to Settings → Tools instead of Chrome and
   `CHROME_PATH`. A wrong configured browser path falls back to PATH, then the downloaded browser.
 - **Web pages are read with a Python parser** plus LH's Jina fallback, and PDF text comes from
@@ -407,6 +514,19 @@ alternative, and the consequence, until the user reviews them at the end of the 
   practitioner and pose a new problem before the dismissal's `conclude` pair is saved. Verstehen
   holds the delivered results until the learner's next input, which carries the pair and the results.
 
+### General Chat agent
+
+- **Third session kind (`kind = "chat"`, **Chat**):** Verstehen-only (no LearnHarness counterpart),
+  sitting alongside **Teaching** (`teach`) and **Practice** (`practice`) (`0011_chat_sessions.sql`).
+  Uses the **Main (`strong`)** slot by default, exposes its own prompt segments in **Settings →
+  Prompts**, skips graph extraction, coverage, the Chains table, and plugin `turn-settled`
+  observers, supports opt-in plugin agent hooks (`agents=["chat"]`) and `top-bar` actions
+  (`sessions: ['chat']`), and provides 8 read-only inspection tools (prompts, non-secret
+  settings/account/search-key status, sessions and folders, canonical graph nodes and chains,
+  paginated base64-scrubbed transcripts, and bundled `guide.md`), learner-file tools,
+  `research`/`pdf` jobs, and a 1-click `prepare_session` Launch Card that creates and starts a
+  clean Teaching or Practice session only when clicked.
+
 ### Providers and models
 
 - **Accounts are first class:** any number of ChatGPT accounts at once; every pick names an account
@@ -415,8 +535,32 @@ alternative, and the consequence, until the user reviews them at the end of the 
   slot. LH writes it when you pick on the new-session screen.
 - **Background use is one switch per provider, Claude Code included.**
 - **The user never enters a model's context limit.**
-- **ChatGPT model lists are cached** per account for the sidecar's lifetime; LH refreshes every turn.
+- **ChatGPT model lists are cached** per account for the process's lifetime; LH refreshes every turn.
 - **Setup adds accounts in a nested Settings → Accounts dialog**, not its own connect step.
+
+### Plugins
+
+- **`@ctx.expose` and `ctx.backend.<name>(input)`** replace LH's `ctx.handle` and `ctx.call`: a
+  backend function is exposed by decorator, and the frontend calls it through a Proxy over one
+  host route, so plugin authors write no endpoints.
+- **A toolset hook** (`register_toolset`, for MCP servers over Pydantic AI's `MCPToolset`) beside
+  `register_tools`; LH has no MCP or toolset hook.
+- **MCP Servers ships with the desktop app and starts disabled**, as LearnHarness core plugins do.
+  It configures local stdio commands and explicit per-agent tool selections in Settings. The next
+  turn reads saved changes. LearnHarness defines its per-agent plugin tools in code.
+- **Core plugin data shares the existing per-ID data path.** LearnHarness has a separate core data
+  directory. Verstehen loads code from the app bundle and reuses the current data path and enable
+  choice so an earlier manual MCP Servers installation keeps its configuration.
+- **A Python backend and a JS frontend.** LH's backend is JS; here it is a Python package in
+  `dist/backend/` with optional pure-Python `vendor/`, and the host installs nothing.
+- **Desktop only.** Server mode discovers no plugins, paired remote devices run none, and
+  `plugins/` and `plugins-state.json` are not synced. LH has no server or phone mode.
+- **Plugin tool factories are synchronous:** `register_tools(agents, factory)` calls the factory
+  once per turn and takes the tools it returns without awaiting.
+- **Not ported yet from LH's plugin API:** action keyboard shortcuts, the action context's `view`
+  (a session snapshot), and the parts listed as deferred in the [roadmap](roadmap.md).
+- **MCP servers in the packaged app** should be external commands: `sys.executable` is the
+  `verstehen` binary there, so a Python-script server does not start.
 
 ### Frontend
 
@@ -429,5 +573,46 @@ alternative, and the consequence, until the user reviews them at the end of the 
   (`0f6c47d0`, `7c65e370`) deletes the folder with its sessions after a scoped confirmation.
 - **No compact sidebar setting:** LH's Appearance → compact session sidebar (`530cc9f0`) is not
   ported; the sidebar has one row density.
-- **Touch layouts browse folders only:** phones and tablets open, close, search, and use the folder
-  menu, but cannot move sessions or folders (LH's moves are HTML5 drags, desktop only).
+- **Touch layouts cannot drag, but can move sessions:** phones and tablets open, close, search, and
+  use the folder menu, and move a session with **Move to folder**; folders move only by drag on
+  desktop (LH's moves are HTML5 drags, desktop only).
+- **Folder and session menu additions:** **Move to folder** on sessions and **New teaching here** /
+  **New practice here** on folders (a `folder_id` on `POST /api/sessions`) have no LH counterpart.
+- **Transcript width is per device:** the slider and its range are LH's, but the value lives in
+  `localStorage`, not in the saved settings, so a phone and a laptop on one server can differ.
+- **Turn minimap rail:** a fine-pointer tick rail at the lesson's left edge with previews and
+  click-to-jump; LH has no turn navigation beyond its scroll-to-bottom button.
+- **Demos zoom in place:** LH opens images and figures fullscreen but not demos; Verstehen zooms a
+  demo in a dialog without remounting its iframe, so its state survives.
+- **Off-screen transcript rows are `content-visibility` placeholders** so a long lesson opens
+  fast; LH renders every row.
+- **Opening a lesson renders its newest 12 rows' content first** and older rows' content 6 per
+  painted frame, so the lesson's end shows in well under half the time; LH renders every row at
+  once.
+- **Demo iframes load near the viewport and unload far off-screen** (about two viewport heights),
+  so a demo scrolled far away resets when it comes back; a zoomed demo is never unloaded. LH keeps
+  every demo alive.
+- **Settings opens as a modal overlay on desktop and tablet:** clicking Sidebar Settings, the
+  Sync badge, or a plugin Settings trigger on desktop/tablet opens `SettingsDialog` (`settingsOverlay`)
+  over the mounted lesson or graph so active views and unsent drafts survive (matching pinned
+  LearnHarness `069a6a11`, which opens Settings as a centered dialog and redirects `/settings` to
+  `/chat/new`). Verstehen differs by keeping `/settings` as a working route for phones (`< 768 px`)
+  and direct URLs, with its Back link returning to the last in-app non-Settings/non-Pair route
+  remembered in `sessionStorage` (`returnPath`).
+- **Compact model menu and setup dialog:** `ModelMenu` uses a compact `28rem` width (`0.9fr`/`1.1fr`
+  columns) on desktop/tablet and `SetupDialog` uses `32rem` instead of wide `42rem`/`46rem`
+  containers.
+- **Session title, phase badge, and coverage ring sit in the top bar:** desktop and tablet render
+  `RenameSession`, `phase-chip`, and `CoverageRing` inside `(lesson)/+layout.svelte`
+  (`session-header`); phone puts the single editable `RenameSession` inside `phone-heading` and a
+  slim `phase-chip` + `CoverageRing` strip below it so the title never duplicates.
+- **Contextual live working indicator and immediate tool-call flush:** `TurnService` flushes
+  `message_update` immediately upon entering `is_call_tools_node`, and the thread shows a spinner,
+  shimmer status label (`workingStatus`), and elapsed timer (`>= 2 s`) whenever a turn is working
+  without visible streaming prose or reasoning (including empty streaming `AssistantEntry` shells
+  and active built-in tools).
+- **Assistant and learner message footers:** `TurnService.end_response` stamps `reply.created_at`
+  to completion time; completed assistant messages render a compact footer (`message-footer`) with
+  a markdown Copy button, timestamp, and right-aligned `SideEntryButton` (always visible on the
+  latest reply or side-chat threads, muted hover/focus reveal on older desktop replies, always
+  visible on touch), and `LearnerMessage` renders a hover/focus/touch timestamp + Copy footer.

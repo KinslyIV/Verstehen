@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from verstehen.app import create_app
 from verstehen.config import Settings as AppSettings
 from verstehen.jobs.workers import browser
+from verstehen.jobs.workers.headless import DemoRunResult
 from verstehen.providers.credentials import (
     CredentialFile,
     CredentialsStore,
@@ -342,3 +343,22 @@ def test_short_environment_search_key_is_never_exposed(tmp_path, monkeypatch):
     ) as client:
         status = client.get("/api/search-keys").json()["tavily"]
         assert status == {"present": True, "masked": "••••", "source": "env"}
+
+
+def test_desktop_mode_has_no_demo_browser_routes_and_uses_the_injected_runner(tmp_path):
+    async def runner(html, probe=None):
+        return DemoRunResult()
+
+    settings = AppSettings(tmp_path, desktop=True, token="t" * 64)
+    with TestClient(
+        create_app(settings, runner), base_url="http://127.0.0.1"
+    ) as client:
+        headers = {"x-verstehen-token": "t" * 64}
+        assert client.get("/api/demo-browser", headers=headers).status_code == 404
+        assert (
+            client.post("/api/demo-browser/download", headers=headers).status_code
+            == 404
+        )
+        assert client.get("/api/search-keys", headers=headers).status_code == 200
+        job_runner = cast(FastAPI, client.app).state.job_service.job_runner
+        assert job_runner.demo_runner_provider("/some/browser") is runner

@@ -33,9 +33,9 @@ def test_self_check_proves_all_packaged_dependencies_without_launch_settings(
         "pillow",
         "regex",
         "prompts",
-        "playwright",
-        "headless",
+        "qt-demo",
         "claude-agent-sdk",
+        "mcp",
     }
     assert all(check["ok"] and check["detail"] for check in checks)
     assert not (tmp_path / ".local/share/verstehen").exists()
@@ -47,8 +47,32 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
     def fail():
         raise RuntimeError("render failed")
 
+    monkeypatch.setattr(self_check, "is_desktop_bundle", lambda: True)
     monkeypatch.setattr(self_check, "check_resvg", fail)
     for name in (
+        "check_pdfium",
+        "check_pillow",
+        "check_regex",
+        "check_prompts",
+        "check_qt_demo",
+        "check_playwright",
+        "check_headless",
+        "check_claude",
+        "check_mcp",
+    ):
+        monkeypatch.setattr(self_check, name, lambda: "checked")
+    assert not self_check.run_self_check()
+    checks = json.loads(capsys.readouterr().out)
+    assert checks[0] == {"name": "resvg", "ok": False, "detail": "render failed"}
+    assert all(check["ok"] for check in checks[1:])
+
+
+def test_self_check_runs_playwright_in_the_server_bundle(monkeypatch, capsys):
+    from verstehen import self_check
+
+    monkeypatch.setattr(self_check, "is_desktop_bundle", lambda: False)
+    for name in (
+        "check_resvg",
         "check_pdfium",
         "check_pillow",
         "check_regex",
@@ -56,12 +80,12 @@ def test_self_check_reports_failure_and_still_runs_other_checks(monkeypatch, cap
         "check_playwright",
         "check_headless",
         "check_claude",
+        "check_mcp",
     ):
         monkeypatch.setattr(self_check, name, lambda: "checked")
-    assert not self_check.run_self_check()
-    checks = json.loads(capsys.readouterr().out)
-    assert checks[0] == {"name": "resvg", "ok": False, "detail": "render failed"}
-    assert all(check["ok"] for check in checks[1:])
+    assert self_check.run_self_check()
+    names = [check["name"] for check in json.loads(capsys.readouterr().out)]
+    assert "headless" in names and "qt-demo" not in names
 
 
 def test_self_check_passes_without_an_installed_claude(monkeypatch):
@@ -76,6 +100,37 @@ def test_self_check_fails_when_a_prompt_directory_is_missing(monkeypatch, tmp_pa
     from verstehen.teaching import prompts
 
     (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    (tmp_path / "chat").mkdir()
+    (tmp_path / "chat" / "guide.md").write_text("# Guide", encoding="utf-8")
     monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
     with pytest.raises(RuntimeError, match="No prober prompt fragments"):
+        self_check.check_prompts()
+
+
+def test_self_check_fails_when_chat_guide_is_missing(monkeypatch, tmp_path):
+    from verstehen import self_check
+    from verstehen.teaching import prompts
+
+    (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="chat/guide.md is missing"):
+        self_check.check_prompts()
+
+
+def test_self_check_fails_when_chat_has_only_guide_without_numbered_fragments(
+    monkeypatch, tmp_path
+):
+    from verstehen import self_check
+    from verstehen.teaching import prompts
+
+    (tmp_path / "system-prompt.md").write_text("purpose", encoding="utf-8")
+    for directory in ("prober", "teacher", "shared", "practice", "side-chat"):
+        folder = tmp_path / directory
+        folder.mkdir()
+        (folder / "00-base.md").write_text("prompt", encoding="utf-8")
+    chat_dir = tmp_path / "chat"
+    chat_dir.mkdir()
+    (chat_dir / "guide.md").write_text("# Guide", encoding="utf-8")
+    monkeypatch.setattr(prompts, "PROMPTS_DIR", tmp_path)
+    with pytest.raises(RuntimeError, match="No chat prompt fragments are bundled"):
         self_check.check_prompts()

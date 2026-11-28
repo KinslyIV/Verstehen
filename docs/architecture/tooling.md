@@ -1,14 +1,14 @@
 # Tooling and packaging
 
 Owns how the code is checked, verified, run, built, and released: the Makefile, the custom checks,
-the fake model, the verify flows, the sidecar entry point and self-check, the Arch package, the Android app build and its emulator loop, and CI.
+the fake model, the verify flows, the console entry, the desktop entry and self-check, the Arch package, the Android app build and its emulator loop, and CI.
 
 ## Where things run
 
 | | Pixal (Ubuntu home server) | Laptop (Arch) |
 |---|---|---|
 | Role | agents write, test, verify, and build | runs the installed app; agents may use it through a T3 linked environment when Pixal is busy |
-| Browser | Playwright's own Chromium for `make verify` and demo tests | an installed Chromium-family browser, or Playwright's downloaded on request |
+| Browser | Playwright's own Chromium for `make verify` and the server-mode demo tests; PySide6 runs the desktop offscreen in tests | the app's own QtWebEngine (Chromium); Playwright only in a `--server` run |
 | Real data | none | `~/.local/share/verstehen`: always set `VERSTEHEN_DATA_DIR` elsewhere |
 
 ## Code map
@@ -16,15 +16,17 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
 | Path | What it holds |
 |---|---|
 | `Makefile` | `setup`, `check` (= `check-backend` + `check-frontend`), `test`, `fmt`, `dev`, `verify`, `verify-run`, `verify-live`, `api-types`, `lock-migrations`, `app`, `app-image`, `android-setup`, `android-debug`, `android`, `android-key` (`AREA='...'` scopes test and flow targets to the 9 architecture areas; `SLOW=1` includes `@pytest.mark.slow` in area-scoped pytest runs) |
-| `tools/` | custom checks and runners, each tested in `tools/tests/`: `check_comments.py` (≤ 3 lines per comment block), `check_migrations.py` (migration lock), `check_versions.py` (the three app versions agree), `check_feature_map.py` (every verify flow is in the feature map), `test_areas.py` (enforces 9-area organization across `backend/tests/<area>/`, frontend Vitest globs, and `app/verify/<area>/`, and routes `pytest`, `vitest`, and `verify`), `api_types.py` (generated types are fresh), `verify_build.py` (the SPA build guard), `dev.py` (`make dev`) |
-| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.15 (`backend/.python-version`), PEP 810 module-scope `lazy` imports for heavy dependencies (guarded by `backend/tests/shell/test_startup_imports.py` and `ruff` `TID255`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
+| `tools/` | custom checks and runners, each tested in `tools/tests/`: `check_comments.py` (≤ 3 lines per comment block), `check_migrations.py` (migration lock), `check_feature_map.py` (every verify flow is in the feature map), `test_areas.py` (enforces 9-area organization across `backend/tests/<area>/`, frontend Vitest globs, and `app/verify/<area>/`, and routes `pytest`, `vitest`, and `verify`), `api_types.py` (generated types are fresh), `verify_build.py` (the SPA build guard), `dev.py` (`make dev`) |
+| `ruff.toml`, `*/ruff.toml`, `pyrefly.toml`, `backend/pyproject.toml` | Python 3.14 (`backend/.python-version`), heavy dependencies imported inside the functions that use them (guarded by `backend/tests/shell/test_startup_imports.py`), lint, banned APIs per package, types, import-linter layers, pytest (`live` and `slow` markers; xdist `-n auto` via `tools/test_areas.py`) |
 | `app/eslint.config.*`, Prettier, Vitest | frontend lint with boundaries, format, unit and browser-mode component tests |
-| `backend/src/verstehen/cli.py`, `config.py` | the sidecar entry point (`serve`, logging, the port handshake), the `import-learnharness` subcommand, and environment settings |
-| `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, Playwright and an offline headless page, the Claude CLI |
+| `backend/src/verstehen/arguments.py`, `cli.py`, `config.py` | the command line (`parse_arguments`, parsed once; the mode comes from `--server` or `VERSTEHEN_SERVER=1`), the console entry `verstehen.cli:main`, the browser-only and `--server` backend (`serve`, logging, `uvicorn_config`), the `import-learnharness`, `mint-token`, and `desktop` subcommands, and environment settings |
+| `backend/src/verstehen/desktop/` | the Qt shell (`shell.py`, `server.py`, `demo_runner.py`, `links.py`, `pages.py`) and `__main__.py` (`python -m verstehen.desktop`, which runs `verstehen.cli:main` with `desktop` appended); [frontend shell](frontend-shell.md), [jobs](jobs.md) |
+| `backend/src/verstehen/self_check.py` | `verstehen --self-check`: resvg, PDFium, Pillow, `regex`, the prompts, an offline demo page (`qt-demo` in the desktop bundle, `playwright` and `headless` in the server bundle, chosen by whether PySide6 imports), the Claude CLI, and the MCP stack with core MCP Servers plugin activation in the desktop bundle |
 | `backend/src/verstehen/providers/fake.py`, `app/verify/scripts/*.json` | the scripted fake model and its reply scripts |
 | `app/verify/<area>/*.flow.ts`, `fixtures.ts`, helpers | fake-model Playwright flows grouped by the 9 architecture areas; `playwright.config.ts` |
 | `app/verify-live/`, `playwright.live.config.ts` | the one real-model flow (Claude Code Haiku) |
-| `packaging/` | `Dockerfile` (the prepared `verstehen-build` Arch image), `build.sh`, `container.sh`, `compile.sh`, `PKGBUILD`, `smoke.py`, the desktop entry, and `android.sh` (the `make android-*` targets) |
+| `backend/packaging/` | `verstehen.spec` (PyInstaller) and `entrypoint.py` (the frozen entry) |
+| `packaging/` | `Dockerfile` (the prepared `verstehen-build` Arch image), `build.sh`, `container.sh`, `compile.sh`, `PKGBUILD`, `smoke.py`, `icons/` (the package icons and the window icon), the desktop entry, and `android.sh` (the `make android-*` targets) |
 | `.github/workflows/ci.yml`, `release.yml` | CI on PRs and pushes to `main` (plus the debug `.apk` on PRs); releases on a `vX.Y.Z` tag (the Arch package, then the signed Android `.apk`) |
 | `.claude/skills/verify/SKILL.md` (also `.agents/skills/verify`) | the verify skill: how to run flows and what evidence to keep |
 
@@ -43,7 +45,17 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
 - **The fake model.** `VERSTEHEN_FAKE_MODEL_SCRIPT` enables only the fake account: `fake` streams
   scripted replies (text, thinking, tool calls, errors, delays, usage), `fake-title` serves titles
   and role-tagged worker replies.
-- **Verify flows.** Each flow gets its own sidecar, Vite preview of the built SPA, and temporary
+- **Heavy libraries load on first use, in every mode.** Each is imported inside the function
+  that uses it. `test_startup_imports.py` checks server start and the real desktop window
+  (offscreen) load none of the heavy libraries, and that one still loads on use and a
+  `ThreadPoolExecutor` still starts once Qt has loaded. No pytest process imports PySide6: Qt tests run a probe
+  script in a subprocess (`backend/tests/shell/desktop_probe.py`,
+  `backend/tests/jobs/desktop_demo_probe.py`), with `QT_QPA_PLATFORM=offscreen`.
+- **Two extras.** `desktop` is `PySide6-Essentials` and `PySide6-WebEngine`; `server` is
+  Playwright. The dev environment has both (`verstehen[desktop,server]`), so tests cover both
+  runners; the desktop bundle has no Playwright (`excludes` in `verstehen.spec`), and the server
+  bundle has no PySide6.
+- **Verify flows.** Each flow gets its own backend, Vite preview of the built SPA, and temporary
   data directory; the fixture saves a final `screenshot.png` and an always-on trace in
   `app/verify-output/` (some flows also save intermediate screenshots), and fails on console
   errors, page errors, and failed requests, except expected HTTP errors and requests a reload
@@ -82,12 +94,28 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   turn, screenshots, and `adb logcat`. WebView DevTools over `adb` inspect the UI.
 - **Live verification.** `make verify-live` runs `lesson-first-turn` with the logged-in Claude Code
   on Haiku at low thinking; evidence in `app/verify-live-output/`. It never runs in CI.
-- **Packaging.** `make app` builds the PyInstaller onedir sidecar, the pure-Python server bundle
-  (`/usr/lib/verstehen/server-bundle/`: wheel + locked `requirements.txt` for SSH server
-  provisioning), and the Tauri shell inside the prepared Arch image (Docker volumes cache Cargo,
-  npm, and uv), runs the frozen self-check and smoke tests (handshake, token refusal, migrations,
-  shutdown), and writes `dist/verstehen-<version>-1-x86_64.pkg.tar.zst`. Neither Chromium nor the
-  Claude Code CLI is bundled. `make app-image` refreshes the image.
+- **Packaging.** `make app` runs in the prepared Arch image (`Dockerfile`: Node, uv, and the Qt
+  and Chromium runtime libraries; Docker volumes cache npm and uv). `compile.sh` builds the SPA,
+  then `verstehen.spec` freezes one PyInstaller onedir app, `/usr/lib/verstehen/verstehen`
+  (`/usr/bin/verstehen` links to it), with PySide6, QtWebEngine, the built SPA (`spa/`), and the
+  window icons (`icons/`). The spec also includes core plugin packages under `verstehen/core_plugins/`.
+  Its `shipped` filter drops the Qt parts nothing loads: libraries no
+  shipped binary links to (`UNUSED_QT_LIBRARY`), `qml/`, the QML debugger plugins, and every
+  translation except English and German (about 170 MB unpacked). `entrypoint.py` points `VERSTEHEN_SPA_DIR` and `VERSTEHEN_ICONS_DIR` at
+  them, opens the desktop when run without arguments, and refuses `--server` (server mode runs
+  from the server bundle). The pure-Python server bundle (`/usr/lib/verstehen/server-bundle/`:
+  wheel + `requirements.txt` exported with `--extra server`, for SSH server provisioning) is built
+  next, and `compile.sh` fails if that file names PySide6 or shiboken6
+  (`backend/tests/sync/test_server_bundle.py` runs the same export). The frozen app must not
+  bundle the Claude Code CLI. `packaging/smoke.py` first checks with `ldd` that every shipped
+library finds the Qt libraries it links to, then runs the frozen `--self-check` and starts
+  the app offscreen (`QT_QPA_PLATFORM=offscreen`, with `--no-sandbox --disable-gpu` for the smoke
+  run only): the window's own API calls must return 200 with the cookie (read from the access
+  log), `/` is served, `/api/health` without the cookie is 403, SIGTERM exits 0 with no process
+  left in the app's session, and the migrations have run. `makepkg` writes
+  `dist/verstehen-<version>-1-x86_64.pkg.tar.zst`; its `depends` lists the Qt and Chromium runtime
+  libraries. Neither Chromium nor the Claude Code CLI is bundled. `make app-image` refreshes the
+  image.
 - **Server provisioning.** The desktop SSH provisioner acquires an exclusive `install.lock`
   for the remote account before staging a new venv beside the live one. The lock stays held
   through deploy and recovery, including SSH reconnects. After an interrupted install that
@@ -104,14 +132,16 @@ the fake model, the verify flows, the sidecar entry point and self-check, the Ar
   so later restarts rebind at once; the first upgrade from a version without it waits out Linux's
   60 s TIME_WAIT. The health and rollback waits (90 s) cover the stop, `RestartSec=5`, TIME_WAIT,
   and startup. Device-token checks keep their own 5-attempt budget.
-- **CI** (`ci.yml`) runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
+- **CI** (`ci.yml`) sets `UV_PYTHON_PREFERENCE: only-managed` so `uv` uses a managed Python 3.14
+  interpreter rather than Ubuntu's older system Python, and installs `libegl1` for Qt and
+  Playwright's Chromium system dependencies.
+  It runs `make setup`, `make check`, and `make verify` on GitHub-hosted Ubuntu and
   uploads `app/verify-output` on failure. Flows never retry, in CI or locally. On pull requests
   into `main` a second job, `android-debug`, sets up JDK 21 (Temurin) and the Android SDK, runs
   `make android-debug`, and uploads the debug `.apk` as the `verstehen-debug-apk` artifact; it uses
   no secrets.
-- **Releases** (`release.yml`): bump the versions in `backend/pyproject.toml`,
-  `app/src-tauri/Cargo.toml`, and `app/src-tauri/tauri.conf.json`, merge, then push `vX.Y.Z`; the
-  workflow checks the versions, runs `make app`, and publishes a GitHub Release; a second job then
+- **Releases** (`release.yml`): bump the version in `backend/pyproject.toml`, the only version
+  file; merge, then push `vX.Y.Z`; the workflow checks the tag against it, runs `make app`, and publishes a GitHub Release; a second job then
   builds the release `.apk` with the key from the `ANDROID_KEYSTORE_*` secrets and attaches it to
   that release. It checks the secrets first and, when they are missing, skips the Android steps
   with a `::notice::`, so the Arch release still succeeds.

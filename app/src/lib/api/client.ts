@@ -1,4 +1,3 @@
-import { invoke, isTauri } from '@tauri-apps/api/core';
 import { goto } from '$app/navigation';
 import { resolve } from '$app/paths';
 import {
@@ -10,7 +9,6 @@ import {
 	saveConnection,
 	type ServerConnection
 } from './connection';
-import { connectSidecar } from './connection.svelte';
 import type { components, operations } from './schema';
 
 export type SessionDetail = components['schemas']['SessionDetail'];
@@ -70,19 +68,9 @@ export type Device = components['schemas']['Device'];
 export type PairingCodeResponse = components['schemas']['PairingCodeResponse'];
 export type PromptSegment = components['schemas']['PromptSegment'];
 export type PromptSegments = components['schemas']['PromptSegments'];
+export type PluginInfo = components['schemas']['PluginInfo'];
+export type PluginList = components['schemas']['PluginList'];
 export type DeleteMode = 'preserve-graph' | 'delete-nodes';
-let token: string | undefined;
-
-export function setToken(value: string | undefined): void {
-	token = value;
-}
-
-async function baseUrl(): Promise<string> {
-	const connection = await connectSidecar();
-	if (connection.token) setToken(connection.token);
-	return connection.base;
-}
-
 export class ApiError extends Error {
 	constructor(
 		public status: number,
@@ -106,10 +94,9 @@ interface Endpoint {
 	rejectedToken?: string;
 }
 
-/** Where requests go and how they authenticate: the sidecar, or the paired server. */
+/** Where requests go and how they authenticate: the app's own server, or the paired server. */
 async function endpoint(): Promise<Endpoint> {
-	if (clientMode() === 'sidecar')
-		return { base: await baseUrl(), auth: token ? { 'x-verstehen-token': token } : {} };
+	if (clientMode() === 'sidecar') return { base: '', auth: {} };
 	const connection = await loadConnection();
 	if (!isPaired(connection)) {
 		await returnToPairing(connection.token);
@@ -187,7 +174,7 @@ export async function pairDevice(
 	return connection;
 }
 
-export async function health(): Promise<{ status: string }> {
+export async function health(): Promise<{ status: string; desktop?: boolean }> {
 	return (await request('/api/health')).json();
 }
 export async function listSessions(signal?: AbortSignal): Promise<SessionItem[]> {
@@ -197,12 +184,21 @@ export async function createSession(
 	title: string,
 	model?: ModelPick | null,
 	graph_context?: GraphContext,
-	kind: SessionKind = 'teach'
+	kind: SessionKind = 'teach',
+	folder_id?: string,
+	client_request_id?: string
 ): Promise<components['schemas']['Created']> {
 	return (
 		await request('/api/sessions', {
 			method: 'POST',
-			body: JSON.stringify({ title, model, graph_context, kind })
+			body: JSON.stringify({
+				title,
+				model,
+				graph_context,
+				kind,
+				folder_id,
+				...(client_request_id ? { client_request_id } : {})
+			})
 		})
 	).json();
 }
@@ -332,7 +328,13 @@ export async function saveSettings(
 	const body = { ...settings };
 	delete body.file_access_error;
 	if (!includeModels) delete body.models;
-	return (await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })).json();
+	const saved: Settings = await (
+		await request('/api/settings', { method: 'PATCH', body: JSON.stringify(body) })
+	).json();
+	if (typeof window !== 'undefined') {
+		window.dispatchEvent(new CustomEvent('verstehen:settings-changed', { detail: saved }));
+	}
+	return saved;
 }
 const promptPath = (path: string) =>
 	`/api/prompts/${path.split('/').map(encodeURIComponent).join('/')}`;
@@ -397,9 +399,15 @@ export async function getClaudeCode(): Promise<BinaryStatus> {
 	return (await request('/api/accounts/claude-code')).json();
 }
 export const CLAUDE_CODE_INSTALL_URL = 'https://code.claude.com/docs/en/setup';
-export async function openExternal(url: string): Promise<void> {
-	if (isTauri()) await invoke('plugin:shell|open', { path: url });
-	else window.open(url, '_blank', 'noopener,noreferrer');
+export function openExternal(url: string): void {
+	window.open(url, '_blank', 'noopener,noreferrer');
+}
+export const LINK_REFUSED_EVENT = 'verstehen:link-refused';
+/** Calls `refused` with the URL when the desktop shell declines to open a link; returns the unsubscribe. */
+export function onLinkRefused(refused: (url: string) => void): () => void {
+	const listen = (event: Event) => refused((event as CustomEvent<string>).detail);
+	window.addEventListener(LINK_REFUSED_EVENT, listen);
+	return () => window.removeEventListener(LINK_REFUSED_EVENT, listen);
 }
 
 export type DemoBrowser = components['schemas']['DemoBrowser'];
@@ -649,3 +657,32 @@ export async function createServerPairingCode(): Promise<PairingCodeResponse> {
 export async function revokeServerDevice(id: string): Promise<void> {
 	await requestSettled(`/api/server/devices/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+
+const pluginPath = (id: string) => `/api/plugins/${encodeURIComponent(id)}`;
+export async function listPlugins(signal?: AbortSignal): Promise<PluginList> {
+	return (await request('/api/plugins', { signal })).json();
+}
+export async function refreshPlugins(): Promise<PluginList> {
+	return (await request('/api/plugins/refresh', { method: 'POST' })).json();
+}
+export async function setPluginEnabled(id: string, enabled: boolean): Promise<PluginInfo> {
+	return (
+		await request(`${pluginPath(id)}/enabled`, { method: 'PUT', body: JSON.stringify({ enabled }) })
+	).json();
+}
+/** Calls a function the plugin's backend exposed; JSON in, JSON out, and a failure rejects with its message. */
+export async function callPlugin(
+	id: string,
+	name: string,
+	input?: unknown,
+	signal?: AbortSignal
+): Promise<unknown> {
+	const response = await request(`${pluginPath(id)}/call/${encodeURIComponent(name)}`, {
+		method: 'POST',
+		body: JSON.stringify(input ?? null),
+		signal
+	});
+	return response.json();
+}
+/** The same-origin URL of a plugin's own file (`main`, `styles`, or something under `assets/`). */
+export const pluginFileUrl = (id: string, path: string) => `${pluginPath(id)}/files/${path}`;

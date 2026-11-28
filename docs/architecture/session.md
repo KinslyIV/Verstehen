@@ -32,7 +32,7 @@ Frontend, `app/src/`:
 | File | What it holds |
 |---|---|
 | `lib/session/controller.svelte.ts` | `SessionController`: send, follow the stream, bounded 409 wait, one read-only recovery, append-only adoption of the saved record, question actions |
-| `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the dock |
+| `lib/components/session-thread.svelte` | mounts the controller and renders entries, cards, dividers, and the floating dock ([shell](frontend-shell.md)) |
 | `lib/components/composer.svelte` | text input, Send/Stop, steering while a turn runs |
 | `lib/components/stats-bar.svelte`, `lib/session/session-stats.svelte.ts`, `stats-format.ts` | the usage row under the composer and its Session stats popover; `SessionStatsReader` reads one session's stats single-flight |
 | `lib/components/session-list.svelte`, `new-session.svelte`, `rename-session.svelte` | sidebar rows, the new-session screen, rename |
@@ -48,6 +48,17 @@ Frontend, `app/src/`:
   prober and teacher. A pending problem dismissal is turned into a synthetic `conclude` pair ahead
   of the next input, projection renders `practice-thinking` and `practice-next` as learner
   messages and skips `problem-dismissed`, and settlement skips extraction.
+- **Chat sessions** (`kind = "chat"`) run the `chat` role (the strong slot) with the read-only
+  inspection tools, `prepare_session` (in `STREAMED_RESULT_TOOLS` so Launch Card metadata streams
+  live), learner-file tools, `research`/`pdf` jobs, and plugin toolsets targeting `"chat"`.
+  `TurnService` skips probe handoffs for `chat`, `SessionService` reports `coverage = None`, and
+  `turn-settled` carries `kind` so plugin observers ignore Chat turns while sidebar/stats refresh
+  normally.
+- **Create.** `POST /api/sessions` takes `kind`, and optionally `folder_id` and `client_request_id`
+  (`NewSessionInput`): the new session, its folder placement (if any), its `graph-context` marker
+  (if any), and the `session_create_requests` receipt commit in one SQLite transaction. An unknown
+  folder answers 400 "Folder no longer exists." without caching the request id; retrying a
+  committed `client_request_id` returns the existing session without creating a duplicate.
 - **Write-ahead.** The input is saved before inference, so a crash never loses what the learner
   sent. A refusal from `validate`, `model_gate`, or the claim saves nothing; an exception in a
   later stage (for example `build_agent`) returns 500 after the input is already saved.
@@ -89,11 +100,19 @@ Frontend, `app/src/`:
   the turn. A successful title replaces the current one, including a rename made before it
   arrived; a failure keeps whatever title the session has, with no retry.
 
+## Turn minimap
+
+`lib/session/turn-minimap.ts` derives one tick per typed learner message, answered question (not a
+skipped one), and practice problem, each anchored by `messageId` so a click scrolls that item to
+the top of the thread. `turn-minimap.svelte` draws the ticks evenly spaced at the left edge with a
+fisheye on hover and a preview card, and highlights the last item in view. It renders only on a
+fine pointer at 768 px and wider, once there is at least one tick.
+
 ## Session stats
 
 `GET /api/sessions/{id}/stats` reads, never writes (404 for an unknown session).
 - **Turns.** One per LH `appendTurnUsage` site, from the usage rows with the roles `prober`,
-  `teacher`, `practice` (a run), `compaction` (the summary, request id = the marker's entry id), and
+  `teacher`, `practice`, `chat` (a run), `compaction` (the summary, request id = the marker's entry id), and
   `sideQuestion` (the answer); titles, workers, and extraction are left out. `TurnRun.id` is
   passed to `UsageModel`, which names each call `<run id>#<n>`, so a run's calls group by the
   prefix (the LearnHarness import already writes `<turn id>#<n>`). A row without `#`, as saved
@@ -168,9 +187,18 @@ tokens, reserve 16,384 tokens below the model's limit, default limit 150,000, fl
 - Tables: `sessions`, `entries`, `usage` ([store](store.md)); a lesson call's `usage.request_id` is
   `<TurnRun.id>#<n>`, opaque to sync and the importer.
 - Turn stream events: `message_start`, `message_update`, `message_end`, `context_update`, `error`,
-  `turn-settled`.
+  `turn-settled`. `TurnService` immediately publishes and flushes `message_update` when entering
+  `is_call_tools_node` (so tool calls reach the UI before execution completes), streams
+  `completed_tool_call_ids` as individual tools finish within that step, and `end_response` stamps
+  `reply.created_at` to UTC completion time.
 - Notifications: `turn-started`, `turn-settled`, `chats-changed`, `compaction-changed`
   ([API and events](api-and-events.md)).
+- Transcript UX (`session-thread.svelte`, `working-status.ts`, `message-meta.ts`,
+  `message-copy-button.svelte`, `learner-message.svelte`): `workingStatus` keeps the spinner,
+  shimmer status label, and elapsed timer (`>= 2 s`) visible across empty streaming assistant
+  shells and built-in tool calls; completed assistant rows render `message-footer` (markdown Copy
+  button, localized finish time, and folded `SideEntryButton`), and learner messages render a
+  hover/focus/touch timestamp + Copy footer.
 
 ## Collaborators
 

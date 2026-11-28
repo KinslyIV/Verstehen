@@ -16,13 +16,12 @@ from collections import OrderedDict
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
 from pathlib import Path
-from typing import Annotated, Any, Literal, Protocol
+from typing import TYPE_CHECKING, Annotated, Any, Literal, Protocol
 from urllib.parse import urlsplit
 from uuid import uuid4
 
 import httpx2
 from pydantic import BaseModel, Field
-lazy import asyncssh
 
 from verstehen.providers.accounts import Account
 from verstehen.providers.chatgpt.callback_port import CallbackPort, CallbackPortBusy
@@ -33,7 +32,12 @@ from verstehen.store.devices import Device
 from verstehen.store.sync import SyncStore
 from verstehen.sync.service import ConnectionSnapshot, SyncService
 
+if TYPE_CHECKING:
+    import asyncssh
+
 logger = logging.getLogger(__name__)
+
+SERVER_PYTHON = "3.14"
 
 HOST_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 USER_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
@@ -277,6 +281,8 @@ def trusted_host_key_algs(
     known_hosts_path: Path, host: str, addresses: list[str], port: int
 ) -> list[str]:
     """Signature algorithms of the trusted keys for this host, for the real connect to prefer."""
+    import asyncssh
+
     if not known_hosts_path.is_file():
         return []
     known_hosts = asyncssh.read_known_hosts(str(known_hosts_path))
@@ -297,6 +303,8 @@ def verify_known_host(
     known_hosts_path: Path,
 ) -> Literal["trusted"] | HostKeyChallenge:
     """Match the probed key with AsyncSSH's known_hosts rules: trusted, challenge, or raise."""
+    import asyncssh
+
     if not known_hosts_path.is_file():
         return _host_key_challenge(probed, host, port)
     probed_data = asyncssh.import_public_key(probed.public_key_data).public_data
@@ -430,6 +438,8 @@ class AsyncSshBackend:
         known_hosts_path: Path | None = None,
         timeout: float = 10.0,
     ) -> ProbedHostKey:
+        import asyncssh
+
         addresses = await _resolve_addresses(host, port)
         algs = (
             trusted_host_key_algs(known_hosts_path, host, addresses, port)
@@ -475,6 +485,8 @@ class AsyncSshBackend:
         known_hosts_path: Path,
         timeout: float = 15.0,
     ) -> asyncssh.SSHClientConnection:
+        import asyncssh
+
         has_password = bool(password)
         kwargs: dict[str, Any] = {
             "host": host,
@@ -538,6 +550,8 @@ class AsyncSshBackend:
         remote_port: int = 1455,
         timeout: float = 15.0,
     ) -> SshTunnel:
+        import asyncssh
+
         conn = await self._open_connection(
             host,
             port,
@@ -614,6 +628,8 @@ def locate_server_bundle() -> Path:
             "--frozen",
             "--no-dev",
             "--no-emit-project",
+            "--extra",
+            "server",
             "--format",
             "requirements-txt",
             "-o",
@@ -748,7 +764,10 @@ def _initial_steps(mode: InstallMode) -> list[InstallStep]:
         ),
         InstallStep(id="install_uv", label="Ensure uv package manager is installed"),
         InstallStep(id="upload_bundle", label="Upload Verstehen server bundle"),
-        InstallStep(id="install_venv", label="Install Python 3.15 virtual environment"),
+        InstallStep(
+            id="install_venv",
+            label=f"Install Python {SERVER_PYTHON} virtual environment",
+        ),
         InstallStep(
             id="configure_systemd", label="Configure and start systemd user service"
         ),
@@ -1160,6 +1179,8 @@ class ServerInstallService:
         return True
 
     async def _ensure_uv(self, session: SshSession) -> bool:
+        import asyncssh
+
         self._current_step = "install_uv"
         self._set_step("install_uv", "running")
         locate = await session.run(
@@ -1236,18 +1257,18 @@ class ServerInstallService:
             else "uv ready"
         )
         py_install = await session.run(
-            '"$HOME/.local/bin/uv" python install 3.15', timeout=300.0
+            f'"$HOME/.local/bin/uv" python install {SERVER_PYTHON}', timeout=300.0
         )
         self._append_log(py_install.stdout or py_install.stderr)
         if py_install.exit_status != 0:
             if is_symlink:
                 message = (
-                    f"The server's system uv ({version}) cannot install Python 3.15. "
+                    f"The server's system uv ({version}) cannot install Python {SERVER_PYTHON}. "
                     "Upgrade the system uv package (or install uv >= 0.13.9) and retry."
                 )
             else:
                 message = (
-                    f"The server's uv ({version}) cannot install Python 3.15 after self-update. "
+                    f"The server's uv ({version}) cannot install Python {SERVER_PYTHON} after self-update. "
                     "Upgrade ~/.local/bin/uv (uv >= 0.13.9) and retry."
                 )
             self._fail("install_uv", "install_failed", message)
@@ -1296,7 +1317,7 @@ class ServerInstallService:
         python = f'"{SERVER_DIR}/venv.new/bin/python"'
         result = await session.run(
             f'rm -rf "{SERVER_DIR}/venv.new" && '
-            f'{uv} venv --managed-python --no-python-downloads --python 3.15 "{SERVER_DIR}/venv.new" && '
+            f'{uv} venv --managed-python --no-python-downloads --python {SERVER_PYTHON} "{SERVER_DIR}/venv.new" && '
             f'{uv} pip install --python {python} -r "{SERVER_DIR}/bundle/requirements.txt" && '
             f'{uv} pip install --python {python} --no-deps "{SERVER_DIR}/bundle/"{shlex.quote(wheel_name)} && '
             f'{python} -c "import verstehen.cli, verstehen.app"',
@@ -1309,10 +1330,12 @@ class ServerInstallService:
                 "install_venv",
                 "install_failed",
                 result.stderr.strip()
-                or "Failed to install Python 3.15 environment on server.",
+                or f"Failed to install Python {SERVER_PYTHON} environment on server.",
             )
             return False
-        self._set_step("install_venv", "done", detail="Python 3.15 venv ready")
+        self._set_step(
+            "install_venv", "done", detail=f"Python {SERVER_PYTHON} venv ready"
+        )
         return True
 
     async def _reconnect(self) -> SshSession:
@@ -1435,6 +1458,8 @@ class ServerInstallService:
     async def _start_service(
         self, session: SshSession, host: str, server_port: int, ssh_user: str
     ) -> tuple[Literal["started", "uncertain"], str] | None:
+        import asyncssh
+
         self._current_step = "configure_systemd"
         self._set_step("configure_systemd", "running")
         recovery = await session.run(NO_PENDING_RECOVERY_COMMAND)
@@ -1613,6 +1638,8 @@ class ServerInstallService:
         *,
         reconnect_first: bool = False,
     ) -> tuple[SshSession, bool] | None:
+        import asyncssh
+
         self._current_step = "health_check"
         self._set_step("health_check", "running")
         if not reconnect_first:

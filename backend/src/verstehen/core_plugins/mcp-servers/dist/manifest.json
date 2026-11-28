@@ -1,0 +1,11 @@
+{
+	"apiVersion": 1,
+	"id": "mcp-servers",
+	"name": "MCP Servers",
+	"version": "1.0.0",
+	"description": "Connect local MCP servers and choose which tools each agent can use.",
+	"minAppVersion": "0.2.0",
+	"backend": "backend",
+	"main": "main.js",
+	"styles": "styles.css"
+}

@@ -68,6 +68,10 @@ test('model-catalog', async ({ page, request }) => {
 	const height = () => menu.evaluate((element) => (element as HTMLElement).offsetHeight);
 	const bounded = await height();
 	expect(bounded).toBeLessThan(page.viewportSize()!.height * 0.75);
+	const desktopBox = await menu.boundingBox();
+	expect(desktopBox).not.toBeNull();
+	expect(desktopBox!.width).toBeGreaterThanOrEqual(400);
+	expect(desktopBox!.width).toBeLessThanOrEqual(460);
 	for (const slot of ['Main', 'Cheap', 'Vision']) {
 		await page.getByRole('tab', { name: slot, exact: true }).click();
 		for (const account of ['Scripted model', /ChatGPT · one@example.test/]) {

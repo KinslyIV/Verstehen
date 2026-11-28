@@ -1,14 +1,16 @@
 <script lang="ts">
 	import { onMount, tick, untrack } from 'svelte';
-	import { ArrowRight, Dumbbell, LoaderCircle } from '@lucide/svelte';
+	import { ArrowRight, Dumbbell, LoaderCircle, MessageSquare } from '@lucide/svelte';
 	import * as Scroller from '#lib/components/ui/message-scroller/index.js';
 	import { Button } from '#lib/components/ui/button/index.js';
 	import AssistantMessage from '#lib/markdown/assistant-message.svelte';
 	import LearnerMessage from '#lib/markdown/learner-message.svelte';
 	import { SessionController } from '#lib/session/controller.svelte.js';
+	import DeferredRow from '#lib/session/deferred-row.svelte';
 	import {
 		OPENING_FAILURE,
 		awaitsOpening,
+		clearOpeningNotice,
 		readOpening,
 		stashOpening
 	} from '#lib/session/opening.js';
@@ -18,9 +20,17 @@
 	import AbortTurnDialog from '#lib/questions/abort-turn-dialog.svelte';
 	import { answeredQuestions } from '#lib/questions/answer-presentation.js';
 	import { escAbortTarget, hasOpenOverlay } from '#lib/questions/keyboard.js';
+	import { forwardDockWheel } from '#lib/session/dock-wheel.js';
 	import { onAndroidBack } from '#lib/session/android-back.js';
+	import TurnMinimap from '#lib/session/turn-minimap.svelte';
+	import { turnTicks } from '#lib/session/turn-minimap.js';
 	import { compactionDividers, cutDividerText } from '#lib/session/compaction.js';
-	import { phaseLabel, phaseTimeline } from '#lib/teaching/phases.js';
+	import { phaseLabel } from '#lib/teaching/phases.js';
+	import { workingStatus } from '#lib/session/working-status.js';
+	import { copyableAssistantText, formatMessageTime } from '#lib/session/message-meta.js';
+	import { layout } from '#lib/layout/tiers.svelte.js';
+	import { cn } from '#lib/utils.js';
+	import MessageCopyButton from './message-copy-button.svelte';
 	import PhaseDivider from '#lib/teaching/phase-divider.svelte';
 	import DispatchCard from '#lib/jobs/dispatch-card.svelte';
 	import MarkerCard from '#lib/jobs/marker-card.svelte';
@@ -38,11 +48,13 @@
 	import { modelSolutionForConclude, problemInputForConclude } from '#lib/practice/state.js';
 	import { asObject } from '#lib/questions/question-input.js';
 	import ProbeAssessment from '#lib/teaching/probe-assessment.svelte';
+	import PrepareSessionCard from '#lib/chat/prepare-session-card.svelte';
+	import ToolCallCard from '#lib/teaching/tool-call-card.svelte';
 	import PlanDiagram from '#lib/teaching/plan-diagram.svelte';
 	import { planSnapshot } from '#lib/teaching/plan.js';
 	import { getPlanPanel } from '#lib/teaching/plan-panel.js';
 	import { responseResults } from '#lib/teaching/delivery.js';
-	import { responseProse } from '#lib/teaching/response-prose.js';
+	import { responseProse, type ResponseItem } from '#lib/teaching/response-prose.js';
 	import { questionNeedsReveal } from '#lib/questions/question-input.js';
 	import type { PendingQuestion } from '#lib/questions/pending.js';
 	import Composer from './composer.svelte';
@@ -55,17 +67,93 @@
 	const controller = new SessionController(untrack(() => id));
 	const panel = getPlanPanel();
 	controller.onNewPlan = panel?.open;
-	const phases = $derived(phaseTimeline(controller.entries));
-	const phase = $derived(phases.timeline.at(-1) ?? 'probe');
+	const phases = $derived(controller.phases);
+	const phase = $derived(controller.phase);
 	const results = $derived(responseResults(controller.entries));
+	const latestAssistantId = $derived.by(() => {
+		for (let i = controller.entries.length - 1; i >= 0; i--) {
+			const entry = controller.entries[i]!;
+			if (entry.kind !== 'assistant') continue;
+			const hasThinking = entry.parts.some((part) => part.type === 'thinking' && part.thinking);
+			const prose = responseProse(
+				entry,
+				results.get(entry.entry_id!),
+				entry.entry_id === controller.streamingEntryId
+			);
+			if (hasThinking || prose.length) return entry.entry_id;
+		}
+		return undefined;
+	});
+	const activeStatus = $derived(
+		controller.compacting
+			? null
+			: workingStatus(
+					controller.entries,
+					results,
+					controller.streamingEntryId,
+					controller.busy,
+					controller.completedToolCallIds
+				)
+	);
+	let elapsedSec = $state(0);
+	$effect(() => {
+		if (!controller.busy) {
+			elapsedSec = 0;
+			return;
+		}
+		const started = Date.now();
+		elapsedSec = 0;
+		const timer = setInterval(() => {
+			elapsedSec = Math.floor((Date.now() - started) / 1000);
+		}, 1000);
+		return () => clearInterval(timer);
+	});
 	const cards = $derived(answeredQuestions(controller.record?.entries ?? []));
+	const ticks = $derived(turnTicks(controller.entries, cards, results));
+	const tickIds = $derived(new Set(ticks.map(({ id }) => id)));
 	const pending = $derived(controller.pendingQuestion);
 	const dividers = $derived(compactionDividers(controller.entries));
 	const jobsByCall = $derived(new Map(controller.jobs.jobs.map((job) => [job.tool_call_id, job])));
+	const FIRST_ROWS = 12;
+	const BATCH_ROWS = 6;
+	let revealed = $state(FIRST_ROWS);
+	const deferredRows = $derived(Math.max(0, controller.entries.length - revealed));
 	let viewport = $state<HTMLDivElement | null>(null);
 	let expanded = $state(true);
 	let abortTarget = $state<'turn' | PendingQuestion | ActiveProblem>();
 	let previousHeight = 0;
+	let dockHeight = $state(0);
+	let reserve = $state(0);
+	let reservedFor: string | undefined;
+	let folderNotice = $state<string | null>(null);
+	const dockOwner = $derived(pending?.key ?? controller.activeProblem?.toolCallId);
+
+	/** The transcript's bottom reserve: the dock's tallest height while one question or problem owns it. */
+	$effect(() => {
+		const height = dockHeight;
+		const owner = dockOwner;
+		untrack(() => {
+			reserve = owner && owner === reservedFor ? Math.max(reserve, height) : height;
+			reservedFor = owner;
+		});
+	});
+
+	/** Opening a lesson renders its newest rows' content at once, then older rows' a batch per painted frame. */
+	$effect(() => {
+		const total = controller.entries.length;
+		if (revealed === Infinity || total === 0) return;
+		let timer: ReturnType<typeof setTimeout> | undefined;
+		const frame = requestAnimationFrame(
+			() =>
+				(timer = setTimeout(() => {
+					revealed = revealed + BATCH_ROWS >= total ? Infinity : revealed + BATCH_ROWS;
+				}))
+		);
+		return () => {
+			cancelAnimationFrame(frame);
+			clearTimeout(timer);
+		};
+	});
 
 	function handleScroll() {
 		if (!viewport) return;
@@ -133,11 +221,12 @@
 		void (async () => {
 			await controller.load();
 			const opening = readOpening(id);
+			if (opening?.notice) folderNotice = opening.notice;
 			if (opening && controller.record && awaitsOpening(controller.entries) && !controller.busy) {
 				controller.draft = opening.text;
 				if (!opening.attempted) {
 					try {
-						stashOpening(id, opening.text, true);
+						stashOpening(id, opening.text, true, opening.notice);
 						await controller.send();
 					} catch {
 						controller.error = OPENING_FAILURE;
@@ -186,23 +275,37 @@
 
 <svelte:window onkeydown={escape} />
 
-<section class="flex h-full min-h-0 min-w-0 flex-col" aria-label="Lesson">
-	{#if controller.record}<div
-			class="mx-auto flex w-full max-w-3xl shrink-0 items-center gap-3 px-6 py-3 max-md:px-4"
+<section
+	class="relative flex h-full min-h-0 min-w-0 flex-col"
+	aria-label="Lesson"
+	style:--dock-reserve="{reserve}px"
+	style:--dock-height="{dockHeight}px"
+>
+	{#if controller.record && (!panel || layout.tier === 'phone')}<div
+			class={cn(
+				'mx-auto flex w-full max-w-(--verstehen-transcript-max) shrink-0 items-center gap-3 px-6 max-md:px-4',
+				panel ? 'py-1.5' : 'py-3'
+			)}
 		>
-			<RenameSession
-				{id}
-				title={controller.record.title}
-				onrenamed={(title) => {
-					if (controller.record) controller.record.title = title;
-				}}
-			/>
+			{#if !panel}<RenameSession
+					{id}
+					title={controller.record.title}
+					onrenamed={(title) => {
+						if (controller.record) controller.record.title = title;
+					}}
+				/>{/if}
 			{#if controller.isPractice}<span
 					data-testid="phase-chip"
 					data-phase="practice"
 					class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
 				>
 					<Dumbbell class="size-3" aria-hidden="true" /> Practice
+				</span>{:else if controller.isChat}<span
+					data-testid="phase-chip"
+					data-phase="chat"
+					class="flex shrink-0 items-center gap-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+				>
+					<MessageSquare class="size-3" aria-hidden="true" /> Chat
 				</span>{:else}<span
 					data-testid="phase-chip"
 					data-phase={phase}
@@ -218,6 +321,7 @@
 		</div>{/if}
 	<Scroller.Provider
 		autoScroll={controller.isPractice ||
+			controller.isChat ||
 			controller.questionCalls.length > 0 ||
 			cards.size > 0 ||
 			phase !== 'probe'}
@@ -229,157 +333,188 @@
 				onwheel={handleWheel}
 				aria-label="Conversation"
 			>
-				<Scroller.Content class="mx-auto w-full max-w-3xl gap-6 px-6 py-6 max-md:px-4">
+				<Scroller.Content
+					class="mx-auto w-full max-w-(--verstehen-transcript-max) gap-6 px-6 pt-6 pb-[calc(var(--dock-reserve)+1.5rem)] max-md:px-4"
+				>
 					{#each controller.entries as entry, index (entry.entry_id)}
 						{@const card = cards.get(entry.entry_id!)}
 						{@const block = planSnapshot(entry)}
 						{@const graphContext = graphContextOf(entry)}
-						{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
-								<div
-									role="separator"
-									aria-label="History compacted"
-									data-testid="compaction-cut-divider"
-									class="flex items-center gap-3"
-								>
-									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
-									></span>
-									<span
-										class="rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+						<DeferredRow deferred={index < deferredRows}>
+							{#if dividers.cutBefore && entry.entry_id === dividers.cutBefore.entryId}<Scroller.Item>
+									<div
+										role="separator"
+										aria-label="History compacted"
+										data-testid="compaction-cut-divider"
+										class="flex items-center gap-3"
 									>
-										{cutDividerText(dividers.cutBefore.tokensBefore)}
-									</span>
-									<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
-									></span>
-								</div>
-							</Scroller.Item>{/if}
-						{#if index === phases.teachAt && !controller.isPractice}<Scroller.Item>
-								<PhaseDivider phase="teach" />
-							</Scroller.Item>{/if}
-						{#if entry.kind === 'user'}
-							<Scroller.Item><LearnerMessage content={entry.text} /></Scroller.Item>
-						{:else if entry.kind === 'assistant'}
-							{@const thinking = entry.parts
-								.filter((part) => part.type === 'thinking')
-								.map((part) => part.thinking)
-								.join('\n\n')}
-							{@const streaming = entry.entry_id === controller.streamingEntryId}
-							{@const prose = responseProse(entry, results.get(entry.entry_id!), streaming)}
-							{@const malformed = controller.busy
-								? []
-								: controller.questionCalls.filter(
-										(call) => call.messageId === entry.entry_id && !call.question
-									)}
-							{#if thinking || prose.length || malformed.length}
-								<Scroller.Item>
-									{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
-									{#each prose as item, i (i)}
-										{#if item.kind === 'text'}
-											<div data-source-entry-id={entry.entry_id}>
-												<AssistantMessage
-													content={item.text}
-													streaming={streaming && i === prose.length - 1}
-												/>
-											</div>
-										{:else if item.kind === 'image'}
-											<ImageCard result={item.result} />
-										{:else if item.kind === 'job'}
-											<DispatchCard
-												kind={item.jobKind}
-												job={jobsByCall.get(item.toolCallId)}
-												now={controller.jobs.now}
+										<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+										></span>
+										<span
+											class="rounded-full border px-2.5 py-0.5 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+										>
+											{cutDividerText(dividers.cutBefore.tokensBefore)}
+										</span>
+										<span class="flex-1 border-t-2 border-dotted border-border" aria-hidden="true"
+										></span>
+									</div>
+								</Scroller.Item>{/if}
+							{#if index === phases.teachAt && !controller.isPractice && !controller.isChat}<Scroller.Item>
+									<PhaseDivider phase="teach" />
+								</Scroller.Item>{/if}
+							{#if entry.kind === 'user'}
+								<Scroller.Item
+									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+								>
+									<LearnerMessage content={entry.text} createdAt={entry.created_at} />
+								</Scroller.Item>
+							{:else if entry.kind === 'assistant'}
+								{@const thinking = entry.parts
+									.filter((part) => part.type === 'thinking')
+									.map((part) => part.thinking)
+									.join('\n\n')}
+								{@const streaming = entry.entry_id === controller.streamingEntryId}
+								{@const prose = responseProse(entry, results.get(entry.entry_id!), streaming)}
+								{@const malformed = controller.busy
+									? []
+									: controller.questionCalls.filter(
+											(call) => call.messageId === entry.entry_id && !call.question
+										)}
+								{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
+								{@const copyText = copyableAssistantText(prose)}
+								{@const time = formatMessageTime(entry.created_at)}
+								{#if thinking || prose.length || malformed.length}
+									{@const problemAt = prose.findIndex((item) => item.kind === 'problem')}
+									{@const split = problemAt > 0 || (problemAt === 0 && !!thinking)}
+									{#if split}<Scroller.Item>
+											{#if thinking}<Reasoning text={thinking} {streaming} />{/if}
+											{@render responseItems(entry.entry_id!, prose, 0, problemAt, streaming)}
+										</Scroller.Item>{/if}
+									<Scroller.Item
+										class="group/row"
+										messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+									>
+										{#if thinking && !split}<Reasoning text={thinking} {streaming} />{/if}
+										{@render responseItems(
+											entry.entry_id!,
+											prose,
+											split ? problemAt : 0,
+											prose.length,
+											streaming
+										)}
+										{#each malformed as call (call.key)}
+											<MalformedQuestion
+												blocked={controller.questionCalls.some(
+													({ question }) => question !== undefined
+												) || controller.compacting}
+												onretry={() => void controller.retryQuestion(call)}
 											/>
-										{:else if item.kind === 'problem'}
-											<ProblemCard statement={item.statement} />
-										{:else if item.kind === 'conclude'}
-											<ConcludeCard
-												args={item.args}
-												problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
-												reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
-											/>
-										{:else if item.kind === 'probe'}
-											<ProbeAssessment args={item.args} result={item.result} />
-										{:else}
-											<p
-												data-testid="tool-retry"
-												class="py-1 text-center text-xs text-muted-foreground"
+										{/each}
+										{#if !streaming && (copyText || time || segmentId)}
+											<div
+												data-testid="message-footer"
+												class={cn(
+													'mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground transition-opacity',
+													entry.entry_id === latestAssistantId ||
+														(segmentId && controller.side.hasHistory(segmentId))
+														? 'opacity-100'
+														: 'opacity-40 group-focus-within/row:opacity-100 group-hover/row:opacity-100 coarse:opacity-100'
+												)}
 											>
-												Retrying…
-											</p>
+												{#if copyText}<MessageCopyButton text={copyText} />{/if}
+												{#if time}
+													<time
+														data-testid="message-time"
+														datetime={entry.created_at}
+														title={time.full}
+														class="px-1 text-muted-foreground/70 tabular-nums"
+													>
+														{time.short}
+													</time>
+												{/if}
+												{#if segmentId}
+													<div class="ml-auto">
+														<SideEntryButton
+															{segmentId}
+															hasHistory={controller.side.hasHistory(segmentId)}
+															onopen={openSide}
+														/>
+													</div>
+												{/if}
+											</div>
 										{/if}
-									{/each}
-									{#each malformed as call (call.key)}
-										<MalformedQuestion
-											blocked={controller.questionCalls.some(
-												({ question }) => question !== undefined
-											) || controller.compacting}
-											onretry={() => void controller.retryQuestion(call)}
-										/>
-									{/each}
+									</Scroller.Item>
+								{:else if segmentId}
+									<Scroller.Item>
+										<div class="flex justify-end">
+											<SideEntryButton
+												{segmentId}
+												hasHistory={controller.side.hasHistory(segmentId)}
+												onopen={openSide}
+											/>
+										</div>
+									</Scroller.Item>
+								{/if}
+							{:else if entry.kind === 'marker' && graphContext}
+								<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
+								{@const text = asObject(entry.details)?.text}
+								<Scroller.Item>
+									<ThinkingCard text={typeof text === 'string' ? text : entry.content} />
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'practice-next' && entry.display}
+								<Scroller.Item>
+									<p
+										data-testid="practice-next-line"
+										class="flex items-center justify-center gap-1.5 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
+									>
+										<ArrowRight class="size-3" aria-hidden="true" /> Next problem
+									</p>
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display && !controller.isPractice && !controller.isChat}
+								<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
+							{:else if block && entry.kind === 'marker' && entry.display}
+								<Scroller.Item>
+									<button
+										type="button"
+										aria-label="Open the full plan"
+										data-testid="plan-block"
+										class="block w-full rounded-lg p-1 focus-visible:outline-ring"
+										onclick={() => panel?.open()}
+									>
+										<PlanDiagram plan={block} />
+									</button>
+								</Scroller.Item>
+							{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
+								<Scroller.Item>
+									<MarkerCard
+										{entry}
+										inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
+										oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
+										onsenderror={(text) => {
+											controller.draft = text;
+											void controller.send();
+										}}
+									/>
+								</Scroller.Item>
+							{:else if card}
+								<Scroller.Item
+									messageId={tickIds.has(entry.entry_id!) ? entry.entry_id : undefined}
+								>
+									<AnsweredCard {...card} />
 								</Scroller.Item>
 							{/if}
-							{@const segmentId = controller.record?.side_segments.entry_points[entry.entry_id!]}
-							{#if segmentId}<Scroller.Item>
-									<SideEntryButton
-										{segmentId}
-										hasHistory={controller.side.hasHistory(segmentId)}
-										onopen={openSide}
-									/>
-								</Scroller.Item>{/if}
-						{:else if entry.kind === 'marker' && graphContext}
-							<Scroller.Item><GraphContextCard selection={graphContext} /></Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-thinking' && entry.display}
-							{@const text = asObject(entry.details)?.text}
-							<Scroller.Item>
-								<ThinkingCard text={typeof text === 'string' ? text : entry.content} />
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'practice-next' && entry.display}
-							<Scroller.Item>
-								<p
-									data-testid="practice-next-line"
-									class="flex items-center justify-center gap-1.5 py-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
-								>
-									<ArrowRight class="size-3" aria-hidden="true" /> Next problem
-								</p>
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && entry.marker_type === 'probe-handoff' && entry.display}
-							<Scroller.Item><PhaseDivider phase="plan" /></Scroller.Item>
-						{:else if block && entry.kind === 'marker' && entry.display}
-							<Scroller.Item>
-								<button
-									type="button"
-									aria-label="Open the full plan"
-									data-testid="plan-block"
-									class="block w-full rounded-lg p-1 focus-visible:outline-ring"
-									onclick={() => panel?.open()}
-								>
-									<PlanDiagram plan={block} />
-								</button>
-							</Scroller.Item>
-						{:else if entry.kind === 'marker' && (entry.marker_type === 'subagent-steer' || entry.marker_type === 'subagent-abort')}
-							<Scroller.Item>
-								<MarkerCard
-									{entry}
-									inverted={controller.record?.artifact_views?.[entry.entry_id!] ?? false}
-									oninvert={(value) => controller.setInverted(entry.entry_id!, value)}
-									onsenderror={(text) => {
-										controller.draft = text;
-										void controller.send();
-									}}
-								/>
-							</Scroller.Item>
-						{:else if card}
-							<Scroller.Item><AnsweredCard {...card} /></Scroller.Item>
-						{/if}
-						{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
-							<Scroller.Item>
-								<p
-									data-testid="compaction-moment"
-									class="py-1 text-center text-xs text-muted-foreground/70"
-								>
-									Context compacted
-								</p>
-							</Scroller.Item>
-						{/each}
+							{#each Array(dividers.momentsAfter.get(entry.entry_id!) ?? 0).keys() as moment (moment)}
+								<Scroller.Item>
+									<p
+										data-testid="compaction-moment"
+										class="py-1 text-center text-xs text-muted-foreground/70"
+									>
+										Context compacted
+									</p>
+								</Scroller.Item>
+							{/each}
+						</DeferredRow>
 					{/each}
 					{#if controller.compacting}<p
 							data-testid="compacting-indicator"
@@ -387,29 +522,81 @@
 						>
 							<LoaderCircle class="size-3 animate-spin" aria-hidden="true" />
 							Compacting context…
-						</p>{:else if controller.busy && controller.entries.at(-1)?.kind !== 'assistant'}<p
-							class="shimmer text-sm text-muted-foreground"
+						</p>{:else if activeStatus}<p
+							data-testid="working-indicator"
+							class="flex items-center gap-2 text-sm text-muted-foreground"
 						>
-							Thinking...
+							<LoaderCircle class="size-3.5 shrink-0 animate-spin" aria-hidden="true" />
+							<span role="status" class="shimmer">{activeStatus}</span>
+							{#if elapsedSec >= 2}
+								<span
+									data-testid="working-elapsed"
+									class="text-xs text-muted-foreground/70 tabular-nums"
+								>
+									· {elapsedSec}s
+								</span>
+							{/if}
 						</p>{/if}
 				</Scroller.Content>
 			</Scroller.Viewport>
-			{#if !pending}<Scroller.Button aria-label="Scroll to bottom" />{/if}
+			<TurnMinimap {ticks} />
+			<Scroller.Button
+				aria-label="Scroll to bottom"
+				variant="outline"
+				size="icon"
+				class="rounded-full shadow-lg ring-1 ring-foreground/10 data-[direction=end]:bottom-[calc(var(--dock-height)+2.5rem)]"
+			/>
 		</Scroller.Root>
 	</Scroller.Provider>
-	{#if controller.error}<div
-			role="alert"
-			class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
-		>
-			<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
-					variant="outline"
-					size="sm"
-					disabled={controller.busy || controller.compacting}
-					onclick={() => void controller.send('retry')}
-				>
-					Retry
-				</Button>{/if}
-		</div>{/if}
+	{#snippet responseItems(
+		entryId: string,
+		items: ResponseItem[],
+		from: number,
+		to: number,
+		streaming: boolean
+	)}
+		{#each items.slice(from, to) as item, i (from + i)}
+			{#if item.kind === 'text'}
+				<div data-source-entry-id={entryId}>
+					<AssistantMessage
+						content={item.text}
+						streaming={streaming && from + i === items.length - 1}
+					/>
+				</div>
+			{:else if item.kind === 'image'}
+				<ImageCard result={item.result} />
+			{:else if item.kind === 'job'}
+				<DispatchCard
+					kind={item.jobKind}
+					job={jobsByCall.get(item.toolCallId)}
+					now={controller.jobs.now}
+				/>
+			{:else if item.kind === 'problem'}
+				<ProblemCard statement={item.statement} />
+			{:else if item.kind === 'conclude'}
+				<ConcludeCard
+					args={item.args}
+					problemInput={problemInputForConclude(controller.entries, item.toolCallId)}
+					reveal={modelSolutionForConclude(controller.entries, item.toolCallId)}
+				/>
+			{:else if item.kind === 'probe'}
+				<ProbeAssessment args={item.args} result={item.result} />
+			{:else if item.kind === 'prepared-session'}
+				<PrepareSessionCard result={item.result} sessionId={id} />
+			{:else if item.kind === 'tool'}
+				<ToolCallCard
+					name={item.name}
+					args={item.args}
+					result={item.result}
+					stopped={item.stopped}
+				/>
+			{:else}
+				<p data-testid="tool-retry" class="py-1 text-center text-xs text-muted-foreground">
+					Retrying…
+				</p>
+			{/if}
+		{/each}
+	{/snippet}
 	{#snippet models()}<ModelControls
 			sessionId={id}
 			pick={controller.record?.model_account && controller.record?.model_id
@@ -430,74 +617,116 @@
 			bind:open={controller.modelMenuOpen}
 			notice={controller.notice}
 		/>{/snippet}
-	{#if pending}
-		{#key pending.key}
-			<QuestionDock
-				question={pending.question}
-				initialDraft={controller.getQuestionDraft(pending.key)}
-				teach={phase === 'teach'}
-				requiresReveal={questionNeedsReveal(
-					pending.question.tool,
-					{ type: pending.question.questionType },
-					phase
-				)}
-				wasQuestion={controller.questionArrival.wasQuestion}
-				{expanded}
-				busy={controller.busy}
-				compacting={controller.compacting}
-				modelMenuOpen={controller.modelMenuOpen}
-				onexpand={() => void expand()}
-				onsubmit={(answer, draft) => {
-					if (pending) void controller.answerQuestion(pending, answer, draft);
-				}}
-				onstop={() => void controller.stop()}
-				onworking={(text) => (controller.working = text)}
-				{models}
+	<div class="pointer-events-none absolute inset-x-0 bottom-0 z-20">
+		<div
+			bind:clientHeight={dockHeight}
+			{@attach forwardDockWheel(() => viewport)}
+			class="pointer-events-auto relative bg-background"
+		>
+			<div
+				aria-hidden="true"
+				class="pointer-events-none absolute inset-x-0 bottom-full h-6 bg-linear-to-t from-background to-transparent"
+			></div>
+			{#if folderNotice}<div
+					role="status"
+					data-testid="session-folder-notice"
+					class="mx-auto flex w-full max-w-3xl items-center justify-between gap-3 px-6 pb-1 text-xs text-muted-foreground max-md:px-4"
+				>
+					<span>{folderNotice}</span>
+					<Button
+						variant="ghost"
+						size="xs"
+						onclick={() => {
+							folderNotice = null;
+							clearOpeningNotice(id);
+						}}
+					>
+						Dismiss
+					</Button>
+				</div>{/if}
+			{#if controller.error}<div
+					role="alert"
+					class="mx-auto flex w-full max-w-3xl items-center gap-3 px-6 text-sm text-destructive max-md:px-4"
+				>
+					<span>{controller.error}</span>{#if !pending && !controller.retryBlocked}<Button
+							variant="outline"
+							size="sm"
+							disabled={controller.busy || controller.compacting}
+							onclick={() => void controller.send('retry')}
+						>
+							Retry
+						</Button>{/if}
+				</div>{/if}
+			{#if pending}
+				{#key pending.key}
+					<QuestionDock
+						question={pending.question}
+						initialDraft={controller.getQuestionDraft(pending.key)}
+						teach={phase === 'teach'}
+						requiresReveal={questionNeedsReveal(
+							pending.question.tool,
+							{ type: pending.question.questionType },
+							phase
+						)}
+						wasQuestion={controller.questionArrival.wasQuestion}
+						{expanded}
+						busy={controller.busy}
+						compacting={controller.compacting}
+						modelMenuOpen={controller.modelMenuOpen}
+						onexpand={() => void expand()}
+						onsubmit={(answer, draft) => {
+							if (pending) void controller.answerQuestion(pending, answer, draft);
+						}}
+						onstop={() => void controller.stop()}
+						onworking={(text) => (controller.working = text)}
+						{models}
+					/>
+				{/key}
+			{:else if controller.activeProblem}
+				{#key controller.activeProblem.toolCallId}
+					<PracticeDock
+						statement={controller.activeProblem.statement}
+						bind:thinking={controller.thinkingDraft}
+						{expanded}
+						busy={controller.busy}
+						compacting={controller.compacting}
+						modelMenuOpen={controller.modelMenuOpen}
+						onexpand={() => void expand()}
+						onsubmit={() => void controller.sendThinking()}
+						onstop={() => void controller.stop()}
+						{models}
+					/>
+				{/key}
+			{:else}
+				<Composer
+					bind:draft={controller.draft}
+					busy={controller.busy}
+					compacting={controller.compacting}
+					disabled={controller.loading}
+					nextReady={controller.nextReady}
+					onnext={() => void controller.sendNext()}
+					placeholder={controller.nextReady
+						? 'Ask anything, or press Enter for the next one.'
+						: 'Ask, answer, or steer the lesson…'}
+					queuedSteers={controller.queuedSteers}
+					onsend={() => void controller.send()}
+					onstop={() => void controller.stop()}
+					{models}
+				/>
+			{/if}
+			<StatsBar
+				sessionId={id}
+				busy={controller.busy || controller.compacting}
+				pick={controller.record?.model_account && controller.record?.model_id
+					? {
+							account: controller.record.model_account,
+							model: controller.record.model_id,
+							thinking_level: controller.record.thinking_level
+						}
+					: null}
 			/>
-		{/key}
-	{:else if controller.activeProblem}
-		{#key controller.activeProblem.toolCallId}
-			<PracticeDock
-				statement={controller.activeProblem.statement}
-				bind:thinking={controller.thinkingDraft}
-				{expanded}
-				busy={controller.busy}
-				compacting={controller.compacting}
-				modelMenuOpen={controller.modelMenuOpen}
-				onexpand={() => void expand()}
-				onsubmit={() => void controller.sendThinking()}
-				onstop={() => void controller.stop()}
-				{models}
-			/>
-		{/key}
-	{:else}
-		<Composer
-			bind:draft={controller.draft}
-			busy={controller.busy}
-			compacting={controller.compacting}
-			disabled={controller.loading}
-			nextReady={controller.nextReady}
-			onnext={() => void controller.sendNext()}
-			placeholder={controller.nextReady
-				? 'Ask anything, or press Enter for the next one.'
-				: 'Ask, answer, or steer the lesson…'}
-			queuedSteers={controller.queuedSteers}
-			onsend={() => void controller.send()}
-			onstop={() => void controller.stop()}
-			{models}
-		/>
-	{/if}
-	<StatsBar
-		sessionId={id}
-		busy={controller.busy || controller.compacting}
-		pick={controller.record?.model_account && controller.record?.model_id
-			? {
-					account: controller.record.model_account,
-					model: controller.record.model_id,
-					thinking_level: controller.record.thinking_level
-				}
-			: null}
-	/>
+		</div>
+	</div>
 	{#if abortTarget}
 		<AbortTurnDialog
 			mode={abortTarget === 'turn' ? 'turn' : 'key' in abortTarget ? 'question' : 'problem'}

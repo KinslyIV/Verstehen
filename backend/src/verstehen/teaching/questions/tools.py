@@ -23,6 +23,7 @@ from pydantic_ai.tools import (
     ToolDefinition,
     ToolReturn,
 )
+from pydantic_ai.toolsets import AbstractToolset
 
 from verstehen.teaching.delivery import (
     SEND_TO_USER_DELIVERY_RULE,
@@ -281,6 +282,7 @@ def build_question_agent(
     plan_nodes: PlanNodeLookup | None = None,
     *,
     extra_tools: tuple[Tool[None], ...] = (),
+    extra_toolsets: tuple[AbstractToolset[None], ...] = (),
     deliver_prose: bool = False,
     guard_narration: bool = False,
     extra_capabilities: tuple[AbstractCapability[None], ...] = (),
@@ -311,6 +313,7 @@ def build_question_agent(
         retries={"tools": QUESTION_RETRY_LIMIT, "output": 0},
         model_settings=settings,
         tools=tools,
+        toolsets=extra_toolsets,
         output_type=[str, DeferredToolRequests],
         capabilities=capabilities,
     )

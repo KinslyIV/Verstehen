@@ -72,6 +72,7 @@ async def core(tmp_path: Path):
             CredentialsStore(tmp_path),
             WorkerAdmission(settings_store),
             tmp_path,
+            lambda configured: None,
             lambda session_id: asyncio.sleep(0),
             lambda session_id: None,
         )

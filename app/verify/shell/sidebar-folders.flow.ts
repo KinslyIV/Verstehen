@@ -143,4 +143,50 @@ test('sidebar-folders', async ({ page, request }) => {
 	await expect(page.getByRole('button', { name: 'Pair', exact: true })).toHaveCount(0);
 	await expect.poll(async () => (await organization()).folders).toEqual([]);
 	await expect(geometryLink).toBeVisible();
+
+	// Move to folder works from the session menu, with No folder to move back out.
+	const inboxId = (
+		await (
+			await request.post('/api/graph/sources', {
+				data: { action: 'create-folder', name: 'Inbox', parent_id: null }
+			})
+		).json()
+	).created_folder_id;
+	await page.reload();
+	await expect(folderRow(inboxId)).toBeVisible();
+	await geometryLink.click({ button: 'right' });
+	await page.getByRole('menuitem', { name: 'Move to folder' }).click();
+	await page.screenshot({ path: test.info().outputPath('move-menu.png'), animations: 'disabled' });
+	await page.getByRole('menuitem', { name: 'Inbox' }).click();
+	await expect
+		.poll(async () => (await organization()).placements[geometry]?.folder_id)
+		.toBe(inboxId);
+	await page.getByTestId(`sidebar-folder-${inboxId}`).click();
+	await geometryLink.click({ button: 'right' });
+	await page.getByRole('menuitem', { name: 'Move to folder' }).click();
+	await page.getByRole('menuitem', { name: 'No folder' }).click();
+	await expect.poll(async () => (await organization()).placements[geometry]?.folder_id).toBeNull();
+
+	// New practice here opens the practice page for the folder.
+	await folderMenu('Inbox');
+	await page.screenshot({
+		path: test.info().outputPath('folder-menu.png'),
+		animations: 'disabled'
+	});
+	await page.getByRole('menuitem', { name: 'New practice here' }).click();
+	await expect(page).toHaveURL(new RegExp(`/session/new\\?mode=practice&folder=${inboxId}$`));
+	await expect(page.getByTestId('kind-practice')).toHaveAttribute('aria-current', 'page');
+
+	// New teaching here creates the session inside the folder.
+	await folderMenu('Inbox');
+	await page.getByRole('menuitem', { name: 'New teaching here' }).click();
+	await expect(page).toHaveURL(new RegExp(`/session/new\\?folder=${inboxId}$`));
+	await page.getByRole('textbox', { name: 'What do you want to learn?' }).fill('Fresh topic');
+	await page.getByRole('button', { name: 'Send', exact: true }).click();
+	await expect(page).toHaveURL(/\/session\/(?!new)[^/?]+$/);
+	const freshId = page.url().split('/').pop()!;
+	await expect
+		.poll(async () => (await organization()).placements[freshId]?.folder_id)
+		.toBe(inboxId);
+	await page.screenshot({ path: test.info().outputPath('new-here.png'), animations: 'disabled' });
 });

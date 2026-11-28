@@ -19,7 +19,8 @@ Backend, `backend/src/verstehen/`:
 | `jobs/workers/research.py`, `search.py`, `web.py` | the researcher; native search, Tavily, or Brave; bounded public-only fetches |
 | `jobs/workers/pdf.py`, `pdf_ops.py` | the PDF reader on pypdfium2 |
 | `jobs/workers/visual.py` | SVG figures and photo annotation, rendered with resvg and looked at by the model |
-| `jobs/workers/demo.py`, `headless.py`, `browser.py` | the demo builder, its mandatory headless check, and demo-browser discovery and download |
+| `jobs/workers/demo.py`, `headless.py`, `browser.py` | the demo builder, its mandatory check (`DemoRunner`, `DemoRunResult`, `PlaywrightDemoRunner`, `scheme_allowed`), and, for server mode, demo-browser discovery and download |
+| `desktop/demo_runner.py` | `DesktopDemoRunner`, the desktop's `DemoRunner`: a QtWebEngine page per check (see Demo checks below) |
 | `jobs/workers/common.py` | `WorkerModel`, typed `worker_tool` schema wrapper, CPU work in threads, usage |
 | `session/delivery.py`, `session/context_updates.py` | `DeliveryService` (wakes) and the context-update step ([session](session.md)) |
 | `session/jobs.py` | `JobService`: `GET /api/jobs` with the recovery sweep, and abort |
@@ -51,9 +52,44 @@ right panel's Jobs tab with End), and the cards (`dispatch-card`, `marker-card`,
 - **Recovery.** `GET /api/jobs` runs the sweep at most once every 30 seconds: interrupted jobs re-run
   (except in a session with an active turn) and saved deliveries are restored. A shutdown leaves running jobs `running` so the next sweep picks them up.
 - **Demo security.** Demo HTML runs in `<iframe sandbox="allow-scripts" srcdoc>` without
-  `allow-same-origin`. The app CSP is relaxed (`'unsafe-inline'` and `https:`) so demos can load
-  their CDN scripts; the sandbox and the API token still protect the app. Demos are never
-  delivered untested.
+  `allow-same-origin`. The app CSP is relaxed (`'unsafe-inline'` and `https:`, set by FastAPI in
+  desktop mode: [API and events](api-and-events.md#access)) so demos can load their CDN scripts and
+  run inline scripts, the size bridge too; a `srcdoc` frame inherits that CSP. The sandbox and the
+  API token (an HttpOnly cookie the sandboxed frame cannot reach) still protect the app. Demos are
+  never delivered untested.
+- **Demo checks.** `run_demo_builder` takes a `DemoRunner` (`async (html, probe) -> DemoRunResult`)
+  from `DemoRunnerProvider`, which `create_app` wires by mode; no runner means the no-browser
+  failure. Server mode and the browser-only backend use `PlaywrightDemoRunner`: Chromium found by
+  `find_demo_browser`, configured in Settings → Tools → Demo browser. The desktop injects
+  `DesktopDemoRunner`, and has no Playwright, no browser lookup or download, and no Demo browser
+  routes or setting. Both runners must give the same `DemoRunResult` for the cases in
+  `backend/tests/fixtures/workers/demo_runs.json` (a clean demo, console and uncaught errors,
+  blocked schemes, failed requests including fetch and XHR in any frame, HTTP error statuses, probe
+  values, a demo over 2 MB, and more); `test_demo_runners.py` runs every fixture against both.
+- **The Qt demo runner** (`desktop/demo_runner.py`) runs on the Qt main thread while jobs run on
+  the server thread: a queued signal starts the check, and an asyncio future carries the result
+  back through `call_soon_threadsafe`. Cancelling the waiter aborts the check and deletes its page;
+  closing the app aborts every check. Each check gets its own off-the-record profile and page,
+  hosted in a `QWebEngineView` that is shown but never on screen (1280x720, Playwright's
+  viewport), so animation frames, timers and `document.visibilityState` behave as in a visible page.
+  The demo loads from a `verstehen-demo:` scheme handler (opaque origin, no size limit), a request
+  interceptor blocks every scheme except `http`, `https`, `data`, `blob`, and `about` (LH's rule,
+  `scheme_allowed`; there is no localhost block), and storage is off. A script injected in every
+  frame reports failed resource loads, failed `fetch` and XHR requests, and HTTP error statuses
+  without touching the page's globals; console errors and uncaught errors come from
+  `javaScriptConsoleMessage`. The check waits 2 s after load, runs the probe (a function, an
+  async function, or an expression, with BigInt results converted), and gives up after 30 s.
+- **Loading.** An `IntersectionObserver` on the card (root: the transcript viewport, margin
+  `demoLoadMargin`, twice the viewport's height, recomputed on resize) mounts the `<iframe srcdoc>` only when the card is near
+  and replaces it with a placeholder of the last measured height when it is far (`demoFrameMounted`).
+  A zoomed demo is never unloaded; the error banner shows only while the frame is loaded, and a
+  remounted frame starts without the previous frame's error (`resetDemoFrameError`).
+- **Zoom.** `demo-card.svelte` zooms in place: its own `<dialog>` is opened with `showModal()` and
+  a spacer (`demo-spacer`) holds the card's height in the transcript, so the iframe is never
+  remounted and its live state survives. The sandboxed demo cannot hand Escape to the page, so the
+  demo shell script posts `{type: 'demo-escape'}` (`isDemoEscape` in `jobs.ts`) and the card closes.
+  `visual-card.svelte` (figures) and `teaching/image-card.svelte` open their picture in the shared
+  `components/zoom-dialog.svelte`, which renders its content only while open.
 - **Artifact views.** The invert switch of figures and demos is saved in `artifact_views`, never
   sent to the model.
 
