@@ -1,7 +1,7 @@
 # Status
 
 > One page: where the project is, the next step, and open questions. History lives in git and the
-> PRs. Last update: 2026-11-28 (Desktop early SIGTERM fix after PR #43).
+> PRs. Last update: 2026-11-28 (Replace wall-clock plugin test assertions with file gates).
 
 ## Where we are
 
@@ -104,9 +104,10 @@ Settings changes apply on the next turn. The `mcp-select-all` branch adds **Sele
 **Clear all** for the selected agent. Its CI follow-up installs the EGL runtime for Qt imports.
 See the [plan](plans/mcp-servers.md).
 PR #43 (`fix/ci-shield-python-314`) set `UV_PYTHON_PREFERENCE: only-managed` in CI and returns
-failures from the shielded ChatGPT model fetch task instead of raising out of it. The
-`fix/desktop-early-sigterm` branch makes `quit_on_signals` and `DesktopServer` exit cleanly when
-`SIGTERM` arrives before `app.exec()` or while the server is starting.
+failures from the shielded ChatGPT model fetch task instead of raising out of it. PR #44
+(`fix/desktop-early-sigterm`) fixed `quit_on_signals` and `DesktopServer` so early `SIGTERM`
+exits cleanly. The `fix/plugin-timing-flakes` branch replaces the four wall-clock plugin test
+assertions with explicit file gates.
 
 ## Next
 

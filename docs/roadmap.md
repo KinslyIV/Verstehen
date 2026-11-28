@@ -182,7 +182,9 @@ merges.
   keeping the fixture's `sync_service` closed, and the `mobile-reconnect` race
   (`context.setOffline(true)` not severing an already-open loopback `/stream` socket) is fixed by
   cutting the browser-facing verify forwarder's live sockets via `setOffline` alongside
-  `context.setOffline`. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
+  `context.setOffline`. On `fix/plugin-timing-flakes`, the four wall-clock plugin timing
+  assertions (`blocking-activate`, `slow`, `lifecycle`, `bridge`) are replaced by explicit file
+  gates. The other timing bugs remain open. Under heavy host load (other worktrees running verify,
   load average ~13 on 4 cores) the `test_sidecar.py` handshake tests miss their 15 s timeout and
   Vitest's browser mode fails to connect to Chromium. Both passed once the load dropped
   (2026-11-21). Playwright's sidecar handshake also missed its 15 s deadline when the M10 flows
