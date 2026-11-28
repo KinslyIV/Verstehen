@@ -36,7 +36,9 @@ class ChatGPTAccountAdapter:
         self.providers: dict[str, AccountProvider] = {}
         self.clients: list[httpx2.AsyncClient] = []
         self.catalogs: dict[str, list[CatalogModel]] = {}
-        self.fetches: dict[str, asyncio.Task[list[CatalogModel]]] = {}
+        self.fetches: dict[
+            str, asyncio.Task[list[CatalogModel] | AccountUnavailable]
+        ] = {}
 
     async def accounts(self) -> list[Account]:
         accounts = []
@@ -134,9 +136,14 @@ class ChatGPTAccountAdapter:
             task = asyncio.create_task(self.load_models(account))
             task.add_done_callback(lambda t: t.cancelled() or t.exception())
             self.fetches[account.id] = task
-        return await asyncio.shield(task)
+        result = await asyncio.shield(task)
+        if isinstance(result, AccountUnavailable):
+            raise AccountUnavailable(result.reason, result.state)
+        return result
 
-    async def load_models(self, account: Account) -> list[CatalogModel]:
+    async def load_models(
+        self, account: Account
+    ) -> list[CatalogModel] | AccountUnavailable:
         """Fetch once for all waiting callers; only the current fetch caches or evicts."""
         task = asyncio.current_task()
         provider = None
@@ -148,12 +155,12 @@ class ChatGPTAccountAdapter:
             return models
         except Exception as error:
             if self.fetches.get(account.id) is not task:
-                raise AccountUnavailable(
+                return AccountUnavailable(
                     "The ChatGPT model list changed. Try again.", "unavailable"
-                ) from None
-            raise self.unavailable(
+                )
+            return self.unavailable(
                 account.id, error, provider.source if provider else None
-            ) from None
+            )
         finally:
             if self.fetches.get(account.id) is task:
                 del self.fetches[account.id]
